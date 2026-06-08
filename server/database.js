@@ -2,6 +2,7 @@ const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
 const { Pool } = require('pg');
+const net = require('net');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
@@ -13,7 +14,10 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
-  max: 10
+  max: 10,
+  lookup: (hostname, options, callback) => {
+    dns.lookup(hostname, { ...options, family: 4 }, callback);
+  }
 });
 
 pool.on('error', (err) => {
