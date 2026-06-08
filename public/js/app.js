@@ -1003,6 +1003,10 @@ async function renderMore() {
         <span class="qa-icon">&#127970;</span>
         <span class="qa-label">전국 지국</span>
       </button>
+      <button class="quick-action-btn" onclick="showMeetingNotes()">
+        <span class="qa-icon">&#128466;</span>
+        <span class="qa-label">회의록</span>
+      </button>
     </div>
 
     <p class="section-title">&#9881; 도구</p>
@@ -1030,6 +1034,118 @@ async function renderMore() {
       <p class="card-title" style="margin-bottom:8px;">시스템 정보</p>
       <p style="font-size:14px; color:var(--gray-500);">석유사업본부 업무공유 시스템 v2.0</p>
       <p style="font-size:14px; color:var(--gray-500);">전국 지국/주요업무표 통합 관리</p>
+    </div>
+  `;
+}
+
+// ─── 회의록 열람 ───
+async function showMeetingNotes(pg) {
+  const notes = await api('/api/meeting-notes') || [];
+  window._allMeetingNotes = notes;
+  window._filteredMeetingNotes = notes;
+  renderMeetingNotesPage(pg || 1);
+}
+
+function renderMeetingNotesPage(pg) {
+  const notes = window._filteredMeetingNotes || [];
+  const { data, page, totalPages, total } = paginate(notes, pg);
+
+  const months = [...new Set(notes.map(n => (n.meeting_date || '').substring(0, 7)))];
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <p class="section-title">&#128466; 회의록 (${total}건)</p>
+    <div class="form-group">
+      <input type="text" id="mnSearch" class="form-control" placeholder="회의 제목 검색..."
+        oninput="searchMeetingNotes()">
+    </div>
+    <div class="tabs" style="margin-bottom:12px; flex-wrap:wrap; gap:4px;">
+      <button class="tab active" onclick="filterMeetingMonth(this,'all')">전체</button>
+      ${months.slice(0, 5).map(m => `<button class="tab" onclick="filterMeetingMonth(this,'${m}')">${m}</button>`).join('')}
+    </div>
+    <div id="mnList">${renderMeetingNotesList(data)}</div>
+    ${renderPagination(page, totalPages, 'gotoMeetingNotesPage')}
+  `;
+}
+
+function gotoMeetingNotesPage(pg) {
+  const notes = window._filteredMeetingNotes || [];
+  const { data, page, totalPages } = paginate(notes, pg);
+  document.getElementById('mnList').innerHTML = renderMeetingNotesList(data);
+  const paginationEl = document.querySelector('.pagination');
+  if (paginationEl) paginationEl.outerHTML = renderPagination(page, totalPages, 'gotoMeetingNotesPage');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderMeetingNotesList(notes) {
+  if (notes.length === 0) return '<div class="empty-state"><div class="empty-text">회의록이 없습니다</div></div>';
+  return notes.map(n => {
+    const d = n.meeting_date || '';
+    const dateStr = d.substring(0, 10);
+    const dayNames = ['일','월','화','수','목','금','토'];
+    const dayName = d ? dayNames[new Date(d).getDay()] : '';
+    return `
+    <div class="card" style="padding:12px; cursor:pointer;" onclick="viewMeetingNote('${escAttr(n.id)}')">
+      <div style="display:flex; justify-content:space-between; align-items:start;">
+        <div style="flex:1;">
+          <div style="font-weight:600; font-size:14px; margin-bottom:4px;">${escHtml(n.title)}</div>
+          <div style="font-size:12px; color:var(--gray-500);">${escHtml(dateStr)} (${dayName})</div>
+        </div>
+        <div>
+          ${n.has_summary ? '<span class="badge badge-approved">요약</span>' : '<span class="badge badge-draft">제목만</span>'}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function searchMeetingNotes() {
+  const q = document.getElementById('mnSearch').value.toLowerCase();
+  const all = window._allMeetingNotes || [];
+  window._filteredMeetingNotes = q ? all.filter(n =>
+    (n.title || '').toLowerCase().includes(q)
+  ) : all;
+  gotoMeetingNotesPage(1);
+}
+
+function filterMeetingMonth(btn, month) {
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const all = window._allMeetingNotes || [];
+  window._filteredMeetingNotes = month === 'all' ? all : all.filter(n => (n.meeting_date || '').startsWith(month));
+  gotoMeetingNotesPage(1);
+}
+
+async function viewMeetingNote(id) {
+  const n = await api(`/api/meeting-notes/${id}`);
+  if (!n) return;
+  const d = n.meeting_date || '';
+  const dateStr = d.substring(0, 10);
+  const dayNames = ['일','월','화','수','목','금','토'];
+  const dayName = d ? dayNames[new Date(d).getDay()] : '';
+
+  let contentHtml = '<p style="color:var(--gray-500); font-style:italic;">요약 내용이 아직 없습니다.</p>';
+  if (n.summary) {
+    contentHtml = n.summary
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/^### (.+)$/gm, '<h4 style="color:var(--primary); margin:16px 0 8px; font-size:15px; border-bottom:1px solid var(--gray-200); padding-bottom:4px;">$1</h4>')
+      .replace(/^- (.+)$/gm, '<li style="font-size:14px; line-height:1.7; margin-left:16px;">$1</li>')
+      .replace(/\n/g, '');
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showMeetingNotes()" style="margin-bottom:12px;">&larr; 목록</button>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="font-size:16px;">${escHtml(n.title)}</span>
+      </div>
+      <div style="font-size:13px; color:var(--gray-500); margin-bottom:12px;">
+        ${escHtml(dateStr)} (${dayName})
+        ${n.notion_url ? ` &middot; <a href="${escAttr(n.notion_url)}" target="_blank" rel="noopener" style="color:var(--primary);">Notion에서 보기</a>` : ''}
+      </div>
+      <div style="font-size:14px; line-height:1.8;">
+        ${contentHtml}
+      </div>
     </div>
   `;
 }

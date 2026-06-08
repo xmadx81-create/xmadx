@@ -1153,6 +1153,19 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
   res.end();
 });
 
+// ─── 회의록 ───
+app.get('/api/meeting-notes', authMiddleware, async (req, res) => {
+  const result = await query('SELECT id, title, meeting_date, notion_url, CASE WHEN summary IS NOT NULL THEN true ELSE false END as has_summary FROM meeting_notes ORDER BY meeting_date DESC');
+  res.json(result.rows);
+});
+
+app.get('/api/meeting-notes/:id', authMiddleware, async (req, res) => {
+  const result = await query('SELECT * FROM meeting_notes WHERE id = $1', [req.params.id]);
+  const note = result.rows[0];
+  if (!note) return res.status(404).json({ error: '회의록을 찾을 수 없습니다' });
+  res.json(note);
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);

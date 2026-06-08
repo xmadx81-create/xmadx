@@ -112,7 +112,11 @@ async function initDB() {
       applicant_name TEXT, applicant_org TEXT, applicant_title TEXT, applicant_phone TEXT,
       oil_company TEXT, app_type TEXT, paint_date TEXT, actual_date TEXT,
       status TEXT DEFAULT '정상', memo TEXT DEFAULT '',
-      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS meeting_notes (
+      id TEXT PRIMARY KEY, notion_id TEXT UNIQUE, title TEXT NOT NULL,
+      meeting_date DATE NOT NULL, summary TEXT, notion_url TEXT,
+      created_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
     await query(sql);
@@ -391,6 +395,21 @@ async function initDB() {
         `INSERT INTO approved_staff (id, name, phone, department, position, location, role) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [uuidv4(), s[0], s[1], s[2], s[3], s[4], s[5]]
       );
+    }
+  }
+
+  // ─── 회의록 시드 ───
+  const mnCount = await query(`SELECT COUNT(*) as cnt FROM meeting_notes`);
+  if (parseInt(mnCount.rows[0].cnt) === 0) {
+    const mnFile = path.join(__dirname, '..', 'data', 'meeting_notes.json');
+    if (fs.existsSync(mnFile)) {
+      const mnData = JSON.parse(fs.readFileSync(mnFile, 'utf-8'));
+      for (const r of mnData) {
+        await query(
+          `INSERT INTO meeting_notes (id, notion_id, title, meeting_date, summary, notion_url) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [uuidv4(), r.notion_id, r.title, r.meeting_date, r.summary || null, r.notion_url || null]
+        );
+      }
     }
   }
 
