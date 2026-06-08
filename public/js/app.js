@@ -1135,7 +1135,10 @@ function renderTaskPage(pg) {
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <p class="section-title" style="margin-bottom:0;">&#128203; 주요업무표 (${total}건)</p>
-      <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ 신규업무</button>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-outline btn-sm" onclick="downloadExcel('/api/export/tasks','주요업무표')">&#128229; 엑셀</button>
+        <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ 신규업무</button>
+      </div>
     </div>
     <div class="form-group">
       <input type="text" id="taskSearch" class="form-control" placeholder="업무 검색..." oninput="searchTasksPage()">
@@ -1322,7 +1325,10 @@ async function showPersonalTasks() {
   const persons = await api('/api/personal-tasks/persons') || [];
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
-    <p class="section-title">&#128221; 개별 담당 업무표</p>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <p class="section-title" style="margin-bottom:0;">&#128221; 개별 담당 업무표</p>
+      <button class="btn btn-outline btn-sm" onclick="downloadExcel('/api/export/personal-tasks','개인업무표_전체')">&#128229; 전체 엑셀</button>
+    </div>
     <p style="font-size:13px; color:var(--gray-500); margin-bottom:16px;">담당자를 선택하면 상세 업무를 확인할 수 있습니다</p>
     ${persons.map(p => `
       <div class="list-item" onclick="viewPersonTasks('${escAttr(p.person_name)}')">
@@ -1348,8 +1354,13 @@ async function viewPersonTasks(personName) {
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="showPersonalTasks()" style="margin-bottom:12px;">&larr; 목록</button>
     <div class="card" style="margin-bottom:16px;">
-      <p class="card-title">${escHtml(personName)}</p>
-      <p style="font-size:13px; color:var(--gray-500);">${tasks.length > 0 ? escHtml(tasks[0].position) + ' / ' + escHtml(tasks[0].division) : ''}</p>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <p class="card-title">${escHtml(personName)}</p>
+          <p style="font-size:13px; color:var(--gray-500);">${tasks.length > 0 ? escHtml(tasks[0].position) + ' / ' + escHtml(tasks[0].division) : ''}</p>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="downloadExcel('/api/export/personal-tasks?person=${encodeURIComponent(personName)}','${escAttr(personName)}_업무표')">&#128229; 엑셀</button>
+      </div>
     </div>
     ${Object.entries(grouped).map(([group, items]) => `
       <div class="card" style="padding:12px; margin-bottom:8px;">
@@ -1424,6 +1435,10 @@ async function showManual() {
       <button class="tab ${manualTab === 'org' ? 'active' : ''}" onclick="manualTab='org'; showManual()">전체 업무매뉴얼</button>
       <button class="tab ${manualTab === 'my' ? 'active' : ''}" onclick="manualTab='my'; showManual()">내 업무매뉴얼</button>
       <button class="tab ${manualTab === 'custom' ? 'active' : ''}" onclick="manualTab='custom'; showManual()">직접 작성</button>
+    </div>
+    <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+      ${manualTab === 'org' ? `<button class="btn btn-outline btn-sm" onclick="downloadExcel('/api/export/manual-org','전체_업무매뉴얼')">&#128229; 엑셀 다운로드</button>` : ''}
+      ${manualTab === 'my' ? `<button class="btn btn-outline btn-sm" onclick="downloadExcel('/api/export/manual-my','내_업무매뉴얼')">&#128229; 엑셀 다운로드</button>` : ''}
     </div>
     <div id="manualContent"></div>
   `;
@@ -1909,6 +1924,25 @@ function escHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+async function downloadExcel(url, filename) {
+  try {
+    toast('엑셀 파일 생성 중...');
+    const resp = await fetch(url, { credentials: 'same-origin' });
+    if (!resp.ok) throw new Error('다운로드 실패');
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    toast('다운로드 완료!');
+  } catch (e) {
+    toast('다운로드 실패: ' + e.message);
+  }
 }
 
 function escAttr(str) {

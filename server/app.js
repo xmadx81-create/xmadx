@@ -1,6 +1,7 @@
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
+const ExcelJS = require('exceljs');
 const { db, uuidv4 } = require('./database');
 
 const app = express();
@@ -633,6 +634,419 @@ app.get('/api/personal-tasks', authMiddleware, (req, res) => {
 app.get('/api/personal-tasks/persons', authMiddleware, (req, res) => {
   const persons = db.prepare('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name').all();
   res.json(persons);
+});
+
+// ─── 엑셀 공통 스타일 ───
+function applyExcelStyles(wb) {
+  const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1B3A5C' } };
+  const headerFont = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+  const titleFont = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FF1B3A5C' } };
+  const subTitleFont = { name: '맑은 고딕', size: 11, color: { argb: 'FF666666' } };
+  const bodyFont = { name: '맑은 고딕', size: 10 };
+  const borderThin = { style: 'thin', color: { argb: 'FFD0D0D0' } };
+  const borders = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
+  const centerAlign = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  const leftAlign = { vertical: 'middle', horizontal: 'left', wrapText: true };
+  return { headerFill, headerFont, titleFont, subTitleFont, bodyFont, borders, centerAlign, leftAlign };
+}
+
+// ─── 엑셀 다운로드: 주요업무표 ───
+app.get('/api/export/tasks', authMiddleware, async (req, res) => {
+  const tasks = db.prepare('SELECT * FROM task_master ORDER BY category1, task_group, created_at').all();
+  const wb = new ExcelJS.Workbook();
+  const s = applyExcelStyles(wb);
+  wb.creator = '석유사업본부 업무시스템';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('주요업무표', { properties: { defaultRowHeight: 22 } });
+
+  ws.mergeCells('A1:G1');
+  const titleCell = ws.getCell('A1');
+  titleCell.value = '석유사업본부 주요업무표';
+  titleCell.font = s.titleFont;
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(1).height = 40;
+
+  ws.mergeCells('A2:G2');
+  const subCell = ws.getCell('A2');
+  subCell.value = `작성일: ${new Date().toISOString().split('T')[0]}  |  총 ${tasks.length}건`;
+  subCell.font = s.subTitleFont;
+  subCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(2).height = 25;
+
+  ws.getRow(3).height = 8;
+
+  const headers = ['No.', '구분', '업무그룹', '세부 업무내용', '담당자', '비고', '등록일'];
+  const headerRow = ws.getRow(4);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.fill = s.headerFill;
+    cell.font = s.headerFont;
+    cell.alignment = s.centerAlign;
+    cell.border = s.borders;
+  });
+  headerRow.height = 28;
+
+  ws.getColumn(1).width = 6;
+  ws.getColumn(2).width = 14;
+  ws.getColumn(3).width = 22;
+  ws.getColumn(4).width = 45;
+  ws.getColumn(5).width = 14;
+  ws.getColumn(6).width = 20;
+  ws.getColumn(7).width = 12;
+
+  const groupFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4FA' } };
+  let prevGroup = '';
+  tasks.forEach((t, idx) => {
+    const row = ws.getRow(5 + idx);
+    const isNewGroup = t.task_group !== prevGroup;
+    prevGroup = t.task_group;
+    const rowFill = isNewGroup ? groupFill : undefined;
+
+    const vals = [idx + 1, t.category1 || '', t.task_group || '', t.task_detail || '', t.assigned_to || '', t.note || '', (t.created_at || '').split('T')[0]];
+    vals.forEach((v, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = v;
+      cell.font = s.bodyFont;
+      cell.alignment = i === 3 || i === 5 ? s.leftAlign : s.centerAlign;
+      cell.border = s.borders;
+      if (rowFill) cell.fill = rowFill;
+    });
+    row.height = 24;
+  });
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=task_master_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
+// ─── 엑셀 다운로드: 개인업무표 ───
+app.get('/api/export/personal-tasks', authMiddleware, async (req, res) => {
+  const { person } = req.query;
+  const wb = new ExcelJS.Workbook();
+  const s = applyExcelStyles(wb);
+  wb.creator = '석유사업본부 업무시스템';
+
+  const buildPersonSheet = (personName, tasks, ws) => {
+    const info = tasks[0] || {};
+    ws.mergeCells('A1:F1');
+    const titleCell = ws.getCell('A1');
+    titleCell.value = `${personName} 개별 담당 업무표`;
+    titleCell.font = s.titleFont;
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.getRow(1).height = 40;
+
+    ws.mergeCells('A2:F2');
+    const subCell = ws.getCell('A2');
+    subCell.value = `${info.position || ''} / ${info.division || ''}  |  총 ${tasks.length}건`;
+    subCell.font = s.subTitleFont;
+    subCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.getRow(2).height = 25;
+
+    ws.getRow(3).height = 8;
+
+    const headers = ['No.', '업무그룹', '세부 업무내용', '부서', '직급', '비고'];
+    const headerRow = ws.getRow(4);
+    headers.forEach((h, i) => {
+      const cell = headerRow.getCell(i + 1);
+      cell.value = h;
+      cell.fill = s.headerFill;
+      cell.font = s.headerFont;
+      cell.alignment = s.centerAlign;
+      cell.border = s.borders;
+    });
+    headerRow.height = 28;
+
+    ws.getColumn(1).width = 6;
+    ws.getColumn(2).width = 22;
+    ws.getColumn(3).width = 45;
+    ws.getColumn(4).width = 16;
+    ws.getColumn(5).width = 10;
+    ws.getColumn(6).width = 20;
+
+    const groupFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4FA' } };
+    let prevGroup = '';
+    tasks.forEach((t, idx) => {
+      const row = ws.getRow(5 + idx);
+      const isNewGroup = t.task_group !== prevGroup;
+      prevGroup = t.task_group;
+
+      const vals = [idx + 1, t.task_group || '', t.task_detail || '', t.department || '', t.position || '', t.note || ''];
+      vals.forEach((v, i) => {
+        const cell = row.getCell(i + 1);
+        cell.value = v;
+        cell.font = s.bodyFont;
+        cell.alignment = i === 2 || i === 5 ? s.leftAlign : s.centerAlign;
+        cell.border = s.borders;
+        if (isNewGroup) cell.fill = groupFill;
+      });
+      row.height = 24;
+    });
+  };
+
+  if (person) {
+    const tasks = db.prepare('SELECT * FROM personal_task_table WHERE person_name = ? ORDER BY task_group').all(person);
+    const ws = wb.addWorksheet(person.substring(0, 31));
+    buildPersonSheet(person, tasks, ws);
+  } else {
+    const persons = db.prepare('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name').all();
+    persons.forEach(p => {
+      const tasks = db.prepare('SELECT * FROM personal_task_table WHERE person_name = ? ORDER BY task_group').all(p.person_name);
+      const ws = wb.addWorksheet(p.person_name.substring(0, 31));
+      buildPersonSheet(p.person_name, tasks, ws);
+    });
+  }
+
+  const filename = person ? `personal_tasks_${person}_${new Date().toISOString().split('T')[0]}.xlsx` : `personal_tasks_all_${new Date().toISOString().split('T')[0]}.xlsx`;
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(filename)}`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
+// ─── 엑셀 다운로드: 전체 업무매뉴얼 ───
+app.get('/api/export/manual-org', authMiddleware, async (req, res) => {
+  const tasks = db.prepare(`
+    SELECT what_task, work_category, purpose, how_method, why_reason, where_place, who,
+      COUNT(*) as frequency, GROUP_CONCAT(DISTINCT u.name) as people,
+      MAX(r.report_date) as last_date, MIN(r.report_date) as first_date
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category ORDER BY frequency DESC
+  `).all();
+
+  const byCategory = {};
+  tasks.forEach(t => {
+    const cat = t.work_category || '기타';
+    if (!byCategory[cat]) byCategory[cat] = [];
+    let existing = byCategory[cat].find(e => e.task === t.what_task);
+    if (existing) {
+      existing.frequency += t.frequency;
+      if (t.how_method && !existing.methods.includes(t.how_method)) existing.methods.push(t.how_method);
+      if (t.where_place && !existing.locations.includes(t.where_place)) existing.locations.push(t.where_place);
+      if (t.why_reason && !existing.reasons.includes(t.why_reason)) existing.reasons.push(t.why_reason);
+      if (t.people) t.people.split(',').forEach(p => { if (!existing.people.includes(p)) existing.people.push(p); });
+    } else {
+      byCategory[cat].push({
+        task: t.what_task, purpose: t.purpose || '',
+        methods: t.how_method ? [t.how_method] : [], reasons: t.why_reason ? [t.why_reason] : [],
+        locations: t.where_place ? [t.where_place] : [], people: t.people ? t.people.split(',') : [],
+        frequency: t.frequency, last_date: t.last_date, first_date: t.first_date
+      });
+    }
+  });
+
+  const totalReports = db.prepare('SELECT COUNT(*) as cnt FROM work_reports').get().cnt;
+  const totalPeople = db.prepare('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports').get().cnt;
+
+  const wb = new ExcelJS.Workbook();
+  const s = applyExcelStyles(wb);
+  wb.creator = '석유사업본부 업무시스템';
+  const ws = wb.addWorksheet('전체 업무매뉴얼', { properties: { defaultRowHeight: 22 } });
+
+  ws.mergeCells('A1:H1');
+  const titleCell = ws.getCell('A1');
+  titleCell.value = '석유사업본부 전체 업무매뉴얼';
+  titleCell.font = s.titleFont;
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(1).height = 40;
+
+  ws.mergeCells('A2:H2');
+  const subCell = ws.getCell('A2');
+  subCell.value = `작성일: ${new Date().toISOString().split('T')[0]}  |  총 ${totalReports}건 업무기록  |  참여인원 ${totalPeople}명  |  육하원칙 기반 자동생성`;
+  subCell.font = s.subTitleFont;
+  subCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(2).height = 25;
+  ws.getRow(3).height = 8;
+
+  const headers = ['분류', '업무명', '목적', '수행방법', '사유', '장소', '담당인원', '수행횟수'];
+  const headerRow = ws.getRow(4);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.fill = s.headerFill;
+    cell.font = s.headerFont;
+    cell.alignment = s.centerAlign;
+    cell.border = s.borders;
+  });
+  headerRow.height = 28;
+
+  ws.getColumn(1).width = 8;
+  ws.getColumn(2).width = 30;
+  ws.getColumn(3).width = 18;
+  ws.getColumn(4).width = 28;
+  ws.getColumn(5).width = 22;
+  ws.getColumn(6).width = 16;
+  ws.getColumn(7).width = 18;
+  ws.getColumn(8).width = 10;
+
+  const catColors = {
+    '내근': { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF4FF' } },
+    '외근': { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FFF0' } },
+    '출장': { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF8E1' } }
+  };
+
+  let rowIdx = 5;
+  Object.entries(byCategory).forEach(([cat, items]) => {
+    const catRow = ws.getRow(rowIdx);
+    ws.mergeCells(rowIdx, 1, rowIdx, 8);
+    const catCell = catRow.getCell(1);
+    catCell.value = `■ ${cat} 업무 (${items.length}건)`;
+    catCell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FF1B3A5C' } };
+    catCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E8F0' } };
+    catCell.alignment = { vertical: 'middle', horizontal: 'left' };
+    catCell.border = s.borders;
+    catRow.height = 26;
+    rowIdx++;
+
+    items.forEach(t => {
+      const row = ws.getRow(rowIdx);
+      const vals = [cat, t.task, t.purpose, t.methods.join('\n'), t.reasons.join('\n'), t.locations.join(', '), t.people.join(', '), t.frequency];
+      vals.forEach((v, i) => {
+        const cell = row.getCell(i + 1);
+        cell.value = v;
+        cell.font = s.bodyFont;
+        cell.alignment = i === 0 || i === 7 ? s.centerAlign : s.leftAlign;
+        cell.border = s.borders;
+        if (catColors[cat]) cell.fill = catColors[cat];
+      });
+      row.height = Math.max(24, 14 * Math.max(...vals.map(v => String(v).split('\n').length)));
+      rowIdx++;
+    });
+  });
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=manual_org_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
+// ─── 엑셀 다운로드: 내 업무매뉴얼 ───
+app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const userInfo = db.prepare('SELECT name, position FROM users WHERE id = ?').get(userId);
+  const userName = userInfo ? userInfo.name : '사용자';
+  const userPos = userInfo ? userInfo.position : '';
+
+  const tasks = db.prepare(`
+    SELECT what_task, work_category, purpose, how_method, why_reason, where_place, who,
+      COUNT(*) as frequency, MAX(report_date) as last_date
+    FROM work_reports WHERE author_id = ? AND what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category, purpose ORDER BY frequency DESC
+  `).all(userId);
+
+  const customManual = db.prepare('SELECT * FROM personal_manual WHERE user_id = ? ORDER BY sort_order, created_at').all(userId);
+
+  const wb = new ExcelJS.Workbook();
+  const s = applyExcelStyles(wb);
+  wb.creator = '석유사업본부 업무시스템';
+
+  // 자동생성 매뉴얼 시트
+  const ws1 = wb.addWorksheet('내 업무매뉴얼', { properties: { defaultRowHeight: 22 } });
+  ws1.mergeCells('A1:H1');
+  ws1.getCell('A1').value = `${userName} ${userPos} 업무매뉴얼`;
+  ws1.getCell('A1').font = s.titleFont;
+  ws1.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
+  ws1.getRow(1).height = 40;
+
+  ws1.mergeCells('A2:H2');
+  ws1.getCell('A2').value = `작성일: ${new Date().toISOString().split('T')[0]}  |  총 ${tasks.length}개 업무  |  ${tasks.reduce((a, t) => a + t.frequency, 0)}건 기록 기반`;
+  ws1.getCell('A2').font = s.subTitleFont;
+  ws1.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' };
+  ws1.getRow(2).height = 25;
+  ws1.getRow(3).height = 8;
+
+  const headers1 = ['No.', '목적/분류', '업무명', '수행방법', '사유', '장소', '수행횟수', '최근수행일'];
+  const headerRow1 = ws1.getRow(4);
+  headers1.forEach((h, i) => {
+    const cell = headerRow1.getCell(i + 1);
+    cell.value = h;
+    cell.fill = s.headerFill;
+    cell.font = s.headerFont;
+    cell.alignment = s.centerAlign;
+    cell.border = s.borders;
+  });
+  headerRow1.height = 28;
+
+  ws1.getColumn(1).width = 6;
+  ws1.getColumn(2).width = 16;
+  ws1.getColumn(3).width = 30;
+  ws1.getColumn(4).width = 28;
+  ws1.getColumn(5).width = 22;
+  ws1.getColumn(6).width = 16;
+  ws1.getColumn(7).width = 10;
+  ws1.getColumn(8).width = 14;
+
+  tasks.forEach((t, idx) => {
+    const row = ws1.getRow(5 + idx);
+    const vals = [idx + 1, t.purpose || t.work_category || '', t.what_task, t.how_method || '', t.why_reason || '', t.where_place || '', t.frequency, t.last_date || ''];
+    vals.forEach((v, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = v;
+      cell.font = s.bodyFont;
+      cell.alignment = i === 0 || i === 6 ? s.centerAlign : s.leftAlign;
+      cell.border = s.borders;
+    });
+    if (idx % 2 === 1) {
+      for (let i = 1; i <= 8; i++) row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    }
+    row.height = 24;
+  });
+
+  // 직접 작성 매뉴얼 시트
+  if (customManual.length > 0) {
+    const ws2 = wb.addWorksheet('직접 작성 매뉴얼', { properties: { defaultRowHeight: 22 } });
+    ws2.mergeCells('A1:F1');
+    ws2.getCell('A1').value = `${userName} ${userPos} 직접 작성 매뉴얼`;
+    ws2.getCell('A1').font = s.titleFont;
+    ws2.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
+    ws2.getRow(1).height = 40;
+
+    ws2.mergeCells('A2:F2');
+    ws2.getCell('A2').value = `총 ${customManual.length}건`;
+    ws2.getCell('A2').font = s.subTitleFont;
+    ws2.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' };
+    ws2.getRow(2).height = 25;
+    ws2.getRow(3).height = 8;
+
+    const headers2 = ['No.', '업무그룹', '제목', '내용', '절차/단계', 'TIP'];
+    const headerRow2 = ws2.getRow(4);
+    headers2.forEach((h, i) => {
+      const cell = headerRow2.getCell(i + 1);
+      cell.value = h;
+      cell.fill = s.headerFill;
+      cell.font = s.headerFont;
+      cell.alignment = s.centerAlign;
+      cell.border = s.borders;
+    });
+    headerRow2.height = 28;
+
+    ws2.getColumn(1).width = 6;
+    ws2.getColumn(2).width = 14;
+    ws2.getColumn(3).width = 22;
+    ws2.getColumn(4).width = 35;
+    ws2.getColumn(5).width = 35;
+    ws2.getColumn(6).width = 25;
+
+    customManual.forEach((item, idx) => {
+      const row = ws2.getRow(5 + idx);
+      const vals = [idx + 1, item.task_group || '', item.title || '', item.content || '', item.steps || '', item.tips || ''];
+      vals.forEach((v, i) => {
+        const cell = row.getCell(i + 1);
+        cell.value = v;
+        cell.font = s.bodyFont;
+        cell.alignment = i === 0 ? s.centerAlign : s.leftAlign;
+        cell.border = s.borders;
+      });
+      row.height = Math.max(24, 14 * Math.max(...vals.map(v => String(v).split('\n').length)));
+    });
+  }
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=manual_${encodeURIComponent(userName)}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
 });
 
 app.listen(PORT, '0.0.0.0', () => {
