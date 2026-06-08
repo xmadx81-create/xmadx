@@ -29,13 +29,21 @@ function renderPagination(page, totalPages, onClickFn) {
 
 // ─── API 헬퍼 ───
 async function api(url, options = {}) {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  if (res.status === 401) { showLogin(); return null; }
-  return res.json();
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+    if (res.status === 401) { showLogin(); return null; }
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || '요청 실패'); return null; }
+    return data;
+  } catch (e) {
+    console.error('API error:', e);
+    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
+    return null;
+  }
 }
 
 // ─── 인증 ───
@@ -45,13 +53,11 @@ async function login() {
   const password = document.getElementById('loginPassword').value;
   if (!phoneRest || !password) { toast('연락처와 비밀번호를 입력해주세요'); return; }
   const user = await api('/api/login', { method: 'POST', body: { phone, password } });
-  if (user && !user.error) {
+  if (user && user.id) {
     currentUser = user;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
     navigate('home');
-  } else {
-    toast('로그인 실패: 연락처/비밀번호를 확인하세요');
   }
 }
 
@@ -2033,12 +2039,18 @@ async function submitRegister() {
   if (phoneRest.length !== 8) { toast('연락처 뒷번호 8자리를 입력해주세요'); return; }
   if (password !== passwordConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
 
-  const res = await fetch('/api/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, phone, email, password })
-  });
-  const data = await res.json();
+  let res, data;
+  try {
+    res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, email, password })
+    });
+    data = await res.json();
+  } catch (e) {
+    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
+    return;
+  }
 
   if (!res.ok) { toast(data.error || '가입 실패'); return; }
 
