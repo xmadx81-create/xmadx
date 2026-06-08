@@ -1153,6 +1153,88 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
   res.end();
 });
 
+// ─── 시크릿: 회의록 인사이트 분석 ───
+app.get('/api/admin/insights', adminMiddleware, async (req, res) => {
+  const notesResult = await query('SELECT * FROM meeting_notes WHERE summary IS NOT NULL ORDER BY meeting_date DESC');
+  const notes = notesResult.rows;
+
+  const allActions = [];
+  const allThemes = [];
+  const themeCounts = {};
+
+  notes.forEach(note => {
+    const sections = note.summary.split(/### /).filter(Boolean);
+    sections.forEach(section => {
+      const lines = section.split('\n');
+      const title = lines[0].trim();
+      const items = lines.slice(1).filter(l => l.startsWith('- ')).map(l => l.substring(2).trim());
+      allThemes.push(title);
+      themeCounts[title] = (themeCounts[title] || 0) + 1;
+      if (/액션|Action|실행/.test(title)) {
+        items.forEach(item => allActions.push({ text: item, date: note.meeting_date, from: note.title }));
+      }
+    });
+  });
+
+  const uniqueThemes = Object.entries(themeCounts).sort((a, b) => b[1] - a[1]).map(([t, c]) => ({ theme: t, count: c }));
+
+  res.json({
+    generated_at: new Date().toISOString(),
+    notes_analyzed: notes.length,
+    total_notes: (await query('SELECT COUNT(*) as cnt FROM meeting_notes')).rows[0].cnt,
+    date_range: notes.length > 0 ? { from: notes[notes.length - 1].meeting_date, to: notes[0].meeting_date } : null,
+    notes_summary: notes.map(n => ({ id: n.id, title: n.title, date: n.meeting_date })),
+    themes: uniqueThemes,
+    action_items: allActions,
+    positive: {
+      deductive: {
+        major: '체계적 조직 확장과 서비스 다각화를 동시 추진하는 조직은 시장 지배력을 확보한다',
+        minor: '석유사업본부는 전국주유소연합회 출범, 지역조직 구축, 묶음 관리 서비스 개발, 앱 교육을 동시에 체계적으로 추진하고 있다',
+        conclusion: '현 전략이 완결될 경우, 하반기 내 석유 유통 시장에서 유의미한 영향력을 확보할 가능성이 높다'
+      },
+      inductive: {
+        observations: [
+          '가맹계약서 1,200개 확보 → 3,000개 목표까지 확장 의지 확인',
+          '회장 직접 가맹점 방문 → 현장 신뢰도 상승 → 재계약률 향상 패턴',
+          '소단위 앱 교육 전환 → 현장 적용률 향상 → 디지털 전환 가속',
+          '러시아 직수입·저유고 건설·SBS 다큐 → 공급망 자립 기반 구축',
+          '워크숍·회식으로 팀 결속 강화 → 실행력 유지'
+        ],
+        prediction: '2026년 하반기, 가맹점 순증 가속과 묶음 서비스 수익 모델 안착으로 자생적 성장 궤도 진입이 예상된다. 연말까지 가맹 2,000개소 돌파 가능성이 있으며, 제5정유사 제휴가 실현되면 업계 판도가 변화할 것이다.'
+      }
+    },
+    negative: {
+      deductive: {
+        major: '동시다발적 프로젝트 추진은 핵심 역량의 분산과 실행력 저하를 초래한다',
+        minor: '연합회 출범, 850명 규모 대형 행사, 교육, 지역재편, 선거대응, 저유고 건설, 앱 개발이 동시에 진행되고 있으며, 일부 직영 주유소에서 근무 태도 문제와 비용 커뮤니케이션 공백이 이미 발생하고 있다',
+        conclusion: '우선순위 미설정 시, 핵심 사업 어느 것도 완결되지 못하는 "미완의 확장" 상태에 빠질 위험이 있다'
+      },
+      inductive: {
+        observations: [
+          '직영 주유소 고객 응대 미흡 → 현장 관리 공백의 신호',
+          '공과금·유류대금 사전보고 없이 끊김 → 내부 커뮤니케이션 체계의 약화',
+          '예산 미확정 상태의 대규모 행사 기획 → 재정 리스크 노출',
+          '정치적 중립 표방 vs 법 개정 위한 정치인 관계 유지 → 외부 환경 변수의 불확실성',
+          '주유소 사장들의 높은 경계심 → 신뢰 구축 속도가 기대보다 느릴 가능성'
+        ],
+        prediction: '관리 인력이 확장 속도를 따라잡지 못할 경우, 하반기 조직 피로도가 급상승하여 핵심 인력 이탈과 가맹점 이탈이 동시에 발생할 수 있다. 특히 정유사의 견제가 본격화되면 계약 전환율이 급격히 하락할 위험이 있다.'
+      }
+    },
+    recommendation: {
+      worst: '모든 프로젝트를 동시에 밀어붙이다 어느 것도 완결하지 못하고, 현장 관리까지 무너지는 시나리오',
+      best: '모든 프로젝트가 완벽히 실행되어 연말까지 업계 판도 변화를 이끄는 시나리오 (비현실적)',
+      second_best: '핵심 3대 과제에 집중하고, 나머지는 3분기 이후 순차 추진하여 확실한 기반 위에 성장하는 전략',
+      actions: [
+        { priority: '최우선', task: '가맹점 관리 체계 완성', reason: '1,200개 기존 가맹점의 만족도가 신규 영업보다 중요. 이탈 방지가 곧 성장' },
+        { priority: '최우선', task: '직영 주유소 현장 관리 정상화', reason: '근무 태도·비용 보고 문제는 조직 신뢰의 근간. 즉시 해결 필요' },
+        { priority: '우선', task: '연합회 조직 기반 완성', reason: '500명 추가 가입 확보가 법 개정 추진의 전제조건' },
+        { priority: '보류 가능', task: '대규모 행사·워크숍', reason: '기반이 다져진 후 실시해도 효과는 동일. 예산 확정 후 추진 권장' },
+        { priority: '보류 가능', task: '러시아 직수입·제5정유사 제휴', reason: '중장기 과제로 분류. 현재는 정보 수집 단계 유지' }
+      ]
+    }
+  });
+});
+
 // ─── 회의록 ───
 app.get('/api/meeting-notes', authMiddleware, async (req, res) => {
   const result = await query('SELECT id, title, meeting_date, notion_url, CASE WHEN summary IS NOT NULL THEN true ELSE false END as has_summary FROM meeting_notes ORDER BY meeting_date DESC');
