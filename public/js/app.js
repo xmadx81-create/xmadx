@@ -48,6 +48,7 @@ async function api(url, options = {}) {
 
 // ─── 인증 ───
 async function login() {
+  toast('로그인 중...');
   const phoneRest = document.getElementById('loginPhone').value.trim().replace(/[^0-9]/g, '');
   const phone = '010' + phoneRest;
   const password = document.getElementById('loginPassword').value;
@@ -2028,37 +2029,36 @@ function backToLogin() {
 }
 
 async function submitRegister() {
-  const name = document.getElementById('regName').value.trim();
-  const phoneRest = document.getElementById('regPhone').value.trim().replace(/[^0-9]/g, '');
-  const phone = '010' + phoneRest;
-  const email = document.getElementById('regEmail').value.trim();
-  const password = document.getElementById('regPassword').value;
-  const passwordConfirm = document.getElementById('regPasswordConfirm').value;
-
-  if (!name || !phoneRest || !password) { toast('이름, 연락처, 비밀번호를 입력해주세요'); return; }
-  if (phoneRest.length !== 8) { toast('연락처 뒷번호 8자리를 입력해주세요'); return; }
-  if (password !== passwordConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
-
-  let res, data;
+  toast('가입 처리 중...');
   try {
-    res = await fetch('/api/register', {
+    const name = document.getElementById('regName').value.trim();
+    const phoneRest = document.getElementById('regPhone').value.trim().replace(/[^0-9]/g, '');
+    const phone = '010' + phoneRest;
+    const email = document.getElementById('regEmail').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const passwordConfirm = document.getElementById('regPasswordConfirm').value;
+
+    if (!name || !phoneRest || !password) { toast('이름, 연락처, 비밀번호를 입력해주세요'); return; }
+    if (phoneRest.length !== 8) { toast('연락처 뒷번호 8자리를 입력해주세요'); return; }
+    if (password !== passwordConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
+
+    const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, phone, email, password })
     });
-    data = await res.json();
+    const data = await res.json();
+
+    if (!res.ok) { toast(data.error || '가입 실패'); return; }
+
+    currentUser = data;
+    document.getElementById('registerScreen').style.display = 'none';
+    document.getElementById('appContainer').classList.add('active');
+    toast(`${data.name}님 환영합니다!`);
+    navigate('home');
   } catch (e) {
-    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
-    return;
+    toast('가입 오류: ' + e.message);
   }
-
-  if (!res.ok) { toast(data.error || '가입 실패'); return; }
-
-  currentUser = data;
-  document.getElementById('registerScreen').style.display = 'none';
-  document.getElementById('appContainer').classList.add('active');
-  toast(`${data.name}님 환영합니다!`);
-  navigate('home');
 }
 
 // ─── 관리자 ───
