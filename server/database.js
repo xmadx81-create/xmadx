@@ -35,247 +35,89 @@ async function initDB() {
     console.error('PostgreSQL connection FAILED:', err.message);
     throw err;
   }
-  // ═══ CREATE TABLES ═══
-  await query(`
-    -- 사용자
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      department TEXT DEFAULT '석유사업본부',
-      position TEXT,
-      phone TEXT,
-      email TEXT,
-      password_hash TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-
-    -- 결재라인 (approval line)
-    CREATE TABLE IF NOT EXISTS approval_lines (
-      id TEXT PRIMARY KEY,
-      report_id TEXT NOT NULL,
-      approver_id TEXT NOT NULL,
-      step_order INTEGER NOT NULL,
-      status TEXT DEFAULT 'pending',
-      comment TEXT,
-      approved_at TIMESTAMP,
-      FOREIGN KEY (approver_id) REFERENCES users(id)
-    );
-
-    -- 업무일지 (work reports)
-    CREATE TABLE IF NOT EXISTS work_reports (
-      id TEXT PRIMARY KEY,
-      author_id TEXT NOT NULL,
-      report_date DATE NOT NULL,
-      report_type TEXT NOT NULL,
-      work_category TEXT NOT NULL,
-      purpose TEXT,
-      who TEXT,
-      when_time TEXT,
-      where_place TEXT,
-      what_task TEXT,
-      how_method TEXT,
-      why_reason TEXT,
-      content TEXT,
-      task_ref_id TEXT,
-      status TEXT DEFAULT 'draft',
-      recipients TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW(),
-      FOREIGN KEY (author_id) REFERENCES users(id)
-    );
-
-    -- 주간계획 (weekly plans)
-    CREATE TABLE IF NOT EXISTS weekly_plans (
-      id TEXT PRIMARY KEY,
-      author_id TEXT NOT NULL,
-      week_start DATE NOT NULL,
-      week_end DATE NOT NULL,
-      status TEXT DEFAULT 'draft',
-      created_at TIMESTAMP DEFAULT NOW(),
-      FOREIGN KEY (author_id) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS weekly_plan_items (
-      id TEXT PRIMARY KEY,
-      plan_id TEXT NOT NULL,
-      day_of_week INTEGER NOT NULL,
-      work_category TEXT NOT NULL,
-      content TEXT,
-      location TEXT,
-      purpose TEXT,
-      FOREIGN KEY (plan_id) REFERENCES weekly_plans(id) ON DELETE CASCADE
-    );
-
-    -- 가맹점 관리
-    CREATE TABLE IF NOT EXISTS franchises (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      region TEXT NOT NULL,
-      address TEXT,
-      owner_name TEXT,
-      owner_phone TEXT,
-      contract_date DATE,
-      status TEXT DEFAULT 'active',
-      franchise_type TEXT,
-      assigned_user_id TEXT,
-      notes TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      FOREIGN KEY (assigned_user_id) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS franchise_visits (
-      id TEXT PRIMARY KEY,
-      franchise_id TEXT NOT NULL,
-      visitor_id TEXT NOT NULL,
-      visit_date DATE NOT NULL,
-      purpose TEXT,
-      content TEXT,
-      result TEXT,
-      next_action TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      FOREIGN KEY (franchise_id) REFERENCES franchises(id),
-      FOREIGN KEY (visitor_id) REFERENCES users(id)
-    );
-
-    -- 반복 템플릿
-    CREATE TABLE IF NOT EXISTS templates (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      category TEXT NOT NULL,
-      title TEXT NOT NULL,
-      content_json TEXT NOT NULL,
-      use_count INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT NOW(),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
-    -- 자주 사용하는 항목 (자동완성)
-    CREATE TABLE IF NOT EXISTS frequent_items (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      field_name TEXT NOT NULL,
-      field_value TEXT NOT NULL,
-      use_count INTEGER DEFAULT 1,
-      UNIQUE (user_id, field_name, field_value),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
-    -- ═══ 전국 지국 관리 ═══
-    CREATE TABLE IF NOT EXISTS branches (
-      id TEXT PRIMARY KEY,
-      seq INTEGER,
-      name TEXT NOT NULL,
-      address TEXT,
-      manager_name TEXT,
-      manager_phone TEXT,
-      exclude_service INTEGER DEFAULT 0,
-      field_contact_name TEXT,
-      field_contact_phone TEXT,
-      email TEXT,
-      move_status TEXT,
-      move_address TEXT,
-      move_note TEXT,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-
-    -- ═══ 주요업무 마스터 ═══
-    CREATE TABLE IF NOT EXISTS task_master (
-      id TEXT PRIMARY KEY,
-      department TEXT,
-      division TEXT,
-      category1 TEXT,
-      task_group TEXT,
-      task_detail TEXT,
-      assigned_to TEXT,
-      note TEXT,
-      is_custom INTEGER DEFAULT 0,
-      created_by TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-
-    -- ═══ 업무 추가내용 ═══
-    CREATE TABLE IF NOT EXISTS task_notes (
-      id TEXT PRIMARY KEY,
-      task_id TEXT NOT NULL,
-      author_id TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW(),
-      FOREIGN KEY (task_id) REFERENCES task_master(id),
-      FOREIGN KEY (author_id) REFERENCES users(id)
-    );
-
-    -- ═══ 개인업무 매뉴얼 ═══
-    CREATE TABLE IF NOT EXISTS personal_manual (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      task_group TEXT,
-      title TEXT NOT NULL,
-      content TEXT,
-      steps TEXT,
-      tips TEXT,
-      is_auto INTEGER DEFAULT 0,
-      sort_order INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW(),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
-    -- ═══ 개별 담당 업무표 ═══
-    CREATE TABLE IF NOT EXISTS personal_task_table (
-      id TEXT PRIMARY KEY,
-      department TEXT,
-      division TEXT,
-      position TEXT,
-      person_name TEXT,
-      task_group TEXT,
-      task_detail TEXT,
-      note TEXT,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-
-    -- ═══ 사전승인 인원 ═══
-    CREATE TABLE IF NOT EXISTS approved_staff (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      department TEXT DEFAULT '석유사업본부',
-      position TEXT,
-      location TEXT,
-      role TEXT,
-      registered INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-
-    -- ═══ 기존가맹 거래처 신청서 ═══
-    CREATE TABLE IF NOT EXISTS franchise_apps (
-      id TEXT PRIMARY KEY,
-      seq INTEGER,
-      receipt_date TEXT,
-      join_date TEXT,
-      manager TEXT,
-      branch TEXT,
-      store_name TEXT,
-      owner_name TEXT,
-      biz_number TEXT,
-      phone_land TEXT,
-      owner_phone TEXT,
-      bank_info TEXT,
-      address TEXT,
-      applicant_name TEXT,
-      applicant_org TEXT,
-      applicant_title TEXT,
-      applicant_phone TEXT,
-      oil_company TEXT,
-      app_type TEXT,
-      paint_date TEXT,
-      actual_date TEXT,
-      status TEXT DEFAULT '정상',
-      memo TEXT DEFAULT '',
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
+  // ═══ CREATE TABLES (each separately for pooler compatibility) ═══
+  const tables = [
+    `CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT DEFAULT '석유사업본부',
+      position TEXT, phone TEXT, email TEXT, password_hash TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS approval_lines (
+      id TEXT PRIMARY KEY, report_id TEXT NOT NULL, approver_id TEXT NOT NULL,
+      step_order INTEGER NOT NULL, status TEXT DEFAULT 'pending', comment TEXT,
+      approved_at TIMESTAMP, FOREIGN KEY (approver_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS work_reports (
+      id TEXT PRIMARY KEY, author_id TEXT NOT NULL, report_date DATE NOT NULL,
+      report_type TEXT NOT NULL, work_category TEXT NOT NULL, purpose TEXT, who TEXT,
+      when_time TEXT, where_place TEXT, what_task TEXT, how_method TEXT, why_reason TEXT,
+      content TEXT, task_ref_id TEXT, status TEXT DEFAULT 'draft', recipients TEXT,
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW(),
+      FOREIGN KEY (author_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS weekly_plans (
+      id TEXT PRIMARY KEY, author_id TEXT NOT NULL, week_start DATE NOT NULL,
+      week_end DATE NOT NULL, status TEXT DEFAULT 'draft', created_at TIMESTAMP DEFAULT NOW(),
+      FOREIGN KEY (author_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS weekly_plan_items (
+      id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, day_of_week INTEGER NOT NULL,
+      work_category TEXT NOT NULL, content TEXT, location TEXT, purpose TEXT,
+      FOREIGN KEY (plan_id) REFERENCES weekly_plans(id) ON DELETE CASCADE)`,
+    `CREATE TABLE IF NOT EXISTS franchises (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, region TEXT NOT NULL, address TEXT,
+      owner_name TEXT, owner_phone TEXT, contract_date DATE, status TEXT DEFAULT 'active',
+      franchise_type TEXT, assigned_user_id TEXT, notes TEXT,
+      created_at TIMESTAMP DEFAULT NOW(), FOREIGN KEY (assigned_user_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS franchise_visits (
+      id TEXT PRIMARY KEY, franchise_id TEXT NOT NULL, visitor_id TEXT NOT NULL,
+      visit_date DATE NOT NULL, purpose TEXT, content TEXT, result TEXT, next_action TEXT,
+      created_at TIMESTAMP DEFAULT NOW(), FOREIGN KEY (franchise_id) REFERENCES franchises(id),
+      FOREIGN KEY (visitor_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS templates (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, category TEXT NOT NULL,
+      title TEXT NOT NULL, content_json TEXT NOT NULL, use_count INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW(), FOREIGN KEY (user_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS frequent_items (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, field_name TEXT NOT NULL,
+      field_value TEXT NOT NULL, use_count INTEGER DEFAULT 1,
+      UNIQUE (user_id, field_name, field_value), FOREIGN KEY (user_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS branches (
+      id TEXT PRIMARY KEY, seq INTEGER, name TEXT NOT NULL, address TEXT,
+      manager_name TEXT, manager_phone TEXT, exclude_service INTEGER DEFAULT 0,
+      field_contact_name TEXT, field_contact_phone TEXT, email TEXT,
+      move_status TEXT, move_address TEXT, move_note TEXT, created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS task_master (
+      id TEXT PRIMARY KEY, department TEXT, division TEXT, category1 TEXT,
+      task_group TEXT, task_detail TEXT, assigned_to TEXT, note TEXT,
+      is_custom INTEGER DEFAULT 0, created_by TEXT,
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS task_notes (
+      id TEXT PRIMARY KEY, task_id TEXT NOT NULL, author_id TEXT NOT NULL,
+      content TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW(),
+      FOREIGN KEY (task_id) REFERENCES task_master(id), FOREIGN KEY (author_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS personal_manual (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, task_group TEXT, title TEXT NOT NULL,
+      content TEXT, steps TEXT, tips TEXT, is_auto INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(), FOREIGN KEY (user_id) REFERENCES users(id))`,
+    `CREATE TABLE IF NOT EXISTS personal_task_table (
+      id TEXT PRIMARY KEY, department TEXT, division TEXT, position TEXT,
+      person_name TEXT, task_group TEXT, task_detail TEXT, note TEXT,
+      created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS approved_staff (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL,
+      department TEXT DEFAULT '석유사업본부', position TEXT, location TEXT, role TEXT,
+      registered INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS franchise_apps (
+      id TEXT PRIMARY KEY, seq INTEGER, receipt_date TEXT, join_date TEXT,
+      manager TEXT, branch TEXT, store_name TEXT, owner_name TEXT, biz_number TEXT,
+      phone_land TEXT, owner_phone TEXT, bank_info TEXT, address TEXT,
+      applicant_name TEXT, applicant_org TEXT, applicant_title TEXT, applicant_phone TEXT,
+      oil_company TEXT, app_type TEXT, paint_date TEXT, actual_date TEXT,
+      status TEXT DEFAULT '정상', memo TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
+  ];
+  for (const sql of tables) {
+    await query(sql);
+  }
+  console.log('All tables created');
 
   // ═══ SEED DATA ═══
 
