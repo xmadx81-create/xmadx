@@ -23,28 +23,24 @@ function authMiddleware(req, res, next) {
 
 // ─── 인증 ───
 app.post('/api/login', async (req, res) => {
-  const { phone, password } = req.body;
-  if (!phone || !password) return res.status(400).json({ error: '연락처와 비밀번호를 입력해주세요' });
-  const phoneDigits = phone.replace(/[^0-9]/g, '');
-  const userResult = await query('SELECT * FROM users WHERE password_hash = $1', [password]);
-  const user = userResult.rows[0];
-  if (user) {
-    const userPhone = (user.phone || '').replace(/[^0-9]/g, '');
-    if (userPhone === phoneDigits || userPhone.endsWith(phoneDigits) || phoneDigits.endsWith(userPhone)) {
-      req.session.userId = user.id;
-      return res.json({ id: user.id, name: user.name, department: user.department, position: user.position });
+  try {
+    const { phone, password } = req.body;
+    if (!phone || !password) return res.status(400).json({ error: '연락처와 비밀번호를 입력해주세요' });
+    const phoneDigits = phone.replace(/[^0-9]/g, '');
+    const usersResult = await query('SELECT * FROM users WHERE password_hash = $1', [password]);
+    const users = usersResult.rows;
+    for (const u of users) {
+      const uPhone = (u.phone || '').replace(/[^0-9]/g, '');
+      if (uPhone === phoneDigits || uPhone.endsWith(phoneDigits) || phoneDigits.endsWith(uPhone)) {
+        req.session.userId = u.id;
+        return res.json({ id: u.id, name: u.name, department: u.department, position: u.position });
+      }
     }
+    return res.status(401).json({ error: '연락처 또는 비밀번호가 올바르지 않습니다' });
+  } catch (err) {
+    console.error('Login error:', err.message);
+    return res.status(500).json({ error: '서버 오류: ' + err.message });
   }
-  const usersResult = await query('SELECT * FROM users WHERE password_hash = $1', [password]);
-  const users = usersResult.rows;
-  for (const u of users) {
-    const uPhone = (u.phone || '').replace(/[^0-9]/g, '');
-    if (uPhone === phoneDigits || uPhone.endsWith(phoneDigits) || phoneDigits.endsWith(uPhone)) {
-      req.session.userId = u.id;
-      return res.json({ id: u.id, name: u.name, department: u.department, position: u.position });
-    }
-  }
-  return res.status(401).json({ error: '연락처 또는 비밀번호가 올바르지 않습니다' });
 });
 
 // ─── 비밀번호 재설정 ───
@@ -78,31 +74,36 @@ app.post('/api/logout', (req, res) => {
 
 // ─── 가입신청 ───
 app.post('/api/register', async (req, res) => {
-  const { name, phone, password, email } = req.body;
-  if (!name || !phone || !password) return res.status(400).json({ error: '이름, 연락처, 비밀번호를 입력해주세요' });
+  try {
+    const { name, phone, password, email } = req.body;
+    if (!name || !phone || !password) return res.status(400).json({ error: '이름, 연락처, 비밀번호를 입력해주세요' });
 
-  const phoneDigits = phone.replace(/[^0-9]/g, '');
-  const staffResult = await query('SELECT * FROM approved_staff WHERE name = $1', [name]);
-  const staff = staffResult.rows[0];
-  if (!staff) return res.status(403).json({ error: '사전 등록된 인원이 아닙니다. 관리자에게 문의하세요.' });
+    const phoneDigits = phone.replace(/[^0-9]/g, '');
+    const staffResult = await query('SELECT * FROM approved_staff WHERE name = $1', [name]);
+    const staff = staffResult.rows[0];
+    if (!staff) return res.status(403).json({ error: '사전 등록된 인원이 아닙니다. 관리자에게 문의하세요.' });
 
-  const staffPhone = staff.phone.replace(/[^0-9]/g, '');
-  if (!phoneDigits.endsWith(staffPhone) && phoneDigits !== staffPhone) {
-    return res.status(403).json({ error: '이름 또는 연락처가 일치하지 않습니다.' });
+    const staffPhone = staff.phone.replace(/[^0-9]/g, '');
+    if (!phoneDigits.endsWith(staffPhone) && phoneDigits !== staffPhone) {
+      return res.status(403).json({ error: '이름 또는 연락처가 일치하지 않습니다.' });
+    }
+
+    const existingResult = await query('SELECT id FROM users WHERE phone = $1 OR (email = $2 AND $2 != \'\')', [phone, email || '']);
+    const existing = existingResult.rows[0];
+    if (existing) return res.status(409).json({ error: '이미 가입된 계정입니다.' });
+
+    const id = uuidv4();
+    await query(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
+      id, staff.name, staff.department, staff.position, phone, email || '', password
+    ]);
+    await query('UPDATE approved_staff SET registered = 1 WHERE id = $1', [staff.id]);
+
+    req.session.userId = id;
+    res.json({ id, name: staff.name, department: staff.department, position: staff.position });
+  } catch (err) {
+    console.error('Register error:', err.message);
+    return res.status(500).json({ error: '서버 오류: ' + err.message });
   }
-
-  const existingResult = await query('SELECT id FROM users WHERE phone = $1 OR email = $2', [phone, email || '']);
-  const existing = existingResult.rows[0];
-  if (existing) return res.status(409).json({ error: '이미 가입된 계정입니다.' });
-
-  const id = uuidv4();
-  await query(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
-    id, staff.name, staff.department, staff.position, phone, email || '', password
-  ]);
-  await query('UPDATE approved_staff SET registered = 1 WHERE id = $1', [staff.id]);
-
-  req.session.userId = id;
-  res.json({ id, name: staff.name, department: staff.department, position: staff.position });
 });
 
 // ─── 관리자 로그인 ───
@@ -1116,6 +1117,14 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename=manual_${encodeURIComponent(userName)}_${new Date().toISOString().split('T')[0]}.xlsx`);
   await wb.xlsx.write(res);
   res.end();
+});
+
+// ─── 글로벌 에러 핸들러 ───
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err.stack || err.message);
+  if (!res.headersSent) {
+    res.status(500).json({ error: '서버 오류: ' + err.message });
+  }
 });
 
 (async () => {
