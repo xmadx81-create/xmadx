@@ -1406,31 +1406,169 @@ async function showWorkTable() {
 }
 
 // ─── 개인업무 매뉴얼 (자동+수동) ───
-async function showManual() {
-  const data = await api('/api/manual');
-  if (!data) return;
+let manualTab = 'org';
 
+async function showManual() {
   let html = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <p class="section-title" style="margin-bottom:0;">&#128214; 개인업무 매뉴얼</p>
-      <button class="btn btn-primary btn-sm" onclick="openNewManualEntry()">+ 항목 추가</button>
+    <p class="section-title" style="margin-bottom:8px;">&#128214; 업무매뉴얼</p>
+    <div class="card" style="background:#e8f0fe; border-left:4px solid var(--primary); margin-bottom:16px; padding:12px;">
+      <p style="font-size:14px; line-height:1.6; color:var(--gray-700);">
+        업무일지를 작성하면 <strong>육하원칙(누가/어디서/무엇을/어떻게/왜)</strong> 데이터가 자동으로 분석되어 업무매뉴얼이 만들어집니다.
+        일지가 쌓일수록 매뉴얼이 풍부해집니다.
+      </p>
     </div>
-    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">업무 기록 기반 자동 생성 + 직접 편집 가능 (업데이트: ${new Date(data.generated_at).toLocaleDateString('ko-KR')})</p>
+    <div class="tabs" style="margin-bottom:12px;">
+      <button class="tab ${manualTab === 'org' ? 'active' : ''}" onclick="manualTab='org'; showManual()">전체 업무매뉴얼</button>
+      <button class="tab ${manualTab === 'my' ? 'active' : ''}" onclick="manualTab='my'; showManual()">내 업무매뉴얼</button>
+      <button class="tab ${manualTab === 'custom' ? 'active' : ''}" onclick="manualTab='custom'; showManual()">직접 작성</button>
+    </div>
+    <div id="manualContent"></div>
+  `;
+  document.getElementById('mainContent').innerHTML = html;
+
+  if (manualTab === 'org') renderOrgManual();
+  else if (manualTab === 'my') renderMyManual();
+  else renderCustomManual();
+}
+
+async function renderOrgManual() {
+  const data = await api('/api/manual/org');
+  if (!data) return;
+  const el = document.getElementById('manualContent');
+
+  if (data.total_reports === 0) {
+    el.innerHTML = `<div class="card" style="text-align:center; padding:30px;">
+      <div style="font-size:48px; margin-bottom:12px;">&#128214;</div>
+      <p style="font-size:16px; font-weight:600; margin-bottom:8px;">아직 업무매뉴얼이 없습니다</p>
+      <p style="font-size:14px; color:var(--gray-500); line-height:1.6;">
+        직원들이 업무일지를 작성하면<br>
+        자동으로 업무매뉴얼이 생성됩니다.<br><br>
+        <strong>업무일지의 "무엇을", "어떻게", "왜"</strong> 항목이<br>
+        매뉴얼의 핵심 내용이 됩니다.
+      </p>
+    </div>`;
+    return;
+  }
+
+  let html = `
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="stat-number">${data.total_reports}</div>
+        <div class="stat-label">총 업무기록</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${data.total_people}</div>
+        <div class="stat-label">참여 인원</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${Object.values(data.categories).reduce((s, arr) => s + arr.length, 0)}</div>
+        <div class="stat-label">업무 항목</div>
+      </div>
+    </div>
   `;
 
-  // 수동 매뉴얼 항목
+  const catIcons = { '내근': '&#128187;', '외근': '&#128694;', '출장': '&#9992;' };
+
+  Object.entries(data.categories).forEach(([cat, tasks]) => {
+    html += `
+      <div class="card" style="margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid var(--primary-light);">
+          <span style="font-size:24px;">${catIcons[cat] || '&#128203;'}</span>
+          <span class="card-title">${escHtml(cat)} 업무</span>
+          <span class="badge badge-${cat}">${tasks.length}건</span>
+        </div>
+        ${tasks.map(t => `
+          <div style="padding:10px; background:var(--gray-50); border-radius:8px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:6px;">
+              <div style="font-size:15px; font-weight:600; flex:1;">${escHtml(t.task)}</div>
+              <span style="font-size:12px; color:var(--gray-500); white-space:nowrap;">${t.frequency}회 수행</span>
+            </div>
+            ${t.purpose ? `<div style="font-size:13px; margin-bottom:4px;"><span style="color:var(--primary); font-weight:500;">목적:</span> ${escHtml(t.purpose)}</div>` : ''}
+            ${t.methods.length > 0 ? `<div style="font-size:13px; margin-bottom:4px;"><span style="color:var(--success); font-weight:500;">수행방법:</span> ${t.methods.map(m => escHtml(m)).join(' / ')}</div>` : ''}
+            ${t.reasons.length > 0 ? `<div style="font-size:13px; margin-bottom:4px;"><span style="color:var(--warning); font-weight:500;">사유:</span> ${t.reasons.map(r => escHtml(r)).join(' / ')}</div>` : ''}
+            ${t.locations.length > 0 ? `<div style="font-size:13px; margin-bottom:4px;"><span style="color:var(--gray-700); font-weight:500;">장소:</span> ${t.locations.map(l => escHtml(l)).join(', ')}</div>` : ''}
+            <div style="font-size:12px; color:var(--gray-500); margin-top:4px;">
+              담당: ${t.people.join(', ')} &middot; 최근: ${t.last_date || '-'}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  });
+
+  el.innerHTML = html;
+}
+
+async function renderMyManual() {
+  const data = await api('/api/manual');
+  if (!data) return;
+  const el = document.getElementById('manualContent');
+  const purposes = Object.keys(data.auto || {});
+
+  if (data.task_count === 0) {
+    el.innerHTML = `<div class="card" style="text-align:center; padding:30px;">
+      <p style="font-size:16px; font-weight:600; margin-bottom:8px;">내 업무매뉴얼</p>
+      <p style="font-size:14px; color:var(--gray-500); line-height:1.6;">
+        업무일지를 작성하면 자동으로 생성됩니다.<br>
+        홈 화면에서 업무일지를 작성해보세요!
+      </p>
+    </div>`;
+    return;
+  }
+
+  let html = `
+    <div class="card" style="padding:12px; margin-bottom:12px;">
+      <p style="font-size:15px; font-weight:600;">${escHtml((data.user && data.user.name) || '')} ${escHtml((data.user && data.user.position) || '')}의 업무매뉴얼</p>
+      <p style="font-size:13px; color:var(--gray-500);">총 ${data.task_count}개 업무, ${data.total_reports}건 기록 기반</p>
+    </div>
+  `;
+
+  purposes.forEach(purpose => {
+    const tasks = data.auto[purpose];
+    html += `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="font-weight:600; font-size:15px; color:var(--primary); margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid var(--gray-200);">${escHtml(purpose)}</div>
+        ${tasks.map(t => `
+          <div style="padding:8px; background:var(--gray-50); border-radius:8px; margin-bottom:6px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <span style="font-size:14px; font-weight:500;">${escHtml(t.task)}</span>
+              <span class="badge badge-${t.category}">${t.category}</span>
+            </div>
+            ${t.method ? `<div style="font-size:13px; color:var(--gray-700);">방법: ${escHtml(t.method)}</div>` : ''}
+            ${t.reason ? `<div style="font-size:13px; color:var(--gray-700);">사유: ${escHtml(t.reason)}</div>` : ''}
+            ${t.location ? `<div style="font-size:13px; color:var(--gray-500);">장소: ${escHtml(t.location)}</div>` : ''}
+            <div style="font-size:12px; color:var(--gray-400);">${t.frequency}회 수행 &middot; 최근 ${t.last_date || '-'}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  });
+
+  el.innerHTML = html;
+}
+
+async function renderCustomManual() {
+  const data = await api('/api/manual');
+  if (!data) return;
+  const el = document.getElementById('manualContent');
+
+  let html = `
+    <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+      <button class="btn btn-primary btn-sm" onclick="openNewManualEntry()">+ 항목 추가</button>
+    </div>
+  `;
+
   if (data.custom && data.custom.length > 0) {
-    html += `<p style="font-size:14px; font-weight:600; margin-bottom:8px; color:var(--primary);">&#9998; 직접 작성 매뉴얼</p>`;
     data.custom.forEach(item => {
       html += `<div class="card" style="padding:12px; margin-bottom:8px;">
         <div style="display:flex; justify-content:space-between; align-items:start;">
           <div style="flex:1;">
             ${item.task_group ? `<span class="badge badge-내근" style="margin-bottom:4px;">${escHtml(item.task_group)}</span>` : ''}
-            <p style="font-size:14px; font-weight:500;">${escHtml(item.title)}</p>
-            ${item.content ? `<p style="font-size:13px; margin-top:4px;">${escHtml(item.content)}</p>` : ''}
-            ${item.steps ? `<p style="font-size:12px; color:var(--gray-700); margin-top:4px;"><strong>절차:</strong> ${escHtml(item.steps)}</p>` : ''}
-            ${item.tips ? `<p style="font-size:12px; color:var(--success); margin-top:4px;"><strong>TIP:</strong> ${escHtml(item.tips)}</p>` : ''}
+            <p style="font-size:15px; font-weight:500;">${escHtml(item.title)}</p>
+            ${item.content ? `<p style="font-size:14px; margin-top:4px;">${escHtml(item.content)}</p>` : ''}
+            ${item.steps ? `<p style="font-size:13px; color:var(--gray-700); margin-top:4px;"><strong>절차:</strong> ${escHtml(item.steps)}</p>` : ''}
+            ${item.tips ? `<p style="font-size:13px; color:var(--success); margin-top:4px;"><strong>TIP:</strong> ${escHtml(item.tips)}</p>` : ''}
           </div>
           <div style="display:flex; gap:4px;">
             <button class="btn btn-sm btn-outline" onclick="editManualEntry('${item.id}','${escAttr(item.title)}','${escAttr(item.content||'')}','${escAttr(item.steps||'')}','${escAttr(item.tips||'')}')">수정</button>
@@ -1439,34 +1577,13 @@ async function showManual() {
         </div>
       </div>`;
     });
+  } else {
+    html += `<div class="card" style="text-align:center; padding:24px;">
+      <p style="font-size:14px; color:var(--gray-500);">직접 작성한 매뉴얼이 없습니다.<br>"+ 항목 추가" 버튼으로 추가하세요.</p>
+    </div>`;
   }
 
-  // 자동 매뉴얼
-  const categories = Object.keys(data.auto || {});
-  if (categories.length > 0) {
-    html += `<p style="font-size:14px; font-weight:600; margin:16px 0 8px; color:var(--gray-700);">&#9889; 업무 기록 기반 자동 매뉴얼</p>`;
-    categories.forEach(cat => {
-      html += `<div class="card" style="padding:12px;">
-        <p class="card-title"><span class="badge badge-${cat}">${cat}</span> 업무</p>
-        <div style="margin-top:8px;">
-          ${data.auto[cat].map(item => `
-            <div style="padding:6px; background:var(--gray-50); border-radius:8px; margin-bottom:6px; font-size:13px;">
-              <strong>${escHtml(item.task || '-')}</strong>
-              ${item.method ? ` / ${escHtml(item.method)}` : ''}
-              ${item.location ? ` @ ${escHtml(item.location)}` : ''}
-              <span style="color:var(--gray-500);"> (${item.frequency}회)</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>`;
-    });
-  }
-
-  if (categories.length === 0 && (!data.custom || data.custom.length === 0)) {
-    html += '<div class="card"><p style="text-align:center; color:var(--gray-500);">업무 기록이 쌓이면 자동으로 매뉴얼이 생성됩니다<br>"+ 항목 추가" 버튼으로 직접 작성도 가능합니다</p></div>';
-  }
-
-  document.getElementById('mainContent').innerHTML = html;
+  el.innerHTML = html;
 }
 
 function openNewManualEntry() {

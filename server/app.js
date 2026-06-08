@@ -363,30 +363,111 @@ app.get('/api/work-table', authMiddleware, (req, res) => {
   res.json({ user_id: targetUser, from, to, daily_reports: grouped, total_count: reports.length });
 });
 
-// ─── 개인업무 매뉴얼 자동생성 + 수동 편집 ───
-app.get('/api/manual', authMiddleware, (req, res) => {
-  const autoReports = db.prepare(`
-    SELECT work_category, purpose, what_task, how_method, where_place, COUNT(*) as frequency
-    FROM work_reports WHERE author_id = ?
-    GROUP BY work_category, purpose, what_task, how_method, where_place
-    ORDER BY frequency DESC
-  `).all(req.session.userId);
+// ─── 업무매뉴얼 자동생성 (육하원칙 기반) ───
 
-  const autoManual = {};
-  autoReports.forEach(r => {
-    if (!autoManual[r.work_category]) autoManual[r.work_category] = [];
-    autoManual[r.work_category].push({
-      purpose: r.purpose,
-      task: r.what_task,
-      method: r.how_method,
-      location: r.where_place,
-      frequency: r.frequency
+// 전체 조직 업무매뉴얼 (모든 사람의 업무일지 기반)
+app.get('/api/manual/org', authMiddleware, (req, res) => {
+  const tasks = db.prepare(`
+    SELECT
+      what_task,
+      work_category,
+      purpose,
+      how_method,
+      why_reason,
+      where_place,
+      who,
+      COUNT(*) as frequency,
+      GROUP_CONCAT(DISTINCT u.name) as people,
+      MAX(r.report_date) as last_date,
+      MIN(r.report_date) as first_date
+    FROM work_reports r
+    JOIN users u ON r.author_id = u.id
+    WHERE what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category
+    ORDER BY frequency DESC
+  `).all();
+
+  const byCategory = {};
+  tasks.forEach(t => {
+    const cat = t.work_category || '기타';
+    if (!byCategory[cat]) byCategory[cat] = [];
+
+    let existing = byCategory[cat].find(e => e.task === t.what_task);
+    if (existing) {
+      existing.frequency += t.frequency;
+      if (t.how_method && !existing.methods.includes(t.how_method)) existing.methods.push(t.how_method);
+      if (t.where_place && !existing.locations.includes(t.where_place)) existing.locations.push(t.where_place);
+      if (t.why_reason && !existing.reasons.includes(t.why_reason)) existing.reasons.push(t.why_reason);
+      t.people.split(',').forEach(p => { if (!existing.people.includes(p)) existing.people.push(p); });
+    } else {
+      byCategory[cat].push({
+        task: t.what_task,
+        purpose: t.purpose || '',
+        methods: t.how_method ? [t.how_method] : [],
+        reasons: t.why_reason ? [t.why_reason] : [],
+        locations: t.where_place ? [t.where_place] : [],
+        people: t.people ? t.people.split(',') : [],
+        frequency: t.frequency,
+        last_date: t.last_date,
+        first_date: t.first_date
+      });
+    }
+  });
+
+  const totalReports = db.prepare('SELECT COUNT(*) as cnt FROM work_reports').get().cnt;
+  const totalPeople = db.prepare('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports').get().cnt;
+
+  res.json({ generated_at: new Date().toISOString(), total_reports: totalReports, total_people: totalPeople, categories: byCategory });
+});
+
+// 개인 업무매뉴얼 (내 업무일지 기반)
+app.get('/api/manual', authMiddleware, (req, res) => {
+  const userId = req.query.user_id || req.session.userId;
+
+  const tasks = db.prepare(`
+    SELECT
+      what_task,
+      work_category,
+      purpose,
+      how_method,
+      why_reason,
+      where_place,
+      who,
+      COUNT(*) as frequency,
+      MAX(report_date) as last_date,
+      MIN(report_date) as first_date
+    FROM work_reports
+    WHERE author_id = ? AND what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category, purpose
+    ORDER BY frequency DESC
+  `).all(userId);
+
+  const byPurpose = {};
+  tasks.forEach(t => {
+    const key = t.purpose || t.work_category || '기타';
+    if (!byPurpose[key]) byPurpose[key] = [];
+    byPurpose[key].push({
+      task: t.what_task,
+      category: t.work_category,
+      method: t.how_method || '',
+      reason: t.why_reason || '',
+      location: t.where_place || '',
+      frequency: t.frequency,
+      last_date: t.last_date
     });
   });
 
-  const customManual = db.prepare('SELECT * FROM personal_manual WHERE user_id = ? ORDER BY sort_order, created_at').all(req.session.userId);
+  const customManual = db.prepare('SELECT * FROM personal_manual WHERE user_id = ? ORDER BY sort_order, created_at').all(userId);
+  const userName = db.prepare('SELECT name, position FROM users WHERE id = ?').get(userId);
 
-  res.json({ generated_at: new Date().toISOString(), auto: autoManual, custom: customManual });
+  res.json({
+    generated_at: new Date().toISOString(),
+    user: userName,
+    task_count: tasks.length,
+    total_reports: tasks.reduce((s, t) => s + t.frequency, 0),
+    auto: byPurpose,
+    custom: customManual
+  });
 });
 
 app.post('/api/manual', authMiddleware, (req, res) => {
