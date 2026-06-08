@@ -2,7 +2,7 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const ExcelJS = require('exceljs');
-const { db, uuidv4 } = require('./database');
+const { query, uuidv4, initDB } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,11 +22,12 @@ function authMiddleware(req, res, next) {
 }
 
 // ─── 인증 ───
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { phone, password } = req.body;
   if (!phone || !password) return res.status(400).json({ error: '연락처와 비밀번호를 입력해주세요' });
   const phoneDigits = phone.replace(/[^0-9]/g, '');
-  const user = db.prepare('SELECT * FROM users WHERE password_hash = ?').get(password);
+  const userResult = await query('SELECT * FROM users WHERE password_hash = $1', [password]);
+  const user = userResult.rows[0];
   if (user) {
     const userPhone = (user.phone || '').replace(/[^0-9]/g, '');
     if (userPhone === phoneDigits || userPhone.endsWith(phoneDigits) || phoneDigits.endsWith(userPhone)) {
@@ -34,7 +35,8 @@ app.post('/api/login', (req, res) => {
       return res.json({ id: user.id, name: user.name, department: user.department, position: user.position });
     }
   }
-  const users = db.prepare('SELECT * FROM users WHERE password_hash = ?').all(password);
+  const usersResult = await query('SELECT * FROM users WHERE password_hash = $1', [password]);
+  const users = usersResult.rows;
   for (const u of users) {
     const uPhone = (u.phone || '').replace(/[^0-9]/g, '');
     if (uPhone === phoneDigits || uPhone.endsWith(phoneDigits) || phoneDigits.endsWith(uPhone)) {
@@ -46,12 +48,14 @@ app.post('/api/login', (req, res) => {
 });
 
 // ─── 비밀번호 재설정 ───
-app.post('/api/reset-password/verify', (req, res) => {
+app.post('/api/reset-password/verify', async (req, res) => {
   const { name, email } = req.body;
   if (!name || !email) return res.status(400).json({ error: '이름과 이메일을 입력해주세요' });
-  const user = db.prepare('SELECT id, name, email FROM users WHERE name = ? AND email = ?').get(name, email);
+  const userResult = await query('SELECT id, name, email FROM users WHERE name = $1 AND email = $2', [name, email]);
+  const user = userResult.rows[0];
   if (!user) {
-    const byName = db.prepare('SELECT id FROM users WHERE name = ?').get(name);
+    const byNameResult = await query('SELECT id FROM users WHERE name = $1', [name]);
+    const byName = byNameResult.rows[0];
     if (!byName) {
       return res.status(404).json({ error: '가입된 계정이 없습니다. 먼저 회원가입을 해주세요.' });
     }
@@ -60,10 +64,10 @@ app.post('/api/reset-password/verify', (req, res) => {
   res.json({ userId: user.id, name: user.name });
 });
 
-app.post('/api/reset-password', (req, res) => {
+app.post('/api/reset-password', async (req, res) => {
   const { userId, password } = req.body;
   if (!userId || !password) return res.status(400).json({ error: '비밀번호를 입력해주세요' });
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password, userId);
+  await query('UPDATE users SET password_hash = $1 WHERE id = $2', [password, userId]);
   res.json({ ok: true });
 });
 
@@ -73,12 +77,13 @@ app.post('/api/logout', (req, res) => {
 });
 
 // ─── 가입신청 ───
-app.post('/api/register', (req, res) => {
+app.post('/api/register', async (req, res) => {
   const { name, phone, password, email } = req.body;
   if (!name || !phone || !password) return res.status(400).json({ error: '이름, 연락처, 비밀번호를 입력해주세요' });
 
   const phoneDigits = phone.replace(/[^0-9]/g, '');
-  const staff = db.prepare('SELECT * FROM approved_staff WHERE name = ?').get(name);
+  const staffResult = await query('SELECT * FROM approved_staff WHERE name = $1', [name]);
+  const staff = staffResult.rows[0];
   if (!staff) return res.status(403).json({ error: '사전 등록된 인원이 아닙니다. 관리자에게 문의하세요.' });
 
   const staffPhone = staff.phone.replace(/[^0-9]/g, '');
@@ -86,14 +91,15 @@ app.post('/api/register', (req, res) => {
     return res.status(403).json({ error: '이름 또는 연락처가 일치하지 않습니다.' });
   }
 
-  const existing = db.prepare('SELECT id FROM users WHERE phone = ? OR email = ?').get(phone, email || '');
+  const existingResult = await query('SELECT id FROM users WHERE phone = $1 OR email = $2', [phone, email || '']);
+  const existing = existingResult.rows[0];
   if (existing) return res.status(409).json({ error: '이미 가입된 계정입니다.' });
 
   const id = uuidv4();
-  db.prepare(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+  await query(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
     id, staff.name, staff.department, staff.position, phone, email || '', password
-  );
-  db.prepare('UPDATE approved_staff SET registered = 1 WHERE id = ?').run(staff.id);
+  ]);
+  await query('UPDATE approved_staff SET registered = 1 WHERE id = $1', [staff.id]);
 
   req.session.userId = id;
   res.json({ id, name: staff.name, department: staff.department, position: staff.position });
@@ -102,16 +108,18 @@ app.post('/api/register', (req, res) => {
 // ─── 관리자 로그인 ───
 const ADMIN_PASSWORD = '2024!';
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
   const { password } = req.body;
   if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: '비밀번호가 올바르지 않습니다' });
   req.session.isAdmin = true;
-  let adminUser = db.prepare('SELECT * FROM users WHERE id = ?').get('admin-user');
+  let adminResult = await query('SELECT * FROM users WHERE id = $1', ['admin-user']);
+  let adminUser = adminResult.rows[0];
   if (!adminUser) {
-    db.prepare(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    await query(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
       'admin-user', '시스템관리자', '석유사업본부', '관리자', '', '', '__admin__'
-    );
-    adminUser = db.prepare('SELECT * FROM users WHERE id = ?').get('admin-user');
+    ]);
+    const newAdminResult = await query('SELECT * FROM users WHERE id = $1', ['admin-user']);
+    adminUser = newAdminResult.rows[0];
   }
   req.session.userId = 'admin-user';
   res.json({ ok: true, user: { id: adminUser.id, name: adminUser.name, department: adminUser.department, position: adminUser.position } });
@@ -123,274 +131,292 @@ function adminMiddleware(req, res, next) {
 }
 
 // ─── 사전승인 인원 관리 ───
-app.get('/api/admin/staff', adminMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM approved_staff ORDER BY created_at DESC').all());
+app.get('/api/admin/staff', adminMiddleware, async (req, res) => {
+  const result = await query('SELECT * FROM approved_staff ORDER BY created_at DESC');
+  res.json(result.rows);
 });
 
-app.post('/api/admin/staff', adminMiddleware, (req, res) => {
+app.post('/api/admin/staff', adminMiddleware, async (req, res) => {
   const { name, phone, department, position, location, role } = req.body;
   if (!name || !phone) return res.status(400).json({ error: '이름과 연락처를 입력해주세요' });
   const id = uuidv4();
-  db.prepare(`INSERT INTO approved_staff (id, name, phone, department, position, location, role) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+  await query(`INSERT INTO approved_staff (id, name, phone, department, position, location, role) VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
     id, name, phone, department || '석유사업본부', position || '', location || '', role || ''
-  );
+  ]);
   res.json({ id });
 });
 
-app.delete('/api/admin/staff/:id', adminMiddleware, (req, res) => {
-  db.prepare('DELETE FROM approved_staff WHERE id = ?').run(req.params.id);
+app.delete('/api/admin/staff/:id', adminMiddleware, async (req, res) => {
+  await query('DELETE FROM approved_staff WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
 // ─── 회원 관리 ───
-app.get('/api/admin/users', adminMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT id, name, department, position, phone, email, created_at FROM users ORDER BY created_at DESC').all());
+app.get('/api/admin/users', adminMiddleware, async (req, res) => {
+  const result = await query('SELECT id, name, department, position, phone, email, created_at FROM users ORDER BY created_at DESC');
+  res.json(result.rows);
 });
 
-app.delete('/api/admin/users/:id', adminMiddleware, (req, res) => {
-  db.prepare('DELETE FROM work_reports WHERE author_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM approval_lines WHERE approver_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM templates WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM frequent_items WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM personal_manual WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+app.delete('/api/admin/users/:id', adminMiddleware, async (req, res) => {
+  await query('DELETE FROM work_reports WHERE author_id = $1', [req.params.id]);
+  await query('DELETE FROM approval_lines WHERE approver_id = $1', [req.params.id]);
+  await query('DELETE FROM templates WHERE user_id = $1', [req.params.id]);
+  await query('DELETE FROM frequent_items WHERE user_id = $1', [req.params.id]);
+  await query('DELETE FROM personal_manual WHERE user_id = $1', [req.params.id]);
+  await query('DELETE FROM users WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
-app.put('/api/admin/users/:id/reset-password', adminMiddleware, (req, res) => {
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run('1234', req.params.id);
+app.put('/api/admin/users/:id/reset-password', adminMiddleware, async (req, res) => {
+  await query('UPDATE users SET password_hash = $1 WHERE id = $2', ['1234', req.params.id]);
   res.json({ ok: true });
 });
 
-app.put('/api/admin/users/:id', adminMiddleware, (req, res) => {
+app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
   const { name, department, position, phone, email } = req.body;
-  db.prepare('UPDATE users SET name=?, department=?, position=?, phone=?, email=? WHERE id=?').run(
+  await query('UPDATE users SET name=$1, department=$2, position=$3, phone=$4, email=$5 WHERE id=$6', [
     name, department, position, phone, email, req.params.id
-  );
+  ]);
   res.json({ ok: true });
 });
 
-app.get('/api/me', authMiddleware, (req, res) => {
-  const user = db.prepare('SELECT id, name, department, position, phone, email FROM users WHERE id = ?').get(req.session.userId);
+app.get('/api/me', authMiddleware, async (req, res) => {
+  const result = await query('SELECT id, name, department, position, phone, email FROM users WHERE id = $1', [req.session.userId]);
+  const user = result.rows[0];
   if (user && req.session.isAdmin) user.isAdmin = true;
   res.json(user);
 });
 
-app.get('/api/users', authMiddleware, (req, res) => {
-  const users = db.prepare('SELECT id, name, department, position FROM users').all();
-  res.json(users);
+app.get('/api/users', authMiddleware, async (req, res) => {
+  const result = await query('SELECT id, name, department, position FROM users');
+  res.json(result.rows);
 });
 
 // ─── 업무일지 CRUD ───
-app.get('/api/reports', authMiddleware, (req, res) => {
+app.get('/api/reports', authMiddleware, async (req, res) => {
   const { type, category, from, to } = req.query;
   let sql = 'SELECT r.*, u.name as author_name, u.position as author_position FROM work_reports r JOIN users u ON r.author_id = u.id WHERE 1=1';
   const params = [];
-  if (type) { sql += ' AND r.report_type = ?'; params.push(type); }
-  if (category) { sql += ' AND r.work_category = ?'; params.push(category); }
-  if (from) { sql += ' AND r.report_date >= ?'; params.push(from); }
-  if (to) { sql += ' AND r.report_date <= ?'; params.push(to); }
+  let paramIdx = 1;
+  if (type) { sql += ` AND r.report_type = $${paramIdx++}`; params.push(type); }
+  if (category) { sql += ` AND r.work_category = $${paramIdx++}`; params.push(category); }
+  if (from) { sql += ` AND r.report_date >= $${paramIdx++}`; params.push(from); }
+  if (to) { sql += ` AND r.report_date <= $${paramIdx++}`; params.push(to); }
   sql += ' ORDER BY r.report_date DESC, r.created_at DESC';
-  res.json(db.prepare(sql).all(...params));
+  const result = await query(sql, params);
+  res.json(result.rows);
 });
 
-app.get('/api/reports/:id', authMiddleware, (req, res) => {
-  const report = db.prepare(`
+app.get('/api/reports/:id', authMiddleware, async (req, res) => {
+  const reportResult = await query(`
     SELECT r.*, u.name as author_name, u.position as author_position
-    FROM work_reports r JOIN users u ON r.author_id = u.id WHERE r.id = ?
-  `).get(req.params.id);
+    FROM work_reports r JOIN users u ON r.author_id = u.id WHERE r.id = $1
+  `, [req.params.id]);
+  const report = reportResult.rows[0];
   if (!report) return res.status(404).json({ error: '업무일지를 찾을 수 없습니다' });
-  const approvals = db.prepare(`
+  const approvalsResult = await query(`
     SELECT a.*, u.name as approver_name, u.position as approver_position
     FROM approval_lines a JOIN users u ON a.approver_id = u.id
-    WHERE a.report_id = ? ORDER BY a.step_order
-  `).all(req.params.id);
-  res.json({ ...report, approvals });
+    WHERE a.report_id = $1 ORDER BY a.step_order
+  `, [req.params.id]);
+  res.json({ ...report, approvals: approvalsResult.rows });
 });
 
-app.post('/api/reports', authMiddleware, (req, res) => {
+app.post('/api/reports', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { report_date, report_type, work_category, purpose, who, when_time, where_place,
     what_task, how_method, why_reason, content, recipients, approvers } = req.body;
 
-  db.prepare(`INSERT INTO work_reports (id, author_id, report_date, report_type, work_category,
+  await query(`INSERT INTO work_reports (id, author_id, report_date, report_type, work_category,
     purpose, who, when_time, where_place, what_task, how_method, why_reason, content, recipients)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`, [
     id, req.session.userId, report_date, report_type, work_category,
     purpose, who, when_time, where_place, what_task, how_method, why_reason, content,
     recipients ? JSON.stringify(recipients) : null
-  );
+  ]);
 
   if (approvers && approvers.length > 0) {
-    const insertApproval = db.prepare(`INSERT INTO approval_lines (id, report_id, approver_id, step_order) VALUES (?, ?, ?, ?)`);
-    approvers.forEach((approverId, idx) => {
-      insertApproval.run(uuidv4(), id, approverId, idx + 1);
-    });
+    for (let idx = 0; idx < approvers.length; idx++) {
+      await query(`INSERT INTO approval_lines (id, report_id, approver_id, step_order) VALUES ($1, $2, $3, $4)`, [
+        uuidv4(), id, approvers[idx], idx + 1
+      ]);
+    }
   }
 
-  trackFrequentItems(req.session.userId, req.body);
+  await trackFrequentItems(req.session.userId, req.body);
   res.json({ id });
 });
 
-app.put('/api/reports/:id', authMiddleware, (req, res) => {
+app.put('/api/reports/:id', authMiddleware, async (req, res) => {
   const { report_date, report_type, work_category, purpose, who, when_time, where_place,
     what_task, how_method, why_reason, content, status } = req.body;
-  db.prepare(`UPDATE work_reports SET report_date=?, report_type=?, work_category=?,
-    purpose=?, who=?, when_time=?, where_place=?, what_task=?, how_method=?, why_reason=?,
-    content=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND author_id=?`).run(
+  await query(`UPDATE work_reports SET report_date=$1, report_type=$2, work_category=$3,
+    purpose=$4, who=$5, when_time=$6, where_place=$7, what_task=$8, how_method=$9, why_reason=$10,
+    content=$11, status=$12, updated_at=NOW() WHERE id=$13 AND author_id=$14`, [
     report_date, report_type, work_category, purpose, who, when_time, where_place,
     what_task, how_method, why_reason, content, status, req.params.id, req.session.userId
-  );
+  ]);
   res.json({ ok: true });
 });
 
-app.delete('/api/reports/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM approval_lines WHERE report_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM work_reports WHERE id = ? AND author_id = ?').run(req.params.id, req.session.userId);
+app.delete('/api/reports/:id', authMiddleware, async (req, res) => {
+  await query('DELETE FROM approval_lines WHERE report_id = $1', [req.params.id]);
+  await query('DELETE FROM work_reports WHERE id = $1 AND author_id = $2', [req.params.id, req.session.userId]);
   res.json({ ok: true });
 });
 
 // ─── 결재 처리 ───
-app.post('/api/reports/:id/approve', authMiddleware, (req, res) => {
+app.post('/api/reports/:id/approve', authMiddleware, async (req, res) => {
   const { status, comment } = req.body;
-  db.prepare(`UPDATE approval_lines SET status = ?, comment = ?, approved_at = CURRENT_TIMESTAMP
-    WHERE report_id = ? AND approver_id = ?`).run(status, comment, req.params.id, req.session.userId);
+  await query(`UPDATE approval_lines SET status = $1, comment = $2, approved_at = NOW()
+    WHERE report_id = $3 AND approver_id = $4`, [status, comment, req.params.id, req.session.userId]);
 
-  const allApproved = db.prepare(`SELECT COUNT(*) as cnt FROM approval_lines WHERE report_id = ? AND status != 'approved'`).get(req.params.id);
-  if (allApproved.cnt === 0) {
-    db.prepare(`UPDATE work_reports SET status = 'approved' WHERE id = ?`).run(req.params.id);
+  const allApprovedResult = await query(`SELECT COUNT(*) as cnt FROM approval_lines WHERE report_id = $1 AND status != 'approved'`, [req.params.id]);
+  if (parseInt(allApprovedResult.rows[0].cnt) === 0) {
+    await query(`UPDATE work_reports SET status = 'approved' WHERE id = $1`, [req.params.id]);
   } else if (status === 'rejected') {
-    db.prepare(`UPDATE work_reports SET status = 'rejected' WHERE id = ?`).run(req.params.id);
+    await query(`UPDATE work_reports SET status = 'rejected' WHERE id = $1`, [req.params.id]);
   }
   res.json({ ok: true });
 });
 
 // ─── 주간계획 ───
-app.get('/api/weekly-plans', authMiddleware, (req, res) => {
-  const plans = db.prepare(`SELECT wp.*, u.name as author_name FROM weekly_plans wp
-    JOIN users u ON wp.author_id = u.id ORDER BY wp.week_start DESC`).all();
-  res.json(plans);
+app.get('/api/weekly-plans', authMiddleware, async (req, res) => {
+  const result = await query(`SELECT wp.*, u.name as author_name FROM weekly_plans wp
+    JOIN users u ON wp.author_id = u.id ORDER BY wp.week_start DESC`);
+  res.json(result.rows);
 });
 
-app.post('/api/weekly-plans', authMiddleware, (req, res) => {
+app.post('/api/weekly-plans', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { week_start, week_end, items } = req.body;
-  db.prepare('INSERT INTO weekly_plans (id, author_id, week_start, week_end) VALUES (?, ?, ?, ?)').run(
+  await query('INSERT INTO weekly_plans (id, author_id, week_start, week_end) VALUES ($1, $2, $3, $4)', [
     id, req.session.userId, week_start, week_end
-  );
+  ]);
   if (items) {
-    const insert = db.prepare('INSERT INTO weekly_plan_items (id, plan_id, day_of_week, work_category, content, location, purpose) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    items.forEach(item => {
-      insert.run(uuidv4(), id, item.day_of_week, item.work_category, item.content, item.location, item.purpose);
-    });
+    for (const item of items) {
+      await query('INSERT INTO weekly_plan_items (id, plan_id, day_of_week, work_category, content, location, purpose) VALUES ($1, $2, $3, $4, $5, $6, $7)', [
+        uuidv4(), id, item.day_of_week, item.work_category, item.content, item.location, item.purpose
+      ]);
+    }
   }
   res.json({ id });
 });
 
-app.get('/api/weekly-plans/:id', authMiddleware, (req, res) => {
-  const plan = db.prepare('SELECT wp.*, u.name as author_name FROM weekly_plans wp JOIN users u ON wp.author_id = u.id WHERE wp.id = ?').get(req.params.id);
+app.get('/api/weekly-plans/:id', authMiddleware, async (req, res) => {
+  const planResult = await query('SELECT wp.*, u.name as author_name FROM weekly_plans wp JOIN users u ON wp.author_id = u.id WHERE wp.id = $1', [req.params.id]);
+  const plan = planResult.rows[0];
   if (!plan) return res.status(404).json({ error: '주간계획을 찾을 수 없습니다' });
-  const items = db.prepare('SELECT * FROM weekly_plan_items WHERE plan_id = ? ORDER BY day_of_week').all(req.params.id);
-  res.json({ ...plan, items });
+  const itemsResult = await query('SELECT * FROM weekly_plan_items WHERE plan_id = $1 ORDER BY day_of_week', [req.params.id]);
+  res.json({ ...plan, items: itemsResult.rows });
 });
 
 // ─── 가맹점 관리 ───
-app.get('/api/franchises', authMiddleware, (req, res) => {
+app.get('/api/franchises', authMiddleware, async (req, res) => {
   const { region, status, type } = req.query;
   let sql = 'SELECT f.*, u.name as assigned_user_name FROM franchises f LEFT JOIN users u ON f.assigned_user_id = u.id WHERE 1=1';
   const params = [];
-  if (region) { sql += ' AND f.region = ?'; params.push(region); }
-  if (status) { sql += ' AND f.status = ?'; params.push(status); }
-  if (type) { sql += ' AND f.franchise_type = ?'; params.push(type); }
+  let paramIdx = 1;
+  if (region) { sql += ` AND f.region = $${paramIdx++}`; params.push(region); }
+  if (status) { sql += ` AND f.status = $${paramIdx++}`; params.push(status); }
+  if (type) { sql += ` AND f.franchise_type = $${paramIdx++}`; params.push(type); }
   sql += ' ORDER BY f.created_at DESC';
-  res.json(db.prepare(sql).all(...params));
+  const result = await query(sql, params);
+  res.json(result.rows);
 });
 
-app.post('/api/franchises', authMiddleware, (req, res) => {
+app.post('/api/franchises', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { name, region, address, owner_name, owner_phone, contract_date, status, franchise_type, notes } = req.body;
-  db.prepare(`INSERT INTO franchises (id, name, region, address, owner_name, owner_phone, contract_date, status, franchise_type, assigned_user_id, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  await query(`INSERT INTO franchises (id, name, region, address, owner_name, owner_phone, contract_date, status, franchise_type, assigned_user_id, notes)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [
     id, name, region, address, owner_name, owner_phone, contract_date, status || 'active', franchise_type, req.session.userId, notes
-  );
+  ]);
   res.json({ id });
 });
 
-app.get('/api/franchises/:id/visits', authMiddleware, (req, res) => {
-  const visits = db.prepare(`SELECT fv.*, u.name as visitor_name FROM franchise_visits fv
-    JOIN users u ON fv.visitor_id = u.id WHERE fv.franchise_id = ? ORDER BY fv.visit_date DESC`).all(req.params.id);
-  res.json(visits);
+app.get('/api/franchises/:id/visits', authMiddleware, async (req, res) => {
+  const result = await query(`SELECT fv.*, u.name as visitor_name FROM franchise_visits fv
+    JOIN users u ON fv.visitor_id = u.id WHERE fv.franchise_id = $1 ORDER BY fv.visit_date DESC`, [req.params.id]);
+  res.json(result.rows);
 });
 
-app.post('/api/franchises/:id/visits', authMiddleware, (req, res) => {
+app.post('/api/franchises/:id/visits', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { visit_date, purpose, content, result, next_action } = req.body;
-  db.prepare(`INSERT INTO franchise_visits (id, franchise_id, visitor_id, visit_date, purpose, content, result, next_action)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.params.id, req.session.userId, visit_date, purpose, content, result, next_action);
+  await query(`INSERT INTO franchise_visits (id, franchise_id, visitor_id, visit_date, purpose, content, result, next_action)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [id, req.params.id, req.session.userId, visit_date, purpose, content, result, next_action]);
   res.json({ id });
 });
 
 // ─── 템플릿 (반복 업무 자동생성) ───
-app.get('/api/templates', authMiddleware, (req, res) => {
+app.get('/api/templates', authMiddleware, async (req, res) => {
   const { category } = req.query;
-  let sql = 'SELECT * FROM templates WHERE user_id = ?';
+  let sql = 'SELECT * FROM templates WHERE user_id = $1';
   const params = [req.session.userId];
-  if (category) { sql += ' AND category = ?'; params.push(category); }
+  let paramIdx = 2;
+  if (category) { sql += ` AND category = $${paramIdx++}`; params.push(category); }
   sql += ' ORDER BY use_count DESC';
-  res.json(db.prepare(sql).all(...params));
+  const result = await query(sql, params);
+  res.json(result.rows);
 });
 
-app.post('/api/templates', authMiddleware, (req, res) => {
+app.post('/api/templates', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { category, title, content_json } = req.body;
-  db.prepare('INSERT INTO templates (id, user_id, category, title, content_json) VALUES (?, ?, ?, ?, ?)').run(
+  await query('INSERT INTO templates (id, user_id, category, title, content_json) VALUES ($1, $2, $3, $4, $5)', [
     id, req.session.userId, category, title, JSON.stringify(content_json)
-  );
+  ]);
   res.json({ id });
 });
 
-app.post('/api/templates/:id/use', authMiddleware, (req, res) => {
-  db.prepare('UPDATE templates SET use_count = use_count + 1 WHERE id = ?').run(req.params.id);
-  const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id);
-  res.json(template);
+app.post('/api/templates/:id/use', authMiddleware, async (req, res) => {
+  await query('UPDATE templates SET use_count = use_count + 1 WHERE id = $1', [req.params.id]);
+  const result = await query('SELECT * FROM templates WHERE id = $1', [req.params.id]);
+  res.json(result.rows[0]);
 });
 
 // ─── 자주 사용하는 항목 (자동완성) ───
-app.get('/api/frequent-items', authMiddleware, (req, res) => {
+app.get('/api/frequent-items', authMiddleware, async (req, res) => {
   const { field_name } = req.query;
-  const items = db.prepare('SELECT field_value, use_count FROM frequent_items WHERE user_id = ? AND field_name = ? ORDER BY use_count DESC LIMIT 10')
-    .all(req.session.userId, field_name);
-  res.json(items);
+  const result = await query('SELECT field_value, use_count FROM frequent_items WHERE user_id = $1 AND field_name = $2 ORDER BY use_count DESC LIMIT 10', [
+    req.session.userId, field_name
+  ]);
+  res.json(result.rows);
 });
 
-function trackFrequentItems(userId, data) {
+async function trackFrequentItems(userId, data) {
   const fields = ['purpose', 'where_place', 'what_task', 'how_method', 'why_reason'];
-  const upsert = db.prepare(`INSERT INTO frequent_items (id, user_id, field_name, field_value, use_count)
-    VALUES (?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET use_count = use_count + 1`);
-  const find = db.prepare('SELECT id FROM frequent_items WHERE user_id = ? AND field_name = ? AND field_value = ?');
 
-  fields.forEach(field => {
+  for (const field of fields) {
     if (data[field] && data[field].trim()) {
-      const existing = find.get(userId, field, data[field].trim());
+      const existingResult = await query('SELECT id FROM frequent_items WHERE user_id = $1 AND field_name = $2 AND field_value = $3', [
+        userId, field, data[field].trim()
+      ]);
+      const existing = existingResult.rows[0];
       if (existing) {
-        db.prepare('UPDATE frequent_items SET use_count = use_count + 1 WHERE id = ?').run(existing.id);
+        await query('UPDATE frequent_items SET use_count = use_count + 1 WHERE id = $1', [existing.id]);
       } else {
-        upsert.run(uuidv4(), userId, field, data[field].trim());
+        await query(`INSERT INTO frequent_items (id, user_id, field_name, field_value, use_count)
+          VALUES ($1, $2, $3, $4, 1) ON CONFLICT(user_id, field_name, field_value) DO UPDATE SET use_count = frequent_items.use_count + 1`, [
+          uuidv4(), userId, field, data[field].trim()
+        ]);
       }
     }
-  });
+  }
 }
 
 // ─── 업무표 자동생성 (개인별 업무 종합) ───
-app.get('/api/work-table', authMiddleware, (req, res) => {
+app.get('/api/work-table', authMiddleware, async (req, res) => {
   const { from, to, user_id } = req.query;
   const targetUser = user_id || req.session.userId;
-  const reports = db.prepare(`
+  const result = await query(`
     SELECT r.*, u.name as author_name, u.position as author_position
     FROM work_reports r JOIN users u ON r.author_id = u.id
-    WHERE r.author_id = ? AND r.report_date BETWEEN ? AND ?
+    WHERE r.author_id = $1 AND r.report_date BETWEEN $2 AND $3
     ORDER BY r.report_date ASC
-  `).all(targetUser, from, to);
+  `, [targetUser, from, to]);
+  const reports = result.rows;
 
   const grouped = {};
   reports.forEach(r => {
@@ -404,8 +430,8 @@ app.get('/api/work-table', authMiddleware, (req, res) => {
 // ─── 업무매뉴얼 자동생성 (육하원칙 기반) ───
 
 // 전체 조직 업무매뉴얼 (모든 사람의 업무일지 기반)
-app.get('/api/manual/org', authMiddleware, (req, res) => {
-  const tasks = db.prepare(`
+app.get('/api/manual/org', authMiddleware, async (req, res) => {
+  const tasksResult = await query(`
     SELECT
       what_task,
       work_category,
@@ -415,15 +441,16 @@ app.get('/api/manual/org', authMiddleware, (req, res) => {
       where_place,
       who,
       COUNT(*) as frequency,
-      GROUP_CONCAT(DISTINCT u.name) as people,
+      STRING_AGG(DISTINCT u.name, ',') as people,
       MAX(r.report_date) as last_date,
       MIN(r.report_date) as first_date
     FROM work_reports r
     JOIN users u ON r.author_id = u.id
     WHERE what_task IS NOT NULL AND what_task != ''
-    GROUP BY what_task, work_category
+    GROUP BY what_task, work_category, purpose, how_method, why_reason, where_place, who
     ORDER BY frequency DESC
-  `).all();
+  `);
+  const tasks = tasksResult.rows;
 
   const byCategory = {};
   tasks.forEach(t => {
@@ -432,11 +459,11 @@ app.get('/api/manual/org', authMiddleware, (req, res) => {
 
     let existing = byCategory[cat].find(e => e.task === t.what_task);
     if (existing) {
-      existing.frequency += t.frequency;
+      existing.frequency += parseInt(t.frequency);
       if (t.how_method && !existing.methods.includes(t.how_method)) existing.methods.push(t.how_method);
       if (t.where_place && !existing.locations.includes(t.where_place)) existing.locations.push(t.where_place);
       if (t.why_reason && !existing.reasons.includes(t.why_reason)) existing.reasons.push(t.why_reason);
-      t.people.split(',').forEach(p => { if (!existing.people.includes(p)) existing.people.push(p); });
+      if (t.people) t.people.split(',').forEach(p => { if (!existing.people.includes(p)) existing.people.push(p); });
     } else {
       byCategory[cat].push({
         task: t.what_task,
@@ -445,24 +472,26 @@ app.get('/api/manual/org', authMiddleware, (req, res) => {
         reasons: t.why_reason ? [t.why_reason] : [],
         locations: t.where_place ? [t.where_place] : [],
         people: t.people ? t.people.split(',') : [],
-        frequency: t.frequency,
+        frequency: parseInt(t.frequency),
         last_date: t.last_date,
         first_date: t.first_date
       });
     }
   });
 
-  const totalReports = db.prepare('SELECT COUNT(*) as cnt FROM work_reports').get().cnt;
-  const totalPeople = db.prepare('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports').get().cnt;
+  const totalReportsResult = await query('SELECT COUNT(*) as cnt FROM work_reports');
+  const totalReports = parseInt(totalReportsResult.rows[0].cnt);
+  const totalPeopleResult = await query('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports');
+  const totalPeople = parseInt(totalPeopleResult.rows[0].cnt);
 
   res.json({ generated_at: new Date().toISOString(), total_reports: totalReports, total_people: totalPeople, categories: byCategory });
 });
 
 // 개인 업무매뉴얼 (내 업무일지 기반)
-app.get('/api/manual', authMiddleware, (req, res) => {
+app.get('/api/manual', authMiddleware, async (req, res) => {
   const userId = req.query.user_id || req.session.userId;
 
-  const tasks = db.prepare(`
+  const tasksResult = await query(`
     SELECT
       what_task,
       work_category,
@@ -475,10 +504,11 @@ app.get('/api/manual', authMiddleware, (req, res) => {
       MAX(report_date) as last_date,
       MIN(report_date) as first_date
     FROM work_reports
-    WHERE author_id = ? AND what_task IS NOT NULL AND what_task != ''
-    GROUP BY what_task, work_category, purpose
+    WHERE author_id = $1 AND what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category, purpose, how_method, why_reason, where_place, who
     ORDER BY frequency DESC
-  `).all(userId);
+  `, [userId]);
+  const tasks = tasksResult.rows;
 
   const byPurpose = {};
   tasks.forEach(t => {
@@ -490,156 +520,182 @@ app.get('/api/manual', authMiddleware, (req, res) => {
       method: t.how_method || '',
       reason: t.why_reason || '',
       location: t.where_place || '',
-      frequency: t.frequency,
+      frequency: parseInt(t.frequency),
       last_date: t.last_date
     });
   });
 
-  const customManual = db.prepare('SELECT * FROM personal_manual WHERE user_id = ? ORDER BY sort_order, created_at').all(userId);
-  const userName = db.prepare('SELECT name, position FROM users WHERE id = ?').get(userId);
+  const customManualResult = await query('SELECT * FROM personal_manual WHERE user_id = $1 ORDER BY sort_order, created_at', [userId]);
+  const customManual = customManualResult.rows;
+  const userNameResult = await query('SELECT name, position FROM users WHERE id = $1', [userId]);
+  const userName = userNameResult.rows[0];
 
   res.json({
     generated_at: new Date().toISOString(),
     user: userName,
     task_count: tasks.length,
-    total_reports: tasks.reduce((s, t) => s + t.frequency, 0),
+    total_reports: tasks.reduce((s, t) => s + parseInt(t.frequency), 0),
     auto: byPurpose,
     custom: customManual
   });
 });
 
-app.post('/api/manual', authMiddleware, (req, res) => {
+app.post('/api/manual', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { task_group, title, content, steps, tips } = req.body;
-  db.prepare(`INSERT INTO personal_manual (id, user_id, task_group, title, content, steps, tips)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, req.session.userId, task_group, title, content, steps, tips);
+  await query(`INSERT INTO personal_manual (id, user_id, task_group, title, content, steps, tips)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)`, [id, req.session.userId, task_group, title, content, steps, tips]);
   res.json({ id });
 });
 
-app.put('/api/manual/:id', authMiddleware, (req, res) => {
+app.put('/api/manual/:id', authMiddleware, async (req, res) => {
   const { title, content, steps, tips } = req.body;
-  db.prepare(`UPDATE personal_manual SET title=?, content=?, steps=?, tips=?, updated_at=CURRENT_TIMESTAMP
-    WHERE id=? AND user_id=?`).run(title, content, steps, tips, req.params.id, req.session.userId);
+  await query(`UPDATE personal_manual SET title=$1, content=$2, steps=$3, tips=$4, updated_at=NOW()
+    WHERE id=$5 AND user_id=$6`, [title, content, steps, tips, req.params.id, req.session.userId]);
   res.json({ ok: true });
 });
 
-app.delete('/api/manual/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM personal_manual WHERE id = ? AND user_id = ?').run(req.params.id, req.session.userId);
+app.delete('/api/manual/:id', authMiddleware, async (req, res) => {
+  await query('DELETE FROM personal_manual WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
   res.json({ ok: true });
 });
 
 // ─── 전국 지국 관리 ───
-app.get('/api/branches', authMiddleware, (req, res) => {
+app.get('/api/branches', authMiddleware, async (req, res) => {
   const { search, exclude } = req.query;
   let sql = 'SELECT * FROM branches WHERE 1=1';
   const params = [];
-  if (search) { sql += ' AND (name LIKE ? OR address LIKE ? OR manager_name LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  let paramIdx = 1;
+  if (search) {
+    sql += ` AND (name LIKE $${paramIdx++} OR address LIKE $${paramIdx++} OR manager_name LIKE $${paramIdx++})`;
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
   if (exclude === 'false') { sql += ' AND exclude_service = 0'; }
   sql += ' ORDER BY seq';
-  res.json(db.prepare(sql).all(...params));
+  const result = await query(sql, params);
+  res.json(result.rows);
 });
 
-app.get('/api/branches/:id', authMiddleware, (req, res) => {
-  const branch = db.prepare('SELECT * FROM branches WHERE id = ?').get(req.params.id);
+app.get('/api/branches/:id', authMiddleware, async (req, res) => {
+  const result = await query('SELECT * FROM branches WHERE id = $1', [req.params.id]);
+  const branch = result.rows[0];
   if (!branch) return res.status(404).json({ error: '지국을 찾을 수 없습니다' });
   res.json(branch);
 });
 
 // ─── 기존가맹 거래처 신청서 ───
-app.get('/api/franchise-apps', authMiddleware, (req, res) => {
+app.get('/api/franchise-apps', authMiddleware, async (req, res) => {
   const { search, status, oil } = req.query;
   let sql = 'SELECT * FROM franchise_apps WHERE 1=1';
   const params = [];
-  if (search) { sql += ' AND (store_name LIKE ? OR owner_name LIKE ? OR address LIKE ? OR biz_number LIKE ? OR manager LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
-  if (status) { sql += ' AND status = ?'; params.push(status); }
-  if (oil) { sql += ' AND oil_company LIKE ?'; params.push(`%${oil}%`); }
+  let paramIdx = 1;
+  if (search) {
+    sql += ` AND (store_name LIKE $${paramIdx++} OR owner_name LIKE $${paramIdx++} OR address LIKE $${paramIdx++} OR biz_number LIKE $${paramIdx++} OR manager LIKE $${paramIdx++})`;
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  if (status) { sql += ` AND status = $${paramIdx++}`; params.push(status); }
+  if (oil) { sql += ` AND oil_company LIKE $${paramIdx++}`; params.push(`%${oil}%`); }
   sql += ' ORDER BY seq';
-  res.json(db.prepare(sql).all(...params));
+  const result = await query(sql, params);
+  res.json(result.rows);
 });
 
-app.get('/api/franchise-apps/:id', authMiddleware, (req, res) => {
-  const app = db.prepare('SELECT * FROM franchise_apps WHERE id = ?').get(req.params.id);
-  if (!app) return res.status(404).json({ error: '데이터를 찾을 수 없습니다' });
-  res.json(app);
+app.get('/api/franchise-apps/:id', authMiddleware, async (req, res) => {
+  const result = await query('SELECT * FROM franchise_apps WHERE id = $1', [req.params.id]);
+  const appData = result.rows[0];
+  if (!appData) return res.status(404).json({ error: '데이터를 찾을 수 없습니다' });
+  res.json(appData);
 });
 
-app.put('/api/franchise-apps/:id', authMiddleware, (req, res) => {
+app.put('/api/franchise-apps/:id', authMiddleware, async (req, res) => {
   const { store_name, owner_name, biz_number, phone_land, owner_phone, address, oil_company, status, memo, paint_date, bank_info } = req.body;
-  db.prepare(`UPDATE franchise_apps SET store_name=?, owner_name=?, biz_number=?, phone_land=?, owner_phone=?, address=?, oil_company=?, status=?, memo=?, paint_date=?, bank_info=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(
+  await query(`UPDATE franchise_apps SET store_name=$1, owner_name=$2, biz_number=$3, phone_land=$4, owner_phone=$5, address=$6, oil_company=$7, status=$8, memo=$9, paint_date=$10, bank_info=$11, updated_at=NOW() WHERE id=$12`, [
     store_name, owner_name, biz_number, phone_land, owner_phone, address, oil_company, status, memo, paint_date, bank_info, req.params.id
-  );
+  ]);
   res.json({ ok: true });
 });
 
-app.get('/api/franchise-apps/stats/summary', authMiddleware, (req, res) => {
-  const total = db.prepare('SELECT COUNT(*) as cnt FROM franchise_apps').get().cnt;
-  const byStatus = db.prepare('SELECT status, COUNT(*) as cnt FROM franchise_apps GROUP BY status').all();
-  const byOil = db.prepare('SELECT oil_company, COUNT(*) as cnt FROM franchise_apps WHERE oil_company != "" GROUP BY oil_company ORDER BY cnt DESC').all();
+app.get('/api/franchise-apps/stats/summary', authMiddleware, async (req, res) => {
+  const totalResult = await query('SELECT COUNT(*) as cnt FROM franchise_apps');
+  const total = parseInt(totalResult.rows[0].cnt);
+  const byStatusResult = await query('SELECT status, COUNT(*) as cnt FROM franchise_apps GROUP BY status');
+  const byStatus = byStatusResult.rows;
+  const byOilResult = await query("SELECT oil_company, COUNT(*) as cnt FROM franchise_apps WHERE oil_company != '' AND oil_company IS NOT NULL GROUP BY oil_company ORDER BY cnt DESC");
+  const byOil = byOilResult.rows;
   res.json({ total, byStatus, byOil });
 });
 
 // ─── 주요업무표 (task master) ───
-app.get('/api/tasks', authMiddleware, (req, res) => {
+app.get('/api/tasks', authMiddleware, async (req, res) => {
   const { category, group, search } = req.query;
   let sql = 'SELECT * FROM task_master WHERE 1=1';
   const params = [];
-  if (category) { sql += ' AND category1 = ?'; params.push(category); }
-  if (group) { sql += ' AND task_group = ?'; params.push(group); }
-  if (search) { sql += ' AND (task_detail LIKE ? OR task_group LIKE ? OR assigned_to LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  let paramIdx = 1;
+  if (category) { sql += ` AND category1 = $${paramIdx++}`; params.push(category); }
+  if (group) { sql += ` AND task_group = $${paramIdx++}`; params.push(group); }
+  if (search) {
+    sql += ` AND (task_detail LIKE $${paramIdx++} OR task_group LIKE $${paramIdx++} OR assigned_to LIKE $${paramIdx++})`;
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
   sql += ' ORDER BY category1, task_group, created_at';
-  res.json(db.prepare(sql).all(...params));
+  const result = await query(sql, params);
+  res.json(result.rows);
 });
 
-app.get('/api/tasks/categories', authMiddleware, (req, res) => {
-  const categories = db.prepare('SELECT DISTINCT category1 FROM task_master WHERE category1 IS NOT NULL ORDER BY category1').all();
-  const groups = db.prepare('SELECT DISTINCT task_group FROM task_master WHERE task_group IS NOT NULL ORDER BY task_group').all();
-  res.json({ categories: categories.map(c => c.category1), groups: groups.map(g => g.task_group) });
+app.get('/api/tasks/categories', authMiddleware, async (req, res) => {
+  const categoriesResult = await query('SELECT DISTINCT category1 FROM task_master WHERE category1 IS NOT NULL ORDER BY category1');
+  const groupsResult = await query('SELECT DISTINCT task_group FROM task_master WHERE task_group IS NOT NULL ORDER BY task_group');
+  res.json({ categories: categoriesResult.rows.map(c => c.category1), groups: groupsResult.rows.map(g => g.task_group) });
 });
 
-app.post('/api/tasks', authMiddleware, (req, res) => {
+app.post('/api/tasks', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { department, division, category1, task_group, task_detail, assigned_to, note } = req.body;
-  db.prepare(`INSERT INTO task_master (id, department, division, category1, task_group, task_detail, assigned_to, note, is_custom, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(id, department, division, category1, task_group, task_detail, assigned_to, note, req.session.userId);
+  await query(`INSERT INTO task_master (id, department, division, category1, task_group, task_detail, assigned_to, note, is_custom, created_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9)`, [id, department, division, category1, task_group, task_detail, assigned_to, note, req.session.userId]);
   res.json({ id });
 });
 
-app.put('/api/tasks/:id', authMiddleware, (req, res) => {
+app.put('/api/tasks/:id', authMiddleware, async (req, res) => {
   const { task_detail, assigned_to, note } = req.body;
-  db.prepare(`UPDATE task_master SET task_detail=?, assigned_to=?, note=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-    .run(task_detail, assigned_to, note, req.params.id);
+  await query(`UPDATE task_master SET task_detail=$1, assigned_to=$2, note=$3, updated_at=NOW() WHERE id=$4`, [
+    task_detail, assigned_to, note, req.params.id
+  ]);
   res.json({ ok: true });
 });
 
 // ─── 업무 추가내용 (task notes) ───
-app.get('/api/tasks/:id/notes', authMiddleware, (req, res) => {
-  const notes = db.prepare(`SELECT tn.*, u.name as author_name FROM task_notes tn
-    JOIN users u ON tn.author_id = u.id WHERE tn.task_id = ? ORDER BY tn.created_at DESC`).all(req.params.id);
-  res.json(notes);
+app.get('/api/tasks/:id/notes', authMiddleware, async (req, res) => {
+  const result = await query(`SELECT tn.*, u.name as author_name FROM task_notes tn
+    JOIN users u ON tn.author_id = u.id WHERE tn.task_id = $1 ORDER BY tn.created_at DESC`, [req.params.id]);
+  res.json(result.rows);
 });
 
-app.post('/api/tasks/:id/notes', authMiddleware, (req, res) => {
+app.post('/api/tasks/:id/notes', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { content } = req.body;
-  db.prepare('INSERT INTO task_notes (id, task_id, author_id, content) VALUES (?, ?, ?, ?)')
-    .run(id, req.params.id, req.session.userId, content);
+  await query('INSERT INTO task_notes (id, task_id, author_id, content) VALUES ($1, $2, $3, $4)', [
+    id, req.params.id, req.session.userId, content
+  ]);
   res.json({ id });
 });
 
 // ─── 개별 담당 업무표 ───
-app.get('/api/personal-tasks', authMiddleware, (req, res) => {
+app.get('/api/personal-tasks', authMiddleware, async (req, res) => {
   const { person, position } = req.query;
   let sql = 'SELECT * FROM personal_task_table WHERE 1=1';
   const params = [];
-  if (person) { sql += ' AND person_name = ?'; params.push(person); }
-  if (position) { sql += ' AND position = ?'; params.push(position); }
+  let paramIdx = 1;
+  if (person) { sql += ` AND person_name = $${paramIdx++}`; params.push(person); }
+  if (position) { sql += ` AND position = $${paramIdx++}`; params.push(position); }
   sql += ' ORDER BY position, person_name, task_group';
-  res.json(db.prepare(sql).all(...params));
+  const result = await query(sql, params);
+  res.json(result.rows);
 });
 
-app.get('/api/personal-tasks/persons', authMiddleware, (req, res) => {
-  const persons = db.prepare('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name').all();
-  res.json(persons);
+app.get('/api/personal-tasks/persons', authMiddleware, async (req, res) => {
+  const result = await query('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name');
+  res.json(result.rows);
 });
 
 // ─── 엑셀 공통 스타일 ───
@@ -658,7 +714,8 @@ function applyExcelStyles(wb) {
 
 // ─── 엑셀 다운로드: 주요업무표 ───
 app.get('/api/export/tasks', authMiddleware, async (req, res) => {
-  const tasks = db.prepare('SELECT * FROM task_master ORDER BY category1, task_group, created_at').all();
+  const tasksResult = await query('SELECT * FROM task_master ORDER BY category1, task_group, created_at');
+  const tasks = tasksResult.rows;
   const wb = new ExcelJS.Workbook();
   const s = applyExcelStyles(wb);
   wb.creator = '석유사업본부 업무시스템';
@@ -792,16 +849,16 @@ app.get('/api/export/personal-tasks', authMiddleware, async (req, res) => {
   };
 
   if (person) {
-    const tasks = db.prepare('SELECT * FROM personal_task_table WHERE person_name = ? ORDER BY task_group').all(person);
+    const tasksResult = await query('SELECT * FROM personal_task_table WHERE person_name = $1 ORDER BY task_group', [person]);
     const ws = wb.addWorksheet(person.substring(0, 31));
-    buildPersonSheet(person, tasks, ws);
+    buildPersonSheet(person, tasksResult.rows, ws);
   } else {
-    const persons = db.prepare('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name').all();
-    persons.forEach(p => {
-      const tasks = db.prepare('SELECT * FROM personal_task_table WHERE person_name = ? ORDER BY task_group').all(p.person_name);
+    const personsResult = await query('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name');
+    for (const p of personsResult.rows) {
+      const tasksResult = await query('SELECT * FROM personal_task_table WHERE person_name = $1 ORDER BY task_group', [p.person_name]);
       const ws = wb.addWorksheet(p.person_name.substring(0, 31));
-      buildPersonSheet(p.person_name, tasks, ws);
-    });
+      buildPersonSheet(p.person_name, tasksResult.rows, ws);
+    }
   }
 
   const filename = person ? `personal_tasks_${person}_${new Date().toISOString().split('T')[0]}.xlsx` : `personal_tasks_all_${new Date().toISOString().split('T')[0]}.xlsx`;
@@ -813,14 +870,15 @@ app.get('/api/export/personal-tasks', authMiddleware, async (req, res) => {
 
 // ─── 엑셀 다운로드: 전체 업무매뉴얼 ───
 app.get('/api/export/manual-org', authMiddleware, async (req, res) => {
-  const tasks = db.prepare(`
+  const tasksResult = await query(`
     SELECT what_task, work_category, purpose, how_method, why_reason, where_place, who,
-      COUNT(*) as frequency, GROUP_CONCAT(DISTINCT u.name) as people,
+      COUNT(*) as frequency, STRING_AGG(DISTINCT u.name, ',') as people,
       MAX(r.report_date) as last_date, MIN(r.report_date) as first_date
     FROM work_reports r JOIN users u ON r.author_id = u.id
     WHERE what_task IS NOT NULL AND what_task != ''
-    GROUP BY what_task, work_category ORDER BY frequency DESC
-  `).all();
+    GROUP BY what_task, work_category, purpose, how_method, why_reason, where_place, who ORDER BY frequency DESC
+  `);
+  const tasks = tasksResult.rows;
 
   const byCategory = {};
   tasks.forEach(t => {
@@ -828,7 +886,7 @@ app.get('/api/export/manual-org', authMiddleware, async (req, res) => {
     if (!byCategory[cat]) byCategory[cat] = [];
     let existing = byCategory[cat].find(e => e.task === t.what_task);
     if (existing) {
-      existing.frequency += t.frequency;
+      existing.frequency += parseInt(t.frequency);
       if (t.how_method && !existing.methods.includes(t.how_method)) existing.methods.push(t.how_method);
       if (t.where_place && !existing.locations.includes(t.where_place)) existing.locations.push(t.where_place);
       if (t.why_reason && !existing.reasons.includes(t.why_reason)) existing.reasons.push(t.why_reason);
@@ -838,13 +896,15 @@ app.get('/api/export/manual-org', authMiddleware, async (req, res) => {
         task: t.what_task, purpose: t.purpose || '',
         methods: t.how_method ? [t.how_method] : [], reasons: t.why_reason ? [t.why_reason] : [],
         locations: t.where_place ? [t.where_place] : [], people: t.people ? t.people.split(',') : [],
-        frequency: t.frequency, last_date: t.last_date, first_date: t.first_date
+        frequency: parseInt(t.frequency), last_date: t.last_date, first_date: t.first_date
       });
     }
   });
 
-  const totalReports = db.prepare('SELECT COUNT(*) as cnt FROM work_reports').get().cnt;
-  const totalPeople = db.prepare('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports').get().cnt;
+  const totalReportsResult = await query('SELECT COUNT(*) as cnt FROM work_reports');
+  const totalReports = parseInt(totalReportsResult.rows[0].cnt);
+  const totalPeopleResult = await query('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports');
+  const totalPeople = parseInt(totalPeopleResult.rows[0].cnt);
 
   const wb = new ExcelJS.Workbook();
   const s = applyExcelStyles(wb);
@@ -931,18 +991,21 @@ app.get('/api/export/manual-org', authMiddleware, async (req, res) => {
 // ─── 엑셀 다운로드: 내 업무매뉴얼 ───
 app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
   const userId = req.session.userId;
-  const userInfo = db.prepare('SELECT name, position FROM users WHERE id = ?').get(userId);
+  const userInfoResult = await query('SELECT name, position FROM users WHERE id = $1', [userId]);
+  const userInfo = userInfoResult.rows[0];
   const userName = userInfo ? userInfo.name : '사용자';
   const userPos = userInfo ? userInfo.position : '';
 
-  const tasks = db.prepare(`
+  const tasksResult = await query(`
     SELECT what_task, work_category, purpose, how_method, why_reason, where_place, who,
       COUNT(*) as frequency, MAX(report_date) as last_date
-    FROM work_reports WHERE author_id = ? AND what_task IS NOT NULL AND what_task != ''
-    GROUP BY what_task, work_category, purpose ORDER BY frequency DESC
-  `).all(userId);
+    FROM work_reports WHERE author_id = $1 AND what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category, purpose, how_method, why_reason, where_place, who ORDER BY frequency DESC
+  `, [userId]);
+  const tasks = tasksResult.rows;
 
-  const customManual = db.prepare('SELECT * FROM personal_manual WHERE user_id = ? ORDER BY sort_order, created_at').all(userId);
+  const customManualResult = await query('SELECT * FROM personal_manual WHERE user_id = $1 ORDER BY sort_order, created_at', [userId]);
+  const customManual = customManualResult.rows;
 
   const wb = new ExcelJS.Workbook();
   const s = applyExcelStyles(wb);
@@ -957,7 +1020,7 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
   ws1.getRow(1).height = 40;
 
   ws1.mergeCells('A2:H2');
-  ws1.getCell('A2').value = `작성일: ${new Date().toISOString().split('T')[0]}  |  총 ${tasks.length}개 업무  |  ${tasks.reduce((a, t) => a + t.frequency, 0)}건 기록 기반`;
+  ws1.getCell('A2').value = `작성일: ${new Date().toISOString().split('T')[0]}  |  총 ${tasks.length}개 업무  |  ${tasks.reduce((a, t) => a + parseInt(t.frequency), 0)}건 기록 기반`;
   ws1.getCell('A2').font = s.subTitleFont;
   ws1.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' };
   ws1.getRow(2).height = 25;
@@ -986,7 +1049,7 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
 
   tasks.forEach((t, idx) => {
     const row = ws1.getRow(5 + idx);
-    const vals = [idx + 1, t.purpose || t.work_category || '', t.what_task, t.how_method || '', t.why_reason || '', t.where_place || '', t.frequency, t.last_date || ''];
+    const vals = [idx + 1, t.purpose || t.work_category || '', t.what_task, t.how_method || '', t.why_reason || '', t.where_place || '', parseInt(t.frequency), t.last_date || ''];
     vals.forEach((v, i) => {
       const cell = row.getCell(i + 1);
       cell.value = v;
@@ -1055,6 +1118,9 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
   res.end();
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`석유사업본부 업무시스템 서버 실행: http://localhost:${PORT}`);
-});
+(async () => {
+  await initDB();
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`석유사업본부 업무시스템 서버 실행: http://localhost:${PORT}`);
+  });
+})();
