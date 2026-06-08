@@ -13,7 +13,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:xmadx503581!@db.ggrckmgvfxeknxgbqnxe.supabase.co:5432/postgres';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres.ggrckmgvfxeknxgbqnxe:xmadx503581!@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres';
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
@@ -32,7 +32,7 @@ pool.on('error', (err) => {
 
 async function query(text, params) {
   try {
-    return await pool.query(text, params);
+    return await pool.query({ text, values: params, rowMode: undefined });
   } catch (err) {
     console.error('Query error:', err.message, '\nSQL:', text.substring(0, 200));
     throw err;
