@@ -13,41 +13,66 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres.ggrckmgvfxeknxgbqnxe:xmadx503581!@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres';
+const PROJECT_REF = 'ggrckmgvfxeknxgbqnxe';
+const DB_PASS = 'xmadx503581!';
+const POOLER_REGIONS = ['ap-southeast-1', 'ap-northeast-1', 'ap-northeast-2', 'us-east-1', 'eu-west-1', 'eu-central-1', 'us-west-1', 'ap-south-1'];
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  max: 10,
-  lookup: (hostname, options, callback) => {
-    dns.lookup(hostname, { ...options, family: 4 }, callback);
-  }
-});
-
-pool.on('error', (err) => {
-  console.error('PostgreSQL pool error:', err.message);
-});
+let pool = null;
 
 async function query(text, params) {
+  if (!pool) throw new Error('Database not initialized');
   try {
-    return await pool.query({ text, values: params, rowMode: undefined });
+    return await pool.query({ text, values: params });
   } catch (err) {
     console.error('Query error:', err.message, '\nSQL:', text.substring(0, 200));
     throw err;
   }
 }
 
-async function initDB() {
-  console.log('Connecting to PostgreSQL...', DATABASE_URL.replace(/:[^:@]+@/, ':***@'));
+async function tryConnect(url, label) {
+  const p = new Pool({
+    connectionString: url,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 5000,
+    max: 2
+  });
   try {
-    const test = await pool.query('SELECT NOW()');
-    console.log('PostgreSQL connected:', test.rows[0].now);
+    const test = await p.query('SELECT NOW()');
+    console.log(`[${label}] Connected:`, test.rows[0].now);
+    return p;
   } catch (err) {
-    console.error('PostgreSQL connection FAILED:', err.message);
-    throw err;
+    console.log(`[${label}] Failed:`, err.message);
+    await p.end().catch(() => {});
+    return null;
   }
+}
+
+async function initDB() {
+  if (process.env.DATABASE_URL) {
+    console.log('Using DATABASE_URL env var...');
+    pool = await tryConnect(process.env.DATABASE_URL, 'ENV');
+  }
+
+  if (!pool) {
+    for (const region of POOLER_REGIONS) {
+      const url = `postgresql://postgres.${PROJECT_REF}:${encodeURIComponent(DB_PASS)}@aws-0-${region}.pooler.supabase.com:6543/postgres`;
+      pool = await tryConnect(url, `pooler-${region}`);
+      if (pool) break;
+    }
+  }
+
+  if (!pool) {
+    const directUrl = `postgresql://postgres:${encodeURIComponent(DB_PASS)}@db.${PROJECT_REF}.supabase.co:5432/postgres`;
+    pool = await tryConnect(directUrl, 'direct');
+  }
+
+  if (!pool) {
+    throw new Error('All database connection attempts failed');
+  }
+
+  pool.on('error', (err) => {
+    console.error('PostgreSQL pool error:', err.message);
+  });
   // ═══ CREATE TABLES ═══
   await query(`
     -- 사용자
