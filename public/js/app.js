@@ -119,7 +119,7 @@ async function renderHome() {
   const reports = await api(`/api/reports?from=${weekAgo}&to=${today}`) || [];
 
   const myReports = reports.filter(r => r.author_id === currentUser.id);
-  const todayReports = myReports.filter(r => r.report_date === today);
+  const todayReports = myReports.filter(r => (r.report_date || '').split('T')[0] === today);
   const othersReports = reports.filter(r => r.author_id !== currentUser.id);
 
   let teamSection = '';
@@ -136,7 +136,7 @@ async function renderHome() {
             <div class="list-item" onclick="viewReport('${r.id}')">
               <div class="list-item-content">
                 <div class="list-item-title">${escHtml(r.what_task || r.content || '(내용 없음)')}</div>
-                <div class="list-item-sub">${r.author_name} ${r.author_position || ''} &middot; ${r.report_date}</div>
+                <div class="list-item-sub">${r.author_name} ${r.author_position || ''} &middot; ${(r.report_date||'').split('T')[0]}</div>
               </div>
               <span class="badge badge-${r.work_category}">${r.work_category}</span>
             </div>
@@ -212,7 +212,7 @@ async function renderHome() {
       <div class="list-item" onclick="viewReport('${r.id}')">
         <div class="list-item-content">
           <div class="list-item-title">${escHtml(r.what_task || r.content || '(내용 없음)')}</div>
-          <div class="list-item-sub">${r.report_date} &middot; ${r.where_place || ''}</div>
+          <div class="list-item-sub">${(r.report_date||'').split('T')[0]} &middot; ${r.where_place || ''}</div>
         </div>
         <span class="list-item-badge">
           <span class="badge badge-${r.work_category}">${r.work_category}</span>
@@ -276,7 +276,7 @@ function renderReportList(reports) {
     <div class="list-item" onclick="viewReport('${r.id}')">
       <div class="list-item-content">
         <div class="list-item-title">${escHtml(r.what_task || r.content || '(내용 없음)')}</div>
-        <div class="list-item-sub">${r.author_name} ${r.author_position} &middot; ${r.report_date}</div>
+        <div class="list-item-sub">${r.author_name} ${r.author_position} &middot; ${(r.report_date||'').split('T')[0]}</div>
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
         <span class="badge badge-${r.work_category}">${r.work_category}</span>
@@ -314,7 +314,7 @@ async function viewReport(id) {
         <span class="badge badge-${data.status}">${statusLabel(data.status)}</span>
       </div>
       <p style="font-size:12px; color:var(--gray-500); margin-bottom:12px;">
-        ${data.author_name} ${data.author_position} &middot; ${data.report_date} &middot; ${data.report_type === 'daily' ? '일일보고' : '주간보고'}
+        ${data.author_name} ${data.author_position} &middot; ${(data.report_date||'').split('T')[0]} &middot; ${data.report_type === 'daily' ? '일일보고' : '주간보고'}
       </p>
 
       <div class="w5h1-grid" style="margin-bottom:16px;">
@@ -401,7 +401,7 @@ async function editReport(id) {
   if (!data) return;
   editingReportId = id;
   document.getElementById('reportModalTitle').textContent = '업무일지 수정';
-  document.getElementById('reportDate').value = data.report_date;
+  document.getElementById('reportDate').value = (data.report_date||'').split('T')[0];
   document.getElementById('reportPurpose').value = data.purpose || '';
   document.getElementById('reportWho').value = data.who || '';
   document.getElementById('reportWhen').value = data.when_time || '';
