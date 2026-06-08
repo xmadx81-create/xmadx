@@ -207,6 +207,19 @@ db.exec(`
     note TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- ═══ 사전승인 인원 (가입 시 자동승인용) ═══
+  CREATE TABLE IF NOT EXISTS approved_staff (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    department TEXT DEFAULT '석유사업본부',
+    position TEXT,
+    location TEXT,
+    role TEXT,
+    registered INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ─── 데모 사용자 생성 ───
@@ -434,6 +447,35 @@ if (taskCount.cnt === 0) {
     });
   });
   taskTx();
+}
+
+// ─── 사전승인 인원 시드 ───
+const staffCount = db.prepare('SELECT COUNT(*) as cnt FROM approved_staff').get();
+if (staffCount.cnt === 0) {
+  const insertStaff = db.prepare(`INSERT INTO approved_staff (id, name, phone, department, position, location, role) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  const staffList = [
+    ['백무결', '28228079', '석유사업본부', '부장', '본사부', '충청지역본부_지역장'],
+    ['곽영철', '64330082', '석유사업본부', '본부장', '본사부', '총괄'],
+    ['김민관', '86149995', '석유사업본부', '이사', '본사부', '가맹영업총괄'],
+    ['유희창', '44871177', '석유사업본부', '차장', '본사부', '직영관리'],
+    ['민수경', '57800511', '석유사업본부', '과장', '본사부', '충청지역본부_관리담당'],
+    ['황영석', '90844373', '석유사업본부', '과장', '본사부', '충청지역본부_관리담당'],
+    ['정지은', '63146093', '석유사업본부', '사원', '본사부', '행정담당'],
+    ['연지운', '46955363', '석유사업본부', '대리', '본사부', '충청지역본부_관리담당'],
+    ['강신흥', '30680019', '석유사업본부', '부장', '본사부', '경북지역본부_지역장'],
+    ['김권아', '51851354', '석유사업본부', '이사', '본사부', '경북지역본부_지역장'],
+    ['박기억', '38179845', '석유사업본부', '부장', '경주', '직영관리'],
+    ['허성오', '35264304', '석유사업본부', '부장', '대구', '직영관리'],
+    ['이재무', '35642317', '석유사업본부', '부장', '경주', '직영관리'],
+    ['이덕성', '35890737', '석유사업본부', '차장', '', '직영관리'],
+    ['최영관', '20660432', '석유사업본부', '부장', '구미', '직영관리'],
+  ];
+  const staffTx = db.transaction(() => {
+    staffList.forEach(s => {
+      insertStaff.run(uuidv4(), s[0], s[1], s[2], s[3], s[4], s[5]);
+    });
+  });
+  staffTx();
 }
 
 module.exports = { db, uuidv4 };

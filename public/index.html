@@ -26,7 +26,66 @@
       <input type="password" id="loginPassword" class="form-control" placeholder="비밀번호 입력" value="demo1234">
     </div>
     <button class="btn btn-primary btn-block btn-lg" onclick="login()">로그인</button>
+    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="showRegisterForm()">가입신청</button>
+    <p style="text-align:center; margin-top:16px;">
+      <a href="#" onclick="showAdminLogin(); return false;" style="font-size:11px; color:#999; text-decoration:none;">시스템관리자</a>
+    </p>
   </div>
+</div>
+
+<!-- ═══ 가입신청 화면 ═══ -->
+<div id="registerScreen" class="login-screen" style="display:none;">
+  <div class="login-card">
+    <h1>가입신청</h1>
+    <p class="subtitle">사전 등록된 인원만 가입 가능</p>
+    <div class="form-group">
+      <label>이름</label>
+      <input type="text" id="regName" class="form-control" placeholder="실명 입력">
+    </div>
+    <div class="form-group">
+      <label>연락처</label>
+      <input type="tel" id="regPhone" class="form-control" placeholder="010-0000-0000">
+    </div>
+    <div class="form-group">
+      <label>이메일 (선택)</label>
+      <input type="email" id="regEmail" class="form-control" placeholder="이메일 입력">
+    </div>
+    <div class="form-group">
+      <label>비밀번호</label>
+      <input type="password" id="regPassword" class="form-control" placeholder="비밀번호 설정">
+    </div>
+    <div class="form-group">
+      <label>비밀번호 확인</label>
+      <input type="password" id="regPasswordConfirm" class="form-control" placeholder="비밀번호 재입력">
+    </div>
+    <button class="btn btn-success btn-block btn-lg" onclick="submitRegister()">가입신청</button>
+    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="backToLogin()">뒤로</button>
+  </div>
+</div>
+
+<!-- ═══ 관리자 로그인 화면 ═══ -->
+<div id="adminLoginScreen" class="login-screen" style="display:none;">
+  <div class="login-card">
+    <h1>시스템관리자</h1>
+    <p class="subtitle">관리자 비밀번호 입력</p>
+    <div class="form-group">
+      <label>비밀번호</label>
+      <input type="password" id="adminPassword" class="form-control" placeholder="관리자 비밀번호">
+    </div>
+    <button class="btn btn-primary btn-block btn-lg" onclick="adminLogin()">로그인</button>
+    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="backToLogin()">뒤로</button>
+  </div>
+</div>
+
+<!-- ═══ 관리자 페이지 ═══ -->
+<div id="adminContainer" class="app-container" style="display:none;">
+  <header class="app-header">
+    <h1>시스템 관리</h1>
+    <div class="header-actions">
+      <button class="header-btn" onclick="adminLogout()" title="로그아웃">&#9654;</button>
+    </div>
+  </header>
+  <main class="main-content" id="adminContent"></main>
 </div>
 
 <!-- ═══ 메인 앱 ═══ -->

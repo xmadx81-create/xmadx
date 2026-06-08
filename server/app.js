@@ -34,6 +34,68 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── 가입신청 ───
+app.post('/api/register', (req, res) => {
+  const { name, phone, password, email } = req.body;
+  if (!name || !phone || !password) return res.status(400).json({ error: '이름, 연락처, 비밀번호를 입력해주세요' });
+
+  const phoneDigits = phone.replace(/[^0-9]/g, '');
+  const staff = db.prepare('SELECT * FROM approved_staff WHERE name = ?').get(name);
+  if (!staff) return res.status(403).json({ error: '사전 등록된 인원이 아닙니다. 관리자에게 문의하세요.' });
+
+  const staffPhone = staff.phone.replace(/[^0-9]/g, '');
+  if (!phoneDigits.endsWith(staffPhone) && phoneDigits !== staffPhone) {
+    return res.status(403).json({ error: '이름 또는 연락처가 일치하지 않습니다.' });
+  }
+
+  const existing = db.prepare('SELECT id FROM users WHERE phone = ? OR email = ?').get(phone, email || '');
+  if (existing) return res.status(409).json({ error: '이미 가입된 계정입니다.' });
+
+  const id = uuidv4();
+  db.prepare(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    id, staff.name, staff.department, staff.position, phone, email || '', password
+  );
+  db.prepare('UPDATE approved_staff SET registered = 1 WHERE id = ?').run(staff.id);
+
+  req.session.userId = id;
+  res.json({ id, name: staff.name, department: staff.department, position: staff.position });
+});
+
+// ─── 관리자 로그인 ───
+const ADMIN_PASSWORD = 'petroleum2024!';
+
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: '비밀번호가 올바르지 않습니다' });
+  req.session.isAdmin = true;
+  res.json({ ok: true });
+});
+
+function adminMiddleware(req, res, next) {
+  if (req.session.isAdmin) return next();
+  res.status(403).json({ error: '관리자 권한이 필요합니다' });
+}
+
+// ─── 사전승인 인원 관리 ───
+app.get('/api/admin/staff', adminMiddleware, (req, res) => {
+  res.json(db.prepare('SELECT * FROM approved_staff ORDER BY created_at DESC').all());
+});
+
+app.post('/api/admin/staff', adminMiddleware, (req, res) => {
+  const { name, phone, department, position, location, role } = req.body;
+  if (!name || !phone) return res.status(400).json({ error: '이름과 연락처를 입력해주세요' });
+  const id = uuidv4();
+  db.prepare(`INSERT INTO approved_staff (id, name, phone, department, position, location, role) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    id, name, phone, department || '석유사업본부', position || '', location || '', role || ''
+  );
+  res.json({ id });
+});
+
+app.delete('/api/admin/staff/:id', adminMiddleware, (req, res) => {
+  db.prepare('DELETE FROM approved_staff WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 app.get('/api/me', authMiddleware, (req, res) => {
   const user = db.prepare('SELECT id, name, department, position, phone, email FROM users WHERE id = ?').get(req.session.userId);
   res.json(user);

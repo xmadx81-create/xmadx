@@ -1490,5 +1490,162 @@ document.querySelectorAll('.modal-overlay').forEach(modal => {
   });
 });
 
+// ─── 가입신청 ───
+function showRegisterForm() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('registerScreen').style.display = 'flex';
+}
+
+function backToLogin() {
+  document.getElementById('registerScreen').style.display = 'none';
+  document.getElementById('adminLoginScreen').style.display = 'none';
+  document.getElementById('adminContainer').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+async function submitRegister() {
+  const name = document.getElementById('regName').value.trim();
+  const phone = document.getElementById('regPhone').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const passwordConfirm = document.getElementById('regPasswordConfirm').value;
+
+  if (!name || !phone || !password) { toast('이름, 연락처, 비밀번호를 입력해주세요'); return; }
+  if (password !== passwordConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
+
+  const res = await fetch('/api/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, phone, email, password })
+  });
+  const data = await res.json();
+
+  if (!res.ok) { toast(data.error || '가입 실패'); return; }
+
+  currentUser = data;
+  document.getElementById('registerScreen').style.display = 'none';
+  document.getElementById('appContainer').classList.add('active');
+  toast(`${data.name}님 환영합니다!`);
+  navigate('home');
+}
+
+// ─── 관리자 ───
+function showAdminLogin() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('adminLoginScreen').style.display = 'flex';
+  document.getElementById('adminPassword').value = '';
+}
+
+async function adminLogin() {
+  const password = document.getElementById('adminPassword').value;
+  const res = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  const data = await res.json();
+
+  if (!res.ok) { toast(data.error || '로그인 실패'); return; }
+
+  document.getElementById('adminLoginScreen').style.display = 'none';
+  document.getElementById('adminContainer').style.display = 'flex';
+  document.getElementById('adminContainer').classList.add('active');
+  renderAdminPage();
+}
+
+function adminLogout() {
+  document.getElementById('adminContainer').style.display = 'none';
+  document.getElementById('adminContainer').classList.remove('active');
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+async function renderAdminPage() {
+  const res = await fetch('/api/admin/staff');
+  const staffList = await res.json();
+
+  document.getElementById('adminContent').innerHTML = `
+    <p class="section-title">사전승인 인원 관리</p>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">
+      등록된 인원만 가입신청이 가능합니다. 현재 ${staffList.length}명 등록됨
+    </p>
+
+    <div class="card" style="padding:12px; margin-bottom:16px;">
+      <p style="font-weight:600; margin-bottom:8px;">인원 추가</p>
+      <div class="form-group">
+        <input type="text" id="newStaffName" class="form-control" placeholder="이름">
+      </div>
+      <div class="form-group">
+        <input type="text" id="newStaffPhone" class="form-control" placeholder="연락처 (숫자)">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <div class="form-group" style="flex:1;">
+          <input type="text" id="newStaffPosition" class="form-control" placeholder="직급">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <input type="text" id="newStaffLocation" class="form-control" placeholder="근무지">
+        </div>
+      </div>
+      <div class="form-group">
+        <input type="text" id="newStaffRole" class="form-control" placeholder="겸직/역할">
+      </div>
+      <button class="btn btn-success btn-block" onclick="addStaff()">추가</button>
+    </div>
+
+    <p class="section-title">등록 인원 목록</p>
+    ${staffList.map(s => `
+      <div class="card" style="padding:10px; margin-bottom:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="flex:1;">
+            <div style="font-weight:600; font-size:14px;">
+              ${escHtml(s.name)}
+              <span style="font-size:12px; color:var(--gray-500); font-weight:normal;">${escHtml(s.position || '')}</span>
+              ${s.registered ? '<span style="font-size:11px; color:var(--success); margin-left:4px;">가입완료</span>' : '<span style="font-size:11px; color:var(--gray-400); margin-left:4px;">미가입</span>'}
+            </div>
+            <div style="font-size:12px; color:var(--gray-500);">
+              ${escHtml(s.phone)} ${s.location ? '/ ' + escHtml(s.location) : ''} ${s.role ? '/ ' + escHtml(s.role) : ''}
+            </div>
+          </div>
+          <button class="btn btn-sm btn-danger" onclick="removeStaff('${s.id}')">삭제</button>
+        </div>
+      </div>
+    `).join('')}
+
+    <div style="margin-top:24px;">
+      <button class="btn btn-outline btn-block" onclick="adminLogout()">로그아웃</button>
+    </div>
+  `;
+}
+
+async function addStaff() {
+  const name = document.getElementById('newStaffName').value.trim();
+  const phone = document.getElementById('newStaffPhone').value.trim();
+  const position = document.getElementById('newStaffPosition').value.trim();
+  const location = document.getElementById('newStaffLocation').value.trim();
+  const role = document.getElementById('newStaffRole').value.trim();
+
+  if (!name || !phone) { toast('이름과 연락처를 입력해주세요'); return; }
+
+  const res = await fetch('/api/admin/staff', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, phone, position, location, role })
+  });
+
+  if (res.ok) {
+    toast(`${name}님이 추가되었습니다`);
+    renderAdminPage();
+  } else {
+    const data = await res.json();
+    toast(data.error || '추가 실패');
+  }
+}
+
+async function removeStaff(id) {
+  if (!confirm('삭제하시겠습니까?')) return;
+  await fetch(`/api/admin/staff/${id}`, { method: 'DELETE' });
+  toast('삭제되었습니다');
+  renderAdminPage();
+}
+
 // 초기화
 checkAuth();
