@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "석유사업본부 업무공유 시스템",
   "main": "server/app.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server/app.js",
     "dev": "node server/app.js"
