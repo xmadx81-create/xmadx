@@ -2473,7 +2473,7 @@ async function renderInsightsTab() {
     <div style="text-align:center; padding:40px 0;">
       <div style="font-size:48px; margin-bottom:12px;">&#128302;</div>
       <p style="font-size:18px; font-weight:700; color:#7c3aed; margin-bottom:8px;">전략 인사이트 분석</p>
-      <p style="font-size:13px; color:var(--gray-500); margin-bottom:24px; line-height:1.6;">
+      <p style="font-size:13px; color:#111; margin-bottom:24px; line-height:1.6;">
         노션 회의록을 기반으로<br>긍정·부정 양면의 연역적/귀납적 추론을 수행합니다
       </p>
       <button class="btn btn-lg" onclick="runInsightsAnalysis()" style="background:#7c3aed; color:#fff; padding:14px 32px; font-size:16px; border-radius:12px;">
@@ -2502,7 +2502,7 @@ async function runInsightsAnalysis() {
 
   document.getElementById('adminTabContent').innerHTML = `
     <div style="margin-bottom:20px;">
-      <p style="font-size:12px; color:var(--gray-500);">분석 기간: ${escHtml(dateFrom)} ~ ${escHtml(dateTo)} | 분석 대상: ${data.notes_analyzed}건 / 전체 ${data.total_notes}건</p>
+      <p style="font-size:12px; color:#111;">분석 기간: ${escHtml(dateFrom)} ~ ${escHtml(dateTo)} | 분석 대상: ${data.notes_analyzed}건 / 전체 ${data.total_notes}건</p>
     </div>
 
     <div style="display:flex; gap:4px; margin-bottom:16px; flex-wrap:wrap;">
@@ -2528,15 +2528,15 @@ async function runInsightsAnalysis() {
         <div style="display:flex; flex-direction:column; gap:12px; font-size:14px; line-height:1.7;">
           <div style="padding:10px; background:#fef2f2; border-radius:8px;">
             <span style="font-weight:600; color:#dc2626;">&#10006; 최악의 시나리오</span>
-            <p style="margin-top:4px;">${escHtml(r.worst)}</p>
+            <p style="margin-top:4px; color:#111;">${escHtml(r.worst)}</p>
           </div>
           <div style="padding:10px; background:#f0fdf4; border-radius:8px;">
             <span style="font-weight:600; color:#059669;">&#10004; 최선의 시나리오</span>
-            <p style="margin-top:4px;">${escHtml(r.best)}</p>
+            <p style="margin-top:4px; color:#111;">${escHtml(r.best)}</p>
           </div>
           <div style="padding:12px; background:linear-gradient(135deg, #f5f3ff, #ede9fe); border-radius:10px; border:2px solid #7c3aed;">
             <span style="font-weight:700; color:#7c3aed; font-size:15px;">&#11088; 차선의 선택 (권장)</span>
-            <p style="margin-top:6px; font-weight:500;">${escHtml(r.second_best)}</p>
+            <p style="margin-top:6px; font-weight:500; color:#111;">${escHtml(r.second_best)}</p>
           </div>
         </div>
       </div>
@@ -2549,7 +2549,7 @@ async function runInsightsAnalysis() {
               <span style="font-weight:600; font-size:14px;">${escHtml(a.task)}</span>
               <span style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; color:#fff; background:${a.priority === '최우선' ? '#dc2626' : a.priority === '우선' ? '#f59e0b' : '#9ca3af'};">${escHtml(a.priority)}</span>
             </div>
-            <p style="font-size:13px; color:var(--gray-600);">${escHtml(a.reason)}</p>
+            <p style="font-size:13px; color:#111;">${escHtml(a.reason)}</p>
           </div>
         `).join('')}
       </div>
@@ -2560,7 +2560,7 @@ async function runInsightsAnalysis() {
         <p style="font-weight:700; font-size:15px; margin-bottom:12px;">&#128466; 분석 대상 회의록 (${data.notes_analyzed}건)</p>
         ${data.notes_summary.map(ns => `
           <div style="padding:6px 0; border-bottom:1px solid var(--gray-100); font-size:13px;">
-            <span style="color:var(--gray-500); margin-right:8px;">${escHtml((ns.date||'').substring(0,10))}</span>
+            <span style="color:#333; margin-right:8px;">${escHtml((ns.date||'').substring(0,10))}</span>
             <span style="font-weight:500;">${escHtml(ns.title)}</span>
           </div>
         `).join('')}
@@ -2581,7 +2581,7 @@ async function runInsightsAnalysis() {
         ${data.action_items.slice(0, 20).map(a => `
           <div style="padding:6px 0; border-bottom:1px solid var(--gray-100); font-size:13px;">
             <div style="font-weight:500;">&#8226; ${escHtml(a.text)}</div>
-            <div style="font-size:11px; color:var(--gray-400);">${escHtml((a.date||'').substring(0,10))} — ${escHtml(a.from)}</div>
+            <div style="font-size:11px; color:#333;">${escHtml((a.date||'').substring(0,10))} — ${escHtml(a.from)}</div>
           </div>
         `).join('')}
       </div>
@@ -2610,18 +2610,18 @@ function renderDeductiveCard(title, d, color, arrow) {
       <p style="font-weight:700; font-size:15px; color:${color}; margin-bottom:16px;">${arrow} ${escHtml(title)}</p>
       <div style="font-size:14px; line-height:1.8;">
         <div style="padding:10px; background:#f9fafb; border-radius:8px; margin-bottom:8px;">
-          <span style="font-size:11px; font-weight:600; color:var(--gray-500);">대전제</span>
-          <p style="margin-top:2px;">${escHtml(d.major)}</p>
+          <span style="font-size:11px; font-weight:600; color:#333;">대전제</span>
+          <p style="margin-top:2px; color:#111;">${escHtml(d.major)}</p>
         </div>
         <div style="text-align:center; font-size:18px; color:${color}; margin:4px 0;">${arrow}</div>
         <div style="padding:10px; background:#f9fafb; border-radius:8px; margin-bottom:8px;">
-          <span style="font-size:11px; font-weight:600; color:var(--gray-500);">소전제</span>
-          <p style="margin-top:2px;">${escHtml(d.minor)}</p>
+          <span style="font-size:11px; font-weight:600; color:#333;">소전제</span>
+          <p style="margin-top:2px; color:#111;">${escHtml(d.minor)}</p>
         </div>
         <div style="text-align:center; font-size:18px; color:${color}; margin:4px 0;">&#8595;</div>
         <div style="padding:12px; background:${color}11; border:2px solid ${color}44; border-radius:10px;">
           <span style="font-size:11px; font-weight:700; color:${color};">결론</span>
-          <p style="margin-top:4px; font-weight:600;">${escHtml(d.conclusion)}</p>
+          <p style="margin-top:4px; font-weight:600; color:#111;">${escHtml(d.conclusion)}</p>
         </div>
       </div>
     </div>`;
@@ -2632,17 +2632,17 @@ function renderInductiveCard(title, ind, color, arrow) {
     <div class="card" style="border-left:4px solid ${color}; margin-bottom:12px;">
       <p style="font-weight:700; font-size:15px; color:${color}; margin-bottom:16px;">${arrow} ${escHtml(title)}</p>
       <div style="font-size:14px; line-height:1.7;">
-        <p style="font-size:12px; font-weight:600; color:var(--gray-500); margin-bottom:8px;">관찰 패턴</p>
+        <p style="font-size:12px; font-weight:600; color:#333; margin-bottom:8px;">관찰 패턴</p>
         ${ind.observations.map((o, i) => `
           <div style="padding:8px 10px; margin-bottom:6px; background:#f9fafb; border-radius:8px; border-left:3px solid ${color}44;">
             <span style="font-size:12px; color:${color}; font-weight:600;">관찰 ${i + 1}</span>
-            <p style="margin-top:2px; font-size:13px;">${escHtml(o)}</p>
+            <p style="margin-top:2px; font-size:13px; color:#111;">${escHtml(o)}</p>
           </div>
         `).join('')}
         <div style="text-align:center; font-size:24px; color:${color}; margin:12px 0;">&#8595; &#128302;</div>
         <div style="padding:14px; background:${color}11; border:2px solid ${color}44; border-radius:10px;">
           <span style="font-size:12px; font-weight:700; color:${color};">&#128302; 귀납적 예언</span>
-          <p style="margin-top:6px; font-weight:500; line-height:1.8;">${escHtml(ind.prediction)}</p>
+          <p style="margin-top:6px; font-weight:500; line-height:1.8; color:#111;">${escHtml(ind.prediction)}</p>
         </div>
       </div>
     </div>`;
