@@ -1,3 +1,10 @@
+window.onerror = function(msg, url, line) {
+  alert('JS오류: ' + msg + ' (줄:' + line + ')');
+};
+window.addEventListener('unhandledrejection', function(e) {
+  alert('비동기오류: ' + (e.reason && e.reason.message || e.reason));
+});
+
 let currentUser = null;
 let currentPage = 'home';
 let editingReportId = null;
@@ -2037,6 +2044,7 @@ function backToLogin() {
 }
 
 async function submitRegister() {
+  alert('가입신청 버튼 클릭됨! 처리를 시작합니다.');
   toast('가입 처리 중...');
   try {
     const name = document.getElementById('regName').value.trim();
@@ -2134,6 +2142,7 @@ async function renderAdminPage() {
     <div class="tabs" style="margin-bottom:16px;">
       <button class="tab ${adminTab === 'staff' ? 'active' : ''}" onclick="switchAdminTab('staff')">사전승인 인원</button>
       <button class="tab ${adminTab === 'users' ? 'active' : ''}" onclick="switchAdminTab('users')">회원관리</button>
+      <button class="tab ${adminTab === 'register' ? 'active' : ''}" onclick="switchAdminTab('register')">직접가입</button>
     </div>
     <div id="adminTabContent"></div>
     <div style="margin-top:24px; display:flex; flex-direction:column; gap:8px;">
@@ -2142,7 +2151,8 @@ async function renderAdminPage() {
     </div>
   `;
   if (adminTab === 'staff') renderAdminStaffTab();
-  else renderAdminUsersTab();
+  else if (adminTab === 'users') renderAdminUsersTab();
+  else if (adminTab === 'register') renderAdminRegisterTab();
 }
 
 function switchAdminTab(tab) {
@@ -2276,6 +2286,62 @@ async function removeStaff(id) {
   await fetch(`/api/admin/staff/${id}`, { method: 'DELETE' });
   toast('삭제되었습니다');
   renderAdminPage();
+}
+
+function renderAdminRegisterTab() {
+  document.getElementById('adminTabContent').innerHTML = `
+    <p class="section-title">관리자 직접 회원등록</p>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">
+      가입신청이 안 될 경우, 여기서 직접 회원을 등록할 수 있습니다.
+    </p>
+    <div class="card" style="padding:16px;">
+      <div class="form-group">
+        <label>이름</label>
+        <input type="text" id="arName" class="form-control" placeholder="실명">
+      </div>
+      <div class="form-group">
+        <label>연락처</label>
+        <input type="tel" id="arPhone" class="form-control" placeholder="010-0000-0000 (전체번호)">
+      </div>
+      <div class="form-group">
+        <label>비밀번호</label>
+        <input type="text" id="arPassword" class="form-control" placeholder="초기 비밀번호 설정">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <div class="form-group" style="flex:1;">
+          <label>부서</label>
+          <input type="text" id="arDept" class="form-control" value="석유사업본부">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>직급</label>
+          <input type="text" id="arPosition" class="form-control" placeholder="부장, 과장 등">
+        </div>
+      </div>
+      <button class="btn btn-success btn-block btn-lg" onclick="adminRegisterUser()">회원 등록</button>
+    </div>
+  `;
+}
+
+async function adminRegisterUser() {
+  const name = document.getElementById('arName').value.trim();
+  const phone = document.getElementById('arPhone').value.trim();
+  const password = document.getElementById('arPassword').value.trim();
+  const department = document.getElementById('arDept').value.trim();
+  const position = document.getElementById('arPosition').value.trim();
+  if (!name || !phone || !password) { toast('이름, 연락처, 비밀번호를 입력해주세요'); return; }
+  try {
+    const res = await fetch('/api/admin/register-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, password, department, position })
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || '등록 실패'); return; }
+    toast(name + '님이 등록되었습니다! 이제 로그인 가능합니다.');
+    switchAdminTab('users');
+  } catch (e) {
+    toast('등록 오류: ' + e.message);
+  }
 }
 
 async function resetUserPassword(id, name) {

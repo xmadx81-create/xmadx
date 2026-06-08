@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#1a73e8">
   <title>석유사업본부 업무시스템</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260608b">
+  <link rel="stylesheet" href="/css/style.css?v=20260608c">
   <link rel="manifest" href="/manifest.json">
 </head>
 <body>
@@ -98,7 +98,7 @@
       <label>비밀번호 확인</label>
       <input type="password" id="regPasswordConfirm" class="form-control" placeholder="비밀번호 재입력">
     </div>
-    <button class="btn btn-success btn-block btn-lg" onclick="submitRegister()">가입신청</button>
+    <button type="button" class="btn btn-success btn-block btn-lg" onclick="try{submitRegister()}catch(e){alert('오류:'+e.message)}">가입신청</button>
     <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="backToLogin()">뒤로</button>
   </div>
 </div>
@@ -363,6 +363,6 @@
 <!-- 토스트 -->
 <div class="toast" id="toast"></div>
 
-<script src="/js/app.js?v=20260608b"></script>
+<script src="/js/app.js?v=20260608c"></script>
 </body>
 </html>

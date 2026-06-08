@@ -181,6 +181,23 @@ app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/admin/register-user', adminMiddleware, async (req, res) => {
+  try {
+    const { name, phone, password, department, position } = req.body;
+    if (!name || !phone || !password) return res.status(400).json({ error: '이름, 연락처, 비밀번호를 입력해주세요' });
+    const existing = await query('SELECT id FROM users WHERE phone = $1', [phone]);
+    if (existing.rows.length > 0) return res.status(409).json({ error: '이미 가입된 연락처입니다' });
+    const id = uuidv4();
+    await query('INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [id, name, department || '석유사업본부', position || '', phone, '', password]);
+    await query('UPDATE approved_staff SET registered = 1 WHERE name = $1', [name]);
+    res.json({ ok: true, id, name });
+  } catch (err) {
+    console.error('Admin register error:', err.message);
+    res.status(500).json({ error: '등록 실패: ' + err.message });
+  }
+});
+
 app.get('/api/me', authMiddleware, async (req, res) => {
   const result = await query('SELECT id, name, department, position, phone, email FROM users WHERE id = $1', [req.session.userId]);
   const user = result.rows[0];
