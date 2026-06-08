@@ -50,7 +50,13 @@ app.post('/api/reset-password/verify', (req, res) => {
   const { name, email } = req.body;
   if (!name || !email) return res.status(400).json({ error: '이름과 이메일을 입력해주세요' });
   const user = db.prepare('SELECT id, name, email FROM users WHERE name = ? AND email = ?').get(name, email);
-  if (!user) return res.status(404).json({ error: '일치하는 계정을 찾을 수 없습니다. 이름과 이메일을 확인해주세요.' });
+  if (!user) {
+    const byName = db.prepare('SELECT id FROM users WHERE name = ?').get(name);
+    if (!byName) {
+      return res.status(404).json({ error: '가입된 계정이 없습니다. 먼저 회원가입을 해주세요.' });
+    }
+    return res.status(404).json({ error: '이메일이 일치하지 않습니다. 가입 시 등록한 이메일을 확인해주세요.' });
+  }
   res.json({ userId: user.id, name: user.name });
 });
 
