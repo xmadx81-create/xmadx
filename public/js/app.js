@@ -2097,6 +2097,19 @@ function backToApp() {
 let adminTab = 'staff';
 
 async function renderAdminPage() {
+  const check = await fetch('/api/admin/staff', { credentials: 'same-origin' });
+  if (!check.ok) {
+    document.getElementById('adminContent').innerHTML = `
+      <div class="card" style="text-align:center; padding:30px;">
+        <p style="font-size:16px; font-weight:600; margin-bottom:12px;">세션이 만료되었습니다</p>
+        <p style="font-size:14px; color:var(--gray-500); margin-bottom:16px;">관리자 비밀번호를 다시 입력해주세요</p>
+        <button class="btn btn-primary btn-block" onclick="adminLogout()">다시 로그인</button>
+      </div>`;
+    return;
+  }
+  const staffList = await check.json();
+  window._cachedStaffList = staffList;
+
   document.getElementById('adminContent').innerHTML = `
     <div class="tabs" style="margin-bottom:16px;">
       <button class="tab ${adminTab === 'staff' ? 'active' : ''}" onclick="switchAdminTab('staff')">사전승인 인원</button>
@@ -2118,8 +2131,13 @@ function switchAdminTab(tab) {
 }
 
 async function renderAdminStaffTab() {
-  const res = await fetch('/api/admin/staff');
-  const staffList = await res.json();
+  let staffList = window._cachedStaffList;
+  if (!staffList) {
+    const res = await fetch('/api/admin/staff', { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('adminTabContent').innerHTML = '<p style="color:red;">데이터를 불러올 수 없습니다. 다시 로그인해주세요.</p>'; return; }
+    staffList = await res.json();
+  }
+  window._cachedStaffList = null;
 
   document.getElementById('adminTabContent').innerHTML = `
     <p class="section-title">사전승인 인원 관리</p>
@@ -2171,7 +2189,8 @@ async function renderAdminStaffTab() {
 }
 
 async function renderAdminUsersTab() {
-  const res = await fetch('/api/admin/users');
+  const res = await fetch('/api/admin/users', { credentials: 'same-origin' });
+  if (!res.ok) { document.getElementById('adminTabContent').innerHTML = '<p style="color:red;">데이터를 불러올 수 없습니다. 다시 로그인해주세요.</p>'; return; }
   const users = await res.json();
 
   document.getElementById('adminTabContent').innerHTML = `
