@@ -1554,7 +1554,7 @@ async function showWorkTable() {
 }
 
 // ─── 개인업무 매뉴얼 (자동+수동) ───
-let manualTab = 'org';
+let manualTab = 'procedures';
 
 async function showManual() {
   let html = `
@@ -1562,13 +1562,15 @@ async function showManual() {
     <p class="section-title" style="margin-bottom:8px;">&#128214; 업무매뉴얼</p>
     <div class="card" style="background:#e8f0fe; border-left:4px solid var(--primary); margin-bottom:16px; padding:12px;">
       <p style="font-size:14px; line-height:1.6; color:var(--gray-700);">
-        업무일지를 작성하면 <strong>육하원칙(누가/어디서/무엇을/어떻게/왜)</strong> 데이터가 자동으로 분석되어 업무매뉴얼이 만들어집니다.
-        일지가 쌓일수록 매뉴얼이 풍부해집니다.
+        업무일지의 <strong>육하원칙(누가/어디서/무엇을/어떻게/왜)</strong> 데이터가 자동 분석되어
+        <strong>업무 절차서</strong>와 <strong>매뉴얼</strong>이 만들어집니다.
+        반복 업무는 단계별 가이드로 자동 정리됩니다.
       </p>
     </div>
     <div class="tabs" style="margin-bottom:12px;">
-      <button class="tab ${manualTab === 'org' ? 'active' : ''}" onclick="manualTab='org'; showManual()">전체 업무매뉴얼</button>
-      <button class="tab ${manualTab === 'my' ? 'active' : ''}" onclick="manualTab='my'; showManual()">내 업무매뉴얼</button>
+      <button class="tab ${manualTab === 'procedures' ? 'active' : ''}" onclick="manualTab='procedures'; showManual()">업무 절차서</button>
+      <button class="tab ${manualTab === 'org' ? 'active' : ''}" onclick="manualTab='org'; showManual()">전체 매뉴얼</button>
+      <button class="tab ${manualTab === 'my' ? 'active' : ''}" onclick="manualTab='my'; showManual()">내 매뉴얼</button>
       <button class="tab ${manualTab === 'custom' ? 'active' : ''}" onclick="manualTab='custom'; showManual()">직접 작성</button>
     </div>
     <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
@@ -1579,9 +1581,130 @@ async function showManual() {
   `;
   document.getElementById('mainContent').innerHTML = html;
 
-  if (manualTab === 'org') renderOrgManual();
+  if (manualTab === 'procedures') renderProcedures();
+  else if (manualTab === 'org') renderOrgManual();
   else if (manualTab === 'my') renderMyManual();
   else renderCustomManual();
+}
+
+async function renderProcedures() {
+  const data = await api('/api/manual/procedures');
+  if (!data) return;
+  const el = document.getElementById('manualContent');
+
+  if (data.procedures.length === 0) {
+    el.innerHTML = `<div class="card" style="text-align:center; padding:30px;">
+      <div style="font-size:48px; margin-bottom:12px;">&#128220;</div>
+      <p style="font-size:16px; font-weight:600; margin-bottom:8px;">아직 절차서가 없습니다</p>
+      <p style="font-size:14px; color:var(--gray-500); line-height:1.6;">
+        같은 업무가 <strong>2회 이상</strong> 기록되면<br>
+        자동으로 절차서가 생성됩니다.<br><br>
+        업무일지의 <strong>"무엇을", "어떻게", "어디서"</strong> 항목이<br>
+        절차서의 단계별 가이드가 됩니다.
+      </p>
+    </div>`;
+    return;
+  }
+
+  const s = data.stats;
+  let html = `
+    <div class="card" style="background:#e8f5e9; border-left:4px solid #43a047; margin-bottom:16px; padding:12px;">
+      <p style="font-size:14px; line-height:1.6; color:var(--gray-700);">
+        업무일지에서 <strong>${s.total_procedures}개 업무 절차서</strong>가 자동 생성되었습니다.<br>
+        ${s.regular > 0 ? `<span style="color:#1565c0;">정기업무 ${s.regular}개</span> · ` : ''}
+        ${s.repeated > 0 ? `<span style="color:#e65100;">반복업무 ${s.repeated}개</span> · ` : ''}
+        일반 ${s.normal}개
+      </p>
+    </div>
+    <div style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+      <button class="tab active" onclick="filterProcedures(this,'all')">전체 (${s.total_procedures})</button>
+      ${s.regular > 0 ? `<button class="tab" onclick="filterProcedures(this,'정기')">정기 (${s.regular})</button>` : ''}
+      ${s.repeated > 0 ? `<button class="tab" onclick="filterProcedures(this,'반복')">반복 (${s.repeated})</button>` : ''}
+    </div>
+    <div id="procedureList"></div>
+  `;
+  el.innerHTML = html;
+  window._procedures = data.procedures;
+  renderProcedureList(data.procedures);
+}
+
+function filterProcedures(btn, level) {
+  btn.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const all = window._procedures || [];
+  const filtered = level === 'all' ? all : all.filter(p => p.level === level);
+  renderProcedureList(filtered);
+}
+
+function renderProcedureList(procedures) {
+  const el = document.getElementById('procedureList');
+  if (!el) return;
+
+  const levelColors = { '정기': '#1565c0', '반복': '#e65100', '일반': '#666' };
+  const levelBg = { '정기': '#e3f2fd', '반복': '#fff3e0', '일반': '#f5f5f5' };
+  const catIcons = { '내근': '&#128187;', '외근': '&#128694;', '출장': '&#9992;' };
+
+  el.innerHTML = procedures.map((p, idx) => `
+    <div class="card" style="margin-bottom:12px; padding:0; overflow:hidden;">
+      <div style="padding:14px 14px 10px; cursor:pointer;" onclick="toggleProcedure(${idx})">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div style="flex:1;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span style="font-size:11px; font-weight:700; color:${levelColors[p.level]}; background:${levelBg[p.level]}; padding:2px 8px; border-radius:4px;">${p.level}</span>
+              <span class="badge badge-${p.category}" style="font-size:11px;">${catIcons[p.category] || ''} ${p.category}</span>
+            </div>
+            <div style="font-size:16px; font-weight:700;">${escHtml(p.task)}</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:4px;">
+              ${p.frequency}회 수행 · 담당: ${p.people.join(', ')}
+            </div>
+          </div>
+          <span id="procArrow${idx}" style="font-size:18px; color:var(--gray-400); transition:transform 0.2s;">&#9660;</span>
+        </div>
+      </div>
+      <div id="procDetail${idx}" style="display:none; padding:0 14px 14px; border-top:1px solid var(--gray-100);">
+        ${p.summary.purpose ? `
+          <div style="padding:10px; background:var(--gray-50); border-radius:8px; margin-top:10px; margin-bottom:10px;">
+            <div style="font-size:12px; font-weight:600; color:var(--primary); margin-bottom:4px;">&#127919; 업무 목적</div>
+            <div style="font-size:14px;">${escHtml(p.summary.purpose)}</div>
+          </div>` : ''}
+
+        ${p.steps.length > 0 ? `
+          <div style="margin-bottom:12px;">
+            <div style="font-size:13px; font-weight:700; color:var(--gray-700); margin-bottom:8px;">&#128221; 수행 절차</div>
+            ${p.steps.map((s, i) => `
+              <div style="display:flex; gap:10px; margin-bottom:8px;">
+                <div style="min-width:28px; height:28px; background:var(--primary); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex-shrink:0;">${i + 1}</div>
+                <div style="flex:1; padding-top:3px;">
+                  <div style="font-size:13px; font-weight:600; color:var(--gray-700);">${escHtml(s.label)}</div>
+                  <div style="font-size:13px; color:var(--gray-600); margin-top:2px;">${escHtml(s.detail)}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>` : ''}
+
+        ${p.tips.length > 0 ? `
+          <div style="padding:10px; background:#fffde7; border-radius:8px; border-left:3px solid #fbc02d; margin-bottom:10px;">
+            <div style="font-size:12px; font-weight:600; color:#f9a825; margin-bottom:4px;">&#128161; 참고사항</div>
+            ${p.tips.map(t => `<div style="font-size:13px; color:var(--gray-700); margin-bottom:2px;">· ${escHtml(t)}</div>`).join('')}
+          </div>` : ''}
+
+        <div style="display:flex; gap:12px; font-size:12px; color:var(--gray-400); padding-top:8px; border-top:1px solid var(--gray-100);">
+          <span>최초: ${p.first_date ? p.first_date.split('T')[0] : '-'}</span>
+          <span>최근: ${p.last_date ? p.last_date.split('T')[0] : '-'}</span>
+          ${p.summary.main_location ? `<span>장소: ${escHtml(p.summary.main_location)}</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleProcedure(idx) {
+  const detail = document.getElementById('procDetail' + idx);
+  const arrow = document.getElementById('procArrow' + idx);
+  if (!detail) return;
+  const open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(180deg)';
 }
 
 async function renderOrgManual() {

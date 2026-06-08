@@ -522,6 +522,87 @@ app.get('/api/manual/org', authMiddleware, async (req, res) => {
   res.json({ generated_at: new Date().toISOString(), total_reports: totalReports, total_people: totalPeople, categories: byCategory });
 });
 
+// 자동 절차서 생성 (반복 업무 기반)
+app.get('/api/manual/procedures', authMiddleware, async (req, res) => {
+  const tasksResult = await query(`
+    SELECT r.what_task, r.work_category, r.purpose, r.how_method, r.why_reason,
+      r.where_place, r.who, r.when_time, r.content, r.report_date,
+      u.name as author_name, u.position as author_position
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE r.what_task IS NOT NULL AND r.what_task != ''
+    ORDER BY r.what_task, r.report_date DESC
+  `);
+
+  const taskGroups = {};
+  tasksResult.rows.forEach(r => {
+    const key = r.what_task;
+    if (!taskGroups[key]) taskGroups[key] = [];
+    taskGroups[key].push(r);
+  });
+
+  const procedures = [];
+  Object.entries(taskGroups).forEach(([taskName, records]) => {
+    if (records.length < 2) return;
+
+    const methods = [...new Set(records.map(r => r.how_method).filter(Boolean))];
+    const purposes = [...new Set(records.map(r => r.purpose).filter(Boolean))];
+    const reasons = [...new Set(records.map(r => r.why_reason).filter(Boolean))];
+    const locations = [...new Set(records.map(r => r.where_place).filter(Boolean))];
+    const people = [...new Set(records.map(r => r.author_name))];
+    const whoTargets = [...new Set(records.map(r => r.who).filter(Boolean))];
+    const timeSlots = [...new Set(records.map(r => r.when_time).filter(Boolean))];
+    const categories = [...new Set(records.map(r => r.work_category).filter(Boolean))];
+    const contents = records.map(r => r.content).filter(Boolean);
+    const dates = records.map(r => r.report_date).filter(Boolean);
+
+    const steps = [];
+    if (purposes.length > 0) steps.push({ label: '목적 확인', detail: purposes.join(' / ') });
+    if (whoTargets.length > 0) steps.push({ label: '대상자/관련자 확인', detail: whoTargets.join(', ') });
+    if (locations.length > 0) steps.push({ label: '장소 이동/준비', detail: locations.join(', ') });
+    methods.forEach((m, i) => steps.push({ label: `수행 ${methods.length > 1 ? '방법 ' + (i + 1) : ''}`, detail: m }));
+    if (contents.length > 0) {
+      const uniqueContents = [...new Set(contents)].slice(0, 3);
+      uniqueContents.forEach(c => {
+        if (c.length > 10) steps.push({ label: '세부 내용', detail: c.length > 100 ? c.substring(0, 100) + '...' : c });
+      });
+    }
+
+    const tips = [];
+    if (reasons.length > 0) tips.push('사유: ' + reasons.join(' / '));
+    if (timeSlots.length > 0) tips.push('시간대: ' + timeSlots.join(', '));
+    if (records.length >= 5) tips.push(`이 업무는 ${records.length}회 반복되어 정기 업무로 분류됩니다.`);
+
+    procedures.push({
+      task: taskName,
+      category: categories[0] || '기타',
+      frequency: records.length,
+      level: records.length >= 5 ? '정기' : records.length >= 3 ? '반복' : '일반',
+      people,
+      steps,
+      tips,
+      last_date: dates[0] || null,
+      first_date: dates[dates.length - 1] || null,
+      summary: {
+        purpose: purposes[0] || '',
+        main_method: methods[0] || '',
+        main_location: locations[0] || '',
+        main_target: whoTargets[0] || ''
+      }
+    });
+  });
+
+  procedures.sort((a, b) => b.frequency - a.frequency);
+
+  const stats = {
+    total_procedures: procedures.length,
+    regular: procedures.filter(p => p.level === '정기').length,
+    repeated: procedures.filter(p => p.level === '반복').length,
+    normal: procedures.filter(p => p.level === '일반').length
+  };
+
+  res.json({ procedures, stats });
+});
+
 // 개인 업무매뉴얼 (내 업무일지 기반)
 app.get('/api/manual', authMiddleware, async (req, res) => {
   const userId = req.query.user_id || req.session.userId;
