@@ -22,11 +22,42 @@ function authMiddleware(req, res, next) {
 
 // ─── 인증 ───
 app.post('/api/login', (req, res) => {
-  const { email, password } = req.body;
-  const user = db.prepare('SELECT * FROM users WHERE email = ? AND password_hash = ?').get(email, password);
-  if (!user) return res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다' });
-  req.session.userId = user.id;
-  res.json({ id: user.id, name: user.name, department: user.department, position: user.position });
+  const { phone, password } = req.body;
+  if (!phone || !password) return res.status(400).json({ error: '연락처와 비밀번호를 입력해주세요' });
+  const phoneDigits = phone.replace(/[^0-9]/g, '');
+  const user = db.prepare('SELECT * FROM users WHERE password_hash = ?').get(password);
+  if (user) {
+    const userPhone = (user.phone || '').replace(/[^0-9]/g, '');
+    if (userPhone === phoneDigits || userPhone.endsWith(phoneDigits) || phoneDigits.endsWith(userPhone)) {
+      req.session.userId = user.id;
+      return res.json({ id: user.id, name: user.name, department: user.department, position: user.position });
+    }
+  }
+  const users = db.prepare('SELECT * FROM users WHERE password_hash = ?').all(password);
+  for (const u of users) {
+    const uPhone = (u.phone || '').replace(/[^0-9]/g, '');
+    if (uPhone === phoneDigits || uPhone.endsWith(phoneDigits) || phoneDigits.endsWith(uPhone)) {
+      req.session.userId = u.id;
+      return res.json({ id: u.id, name: u.name, department: u.department, position: u.position });
+    }
+  }
+  return res.status(401).json({ error: '연락처 또는 비밀번호가 올바르지 않습니다' });
+});
+
+// ─── 비밀번호 재설정 ───
+app.post('/api/reset-password/verify', (req, res) => {
+  const { name, email } = req.body;
+  if (!name || !email) return res.status(400).json({ error: '이름과 이메일을 입력해주세요' });
+  const user = db.prepare('SELECT id, name, email FROM users WHERE name = ? AND email = ?').get(name, email);
+  if (!user) return res.status(404).json({ error: '일치하는 계정을 찾을 수 없습니다. 이름과 이메일을 확인해주세요.' });
+  res.json({ userId: user.id, name: user.name });
+});
+
+app.post('/api/reset-password', (req, res) => {
+  const { userId, password } = req.body;
+  if (!userId || !password) return res.status(400).json({ error: '비밀번호를 입력해주세요' });
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password, userId);
+  res.json({ ok: true });
 });
 
 app.post('/api/logout', (req, res) => {

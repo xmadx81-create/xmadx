@@ -40,16 +40,18 @@ async function api(url, options = {}) {
 
 // ─── 인증 ───
 async function login() {
-  const email = document.getElementById('loginEmail').value;
+  const phoneRest = document.getElementById('loginPhone').value.trim().replace(/[^0-9]/g, '');
+  const phone = '010' + phoneRest;
   const password = document.getElementById('loginPassword').value;
-  const user = await api('/api/login', { method: 'POST', body: { email, password } });
+  if (!phoneRest || !password) { toast('연락처와 비밀번호를 입력해주세요'); return; }
+  const user = await api('/api/login', { method: 'POST', body: { phone, password } });
   if (user && !user.error) {
     currentUser = user;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
     navigate('home');
   } else {
-    toast('로그인 실패: 이메일/비밀번호를 확인하세요');
+    toast('로그인 실패: 연락처/비밀번호를 확인하세요');
   }
 }
 
@@ -1920,6 +1922,57 @@ document.querySelectorAll('.modal-overlay').forEach(modal => {
   });
 });
 
+// ─── 비밀번호 재설정 ───
+let resetUserId = null;
+
+function showResetPassword() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('resetScreen').style.display = 'flex';
+  document.getElementById('resetStep1').style.display = 'block';
+  document.getElementById('resetStep2').style.display = 'none';
+  document.getElementById('resetName').value = '';
+  document.getElementById('resetEmail').value = '';
+  resetUserId = null;
+}
+
+async function verifyReset() {
+  const name = document.getElementById('resetName').value.trim();
+  const email = document.getElementById('resetEmail').value.trim();
+  if (!name || !email) { toast('이름과 이메일을 입력해주세요'); return; }
+
+  const res = await fetch('/api/reset-password/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email })
+  });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error || '확인 실패'); return; }
+
+  resetUserId = data.userId;
+  document.getElementById('resetStep1').style.display = 'none';
+  document.getElementById('resetStep2').style.display = 'block';
+  toast(`${data.name}님 확인되었습니다. 새 비밀번호를 입력하세요.`);
+}
+
+async function submitResetPassword() {
+  const pw = document.getElementById('resetNewPw').value;
+  const pwConfirm = document.getElementById('resetNewPwConfirm').value;
+  if (!pw) { toast('새 비밀번호를 입력해주세요'); return; }
+  if (pw !== pwConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
+
+  const res = await fetch('/api/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: resetUserId, password: pw })
+  });
+  if (res.ok) {
+    toast('비밀번호가 변경되었습니다. 로그인해주세요.');
+    backToLogin();
+  } else {
+    toast('변경 실패');
+  }
+}
+
 // ─── 가입신청 ───
 function showRegisterForm() {
   document.getElementById('loginScreen').style.display = 'none';
@@ -1930,6 +1983,7 @@ function backToLogin() {
   document.getElementById('registerScreen').style.display = 'none';
   document.getElementById('adminLoginScreen').style.display = 'none';
   document.getElementById('adminContainer').style.display = 'none';
+  document.getElementById('resetScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
 }
 
