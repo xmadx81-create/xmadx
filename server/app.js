@@ -21,6 +21,23 @@ function authMiddleware(req, res, next) {
   res.status(401).json({ error: '로그인이 필요합니다' });
 }
 
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbTest = await query('SELECT NOW() as now');
+    const userCount = await query('SELECT COUNT(*) as cnt FROM users');
+    const staffCount = await query('SELECT COUNT(*) as cnt FROM approved_staff');
+    res.json({
+      status: 'OK',
+      db: 'connected',
+      time: dbTest.rows[0].now,
+      users: parseInt(userCount.rows[0].cnt),
+      approved_staff: parseInt(staffCount.rows[0].cnt)
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'ERROR', db: 'disconnected', error: err.message });
+  }
+});
+
 // ─── 인증 ───
 app.post('/api/login', async (req, res) => {
   try {
