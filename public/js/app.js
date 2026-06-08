@@ -53,12 +53,20 @@ async function login() {
   const phone = '010' + phoneRest;
   const password = document.getElementById('loginPassword').value;
   if (!phoneRest || !password) { toast('연락처와 비밀번호를 입력해주세요'); return; }
-  const user = await api('/api/login', { method: 'POST', body: { phone, password } });
-  if (user && user.id) {
-    currentUser = user;
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || '로그인 실패'); return; }
+    currentUser = data;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
     navigate('home');
+  } catch (e) {
+    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
   }
 }
 
