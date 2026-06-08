@@ -1119,7 +1119,13 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
 });
 
 (async () => {
-  await initDB();
+  try {
+    await initDB();
+    console.log('DB 초기화 완료');
+  } catch (err) {
+    console.error('DB 초기화 실패:', err.message);
+    process.exit(1);
+  }
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`석유사업본부 업무시스템 서버 실행: http://localhost:${PORT}`);
   });

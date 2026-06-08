@@ -7,16 +7,34 @@ const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:xmadx503
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 10
 });
 
-// ─── query wrapper ───
+pool.on('error', (err) => {
+  console.error('PostgreSQL pool error:', err.message);
+});
+
 async function query(text, params) {
-  return pool.query(text, params);
+  try {
+    return await pool.query(text, params);
+  } catch (err) {
+    console.error('Query error:', err.message, '\nSQL:', text.substring(0, 200));
+    throw err;
+  }
 }
 
-// ─── initDB: create tables + seed data ───
 async function initDB() {
+  console.log('Connecting to PostgreSQL...', DATABASE_URL.replace(/:[^:@]+@/, ':***@'));
+  try {
+    const test = await pool.query('SELECT NOW()');
+    console.log('PostgreSQL connected:', test.rows[0].now);
+  } catch (err) {
+    console.error('PostgreSQL connection FAILED:', err.message);
+    throw err;
+  }
   // ═══ CREATE TABLES ═══
   await query(`
     -- 사용자
