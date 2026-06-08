@@ -1505,12 +1505,14 @@ function backToLogin() {
 
 async function submitRegister() {
   const name = document.getElementById('regName').value.trim();
-  const phone = document.getElementById('regPhone').value.trim();
+  const phoneRest = document.getElementById('regPhone').value.trim().replace(/[^0-9]/g, '');
+  const phone = '010' + phoneRest;
   const email = document.getElementById('regEmail').value.trim();
   const password = document.getElementById('regPassword').value;
   const passwordConfirm = document.getElementById('regPasswordConfirm').value;
 
-  if (!name || !phone || !password) { toast('이름, 연락처, 비밀번호를 입력해주세요'); return; }
+  if (!name || !phoneRest || !password) { toast('이름, 연락처, 비밀번호를 입력해주세요'); return; }
+  if (phoneRest.length !== 8) { toast('연락처 뒷번호 8자리를 입력해주세요'); return; }
   if (password !== passwordConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
 
   const res = await fetch('/api/register', {
@@ -1559,11 +1561,33 @@ function adminLogout() {
   document.getElementById('loginScreen').style.display = 'flex';
 }
 
+let adminTab = 'staff';
+
 async function renderAdminPage() {
+  document.getElementById('adminContent').innerHTML = `
+    <div class="tabs" style="margin-bottom:16px;">
+      <button class="tab ${adminTab === 'staff' ? 'active' : ''}" onclick="switchAdminTab('staff')">사전승인 인원</button>
+      <button class="tab ${adminTab === 'users' ? 'active' : ''}" onclick="switchAdminTab('users')">회원관리</button>
+    </div>
+    <div id="adminTabContent"></div>
+    <div style="margin-top:24px;">
+      <button class="btn btn-outline btn-block" onclick="adminLogout()">로그아웃</button>
+    </div>
+  `;
+  if (adminTab === 'staff') renderAdminStaffTab();
+  else renderAdminUsersTab();
+}
+
+function switchAdminTab(tab) {
+  adminTab = tab;
+  renderAdminPage();
+}
+
+async function renderAdminStaffTab() {
   const res = await fetch('/api/admin/staff');
   const staffList = await res.json();
 
-  document.getElementById('adminContent').innerHTML = `
+  document.getElementById('adminTabContent').innerHTML = `
     <p class="section-title">사전승인 인원 관리</p>
     <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">
       등록된 인원만 가입신청이 가능합니다. 현재 ${staffList.length}명 등록됨
@@ -1609,10 +1633,44 @@ async function renderAdminPage() {
         </div>
       </div>
     `).join('')}
+  `;
+}
 
-    <div style="margin-top:24px;">
-      <button class="btn btn-outline btn-block" onclick="adminLogout()">로그아웃</button>
-    </div>
+async function renderAdminUsersTab() {
+  const res = await fetch('/api/admin/users');
+  const users = await res.json();
+
+  document.getElementById('adminTabContent').innerHTML = `
+    <p class="section-title">가입 회원 관리</p>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">
+      현재 가입된 회원 ${users.length}명
+    </p>
+    ${users.length === 0 ? '<div class="card"><p style="text-align:center; color:var(--gray-500);">가입된 회원이 없습니다</p></div>' :
+    users.map(u => `
+      <div class="card" style="padding:10px; margin-bottom:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div style="flex:1;">
+            <div style="font-weight:600; font-size:14px;">
+              ${escHtml(u.name)}
+              <span style="font-size:12px; color:var(--gray-500); font-weight:normal;">${escHtml(u.position || '')}</span>
+            </div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">
+              ${escHtml(u.department || '')}
+            </div>
+            <div style="font-size:12px; color:var(--gray-500);">
+              ${escHtml(u.phone || '-')} / ${escHtml(u.email || '-')}
+            </div>
+            <div style="font-size:11px; color:var(--gray-400); margin-top:2px;">
+              가입일: ${u.created_at || '-'}
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <button class="btn btn-sm btn-outline" onclick="resetUserPassword('${u.id}', '${escAttr(u.name)}')">비밀번호 초기화</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}', '${escAttr(u.name)}')">삭제</button>
+          </div>
+        </div>
+      </div>
+    `).join('')}
   `;
 }
 
@@ -1644,6 +1702,19 @@ async function removeStaff(id) {
   if (!confirm('삭제하시겠습니까?')) return;
   await fetch(`/api/admin/staff/${id}`, { method: 'DELETE' });
   toast('삭제되었습니다');
+  renderAdminPage();
+}
+
+async function resetUserPassword(id, name) {
+  if (!confirm(`${name}님의 비밀번호를 "1234"로 초기화하시겠습니까?`)) return;
+  await fetch(`/api/admin/users/${id}/reset-password`, { method: 'PUT' });
+  toast(`${name}님 비밀번호가 1234로 초기화되었습니다`);
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`${name}님을 삭제하시겠습니까? 관련 데이터도 모두 삭제됩니다.`)) return;
+  await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+  toast(`${name}님이 삭제되었습니다`);
   renderAdminPage();
 }
 

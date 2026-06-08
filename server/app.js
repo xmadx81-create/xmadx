@@ -96,6 +96,34 @@ app.delete('/api/admin/staff/:id', adminMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── 회원 관리 ───
+app.get('/api/admin/users', adminMiddleware, (req, res) => {
+  res.json(db.prepare('SELECT id, name, department, position, phone, email, created_at FROM users ORDER BY created_at DESC').all());
+});
+
+app.delete('/api/admin/users/:id', adminMiddleware, (req, res) => {
+  db.prepare('DELETE FROM work_reports WHERE author_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM approval_lines WHERE approver_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM templates WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM frequent_items WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM personal_manual WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.put('/api/admin/users/:id/reset-password', adminMiddleware, (req, res) => {
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run('1234', req.params.id);
+  res.json({ ok: true });
+});
+
+app.put('/api/admin/users/:id', adminMiddleware, (req, res) => {
+  const { name, department, position, phone, email } = req.body;
+  db.prepare('UPDATE users SET name=?, department=?, position=?, phone=?, email=? WHERE id=?').run(
+    name, department, position, phone, email, req.params.id
+  );
+  res.json({ ok: true });
+});
+
 app.get('/api/me', authMiddleware, (req, res) => {
   const user = db.prepare('SELECT id, name, department, position, phone, email FROM users WHERE id = ?').get(req.session.userId);
   res.json(user);
