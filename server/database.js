@@ -220,6 +220,35 @@ db.exec(`
     registered INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- ═══ 기존가맹 거래처 신청서 ═══
+  CREATE TABLE IF NOT EXISTS franchise_apps (
+    id TEXT PRIMARY KEY,
+    seq INTEGER,
+    receipt_date TEXT,
+    join_date TEXT,
+    manager TEXT,
+    branch TEXT,
+    store_name TEXT,
+    owner_name TEXT,
+    biz_number TEXT,
+    phone_land TEXT,
+    owner_phone TEXT,
+    bank_info TEXT,
+    address TEXT,
+    applicant_name TEXT,
+    applicant_org TEXT,
+    applicant_title TEXT,
+    applicant_phone TEXT,
+    oil_company TEXT,
+    app_type TEXT,
+    paint_date TEXT,
+    actual_date TEXT,
+    status TEXT DEFAULT '정상' CHECK(status IN ('정상','예정','휴업','폐업','가맹취소','기타')),
+    memo TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ─── 데모 사용자 생성 ───
@@ -447,6 +476,22 @@ if (taskCount.cnt === 0) {
     });
   });
   taskTx();
+}
+
+// ─── 기존가맹 거래처 신청서 시드 ───
+const faCount = db.prepare('SELECT COUNT(*) as cnt FROM franchise_apps').get();
+if (faCount.cnt === 0) {
+  const faFile = path.join(__dirname, '..', 'data', 'franchise_applications.json');
+  if (fs.existsSync(faFile)) {
+    const faData = JSON.parse(fs.readFileSync(faFile, 'utf-8'));
+    const insertFA = db.prepare(`INSERT INTO franchise_apps (id, seq, receipt_date, join_date, manager, branch, store_name, owner_name, biz_number, phone_land, owner_phone, bank_info, address, applicant_name, applicant_org, applicant_title, applicant_phone, oil_company, app_type, paint_date, actual_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const faTx = db.transaction(() => {
+      faData.forEach(r => {
+        insertFA.run(uuidv4(), parseInt(r['번호']) || 0, r['접수일자'], r['가맹일자'], r['담당자'], r['소속'], r['가맹점상호'], r['대표자'], r['사업자번호'], r['유선전화'], r['대표자연락처'], r['계좌정보'], r['사업장주소'], r['신청자이름'], r['신청자소속'], r['직책'], r['연락처'], r['정유사'], r['구분'], r['도색완료일자'], r['실제작성일자']);
+      });
+    });
+    faTx();
+  }
 }
 
 // ─── 사전승인 인원 시드 ───

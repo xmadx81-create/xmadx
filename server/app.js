@@ -426,6 +426,39 @@ app.get('/api/branches/:id', authMiddleware, (req, res) => {
   res.json(branch);
 });
 
+// ─── 기존가맹 거래처 신청서 ───
+app.get('/api/franchise-apps', authMiddleware, (req, res) => {
+  const { search, status, oil } = req.query;
+  let sql = 'SELECT * FROM franchise_apps WHERE 1=1';
+  const params = [];
+  if (search) { sql += ' AND (store_name LIKE ? OR owner_name LIKE ? OR address LIKE ? OR biz_number LIKE ? OR manager LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
+  if (status) { sql += ' AND status = ?'; params.push(status); }
+  if (oil) { sql += ' AND oil_company LIKE ?'; params.push(`%${oil}%`); }
+  sql += ' ORDER BY seq';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.get('/api/franchise-apps/:id', authMiddleware, (req, res) => {
+  const app = db.prepare('SELECT * FROM franchise_apps WHERE id = ?').get(req.params.id);
+  if (!app) return res.status(404).json({ error: '데이터를 찾을 수 없습니다' });
+  res.json(app);
+});
+
+app.put('/api/franchise-apps/:id', authMiddleware, (req, res) => {
+  const { store_name, owner_name, biz_number, phone_land, owner_phone, address, oil_company, status, memo, paint_date, bank_info } = req.body;
+  db.prepare(`UPDATE franchise_apps SET store_name=?, owner_name=?, biz_number=?, phone_land=?, owner_phone=?, address=?, oil_company=?, status=?, memo=?, paint_date=?, bank_info=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(
+    store_name, owner_name, biz_number, phone_land, owner_phone, address, oil_company, status, memo, paint_date, bank_info, req.params.id
+  );
+  res.json({ ok: true });
+});
+
+app.get('/api/franchise-apps/stats/summary', authMiddleware, (req, res) => {
+  const total = db.prepare('SELECT COUNT(*) as cnt FROM franchise_apps').get().cnt;
+  const byStatus = db.prepare('SELECT status, COUNT(*) as cnt FROM franchise_apps GROUP BY status').all();
+  const byOil = db.prepare('SELECT oil_company, COUNT(*) as cnt FROM franchise_apps WHERE oil_company != "" GROUP BY oil_company ORDER BY cnt DESC').all();
+  res.json({ total, byStatus, byOil });
+});
+
 // ─── 주요업무표 (task master) ───
 app.get('/api/tasks', authMiddleware, (req, res) => {
   const { category, group, search } = req.query;

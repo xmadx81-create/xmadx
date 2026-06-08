@@ -85,7 +85,7 @@ function navigate(page) {
   const titles = { home: '석유사업본부', reports: '업무일지', weekly: '주간계획', franchise: '가맹관리', more: '더보기' };
   document.getElementById('pageTitle').textContent = titles[page] || '석유사업본부';
 
-  const renderers = { home: renderHome, reports: renderReports, weekly: renderWeekly, franchise: renderFranchise, more: renderMore };
+  const renderers = { home: renderHome, reports: renderReports, weekly: renderWeekly, franchise: renderFranchiseMain, more: renderMore };
   if (renderers[page]) renderers[page]();
 }
 
@@ -582,7 +582,231 @@ async function viewWeeklyPlan(id) {
   `;
 }
 
-// ─── 가맹관리 ───
+// ─── 가맹관리 메인 ───
+let franchiseTab = 'apps';
+
+function renderFranchiseMain() {
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = franchiseTab === 'custom' ? 'flex' : 'none';
+  fab.onclick = () => openFranchiseModal();
+
+  if (franchiseTab === 'apps') renderFranchiseApps();
+  else renderFranchise();
+}
+
+function switchFranchiseTab(tab) {
+  franchiseTab = tab;
+  renderFranchiseMain();
+}
+
+// ─── 기존가맹 거래처 신청서 ───
+let faStatusFilter = '';
+
+async function renderFranchiseApps() {
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = 'none';
+
+  let url = '/api/franchise-apps?';
+  if (faStatusFilter) url += `status=${encodeURIComponent(faStatusFilter)}&`;
+
+  const apps = await api(url) || [];
+  window._allFranchiseApps = apps;
+  window._filteredFranchiseApps = apps;
+  renderFranchiseAppsPage(1);
+}
+
+function renderFranchiseAppsPage(pg) {
+  const apps = window._filteredFranchiseApps || [];
+  const { data, page, totalPages, total } = paginate(apps, pg);
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="tabs" style="margin-bottom:8px;">
+      <button class="tab ${franchiseTab === 'apps' ? 'active' : ''}" onclick="switchFranchiseTab('apps')">거래처 신청서</button>
+      <button class="tab ${franchiseTab === 'custom' ? 'active' : ''}" onclick="switchFranchiseTab('custom')">가맹점 관리</button>
+    </div>
+
+    <div class="form-group" style="margin-bottom:8px;">
+      <input type="text" id="faSearch" class="form-control" placeholder="상호, 대표자, 주소, 담당자 검색..." oninput="searchFranchiseApps()">
+    </div>
+
+    <div class="tabs" style="margin-bottom:8px;">
+      <button class="tab ${faStatusFilter === '' ? 'active' : ''}" onclick="filterFA('')">전체</button>
+      <button class="tab ${faStatusFilter === '정상' ? 'active' : ''}" onclick="filterFA('정상')">정상</button>
+      <button class="tab ${faStatusFilter === '휴업' ? 'active' : ''}" onclick="filterFA('휴업')">휴업</button>
+      <button class="tab ${faStatusFilter === '폐업' ? 'active' : ''}" onclick="filterFA('폐업')">폐업</button>
+      <button class="tab ${faStatusFilter === '가맹취소' ? 'active' : ''}" onclick="filterFA('가맹취소')">취소</button>
+    </div>
+
+    <p style="font-size:13px; color:var(--gray-500); margin-bottom:8px;">총 ${total}건</p>
+    <div id="faList">${renderFAList(data)}</div>
+    ${renderPagination(page, totalPages, 'gotoFAPage')}
+  `;
+}
+
+function gotoFAPage(pg) {
+  const apps = window._filteredFranchiseApps || [];
+  const { data, page, totalPages } = paginate(apps, pg);
+  document.getElementById('faList').innerHTML = renderFAList(data);
+  const el = document.querySelector('.pagination');
+  if (el) el.outerHTML = renderPagination(page, totalPages, 'gotoFAPage');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderFAList(apps) {
+  if (apps.length === 0) return '<div class="empty-state"><div class="empty-icon">&#127970;</div><div class="empty-text">데이터가 없습니다</div></div>';
+  return apps.map(a => {
+    const statusClass = a.status === '정상' ? 'approved' : a.status === '휴업' ? 'submitted' : a.status === '폐업' || a.status === '가맹취소' ? 'rejected' : 'draft';
+    return `
+    <div class="list-item" onclick="viewFranchiseApp('${a.id}')">
+      <div class="list-item-content">
+        <div class="list-item-title">${escHtml(a.store_name || '(상호없음)')}</div>
+        <div class="list-item-sub">${escHtml(a.owner_name || '')} &middot; ${escHtml(a.oil_company || '')} &middot; ${escHtml(a.manager || '')}</div>
+        <div class="list-item-sub">${escHtml(a.address || '')}</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+        <span class="badge badge-${statusClass}">${a.status || '정상'}</span>
+        ${a.memo ? '<span style="font-size:11px; color:var(--warning);">메모</span>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function searchFranchiseApps() {
+  const q = (document.getElementById('faSearch').value || '').toLowerCase();
+  const all = window._allFranchiseApps || [];
+  window._filteredFranchiseApps = q ? all.filter(a =>
+    (a.store_name || '').toLowerCase().includes(q) ||
+    (a.owner_name || '').toLowerCase().includes(q) ||
+    (a.address || '').toLowerCase().includes(q) ||
+    (a.manager || '').toLowerCase().includes(q) ||
+    (a.biz_number || '').includes(q)
+  ) : all;
+  gotoFAPage(1);
+}
+
+function filterFA(status) {
+  faStatusFilter = status;
+  renderFranchiseApps();
+}
+
+async function viewFranchiseApp(id) {
+  const a = await api(`/api/franchise-apps/${id}`);
+  if (!a) return;
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="renderFranchiseApps()" style="margin-bottom:12px;">&larr; 목록</button>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="font-size:18px;">${escHtml(a.store_name)}</span>
+        <span class="badge badge-${a.status === '정상' ? 'approved' : a.status === '휴업' ? 'submitted' : 'rejected'}">${a.status || '정상'}</span>
+      </div>
+      <div style="font-size:15px; line-height:2;">
+        <p><strong>대표자:</strong> ${escHtml(a.owner_name || '-')}</p>
+        <p><strong>사업자번호:</strong> ${escHtml(a.biz_number || '-')}</p>
+        <p><strong>주소:</strong> ${escHtml(a.address || '-')}</p>
+        <p><strong>유선전화:</strong> ${escHtml(a.phone_land || '-')}</p>
+        <p><strong>대표자 연락처:</strong> ${escHtml(a.owner_phone || '-')}</p>
+        <p><strong>정유사:</strong> ${escHtml(a.oil_company || '-')}</p>
+        <p><strong>구분:</strong> ${escHtml(a.app_type || '-')}</p>
+        <p><strong>계좌정보:</strong> ${escHtml(a.bank_info || '-')}</p>
+        <p><strong>담당자:</strong> ${escHtml(a.manager || '-')} (${escHtml(a.branch || '')})</p>
+        <p><strong>접수일:</strong> ${escHtml(a.receipt_date || '-')}</p>
+        <p><strong>가맹일:</strong> ${escHtml(a.join_date || '-')}</p>
+        <p><strong>도색완료일:</strong> ${escHtml(a.paint_date || '-')}</p>
+      </div>
+      ${a.memo ? `<div style="margin-top:12px; padding:10px; background:#fef7e0; border-radius:8px; font-size:14px;"><strong>메모:</strong> ${escHtml(a.memo)}</div>` : ''}
+    </div>
+
+    <button class="btn btn-primary btn-block" onclick="editFranchiseApp('${a.id}')">수정</button>
+  `;
+}
+
+async function editFranchiseApp(id) {
+  const a = await api(`/api/franchise-apps/${id}`);
+  if (!a) return;
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="viewFranchiseApp('${id}')" style="margin-bottom:12px;">&larr; 상세</button>
+    <p class="section-title">거래처 정보 수정</p>
+    <div class="card">
+      <div class="form-group">
+        <label>상호</label>
+        <input type="text" id="faEditName" class="form-control" value="${escAttr(a.store_name || '')}">
+      </div>
+      <div class="form-group">
+        <label>대표자</label>
+        <input type="text" id="faEditOwner" class="form-control" value="${escAttr(a.owner_name || '')}">
+      </div>
+      <div class="form-group">
+        <label>사업자번호</label>
+        <input type="text" id="faEditBiz" class="form-control" value="${escAttr(a.biz_number || '')}">
+      </div>
+      <div class="form-group">
+        <label>사업장주소</label>
+        <input type="text" id="faEditAddr" class="form-control" value="${escAttr(a.address || '')}">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <div class="form-group" style="flex:1;">
+          <label>유선전화</label>
+          <input type="text" id="faEditPhoneLand" class="form-control" value="${escAttr(a.phone_land || '')}">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>대표자 연락처</label>
+          <input type="text" id="faEditOwnerPhone" class="form-control" value="${escAttr(a.owner_phone || '')}">
+        </div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <div class="form-group" style="flex:1;">
+          <label>정유사</label>
+          <select id="faEditOil" class="form-control">
+            <option value="">선택</option>
+            ${['SK','GS','현대오일뱅크','S-OIL','알뜰','자가상표','기타'].map(o => `<option ${a.oil_company === o ? 'selected' : ''}>${o}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>상태</label>
+          <select id="faEditStatus" class="form-control">
+            ${['정상','예정','휴업','폐업','가맹취소','기타'].map(s => `<option ${a.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>계좌정보</label>
+        <input type="text" id="faEditBank" class="form-control" value="${escAttr(a.bank_info || '')}">
+      </div>
+      <div class="form-group">
+        <label>도색완료일</label>
+        <input type="text" id="faEditPaint" class="form-control" value="${escAttr(a.paint_date || '')}" placeholder="예: 2025-06-01">
+      </div>
+      <div class="form-group">
+        <label>메모 (특이사항, 변경사유 등)</label>
+        <textarea id="faEditMemo" class="form-control" placeholder="상태 변경 사유, 특이사항 등을 기록하세요">${escHtml(a.memo || '')}</textarea>
+      </div>
+      <button class="btn btn-success btn-block" onclick="saveFranchiseApp('${id}')">저장</button>
+    </div>
+  `;
+}
+
+async function saveFranchiseApp(id) {
+  const body = {
+    store_name: document.getElementById('faEditName').value,
+    owner_name: document.getElementById('faEditOwner').value,
+    biz_number: document.getElementById('faEditBiz').value,
+    address: document.getElementById('faEditAddr').value,
+    phone_land: document.getElementById('faEditPhoneLand').value,
+    owner_phone: document.getElementById('faEditOwnerPhone').value,
+    oil_company: document.getElementById('faEditOil').value,
+    status: document.getElementById('faEditStatus').value,
+    bank_info: document.getElementById('faEditBank').value,
+    paint_date: document.getElementById('faEditPaint').value,
+    memo: document.getElementById('faEditMemo').value
+  };
+  await api(`/api/franchise-apps/${id}`, { method: 'PUT', body });
+  toast('저장되었습니다');
+  viewFranchiseApp(id);
+}
+
+// ─── 가맹점 직접 관리 ───
 async function renderFranchise() {
   const franchises = await api('/api/franchises') || [];
   window._allFranchises = franchises;
@@ -597,6 +821,10 @@ function renderFranchisePage(pg) {
   const franchises = window._filteredFranchises || [];
   const { data, page, totalPages, total } = paginate(franchises, pg);
   document.getElementById('mainContent').innerHTML = `
+    <div class="tabs" style="margin-bottom:8px;">
+      <button class="tab ${franchiseTab === 'apps' ? 'active' : ''}" onclick="switchFranchiseTab('apps')">거래처 신청서</button>
+      <button class="tab ${franchiseTab === 'custom' ? 'active' : ''}" onclick="switchFranchiseTab('custom')">가맹점 관리</button>
+    </div>
     <div class="tabs">
       <button class="tab active" onclick="filterFranchises(this, '')">전체</button>
       <button class="tab" onclick="filterFranchises(this, 'existing')">기존가맹</button>
