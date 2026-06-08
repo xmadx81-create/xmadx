@@ -502,7 +502,7 @@ async function renderWeekly() {
     ` : plans.map(p => `
       <div class="list-item" onclick="viewWeeklyPlan('${p.id}')">
         <div class="list-item-content">
-          <div class="list-item-title">${p.week_start} ~ ${p.week_end}</div>
+          <div class="list-item-title">${p.week_start.split('T')[0]} ~ ${p.week_end.split('T')[0]}</div>
           <div class="list-item-sub">${p.author_name}</div>
         </div>
         <span class="badge badge-${p.status}">${statusLabel(p.status)}</span>

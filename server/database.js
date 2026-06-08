@@ -413,6 +413,8 @@ async function initDB() {
     }
   }
 
+  await query(`UPDATE weekly_plans SET status = 'submitted' WHERE status = 'draft'`);
+
   console.log('PostgreSQL database initialized successfully');
 }
 

@@ -325,8 +325,8 @@ app.get('/api/weekly-plans', authMiddleware, async (req, res) => {
 app.post('/api/weekly-plans', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { week_start, week_end, items } = req.body;
-  await query('INSERT INTO weekly_plans (id, author_id, week_start, week_end) VALUES ($1, $2, $3, $4)', [
-    id, req.session.userId, week_start, week_end
+  await query('INSERT INTO weekly_plans (id, author_id, week_start, week_end, status) VALUES ($1, $2, $3, $4, $5)', [
+    id, req.session.userId, week_start, week_end, 'submitted'
   ]);
   if (items) {
     for (const item of items) {
