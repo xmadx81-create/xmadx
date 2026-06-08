@@ -129,7 +129,7 @@ body {
   flex-direction: column;
   align-items: center;
   padding: 8px 4px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--gray-500);
   text-decoration: none;
   cursor: pointer;
@@ -164,10 +164,11 @@ body {
 
 .badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .badge-내근 { background: #e8f0fe; color: #1a73e8; }
@@ -338,7 +339,7 @@ select.form-control {
 
 .quick-action-btn:active { transform: scale(0.97); }
 .quick-action-btn .qa-icon { font-size: 28px; }
-.quick-action-btn .qa-label { font-size: 13px; font-weight: 500; color: var(--gray-700); }
+.quick-action-btn .qa-label { font-size: 14px; font-weight: 500; color: var(--gray-700); }
 
 /* 리스트 아이템 */
 .list-item {
@@ -355,20 +356,19 @@ select.form-control {
 
 .list-item:active { transform: scale(0.99); }
 
-.list-item-content { flex: 1; min-width: 0; }
+.list-item-content { flex: 1; min-width: 0; margin-right: 8px; }
 .list-item-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
+  line-height: 1.4;
 }
 .list-item-sub {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--gray-500);
 }
-.list-item-badge { margin-left: 8px; }
+.list-item-badge { margin-left: 8px; flex-shrink: 0; }
 
 /* 페이지네이션 */
 .pagination {
@@ -461,7 +461,7 @@ select.form-control {
 .tab {
   padding: 8px 16px;
   border-radius: 20px;
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
   border: none;
   background: var(--gray-100);
@@ -482,7 +482,7 @@ select.form-control {
 }
 
 .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
-.empty-state .empty-text { font-size: 14px; }
+.empty-state .empty-text { font-size: 15px; line-height: 1.6; }
 
 /* 결재라인 */
 .approval-flow {
@@ -511,7 +511,7 @@ select.form-control {
   margin-bottom: 4px;
 }
 
-.approval-step .step-name { font-size: 11px; color: var(--gray-700); }
+.approval-step .step-name { font-size: 13px; color: var(--gray-700); }
 .approval-step.pending .step-icon { background: var(--gray-200); }
 .approval-step.approved .step-icon { background: #e6f4ea; color: var(--success); }
 .approval-step.rejected .step-icon { background: #fce8e6; color: var(--danger); }
@@ -540,7 +540,7 @@ select.form-control {
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--gray-500);
   margin-top: 4px;
 }

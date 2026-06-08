@@ -53,12 +53,6 @@ async function login() {
   }
 }
 
-async function logout() {
-  await api('/api/logout', { method: 'POST' });
-  currentUser = null;
-  showLogin();
-}
-
 function showLogin() {
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('appContainer').classList.remove('active');
@@ -72,6 +66,13 @@ async function checkAuth() {
     document.getElementById('appContainer').classList.add('active');
     navigate('home');
   }
+}
+
+async function logout() {
+  await api('/api/logout', { method: 'POST' });
+  currentUser = null;
+  reportViewMode = 'mine';
+  showLogin();
 }
 
 // ─── 네비게이션 ───
@@ -89,6 +90,12 @@ function navigate(page) {
 }
 
 // ─── 홈 화면 ───
+function isManager() {
+  if (!currentUser) return false;
+  if (currentUser.isAdmin) return true;
+  return ['본부장','이사','부장'].includes(currentUser.position);
+}
+
 async function renderHome() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
@@ -96,11 +103,37 @@ async function renderHome() {
 
   const myReports = reports.filter(r => r.author_id === currentUser.id);
   const todayReports = myReports.filter(r => r.report_date === today);
+  const othersReports = reports.filter(r => r.author_id !== currentUser.id);
+
+  let teamSection = '';
+  if (isManager()) {
+    teamSection = `
+      <p class="section-title">&#128101; 팀원 업무현황 (이번 주)</p>
+      ${othersReports.length === 0 ? `
+        <div class="card" style="text-align:center; color:var(--gray-500); padding:20px;">
+          이번 주 팀원 업무일지가 없습니다
+        </div>
+      ` : `
+        <div style="margin-bottom:24px;">
+          ${othersReports.slice(0, 8).map(r => `
+            <div class="list-item" onclick="viewReport('${r.id}')">
+              <div class="list-item-content">
+                <div class="list-item-title">${escHtml(r.what_task || r.content || '(내용 없음)')}</div>
+                <div class="list-item-sub">${r.author_name} ${r.author_position || ''} &middot; ${r.report_date}</div>
+              </div>
+              <span class="badge badge-${r.work_category}">${r.work_category}</span>
+            </div>
+          `).join('')}
+          ${othersReports.length > 8 ? `<button class="btn btn-outline btn-block btn-sm" onclick="navigate('reports')" style="margin-top:8px;">전체 보기 (${othersReports.length}건)</button>` : ''}
+        </div>
+      `}
+    `;
+  }
 
   document.getElementById('mainContent').innerHTML = `
     <div style="margin-bottom:20px;">
-      <p style="font-size:14px; color:var(--gray-500);">안녕하세요,</p>
-      <p style="font-size:20px; font-weight:600;">${currentUser.name} ${currentUser.position}님</p>
+      <p style="font-size:15px; color:var(--gray-500);">안녕하세요,</p>
+      <p style="font-size:22px; font-weight:600;">${currentUser.name} ${currentUser.position || ''}님</p>
     </div>
 
     <div class="stats-row">
@@ -138,17 +171,31 @@ async function renderHome() {
       </button>
     </div>
 
-    <p class="section-title">&#128203; 최근 업무일지</p>
-    ${reports.length === 0 ? `
+    <p class="section-title">&#128218; 빠른 참조</p>
+    <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showTaskMaster()">
+        <span class="qa-icon">&#128203;</span>
+        <span class="qa-label">주요업무표</span>
+      </button>
+      <button class="quick-action-btn" onclick="showManual()">
+        <span class="qa-icon">&#128214;</span>
+        <span class="qa-label">업무 매뉴얼</span>
+      </button>
+    </div>
+
+    ${teamSection}
+
+    <p class="section-title">&#128203; 내 최근 업무일지</p>
+    ${myReports.length === 0 ? `
       <div class="empty-state">
         <div class="empty-icon">&#128221;</div>
         <div class="empty-text">작성된 업무일지가 없습니다<br>새 업무일지를 작성해보세요</div>
       </div>
-    ` : reports.slice(0, 5).map(r => `
+    ` : myReports.slice(0, 5).map(r => `
       <div class="list-item" onclick="viewReport('${r.id}')">
         <div class="list-item-content">
           <div class="list-item-title">${escHtml(r.what_task || r.content || '(내용 없음)')}</div>
-          <div class="list-item-sub">${r.author_name} &middot; ${r.report_date} &middot; ${r.where_place || ''}</div>
+          <div class="list-item-sub">${r.report_date} &middot; ${r.where_place || ''}</div>
         </div>
         <span class="list-item-badge">
           <span class="badge badge-${r.work_category}">${r.work_category}</span>
@@ -159,10 +206,16 @@ async function renderHome() {
 }
 
 // ─── 업무일지 목록 ───
+let reportViewMode = 'mine';
+
 async function renderReports() {
   const reports = await api('/api/reports') || [];
   window._allReports = reports;
-  window._filteredReports = reports;
+  if (reportViewMode === 'mine') {
+    window._filteredReports = reports.filter(r => r.author_id === currentUser.id);
+  } else {
+    window._filteredReports = reports;
+  }
   renderReportsPage(1);
 }
 
@@ -170,16 +223,25 @@ function renderReportsPage(pg) {
   const reports = window._filteredReports || [];
   const { data, page, totalPages, total } = paginate(reports, pg);
   document.getElementById('mainContent').innerHTML = `
+    <div class="tabs" style="margin-bottom:8px;">
+      <button class="tab ${reportViewMode === 'mine' ? 'active' : ''}" onclick="switchReportView('mine')">내 업무</button>
+      <button class="tab ${reportViewMode === 'all' ? 'active' : ''}" onclick="switchReportView('all')">전체 업무</button>
+    </div>
     <div class="tabs">
       <button class="tab active" onclick="filterReports(this, '')">전체</button>
       <button class="tab" onclick="filterReports(this, '내근')">내근</button>
       <button class="tab" onclick="filterReports(this, '외근')">외근</button>
       <button class="tab" onclick="filterReports(this, '출장')">출장</button>
     </div>
-    ${total > 0 ? `<p style="font-size:12px; color:var(--gray-500); margin-bottom:8px;">총 ${total}건</p>` : ''}
+    ${total > 0 ? `<p style="font-size:13px; color:var(--gray-500); margin-bottom:8px;">총 ${total}건</p>` : ''}
     <div id="reportsList">${renderReportList(data)}</div>
     ${renderPagination(page, totalPages, 'gotoReportsPage')}
   `;
+}
+
+function switchReportView(mode) {
+  reportViewMode = mode;
+  renderReports();
 }
 
 function gotoReportsPage(pg) {
@@ -208,9 +270,10 @@ function renderReportList(reports) {
 }
 
 async function filterReports(btn, category) {
-  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+  btn.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  const all = window._allReports || [];
+  let all = window._allReports || [];
+  if (reportViewMode === 'mine') all = all.filter(r => r.author_id === currentUser.id);
   window._filteredReports = category ? all.filter(r => r.work_category === category) : all;
   const { data, page, totalPages, total } = paginate(window._filteredReports, 1);
   document.getElementById('reportsList').innerHTML = renderReportList(data);
@@ -677,13 +740,8 @@ async function renderMore() {
   fab.style.display = 'none';
 
   document.getElementById('mainContent').innerHTML = `
-    <p class="section-title">&#9881; 기능 메뉴</p>
-
+    <p class="section-title">&#128203; 업무 참조</p>
     <div class="quick-actions">
-      <button class="quick-action-btn" onclick="showBranches()">
-        <span class="qa-icon">&#127970;</span>
-        <span class="qa-label">전국 지국</span>
-      </button>
       <button class="quick-action-btn" onclick="showTaskMaster()">
         <span class="qa-icon">&#128203;</span>
         <span class="qa-label">주요업무표</span>
@@ -692,15 +750,21 @@ async function renderMore() {
         <span class="qa-icon">&#128221;</span>
         <span class="qa-label">개별 업무표</span>
       </button>
-      <button class="quick-action-btn" onclick="showWorkTable()">
-        <span class="qa-icon">&#128202;</span>
-        <span class="qa-label">업무표 생성</span>
-      </button>
-    </div>
-    <div class="quick-actions">
       <button class="quick-action-btn" onclick="showManual()">
         <span class="qa-icon">&#128214;</span>
         <span class="qa-label">업무 매뉴얼</span>
+      </button>
+      <button class="quick-action-btn" onclick="showBranches()">
+        <span class="qa-icon">&#127970;</span>
+        <span class="qa-label">전국 지국</span>
+      </button>
+    </div>
+
+    <p class="section-title">&#9881; 도구</p>
+    <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showWorkTable()">
+        <span class="qa-icon">&#128202;</span>
+        <span class="qa-label">업무표 생성</span>
       </button>
       <button class="quick-action-btn" onclick="manageTemplates()">
         <span class="qa-icon">&#128196;</span>
@@ -710,12 +774,17 @@ async function renderMore() {
         <span class="qa-icon">&#128100;</span>
         <span class="qa-label">내 정보</span>
       </button>
+      ${currentUser && currentUser.isAdmin ? `
+      <button class="quick-action-btn" onclick="showAdminPanel()" style="border:2px solid var(--danger);">
+        <span class="qa-icon">&#128272;</span>
+        <span class="qa-label" style="color:var(--danger); font-weight:700;">시스템 관리</span>
+      </button>` : ''}
     </div>
 
     <div class="card">
       <p class="card-title" style="margin-bottom:8px;">시스템 정보</p>
-      <p style="font-size:13px; color:var(--gray-500);">석유사업본부 업무공유 시스템 v2.0</p>
-      <p style="font-size:13px; color:var(--gray-500);">전국 지국/주요업무표 통합 관리</p>
+      <p style="font-size:14px; color:var(--gray-500);">석유사업본부 업무공유 시스템 v2.0</p>
+      <p style="font-size:14px; color:var(--gray-500);">전국 지국/주요업무표 통합 관리</p>
     </div>
   `;
 }
@@ -1268,20 +1337,36 @@ async function manageTemplates() {
   let html = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:16px;">&larr; 뒤로</button>
     <p class="section-title">&#128196; 반복업무 템플릿</p>
-    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">자주 반복되는 업무를 템플릿으로 저장하여 빠르게 작성하세요</p>
+
+    <div class="card" style="background:#e8f0fe; border-left:4px solid var(--primary); margin-bottom:20px;">
+      <p style="font-size:15px; font-weight:600; margin-bottom:8px; color:var(--primary);">템플릿이란?</p>
+      <p style="font-size:14px; line-height:1.7; color:var(--gray-700);">
+        매일 또는 매주 반복되는 업무를 미리 저장해두면,<br>
+        업무일지 작성 시 한 번의 터치로 내용을 자동 채워줍니다.
+      </p>
+      <p style="font-size:14px; line-height:1.7; color:var(--gray-700); margin-top:8px;">
+        <strong>사용 방법:</strong>
+      </p>
+      <ol style="font-size:14px; line-height:1.8; color:var(--gray-700); padding-left:20px; margin-top:4px;">
+        <li>업무일지 작성 화면에서 내용을 입력합니다</li>
+        <li>하단의 <strong>"템플릿 저장"</strong> 버튼을 눌러 저장합니다</li>
+        <li>다음부터는 작성 화면의 <strong>"템플릿 선택"</strong>에서 골라 사용합니다</li>
+      </ol>
+    </div>
   `;
 
   if (templates.length === 0) {
-    html += '<div class="card"><p style="text-align:center; color:var(--gray-500);">저장된 템플릿이 없습니다<br>업무일지 작성 시 "템플릿 저장" 버튼으로 추가하세요</p></div>';
+    html += '<div class="card"><p style="text-align:center; color:var(--gray-500); font-size:15px; padding:16px;">아직 저장된 템플릿이 없습니다.<br><br>업무일지 작성 화면에서<br>"템플릿 저장" 버튼을 눌러 추가하세요.</p></div>';
   } else {
+    html += `<p style="font-size:14px; color:var(--gray-500); margin-bottom:12px;">저장된 템플릿 ${templates.length}개</p>`;
     templates.forEach(t => {
       const data = JSON.parse(t.content_json);
       html += `
-        <div class="list-item">
-          <div class="list-item-content">
-            <div class="list-item-title">${escHtml(t.title)}</div>
-            <div class="list-item-sub">${t.category} &middot; 사용 ${t.use_count}회</div>
-          </div>
+        <div class="card" style="padding:14px; margin-bottom:8px;">
+          <div style="font-size:15px; font-weight:600; margin-bottom:6px;">${escHtml(t.title)}</div>
+          <div style="font-size:13px; color:var(--gray-500); margin-bottom:4px;">${escHtml(t.category)} &middot; 사용 ${t.use_count}회</div>
+          ${data.what_task ? `<div style="font-size:13px; color:var(--gray-700);">업무: ${escHtml(data.what_task)}</div>` : ''}
+          ${data.where_place ? `<div style="font-size:13px; color:var(--gray-700);">장소: ${escHtml(data.where_place)}</div>` : ''}
         </div>
       `;
     });
@@ -1549,16 +1634,31 @@ async function adminLogin() {
 
   if (!res.ok) { toast(data.error || '로그인 실패'); return; }
 
+  currentUser = data.user;
+  currentUser.isAdmin = true;
   document.getElementById('adminLoginScreen').style.display = 'none';
-  document.getElementById('adminContainer').style.display = 'flex';
-  document.getElementById('adminContainer').classList.add('active');
-  renderAdminPage();
+  document.getElementById('appContainer').classList.add('active');
+  navigate('home');
 }
 
 function adminLogout() {
   document.getElementById('adminContainer').style.display = 'none';
   document.getElementById('adminContainer').classList.remove('active');
   document.getElementById('loginScreen').style.display = 'flex';
+}
+
+function showAdminPanel() {
+  document.getElementById('appContainer').classList.remove('active');
+  document.getElementById('adminContainer').style.display = 'flex';
+  document.getElementById('adminContainer').classList.add('active');
+  renderAdminPage();
+}
+
+function backToApp() {
+  document.getElementById('adminContainer').style.display = 'none';
+  document.getElementById('adminContainer').classList.remove('active');
+  document.getElementById('appContainer').classList.add('active');
+  navigate('more');
 }
 
 let adminTab = 'staff';
@@ -1570,7 +1670,8 @@ async function renderAdminPage() {
       <button class="tab ${adminTab === 'users' ? 'active' : ''}" onclick="switchAdminTab('users')">회원관리</button>
     </div>
     <div id="adminTabContent"></div>
-    <div style="margin-top:24px;">
+    <div style="margin-top:24px; display:flex; flex-direction:column; gap:8px;">
+      ${currentUser && currentUser.isAdmin ? '<button class="btn btn-primary btn-block" onclick="backToApp()">앱으로 돌아가기</button>' : ''}
       <button class="btn btn-outline btn-block" onclick="adminLogout()">로그아웃</button>
     </div>
   `;

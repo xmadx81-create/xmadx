@@ -82,9 +82,10 @@
 
 <!-- ═══ 관리자 페이지 ═══ -->
 <div id="adminContainer" class="app-container" style="display:none;">
-  <header class="app-header">
+  <header class="app-header" style="background:var(--danger);">
     <h1>시스템 관리</h1>
     <div class="header-actions">
+      <button class="header-btn" onclick="backToApp()" title="앱으로" style="font-size:13px; width:auto; padding:0 10px; border-radius:6px;">앱</button>
       <button class="header-btn" onclick="adminLogout()" title="로그아웃">&#9654;</button>
     </div>
   </header>

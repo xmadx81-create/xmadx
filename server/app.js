@@ -16,7 +16,7 @@ app.use(session({
 }));
 
 function authMiddleware(req, res, next) {
-  if (req.session.userId) return next();
+  if (req.session.userId || req.session.isAdmin) return next();
   res.status(401).json({ error: '로그인이 필요합니다' });
 }
 
@@ -68,7 +68,15 @@ app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
   if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: '비밀번호가 올바르지 않습니다' });
   req.session.isAdmin = true;
-  res.json({ ok: true });
+  let adminUser = db.prepare('SELECT * FROM users WHERE id = ?').get('admin-user');
+  if (!adminUser) {
+    db.prepare(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+      'admin-user', '시스템관리자', '석유사업본부', '관리자', '', '', '__admin__'
+    );
+    adminUser = db.prepare('SELECT * FROM users WHERE id = ?').get('admin-user');
+  }
+  req.session.userId = 'admin-user';
+  res.json({ ok: true, user: { id: adminUser.id, name: adminUser.name, department: adminUser.department, position: adminUser.position } });
 });
 
 function adminMiddleware(req, res, next) {
@@ -126,6 +134,7 @@ app.put('/api/admin/users/:id', adminMiddleware, (req, res) => {
 
 app.get('/api/me', authMiddleware, (req, res) => {
   const user = db.prepare('SELECT id, name, department, position, phone, email FROM users WHERE id = ?').get(req.session.userId);
+  if (user && req.session.isAdmin) user.isAdmin = true;
   res.json(user);
 });
 
