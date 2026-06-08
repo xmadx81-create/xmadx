@@ -1,6 +1,31 @@
 let currentUser = null;
 let currentPage = 'home';
 let editingReportId = null;
+const PAGE_SIZE = 15;
+
+// ─── 페이지네이션 유틸 ───
+function paginate(items, page) {
+  const total = items.length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const p = Math.max(1, Math.min(page, totalPages));
+  const start = (p - 1) * PAGE_SIZE;
+  return { data: items.slice(start, start + PAGE_SIZE), page: p, totalPages, total };
+}
+
+function renderPagination(page, totalPages, onClickFn) {
+  if (totalPages <= 1) return '';
+  let btns = '';
+  if (page > 1) btns += `<button class="pg-btn" onclick="${onClickFn}(${page - 1})">&lsaquo;</button>`;
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages, page + 2);
+  if (start > 1) btns += `<button class="pg-btn" onclick="${onClickFn}(1)">1</button><span class="pg-dots">&hellip;</span>`;
+  for (let i = start; i <= end; i++) {
+    btns += `<button class="pg-btn${i === page ? ' pg-active' : ''}" onclick="${onClickFn}(${i})">${i}</button>`;
+  }
+  if (end < totalPages) btns += `<span class="pg-dots">&hellip;</span><button class="pg-btn" onclick="${onClickFn}(${totalPages})">${totalPages}</button>`;
+  if (page < totalPages) btns += `<button class="pg-btn" onclick="${onClickFn}(${page + 1})">&rsaquo;</button>`;
+  return `<div class="pagination"><span class="pg-info">${page}/${totalPages}</span>${btns}</div>`;
+}
 
 // ─── API 헬퍼 ───
 async function api(url, options = {}) {
@@ -136,6 +161,14 @@ async function renderHome() {
 // ─── 업무일지 목록 ───
 async function renderReports() {
   const reports = await api('/api/reports') || [];
+  window._allReports = reports;
+  window._filteredReports = reports;
+  renderReportsPage(1);
+}
+
+function renderReportsPage(pg) {
+  const reports = window._filteredReports || [];
+  const { data, page, totalPages, total } = paginate(reports, pg);
   document.getElementById('mainContent').innerHTML = `
     <div class="tabs">
       <button class="tab active" onclick="filterReports(this, '')">전체</button>
@@ -143,10 +176,19 @@ async function renderReports() {
       <button class="tab" onclick="filterReports(this, '외근')">외근</button>
       <button class="tab" onclick="filterReports(this, '출장')">출장</button>
     </div>
-    <div id="reportsList">
-      ${renderReportList(reports)}
-    </div>
+    ${total > 0 ? `<p style="font-size:12px; color:var(--gray-500); margin-bottom:8px;">총 ${total}건</p>` : ''}
+    <div id="reportsList">${renderReportList(data)}</div>
+    ${renderPagination(page, totalPages, 'gotoReportsPage')}
   `;
+}
+
+function gotoReportsPage(pg) {
+  const reports = window._filteredReports || [];
+  const { data, page, totalPages } = paginate(reports, pg);
+  document.getElementById('reportsList').innerHTML = renderReportList(data);
+  const el = document.querySelector('.pagination');
+  if (el) el.outerHTML = renderPagination(page, totalPages, 'gotoReportsPage');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderReportList(reports) {
@@ -168,9 +210,15 @@ function renderReportList(reports) {
 async function filterReports(btn, category) {
   document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  const url = category ? `/api/reports?category=${category}` : '/api/reports';
-  const reports = await api(url) || [];
-  document.getElementById('reportsList').innerHTML = renderReportList(reports);
+  const all = window._allReports || [];
+  window._filteredReports = category ? all.filter(r => r.work_category === category) : all;
+  const { data, page, totalPages, total } = paginate(window._filteredReports, 1);
+  document.getElementById('reportsList').innerHTML = renderReportList(data);
+  const countEl = document.querySelector('#reportsList').previousElementSibling;
+  if (countEl && countEl.tagName === 'P') countEl.textContent = `총 ${total}건`;
+  const el = document.querySelector('.pagination');
+  if (el) el.outerHTML = renderPagination(page, totalPages, 'gotoReportsPage');
+  else document.getElementById('reportsList').insertAdjacentHTML('afterend', renderPagination(page, totalPages, 'gotoReportsPage'));
 }
 
 // ─── 업무일지 상세보기 ───
@@ -474,20 +522,36 @@ async function viewWeeklyPlan(id) {
 // ─── 가맹관리 ───
 async function renderFranchise() {
   const franchises = await api('/api/franchises') || [];
+  window._allFranchises = franchises;
+  window._filteredFranchises = franchises;
   const fab = document.getElementById('fabBtn');
   fab.style.display = 'flex';
   fab.onclick = () => openFranchiseModal();
+  renderFranchisePage(1);
+}
 
+function renderFranchisePage(pg) {
+  const franchises = window._filteredFranchises || [];
+  const { data, page, totalPages, total } = paginate(franchises, pg);
   document.getElementById('mainContent').innerHTML = `
     <div class="tabs">
       <button class="tab active" onclick="filterFranchises(this, '')">전체</button>
       <button class="tab" onclick="filterFranchises(this, 'existing')">기존가맹</button>
       <button class="tab" onclick="filterFranchises(this, 'new_prospect')">신규영업</button>
     </div>
-    <div id="franchiseList">
-      ${renderFranchiseList(franchises)}
-    </div>
+    ${total > 0 ? `<p style="font-size:12px; color:var(--gray-500); margin-bottom:8px;">총 ${total}건</p>` : ''}
+    <div id="franchiseList">${renderFranchiseList(data)}</div>
+    ${renderPagination(page, totalPages, 'gotoFranchisePage')}
   `;
+}
+
+function gotoFranchisePage(pg) {
+  const franchises = window._filteredFranchises || [];
+  const { data, page, totalPages } = paginate(franchises, pg);
+  document.getElementById('franchiseList').innerHTML = renderFranchiseList(data);
+  const el = document.querySelector('.pagination');
+  if (el) el.outerHTML = renderPagination(page, totalPages, 'gotoFranchisePage');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderFranchiseList(franchises) {
@@ -503,12 +567,12 @@ function renderFranchiseList(franchises) {
   `).join('');
 }
 
-async function filterFranchises(btn, type) {
+function filterFranchises(btn, type) {
   document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  const url = type ? `/api/franchises?type=${type}` : '/api/franchises';
-  const franchises = await api(url) || [];
-  document.getElementById('franchiseList').innerHTML = renderFranchiseList(franchises);
+  const all = window._allFranchises || [];
+  window._filteredFranchises = type ? all.filter(f => f.franchise_type === type) : all;
+  gotoFranchisePage(1);
 }
 
 function openFranchiseModal() {
@@ -657,23 +721,40 @@ async function renderMore() {
 }
 
 // ─── 전국 지국 열람 ───
-async function showBranches() {
+async function showBranches(pg) {
   const branches = await api('/api/branches') || [];
+  window._allBranches = branches;
+  window._filteredBranches = branches;
+  renderBranchPage(pg || 1);
+}
+
+function renderBranchPage(pg) {
+  const branches = window._filteredBranches || [];
+  const { data, page, totalPages, total } = paginate(branches, pg);
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
-    <p class="section-title">&#127970; 전국 지국 현황 (${branches.length}개소)</p>
+    <p class="section-title">&#127970; 전국 지국 현황 (${total}개소)</p>
     <div class="form-group">
       <input type="text" id="branchSearch" class="form-control" placeholder="지국명, 주소, 담당자 검색..."
-        oninput="searchBranches()">
+        oninput="searchBranchesPage()">
     </div>
     <div class="tabs" style="margin-bottom:12px;">
       <button class="tab active" onclick="filterBranchView(this,'all')">전체</button>
       <button class="tab" onclick="filterBranchView(this,'active')">운영중</button>
       <button class="tab" onclick="filterBranchView(this,'excluded')">봉사제외</button>
     </div>
-    <div id="branchList">${renderBranchList(branches)}</div>
+    <div id="branchList">${renderBranchList(data)}</div>
+    ${renderPagination(page, totalPages, 'gotoBranchPage')}
   `;
-  window._allBranches = branches;
+}
+
+function gotoBranchPage(pg) {
+  const branches = window._filteredBranches || [];
+  const { data, page, totalPages } = paginate(branches, pg);
+  document.getElementById('branchList').innerHTML = renderBranchList(data);
+  const paginationEl = document.querySelector('.pagination');
+  if (paginationEl) paginationEl.outerHTML = renderPagination(page, totalPages, 'gotoBranchPage');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderBranchList(branches) {
@@ -695,20 +776,25 @@ function renderBranchList(branches) {
   `).join('');
 }
 
-async function searchBranches() {
-  const q = document.getElementById('branchSearch').value;
-  const branches = await api(`/api/branches?search=${encodeURIComponent(q)}`) || [];
-  document.getElementById('branchList').innerHTML = renderBranchList(branches);
-  window._allBranches = branches;
+async function searchBranchesPage() {
+  const q = document.getElementById('branchSearch').value.toLowerCase();
+  const all = window._allBranches || [];
+  window._filteredBranches = q ? all.filter(b =>
+    (b.name || '').toLowerCase().includes(q) ||
+    (b.address || '').toLowerCase().includes(q) ||
+    (b.manager_name || '').toLowerCase().includes(q)
+  ) : all;
+  gotoBranchPage(1);
 }
 
 function filterBranchView(btn, filter) {
   document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  let filtered = window._allBranches || [];
-  if (filter === 'active') filtered = filtered.filter(b => !b.exclude_service);
-  if (filter === 'excluded') filtered = filtered.filter(b => b.exclude_service);
-  document.getElementById('branchList').innerHTML = renderBranchList(filtered);
+  const all = window._allBranches || [];
+  if (filter === 'active') window._filteredBranches = all.filter(b => !b.exclude_service);
+  else if (filter === 'excluded') window._filteredBranches = all.filter(b => b.exclude_service);
+  else window._filteredBranches = all;
+  gotoBranchPage(1);
 }
 
 async function viewBranch(id) {
@@ -736,22 +822,41 @@ async function viewBranch(id) {
 async function showTaskMaster() {
   const meta = await api('/api/tasks/categories') || { categories: [], groups: [] };
   const tasks = await api('/api/tasks') || [];
+  window._allTaskItems = tasks;
+  window._filteredTaskItems = tasks;
+  window._taskMeta = meta;
+  renderTaskPage(1);
+}
+
+function renderTaskPage(pg) {
+  const meta = window._taskMeta || { categories: [] };
+  const tasks = window._filteredTaskItems || [];
+  const { data, page, totalPages, total } = paginate(tasks, pg);
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <p class="section-title" style="margin-bottom:0;">&#128203; 주요업무표</p>
+      <p class="section-title" style="margin-bottom:0;">&#128203; 주요업무표 (${total}건)</p>
       <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ 신규업무</button>
     </div>
     <div class="form-group">
-      <input type="text" id="taskSearch" class="form-control" placeholder="업무 검색..." oninput="searchTasks()">
+      <input type="text" id="taskSearch" class="form-control" placeholder="업무 검색..." oninput="searchTasksPage()">
     </div>
     <div class="tabs" style="margin-bottom:12px;" id="taskCategoryTabs">
       <button class="tab active" onclick="filterTasks(this,'')">전체</button>
       ${meta.categories.map(c => `<button class="tab" onclick="filterTasks(this,'${escAttr(c)}')">${escHtml(c)}</button>`).join('')}
     </div>
-    <div id="taskList">${renderTaskList(tasks)}</div>
+    <div id="taskList">${renderTaskList(data)}</div>
+    ${renderPagination(page, totalPages, 'gotoTaskPage')}
   `;
-  window._allTasks = tasks;
+}
+
+function gotoTaskPage(pg) {
+  const tasks = window._filteredTaskItems || [];
+  const { data, page, totalPages } = paginate(tasks, pg);
+  document.getElementById('taskList').innerHTML = renderTaskList(data);
+  const el = document.querySelector('.pagination');
+  if (el) el.outerHTML = renderPagination(page, totalPages, 'gotoTaskPage');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderTaskList(tasks) {
@@ -778,18 +883,23 @@ function renderTaskList(tasks) {
   `).join('');
 }
 
-async function searchTasks() {
-  const q = document.getElementById('taskSearch').value;
-  const tasks = await api(`/api/tasks?search=${encodeURIComponent(q)}`) || [];
-  document.getElementById('taskList').innerHTML = renderTaskList(tasks);
+function searchTasksPage() {
+  const q = (document.getElementById('taskSearch').value || '').toLowerCase();
+  const all = window._allTaskItems || [];
+  window._filteredTaskItems = q ? all.filter(t =>
+    (t.task_detail || '').toLowerCase().includes(q) ||
+    (t.task_group || '').toLowerCase().includes(q) ||
+    (t.assigned_to || '').toLowerCase().includes(q)
+  ) : all;
+  gotoTaskPage(1);
 }
 
-async function filterTasks(btn, category) {
+function filterTasks(btn, category) {
   document.querySelectorAll('#taskCategoryTabs .tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  const url = category ? `/api/tasks?category=${encodeURIComponent(category)}` : '/api/tasks';
-  const tasks = await api(url) || [];
-  document.getElementById('taskList').innerHTML = renderTaskList(tasks);
+  const all = window._allTaskItems || [];
+  window._filteredTaskItems = category ? all.filter(t => t.category1 === category) : all;
+  gotoTaskPage(1);
 }
 
 async function viewTask(id) {
