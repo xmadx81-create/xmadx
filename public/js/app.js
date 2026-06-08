@@ -1011,6 +1011,10 @@ async function renderMore() {
         <span class="qa-icon">&#129504;</span>
         <span class="qa-label" style="color:var(--primary); font-weight:700;">업무 지식맵</span>
       </button>
+      <button class="quick-action-btn" onclick="showWorkflowDiagrams()" style="border:2px solid #43a047;">
+        <span class="qa-icon">&#128200;</span>
+        <span class="qa-label" style="color:#43a047; font-weight:700;">업무 흐름도</span>
+      </button>
     </div>
 
     <p class="section-title">&#9881; 도구</p>
@@ -3011,6 +3015,107 @@ async function renderMermaidChart(code) {
     if (svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
   } catch (e) {
     document.getElementById('mermaidDiagram').innerHTML = '<p style="color:var(--gray-500); font-size:13px;">다이어그램 생성 중 오류가 발생했습니다.</p>';
+  }
+}
+
+// ─── 워크플로우 다이어그램 ───
+let _wfTab = 'overview';
+
+async function showWorkflowDiagrams() {
+  const data = await api('/api/workflow-diagrams');
+  if (!data) return;
+  window._wfData = data;
+  _wfTab = 'overview';
+  renderWorkflowPage();
+}
+
+function renderWorkflowPage() {
+  const data = window._wfData;
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = 'none';
+
+  if (data.empty) {
+    document.getElementById('mainContent').innerHTML = `
+      <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+      <div class="card" style="text-align:center; padding:40px 20px;">
+        <div style="font-size:48px; margin-bottom:16px;">&#128200;</div>
+        <p style="font-size:18px; font-weight:700; margin-bottom:8px;">업무 흐름도</p>
+        <p style="font-size:14px; color:var(--gray-500); line-height:1.7;">
+          업무일지가 쌓이면 자동으로<br>업무 흐름도가 만들어집니다.
+        </p>
+      </div>`;
+    return;
+  }
+
+  const cats = data.categories || [];
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <p class="section-title">&#128200; 업무 흐름도</p>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">업무일지 기반 자동 생성 다이어그램</p>
+
+    <div class="tabs" style="margin-bottom:12px; flex-wrap:wrap;">
+      <button class="tab ${_wfTab === 'overview' ? 'active' : ''}" onclick="_wfTab='overview'; renderWorkflowPage()">전체 구조</button>
+      ${cats.map(c => `<button class="tab ${_wfTab === 'cat_' + c ? 'active' : ''}" onclick="_wfTab='cat_${c}'; renderWorkflowPage()">${c}</button>`).join('')}
+      <button class="tab ${_wfTab === 'relation' ? 'active' : ''}" onclick="_wfTab='relation'; renderWorkflowPage()">담당자 관계</button>
+    </div>
+
+    <div class="card" style="padding:12px; margin-bottom:12px;">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:12px; margin-bottom:8px;">
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:12px; height:12px; background:#c8e6c9; border:1px solid #2e7d32; border-radius:2px;"></span> 정기업무 (5회+)</span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:12px; height:12px; background:#fff3e0; border:1px solid #e65100; border-radius:2px;"></span> 반복업무 (3~4회)</span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:12px; height:12px; background:#e3f2fd; border:1px solid #1a73e8; border-radius:2px;"></span> 카테고리/담당자</span>
+      </div>
+      <p style="font-size:11px; color:var(--gray-400);">좌우로 스크롤하여 전체 다이어그램을 볼 수 있습니다</p>
+    </div>
+
+    <div class="card" style="padding:16px;">
+      <div id="wfDiagramArea" style="overflow-x:auto; -webkit-overflow-scrolling:touch;"></div>
+    </div>
+  `;
+
+  let code;
+  if (_wfTab === 'overview') {
+    code = data.overview;
+  } else if (_wfTab === 'relation') {
+    code = data.relation;
+  } else if (_wfTab.startsWith('cat_')) {
+    const cat = _wfTab.substring(4);
+    code = data.category_diagrams[cat] || 'graph TD\n  A["데이터 없음"]';
+  }
+
+  renderWfMermaid(code);
+}
+
+async function renderWfMermaid(code) {
+  const area = document.getElementById('wfDiagramArea');
+  if (!area) return;
+
+  if (!window._mermaidLoaded) {
+    area.innerHTML = '<p style="text-align:center; color:var(--gray-500);">다이어그램 로딩 중...</p>';
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+    script.onload = () => {
+      window._mermaidLoaded = true;
+      window.mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+      doRenderWf(code);
+    };
+    document.head.appendChild(script);
+  } else {
+    doRenderWf(code);
+  }
+}
+
+async function doRenderWf(code) {
+  const area = document.getElementById('wfDiagramArea');
+  if (!area) return;
+  try {
+    const id = 'wf-' + Date.now();
+    const { svg } = await window.mermaid.render(id, code);
+    area.innerHTML = svg;
+    const svgEl = area.querySelector('svg');
+    if (svgEl) { svgEl.style.maxWidth = 'none'; svgEl.style.height = 'auto'; svgEl.style.minWidth = '600px'; }
+  } catch (e) {
+    area.innerHTML = '<p style="color:var(--gray-500); font-size:13px; text-align:center;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
 }
 

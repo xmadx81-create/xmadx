@@ -1435,6 +1435,153 @@ app.get('/api/knowledge-map', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 워크플로우 다이어그램 ───
+app.get('/api/workflow-diagrams', authMiddleware, async (req, res) => {
+  const ms = (s) => s.replace(/["\[\](){}|<>#&;]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const totalResult = await query('SELECT COUNT(*) as cnt FROM work_reports');
+  if (parseInt(totalResult.rows[0].cnt) === 0) return res.json({ empty: true });
+
+  const catTaskResult = await query(`
+    SELECT r.work_category, r.what_task, r.purpose, r.how_method, r.where_place,
+      COUNT(*) as cnt, STRING_AGG(DISTINCT u.name, ',') as people
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE r.what_task IS NOT NULL AND r.what_task != ''
+    GROUP BY r.work_category, r.what_task, r.purpose, r.how_method, r.where_place
+    ORDER BY cnt DESC
+  `);
+
+  const personResult = await query(`
+    SELECT u.name, u.position, r.what_task, r.work_category, COUNT(*) as cnt
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE r.what_task IS NOT NULL AND r.what_task != ''
+    GROUP BY u.name, u.position, r.what_task, r.work_category
+    ORDER BY u.name, cnt DESC
+  `);
+
+  const consolidated = {};
+  catTaskResult.rows.forEach(r => {
+    const cat = r.work_category || '기타';
+    const key = `${cat}::${r.what_task}`;
+    if (!consolidated[key]) {
+      consolidated[key] = { task: r.what_task, category: cat, purpose: r.purpose || '', methods: [], locations: [], people: [], cnt: 0 };
+    }
+    const c = consolidated[key];
+    c.cnt += parseInt(r.cnt);
+    if (r.how_method && !c.methods.includes(r.how_method)) c.methods.push(r.how_method);
+    if (r.where_place && !c.locations.includes(r.where_place)) c.locations.push(r.where_place);
+    if (r.people) r.people.split(',').forEach(p => { if (!c.people.includes(p)) c.people.push(p); });
+  });
+
+  const tasks = Object.values(consolidated);
+  const byCategory = {};
+  tasks.forEach(t => {
+    if (!byCategory[t.category]) byCategory[t.category] = [];
+    byCategory[t.category].push(t);
+  });
+
+  // 1. 전체 구조도
+  let overview = 'graph TD\n';
+  overview += '  ORG["석유사업본부"]\n';
+  Object.entries(byCategory).forEach(([cat, catTasks], ci) => {
+    const cid = `C${ci}`;
+    overview += `  ORG --> ${cid}["${ms(cat)}<br/>${catTasks.length}개 업무"]\n`;
+    overview += `  style ${cid} fill:#e3f2fd,stroke:#1a73e8\n`;
+    const top = catTasks.sort((a, b) => b.cnt - a.cnt).slice(0, 6);
+    top.forEach((t, ti) => {
+      const tid = `${cid}T${ti}`;
+      let label = ms(t.task);
+      if (label.length > 12) label = label.substring(0, 12) + '..';
+      overview += `  ${cid} --> ${tid}["${label}<br/>${t.cnt}회"]\n`;
+      if (t.cnt >= 5) overview += `  style ${tid} fill:#e8f5e9,stroke:#43a047\n`;
+      else if (t.cnt >= 3) overview += `  style ${tid} fill:#fff3e0,stroke:#e65100\n`;
+    });
+    if (catTasks.length > 6) {
+      overview += `  ${cid} --> ${cid}ETC["외 ${catTasks.length - 6}건"]\n`;
+      overview += `  style ${cid}ETC fill:#f5f5f5,stroke:#bbb\n`;
+    }
+  });
+
+  // 2. 카테고리별 프로세스 맵
+  const categoryDiagrams = {};
+  Object.entries(byCategory).forEach(([cat, catTasks]) => {
+    let d = 'graph LR\n';
+    const sorted = catTasks.sort((a, b) => b.cnt - a.cnt);
+    sorted.slice(0, 10).forEach((t, i) => {
+      const tid = `T${i}`;
+      const tname = ms(t.task);
+      const label = tname.length > 15 ? tname.substring(0, 15) + '..' : tname;
+      d += `  ${tid}["${label}"]\n`;
+      if (t.purpose) {
+        const plabel = ms(t.purpose);
+        d += `  ${tid} --> ${tid}P["${plabel.length > 15 ? plabel.substring(0, 15) + '..' : plabel}"]\n`;
+        d += `  style ${tid}P fill:#e8f0fe,stroke:#1a73e8\n`;
+      }
+      if (t.methods.length > 0) {
+        const mlabel = ms(t.methods[0]);
+        d += `  ${tid} --> ${tid}M["${mlabel.length > 15 ? mlabel.substring(0, 15) + '..' : mlabel}"]\n`;
+        d += `  style ${tid}M fill:#e8f5e9,stroke:#43a047\n`;
+      }
+      if (t.locations.length > 0) {
+        d += `  ${tid} --> ${tid}L["${ms(t.locations[0]).substring(0, 15)}"]\n`;
+        d += `  style ${tid}L fill:#fff3e0,stroke:#e65100\n`;
+      }
+      if (t.cnt >= 5) d += `  style ${tid} fill:#c8e6c9,stroke:#2e7d32\n`;
+    });
+    categoryDiagrams[cat] = d;
+  });
+
+  // 3. 담당자 관계도
+  const personTasks = {};
+  personResult.rows.forEach(r => {
+    if (!personTasks[r.name]) personTasks[r.name] = { position: r.position, tasks: [] };
+    personTasks[r.name].tasks.push({ task: r.what_task, category: r.work_category, cnt: parseInt(r.cnt) });
+  });
+
+  let relation = 'graph TD\n';
+  const personIds = {};
+  Object.keys(personTasks).forEach((name, i) => { personIds[name] = `P${i}`; });
+
+  Object.entries(personTasks).forEach(([name, data]) => {
+    const pid = personIds[name];
+    relation += `  ${pid}(("${ms(name)}<br/>${ms(data.position || '')}"))\n`;
+    relation += `  style ${pid} fill:#e3f2fd,stroke:#1a73e8\n`;
+    const topTasks = data.tasks.sort((a, b) => b.cnt - a.cnt).slice(0, 4);
+    topTasks.forEach((t, j) => {
+      const tid = `${pid}W${j}`;
+      let label = ms(t.task);
+      if (label.length > 12) label = label.substring(0, 12) + '..';
+      relation += `  ${pid} --> ${tid}["${label}"]\n`;
+    });
+  });
+
+  const taskPeople = {};
+  personResult.rows.forEach(r => {
+    if (!taskPeople[r.what_task]) taskPeople[r.what_task] = new Set();
+    taskPeople[r.what_task].add(r.name);
+  });
+  const connections = new Set();
+  Object.values(taskPeople).forEach(people => {
+    const arr = [...people];
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const key = [arr[i], arr[j]].sort().join('::');
+        if (!connections.has(key) && personIds[arr[i]] && personIds[arr[j]]) {
+          connections.add(key);
+          relation += `  ${personIds[arr[i]]} -.- ${personIds[arr[j]]}\n`;
+        }
+      }
+    }
+  });
+
+  res.json({
+    overview,
+    category_diagrams: categoryDiagrams,
+    relation,
+    categories: Object.keys(byCategory)
+  });
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);
