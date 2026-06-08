@@ -1248,6 +1248,112 @@ app.get('/api/meeting-notes/:id', authMiddleware, async (req, res) => {
   res.json(note);
 });
 
+// ─── 업무 지식맵 ───
+app.get('/api/knowledge-map', authMiddleware, async (req, res) => {
+  const totalResult = await query('SELECT COUNT(*) as cnt FROM work_reports');
+  const totalReports = parseInt(totalResult.rows[0].cnt);
+
+  if (totalReports === 0) return res.json({ empty: true, total_reports: 0 });
+
+  const peopleResult = await query(`
+    SELECT u.id, u.name, u.position, COUNT(r.id) as report_count
+    FROM users u JOIN work_reports r ON u.id = r.author_id
+    GROUP BY u.id, u.name, u.position ORDER BY report_count DESC
+  `);
+
+  const dateResult = await query('SELECT MIN(report_date) as first, MAX(report_date) as last FROM work_reports');
+
+  const categoryResult = await query(`
+    SELECT work_category, COUNT(*) as cnt FROM work_reports
+    WHERE work_category IS NOT NULL GROUP BY work_category ORDER BY cnt DESC
+  `);
+
+  const tasksResult = await query(`
+    SELECT what_task, work_category, purpose, how_method, where_place, who,
+      COUNT(*) as frequency,
+      STRING_AGG(DISTINCT u.name, ',') as people,
+      MAX(r.report_date) as last_date
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category, purpose, how_method, where_place, who
+    ORDER BY frequency DESC
+  `);
+
+  const personTaskResult = await query(`
+    SELECT u.name, r.work_category, r.what_task, COUNT(*) as cnt
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE r.what_task IS NOT NULL AND r.what_task != ''
+    GROUP BY u.name, r.work_category, r.what_task
+    ORDER BY u.name, cnt DESC
+  `);
+
+  const consolidated = {};
+  tasksResult.rows.forEach(t => {
+    const cat = t.work_category || '기타';
+    const key = `${cat}::${t.what_task}`;
+    if (!consolidated[key]) {
+      consolidated[key] = {
+        task: t.what_task, category: cat, purpose: t.purpose || '',
+        methods: [], locations: [], people: [], frequency: 0, last_date: t.last_date
+      };
+    }
+    const c = consolidated[key];
+    c.frequency += parseInt(t.frequency);
+    if (t.how_method && !c.methods.includes(t.how_method)) c.methods.push(t.how_method);
+    if (t.where_place && !c.locations.includes(t.where_place)) c.locations.push(t.where_place);
+    if (t.people) t.people.split(',').forEach(p => { if (!c.people.includes(p)) c.people.push(p); });
+  });
+
+  const tasks = Object.values(consolidated);
+  const patterns = tasks.filter(t => t.frequency >= 3);
+  const byCategory = {};
+  tasks.forEach(t => {
+    if (!byCategory[t.category]) byCategory[t.category] = [];
+    byCategory[t.category].push(t);
+  });
+
+  const personMap = {};
+  personTaskResult.rows.forEach(r => {
+    if (!personMap[r.name]) personMap[r.name] = [];
+    personMap[r.name].push({ task: r.what_task, category: r.work_category, count: parseInt(r.cnt) });
+  });
+
+  const mSafe = (s) => s.replace(/["\[\](){}|<>#]/g, ' ').trim();
+  let mermaid = 'graph TD\n';
+  mermaid += '  ROOT["석유사업본부 업무"]\n';
+  const catIds = {};
+  Object.keys(byCategory).forEach((cat, i) => {
+    const cid = `C${i}`;
+    catIds[cat] = cid;
+    mermaid += `  ROOT --> ${cid}["${mSafe(cat)} (${byCategory[cat].length}건)"]\n`;
+  });
+  Object.entries(byCategory).forEach(([cat, catTasks]) => {
+    const top = catTasks.sort((a, b) => b.frequency - a.frequency).slice(0, 5);
+    top.forEach((t, j) => {
+      const tid = `${catIds[cat]}T${j}`;
+      let label = mSafe(t.task);
+      if (label.length > 15) label = label.substring(0, 15) + '..';
+      mermaid += `  ${catIds[cat]} --> ${tid}["${label}"]\n`;
+      t.people.slice(0, 2).forEach((p, k) => {
+        mermaid += `  ${tid} -.-> ${tid}P${k}(("${mSafe(p)}"))\n`;
+      });
+    });
+  });
+
+  res.json({
+    total_reports: totalReports,
+    total_people: peopleResult.rows.length,
+    date_range: { from: dateResult.rows[0].first, to: dateResult.rows[0].last },
+    categories: categoryResult.rows.map(r => ({ name: r.work_category, count: parseInt(r.cnt), pct: Math.round(parseInt(r.cnt) / totalReports * 100) })),
+    people: peopleResult.rows.map(r => ({ name: r.name, position: r.position, count: parseInt(r.report_count) })),
+    tasks_by_category: byCategory,
+    patterns,
+    person_tasks: personMap,
+    mermaid,
+    total_tasks: tasks.length
+  });
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);

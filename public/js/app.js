@@ -1007,6 +1007,10 @@ async function renderMore() {
         <span class="qa-icon">&#128466;</span>
         <span class="qa-label">회의록</span>
       </button>
+      <button class="quick-action-btn" onclick="showKnowledgeMap()" style="border:2px solid var(--primary);">
+        <span class="qa-icon">&#129504;</span>
+        <span class="qa-label" style="color:var(--primary); font-weight:700;">업무 지식맵</span>
+      </button>
     </div>
 
     <p class="section-title">&#9881; 도구</p>
@@ -2646,6 +2650,245 @@ function renderInductiveCard(title, ind) {
         </div>
       </div>
     </div>`;
+}
+
+// ─── 업무 지식맵 ───
+let _kmTab = 'overview';
+
+async function showKnowledgeMap() {
+  const data = await api('/api/knowledge-map');
+  if (!data) return;
+  window._kmData = data;
+  _kmTab = 'overview';
+  renderKnowledgeMap();
+}
+
+function renderKnowledgeMap() {
+  const data = window._kmData;
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = 'none';
+
+  if (data.empty) {
+    document.getElementById('mainContent').innerHTML = `
+      <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+      <div class="card" style="text-align:center; padding:40px 20px;">
+        <div style="font-size:48px; margin-bottom:16px;">&#129504;</div>
+        <p style="font-size:18px; font-weight:700; margin-bottom:8px;">업무 지식맵</p>
+        <p style="font-size:14px; color:var(--gray-500); line-height:1.7;">
+          업무일지가 쌓이면 자동으로<br>
+          업무 지식맵이 만들어집니다.<br><br>
+          <strong>일지를 많이 쓸수록</strong><br>
+          카테고리, 담당자, 업무패턴이<br>
+          더 정확하게 분석됩니다.
+        </p>
+      </div>`;
+    return;
+  }
+
+  const fromDate = data.date_range.from ? data.date_range.from.split('T')[0] : '-';
+  const toDate = data.date_range.to ? data.date_range.to.split('T')[0] : '-';
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <p class="section-title" style="margin-bottom:4px;">&#129504; 업무 지식맵</p>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">${fromDate} ~ ${toDate} 기간 데이터 기반</p>
+
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="stat-number">${data.total_reports}</div><div class="stat-label">총 업무기록</div></div>
+      <div class="stat-card"><div class="stat-number">${data.total_people}</div><div class="stat-label">참여 인원</div></div>
+      <div class="stat-card"><div class="stat-number">${data.total_tasks}</div><div class="stat-label">업무 종류</div></div>
+      <div class="stat-card"><div class="stat-number">${data.patterns.length}</div><div class="stat-label">확립된 패턴</div></div>
+    </div>
+
+    <div class="tabs" style="margin-bottom:16px;">
+      <button class="tab ${_kmTab === 'overview' ? 'active' : ''}" onclick="_kmTab='overview'; renderKnowledgeMap()">카테고리</button>
+      <button class="tab ${_kmTab === 'people' ? 'active' : ''}" onclick="_kmTab='people'; renderKnowledgeMap()">담당자별</button>
+      <button class="tab ${_kmTab === 'patterns' ? 'active' : ''}" onclick="_kmTab='patterns'; renderKnowledgeMap()">업무패턴</button>
+      <button class="tab ${_kmTab === 'diagram' ? 'active' : ''}" onclick="_kmTab='diagram'; renderKnowledgeMap()">다이어그램</button>
+    </div>
+    <div id="kmContent"></div>
+  `;
+
+  if (_kmTab === 'overview') renderKmOverview(data);
+  else if (_kmTab === 'people') renderKmPeople(data);
+  else if (_kmTab === 'patterns') renderKmPatterns(data);
+  else renderKmDiagram(data);
+}
+
+function renderKmOverview(data) {
+  const el = document.getElementById('kmContent');
+  const colors = ['#1a73e8', '#34a853', '#ea4335', '#fbbc04', '#9334e6'];
+
+  let catBar = '<div style="display:flex; border-radius:8px; overflow:hidden; height:28px; margin-bottom:16px;">';
+  data.categories.forEach((c, i) => {
+    catBar += `<div style="width:${c.pct}%; background:${colors[i % colors.length]}; display:flex; align-items:center; justify-content:center;" title="${c.name} ${c.pct}%">
+      <span style="color:#fff; font-size:11px; font-weight:600;">${c.pct > 8 ? c.name : ''}</span>
+    </div>`;
+  });
+  catBar += '</div>';
+
+  let legend = '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;">';
+  data.categories.forEach((c, i) => {
+    legend += `<span style="font-size:12px; display:flex; align-items:center; gap:4px;">
+      <span style="width:10px; height:10px; border-radius:2px; background:${colors[i % colors.length]}; display:inline-block;"></span>
+      ${escHtml(c.name)} ${c.count}건 (${c.pct}%)
+    </span>`;
+  });
+  legend += '</div>';
+
+  let catDetail = '';
+  Object.entries(data.tasks_by_category).forEach(([cat, tasks]) => {
+    const sorted = tasks.sort((a, b) => b.frequency - a.frequency);
+    catDetail += `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="font-weight:700; font-size:15px; margin-bottom:10px; padding-bottom:6px; border-bottom:2px solid var(--gray-200);">
+          ${escHtml(cat)} <span style="font-size:13px; color:var(--gray-500); font-weight:400;">${tasks.length}개 업무</span>
+        </div>
+        ${sorted.slice(0, 10).map((t, i) => `
+          <div style="padding:8px 0; ${i < sorted.length - 1 ? 'border-bottom:1px solid var(--gray-100);' : ''}">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:14px; font-weight:500; flex:1;">${escHtml(t.task)}</span>
+              <span style="font-size:12px; color:var(--gray-500); white-space:nowrap; margin-left:8px;">${t.frequency}회</span>
+            </div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">
+              ${t.people.join(', ')}${t.locations.length > 0 ? ' · ' + t.locations.join(', ') : ''}
+            </div>
+          </div>
+        `).join('')}
+        ${sorted.length > 10 ? `<p style="text-align:center; font-size:12px; color:var(--gray-400); margin-top:8px;">외 ${sorted.length - 10}건</p>` : ''}
+      </div>`;
+  });
+
+  el.innerHTML = catBar + legend + catDetail;
+}
+
+function renderKmPeople(data) {
+  const el = document.getElementById('kmContent');
+  const maxCount = Math.max(...data.people.map(p => p.count), 1);
+
+  let html = '';
+  data.people.forEach(person => {
+    const pct = Math.round(person.count / maxCount * 100);
+    const tasks = data.person_tasks[person.name] || [];
+    const topTasks = tasks.slice(0, 5);
+    const catCounts = {};
+    tasks.forEach(t => { catCounts[t.category] = (catCounts[t.category] || 0) + t.count; });
+
+    html += `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div>
+            <span style="font-size:15px; font-weight:700;">${escHtml(person.name)}</span>
+            <span style="font-size:12px; color:var(--gray-500); margin-left:4px;">${escHtml(person.position || '')}</span>
+          </div>
+          <span style="font-size:13px; font-weight:600; color:var(--primary);">${person.count}건</span>
+        </div>
+        <div style="background:var(--gray-100); border-radius:4px; height:8px; margin-bottom:10px;">
+          <div style="width:${pct}%; background:var(--primary); border-radius:4px; height:100%;"></div>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px;">
+          ${Object.entries(catCounts).map(([cat, cnt]) =>
+            `<span class="badge badge-${cat}">${cat} ${cnt}건</span>`
+          ).join('')}
+        </div>
+        ${topTasks.length > 0 ? `
+          <div style="font-size:12px; color:var(--gray-500); margin-bottom:4px;">주요 업무:</div>
+          ${topTasks.map(t => `
+            <div style="font-size:13px; padding:3px 0; display:flex; justify-content:space-between;">
+              <span>${escHtml(t.task)}</span>
+              <span style="color:var(--gray-400); font-size:12px;">${t.count}회</span>
+            </div>
+          `).join('')}
+          ${tasks.length > 5 ? `<p style="font-size:11px; color:var(--gray-400); margin-top:4px;">외 ${tasks.length - 5}개 업무</p>` : ''}
+        ` : ''}
+      </div>`;
+  });
+
+  el.innerHTML = html || '<p style="text-align:center; color:var(--gray-500);">데이터가 없습니다</p>';
+}
+
+function renderKmPatterns(data) {
+  const el = document.getElementById('kmContent');
+  const patterns = data.patterns;
+
+  if (patterns.length === 0) {
+    el.innerHTML = `
+      <div class="card" style="text-align:center; padding:30px;">
+        <div style="font-size:36px; margin-bottom:12px;">&#128269;</div>
+        <p style="font-size:15px; font-weight:600; margin-bottom:8px;">아직 확립된 패턴이 없습니다</p>
+        <p style="font-size:13px; color:var(--gray-500); line-height:1.6;">
+          같은 업무가 <strong>3회 이상</strong> 반복되면<br>
+          자동으로 패턴으로 감지됩니다.<br>
+          업무일지를 꾸준히 작성해주세요.
+        </p>
+      </div>`;
+    return;
+  }
+
+  let html = `
+    <div class="card" style="background:var(--primary-light); border-left:4px solid var(--primary); margin-bottom:16px; padding:12px;">
+      <p style="font-size:14px; line-height:1.6; color:var(--gray-700);">
+        <strong>${patterns.length}개 확립된 업무 패턴</strong>이 감지되었습니다.<br>
+        3회 이상 반복된 업무는 신입 인수인계 시 핵심 항목입니다.
+      </p>
+    </div>`;
+
+  patterns.sort((a, b) => b.frequency - a.frequency).forEach((p, i) => {
+    html += `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
+          <div style="flex:1;">
+            <span style="font-size:11px; color:var(--gray-400);">#${i + 1}</span>
+            <div style="font-size:15px; font-weight:700; margin-top:2px;">${escHtml(p.task)}</div>
+          </div>
+          <div style="text-align:right;">
+            <span class="badge badge-${p.category}">${p.category}</span>
+            <div style="font-size:20px; font-weight:800; color:var(--primary); margin-top:4px;">${p.frequency}회</div>
+          </div>
+        </div>
+        ${p.purpose ? `<div style="font-size:13px; margin-bottom:4px;"><span style="font-weight:600; color:var(--gray-600);">목적:</span> ${escHtml(p.purpose)}</div>` : ''}
+        ${p.methods.length > 0 ? `<div style="font-size:13px; margin-bottom:4px;"><span style="font-weight:600; color:var(--gray-600);">수행방법:</span> ${p.methods.map(m => escHtml(m)).join(' / ')}</div>` : ''}
+        ${p.locations.length > 0 ? `<div style="font-size:13px; margin-bottom:4px;"><span style="font-weight:600; color:var(--gray-600);">장소:</span> ${p.locations.join(', ')}</div>` : ''}
+        <div style="font-size:12px; color:var(--gray-500); margin-top:6px; padding-top:6px; border-top:1px solid var(--gray-100);">
+          담당: ${p.people.join(', ')} · 최근: ${p.last_date ? p.last_date.split('T')[0] : '-'}
+        </div>
+      </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function renderKmDiagram(data) {
+  const el = document.getElementById('kmContent');
+  el.innerHTML = `
+    <div class="card" style="padding:16px; text-align:center;">
+      <p style="font-size:14px; color:var(--gray-500); margin-bottom:12px;">업무 구조 다이어그램</p>
+      <div id="mermaidDiagram" style="overflow-x:auto;"></div>
+    </div>`;
+
+  if (!window._mermaidLoaded) {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+    script.onload = () => {
+      window._mermaidLoaded = true;
+      window.mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+      renderMermaidChart(data.mermaid);
+    };
+    document.head.appendChild(script);
+  } else {
+    renderMermaidChart(data.mermaid);
+  }
+}
+
+async function renderMermaidChart(code) {
+  try {
+    const { svg } = await window.mermaid.render('km-diagram', code);
+    document.getElementById('mermaidDiagram').innerHTML = svg;
+    const svgEl = document.querySelector('#mermaidDiagram svg');
+    if (svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
+  } catch (e) {
+    document.getElementById('mermaidDiagram').innerHTML = '<p style="color:var(--gray-500); font-size:13px;">다이어그램 생성 중 오류가 발생했습니다.</p>';
+  }
 }
 
 // 초기화
