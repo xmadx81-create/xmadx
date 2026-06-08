@@ -1,8 +1,14 @@
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
+const origLookup = dns.lookup.bind(dns);
+dns.lookup = (hostname, options, callback) => {
+  if (typeof options === 'function') { callback = options; options = 0; }
+  if (typeof options === 'number') options = { family: options };
+  options = Object.assign({}, options, { family: 4 });
+  return origLookup(hostname, options, callback);
+};
 
 const { Pool } = require('pg');
-const net = require('net');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');

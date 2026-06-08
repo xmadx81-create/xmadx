@@ -7,7 +7,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "start": "node server/app.js",
+    "start": "node --dns-result-order=ipv4first server/app.js",
     "dev": "node server/app.js"
   },
   "repository": {
