@@ -264,19 +264,19 @@ app.get('/api/work-table', authMiddleware, (req, res) => {
   res.json({ user_id: targetUser, from, to, daily_reports: grouped, total_count: reports.length });
 });
 
-// ─── 개인업무 매뉴얼 자동생성 ───
+// ─── 개인업무 매뉴얼 자동생성 + 수동 편집 ───
 app.get('/api/manual', authMiddleware, (req, res) => {
-  const reports = db.prepare(`
+  const autoReports = db.prepare(`
     SELECT work_category, purpose, what_task, how_method, where_place, COUNT(*) as frequency
     FROM work_reports WHERE author_id = ?
     GROUP BY work_category, purpose, what_task, how_method, where_place
     ORDER BY frequency DESC
   `).all(req.session.userId);
 
-  const manual = {};
-  reports.forEach(r => {
-    if (!manual[r.work_category]) manual[r.work_category] = [];
-    manual[r.work_category].push({
+  const autoManual = {};
+  autoReports.forEach(r => {
+    if (!autoManual[r.work_category]) autoManual[r.work_category] = [];
+    autoManual[r.work_category].push({
       purpose: r.purpose,
       task: r.what_task,
       method: r.how_method,
@@ -285,7 +285,110 @@ app.get('/api/manual', authMiddleware, (req, res) => {
     });
   });
 
-  res.json({ generated_at: new Date().toISOString(), manual });
+  const customManual = db.prepare('SELECT * FROM personal_manual WHERE user_id = ? ORDER BY sort_order, created_at').all(req.session.userId);
+
+  res.json({ generated_at: new Date().toISOString(), auto: autoManual, custom: customManual });
+});
+
+app.post('/api/manual', authMiddleware, (req, res) => {
+  const id = uuidv4();
+  const { task_group, title, content, steps, tips } = req.body;
+  db.prepare(`INSERT INTO personal_manual (id, user_id, task_group, title, content, steps, tips)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, req.session.userId, task_group, title, content, steps, tips);
+  res.json({ id });
+});
+
+app.put('/api/manual/:id', authMiddleware, (req, res) => {
+  const { title, content, steps, tips } = req.body;
+  db.prepare(`UPDATE personal_manual SET title=?, content=?, steps=?, tips=?, updated_at=CURRENT_TIMESTAMP
+    WHERE id=? AND user_id=?`).run(title, content, steps, tips, req.params.id, req.session.userId);
+  res.json({ ok: true });
+});
+
+app.delete('/api/manual/:id', authMiddleware, (req, res) => {
+  db.prepare('DELETE FROM personal_manual WHERE id = ? AND user_id = ?').run(req.params.id, req.session.userId);
+  res.json({ ok: true });
+});
+
+// ─── 전국 지국 관리 ───
+app.get('/api/branches', authMiddleware, (req, res) => {
+  const { search, exclude } = req.query;
+  let sql = 'SELECT * FROM branches WHERE 1=1';
+  const params = [];
+  if (search) { sql += ' AND (name LIKE ? OR address LIKE ? OR manager_name LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  if (exclude === 'false') { sql += ' AND exclude_service = 0'; }
+  sql += ' ORDER BY seq';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.get('/api/branches/:id', authMiddleware, (req, res) => {
+  const branch = db.prepare('SELECT * FROM branches WHERE id = ?').get(req.params.id);
+  if (!branch) return res.status(404).json({ error: '지국을 찾을 수 없습니다' });
+  res.json(branch);
+});
+
+// ─── 주요업무표 (task master) ───
+app.get('/api/tasks', authMiddleware, (req, res) => {
+  const { category, group, search } = req.query;
+  let sql = 'SELECT * FROM task_master WHERE 1=1';
+  const params = [];
+  if (category) { sql += ' AND category1 = ?'; params.push(category); }
+  if (group) { sql += ' AND task_group = ?'; params.push(group); }
+  if (search) { sql += ' AND (task_detail LIKE ? OR task_group LIKE ? OR assigned_to LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  sql += ' ORDER BY category1, task_group, created_at';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.get('/api/tasks/categories', authMiddleware, (req, res) => {
+  const categories = db.prepare('SELECT DISTINCT category1 FROM task_master WHERE category1 IS NOT NULL ORDER BY category1').all();
+  const groups = db.prepare('SELECT DISTINCT task_group FROM task_master WHERE task_group IS NOT NULL ORDER BY task_group').all();
+  res.json({ categories: categories.map(c => c.category1), groups: groups.map(g => g.task_group) });
+});
+
+app.post('/api/tasks', authMiddleware, (req, res) => {
+  const id = uuidv4();
+  const { department, division, category1, task_group, task_detail, assigned_to, note } = req.body;
+  db.prepare(`INSERT INTO task_master (id, department, division, category1, task_group, task_detail, assigned_to, note, is_custom, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(id, department, division, category1, task_group, task_detail, assigned_to, note, req.session.userId);
+  res.json({ id });
+});
+
+app.put('/api/tasks/:id', authMiddleware, (req, res) => {
+  const { task_detail, assigned_to, note } = req.body;
+  db.prepare(`UPDATE task_master SET task_detail=?, assigned_to=?, note=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+    .run(task_detail, assigned_to, note, req.params.id);
+  res.json({ ok: true });
+});
+
+// ─── 업무 추가내용 (task notes) ───
+app.get('/api/tasks/:id/notes', authMiddleware, (req, res) => {
+  const notes = db.prepare(`SELECT tn.*, u.name as author_name FROM task_notes tn
+    JOIN users u ON tn.author_id = u.id WHERE tn.task_id = ? ORDER BY tn.created_at DESC`).all(req.params.id);
+  res.json(notes);
+});
+
+app.post('/api/tasks/:id/notes', authMiddleware, (req, res) => {
+  const id = uuidv4();
+  const { content } = req.body;
+  db.prepare('INSERT INTO task_notes (id, task_id, author_id, content) VALUES (?, ?, ?, ?)')
+    .run(id, req.params.id, req.session.userId, content);
+  res.json({ id });
+});
+
+// ─── 개별 담당 업무표 ───
+app.get('/api/personal-tasks', authMiddleware, (req, res) => {
+  const { person, position } = req.query;
+  let sql = 'SELECT * FROM personal_task_table WHERE 1=1';
+  const params = [];
+  if (person) { sql += ' AND person_name = ?'; params.push(person); }
+  if (position) { sql += ' AND position = ?'; params.push(position); }
+  sql += ' ORDER BY position, person_name, task_group';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.get('/api/personal-tasks/persons', authMiddleware, (req, res) => {
+  const persons = db.prepare('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name').all();
+  res.json(persons);
 });
 
 app.listen(PORT, '0.0.0.0', () => {

@@ -616,10 +616,24 @@ async function renderMore() {
     <p class="section-title">&#9881; 기능 메뉴</p>
 
     <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showBranches()">
+        <span class="qa-icon">&#127970;</span>
+        <span class="qa-label">전국 지국</span>
+      </button>
+      <button class="quick-action-btn" onclick="showTaskMaster()">
+        <span class="qa-icon">&#128203;</span>
+        <span class="qa-label">주요업무표</span>
+      </button>
+      <button class="quick-action-btn" onclick="showPersonalTasks()">
+        <span class="qa-icon">&#128221;</span>
+        <span class="qa-label">개별 업무표</span>
+      </button>
       <button class="quick-action-btn" onclick="showWorkTable()">
         <span class="qa-icon">&#128202;</span>
         <span class="qa-label">업무표 생성</span>
       </button>
+    </div>
+    <div class="quick-actions">
       <button class="quick-action-btn" onclick="showManual()">
         <span class="qa-icon">&#128214;</span>
         <span class="qa-label">업무 매뉴얼</span>
@@ -636,9 +650,309 @@ async function renderMore() {
 
     <div class="card">
       <p class="card-title" style="margin-bottom:8px;">시스템 정보</p>
-      <p style="font-size:13px; color:var(--gray-500);">석유사업본부 업무공유 시스템 v1.0</p>
-      <p style="font-size:13px; color:var(--gray-500);">스마트폰 최적화 모바일 웹앱</p>
+      <p style="font-size:13px; color:var(--gray-500);">석유사업본부 업무공유 시스템 v2.0</p>
+      <p style="font-size:13px; color:var(--gray-500);">전국 지국/주요업무표 통합 관리</p>
     </div>
+  `;
+}
+
+// ─── 전국 지국 열람 ───
+async function showBranches() {
+  const branches = await api('/api/branches') || [];
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <p class="section-title">&#127970; 전국 지국 현황 (${branches.length}개소)</p>
+    <div class="form-group">
+      <input type="text" id="branchSearch" class="form-control" placeholder="지국명, 주소, 담당자 검색..."
+        oninput="searchBranches()">
+    </div>
+    <div class="tabs" style="margin-bottom:12px;">
+      <button class="tab active" onclick="filterBranchView(this,'all')">전체</button>
+      <button class="tab" onclick="filterBranchView(this,'active')">운영중</button>
+      <button class="tab" onclick="filterBranchView(this,'excluded')">봉사제외</button>
+    </div>
+    <div id="branchList">${renderBranchList(branches)}</div>
+  `;
+  window._allBranches = branches;
+}
+
+function renderBranchList(branches) {
+  if (branches.length === 0) return '<div class="empty-state"><div class="empty-text">검색 결과가 없습니다</div></div>';
+  return branches.map(b => `
+    <div class="card" style="padding:12px; cursor:pointer;" onclick="viewBranch('${b.id}')">
+      <div style="display:flex; justify-content:space-between; align-items:start;">
+        <div style="flex:1;">
+          <div style="font-weight:600; font-size:14px; margin-bottom:4px;">${escHtml(b.name)}</div>
+          <div style="font-size:12px; color:var(--gray-500); margin-bottom:2px;">${escHtml(b.address || '')}</div>
+          <div style="font-size:12px; color:var(--gray-700);">${escHtml(b.manager_name || '')} ${b.manager_phone ? '/ ' + escHtml(b.manager_phone) : ''}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
+          ${b.exclude_service ? '<span class="badge badge-draft">봉사제외</span>' : '<span class="badge badge-approved">운영</span>'}
+          ${b.email ? '<span style="font-size:10px; color:var(--primary);">&#9993;</span>' : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function searchBranches() {
+  const q = document.getElementById('branchSearch').value;
+  const branches = await api(`/api/branches?search=${encodeURIComponent(q)}`) || [];
+  document.getElementById('branchList').innerHTML = renderBranchList(branches);
+  window._allBranches = branches;
+}
+
+function filterBranchView(btn, filter) {
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  let filtered = window._allBranches || [];
+  if (filter === 'active') filtered = filtered.filter(b => !b.exclude_service);
+  if (filter === 'excluded') filtered = filtered.filter(b => b.exclude_service);
+  document.getElementById('branchList').innerHTML = renderBranchList(filtered);
+}
+
+async function viewBranch(id) {
+  const b = await api(`/api/branches/${id}`);
+  if (!b) return;
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showBranches()" style="margin-bottom:12px;">&larr; 목록</button>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${escHtml(b.name)}</span>
+        ${b.exclude_service ? '<span class="badge badge-draft">봉사제외</span>' : '<span class="badge badge-approved">운영</span>'}
+      </div>
+      <div style="font-size:14px; line-height:1.8;">
+        <p><strong>주소:</strong> ${escHtml(b.address || '-')}</p>
+        <p><strong>담당자:</strong> ${escHtml(b.manager_name || '-')} / ${escHtml(b.manager_phone || '-')}</p>
+        <p><strong>실무소통자:</strong> ${escHtml(b.field_contact_name || '-')} / ${escHtml(b.field_contact_phone || '-')}</p>
+        ${b.email ? `<p><strong>이메일:</strong> <a href="mailto:${escHtml(b.email)}" style="color:var(--primary);">${escHtml(b.email)}</a></p>` : ''}
+        ${b.move_status ? `<p style="margin-top:8px; padding:8px; background:#fef7e0; border-radius:8px;"><strong>이전정보:</strong> ${escHtml(b.move_status)} - ${escHtml(b.move_address || '')} ${escHtml(b.move_note || '')}</p>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// ─── 주요업무표 열람/관리 ───
+async function showTaskMaster() {
+  const meta = await api('/api/tasks/categories') || { categories: [], groups: [] };
+  const tasks = await api('/api/tasks') || [];
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <p class="section-title" style="margin-bottom:0;">&#128203; 주요업무표</p>
+      <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ 신규업무</button>
+    </div>
+    <div class="form-group">
+      <input type="text" id="taskSearch" class="form-control" placeholder="업무 검색..." oninput="searchTasks()">
+    </div>
+    <div class="tabs" style="margin-bottom:12px;" id="taskCategoryTabs">
+      <button class="tab active" onclick="filterTasks(this,'')">전체</button>
+      ${meta.categories.map(c => `<button class="tab" onclick="filterTasks(this,'${escAttr(c)}')">${escHtml(c)}</button>`).join('')}
+    </div>
+    <div id="taskList">${renderTaskList(tasks)}</div>
+  `;
+  window._allTasks = tasks;
+}
+
+function renderTaskList(tasks) {
+  if (tasks.length === 0) return '<div class="empty-state"><div class="empty-text">업무가 없습니다</div></div>';
+  const grouped = {};
+  tasks.forEach(t => {
+    const key = t.task_group || '기타';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(t);
+  });
+  return Object.entries(grouped).map(([group, items]) => `
+    <div class="card" style="padding:12px; margin-bottom:8px;">
+      <div style="font-weight:600; font-size:14px; color:var(--primary); margin-bottom:8px; border-bottom:1px solid var(--gray-200); padding-bottom:6px;">${escHtml(group)}</div>
+      ${items.map(t => `
+        <div style="padding:6px 0; border-bottom:1px solid var(--gray-100); cursor:pointer;" onclick="viewTask('${t.id}')">
+          <div style="font-size:13px;">${escHtml(t.task_detail || '')}</div>
+          <div style="font-size:11px; color:var(--gray-500); display:flex; justify-content:space-between;">
+            <span>${escHtml(t.assigned_to || '미지정')}</span>
+            <span>${escHtml(t.category1 || '')} ${t.is_custom ? '(신규)' : ''}</span>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+async function searchTasks() {
+  const q = document.getElementById('taskSearch').value;
+  const tasks = await api(`/api/tasks?search=${encodeURIComponent(q)}`) || [];
+  document.getElementById('taskList').innerHTML = renderTaskList(tasks);
+}
+
+async function filterTasks(btn, category) {
+  document.querySelectorAll('#taskCategoryTabs .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const url = category ? `/api/tasks?category=${encodeURIComponent(category)}` : '/api/tasks';
+  const tasks = await api(url) || [];
+  document.getElementById('taskList').innerHTML = renderTaskList(tasks);
+}
+
+async function viewTask(id) {
+  const tasks = await api('/api/tasks') || [];
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const notes = await api(`/api/tasks/${id}/notes`) || [];
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showTaskMaster()" style="margin-bottom:12px;">&larr; 목록</button>
+    <div class="card">
+      <div class="card-header">
+        <span class="badge badge-내근">${escHtml(task.category1 || '')}</span>
+        ${task.is_custom ? '<span class="badge badge-submitted">신규</span>' : ''}
+      </div>
+      <p style="font-size:12px; color:var(--gray-500); margin-bottom:4px;">${escHtml(task.task_group || '')}</p>
+      <p style="font-size:15px; font-weight:500; margin-bottom:8px;">${escHtml(task.task_detail || '')}</p>
+      <p style="font-size:13px; color:var(--gray-700);">담당: ${escHtml(task.assigned_to || '미지정')}</p>
+      ${task.note ? `<p style="font-size:13px; color:var(--gray-500); margin-top:4px;">비고: ${escHtml(task.note)}</p>` : ''}
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <p class="section-title" style="margin-bottom:0;">추가 내용 (${notes.length})</p>
+    </div>
+
+    <div class="form-group" style="display:flex; gap:8px;">
+      <input type="text" id="taskNoteInput" class="form-control" placeholder="추가 내용 입력..." style="flex:1;">
+      <button class="btn btn-primary btn-sm" onclick="addTaskNote('${id}')">추가</button>
+    </div>
+
+    ${notes.length > 0 ? notes.map(n => `
+      <div class="card" style="padding:10px; margin-bottom:6px;">
+        <div style="font-size:13px;">${escHtml(n.content)}</div>
+        <div style="font-size:11px; color:var(--gray-500); margin-top:4px;">${n.author_name} / ${n.created_at}</div>
+      </div>
+    `).join('') : '<p style="font-size:13px; color:var(--gray-500);">추가된 내용이 없습니다</p>'}
+
+    <div style="margin-top:16px;">
+      <button class="btn btn-outline btn-block" onclick="createReportFromTask('${id}')">이 업무로 업무일지 작성</button>
+    </div>
+  `;
+}
+
+async function addTaskNote(taskId) {
+  const input = document.getElementById('taskNoteInput');
+  if (!input.value.trim()) return;
+  await api(`/api/tasks/${taskId}/notes`, { method: 'POST', body: { content: input.value.trim() } });
+  toast('추가 내용이 등록되었습니다');
+  viewTask(taskId);
+}
+
+async function createReportFromTask(taskId) {
+  const tasks = await api('/api/tasks') || [];
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  editingReportId = null;
+  document.getElementById('reportModalTitle').textContent = '업무일지 작성';
+  document.getElementById('reportDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('reportPurpose').value = task.task_group || '';
+  document.getElementById('reportWho').value = currentUser.name;
+  document.getElementById('reportWhat').value = task.task_detail || '';
+  document.getElementById('reportWhere').value = '';
+  document.getElementById('reportWhen').value = '';
+  document.getElementById('reportHow').value = '';
+  document.getElementById('reportWhy').value = task.category1 || '';
+  document.getElementById('reportContent').value = '';
+  await loadApprovers();
+  await loadTemplates();
+  openModal('reportModal');
+}
+
+function openNewTask() {
+  const html = `
+    <button class="btn btn-outline btn-sm" onclick="showTaskMaster()" style="margin-bottom:12px;">&larr; 목록</button>
+    <p class="section-title">+ 신규 업무 등록</p>
+    <div class="card">
+      <div class="form-group">
+        <label>구분</label>
+        <input type="text" id="newTaskCategory" class="form-control" placeholder="예: 가맹영업, 지사관리, 직영운영">
+      </div>
+      <div class="form-group">
+        <label>업무 그룹</label>
+        <input type="text" id="newTaskGroup" class="form-control" placeholder="예: 가맹주유소 관리">
+      </div>
+      <div class="form-group">
+        <label>세부 업무 내용</label>
+        <textarea id="newTaskDetail" class="form-control" placeholder="업무 세부 내용을 입력하세요"></textarea>
+      </div>
+      <div class="form-group">
+        <label>담당자</label>
+        <input type="text" id="newTaskAssigned" class="form-control" placeholder="담당자명">
+      </div>
+      <div class="form-group">
+        <label>비고</label>
+        <input type="text" id="newTaskNote" class="form-control" placeholder="비고사항">
+      </div>
+      <button class="btn btn-success btn-block" onclick="submitNewTask()">등록</button>
+    </div>
+  `;
+  document.getElementById('mainContent').innerHTML = html;
+}
+
+async function submitNewTask() {
+  const body = {
+    department: '독도사랑 주유소',
+    division: '석유사업 본부',
+    category1: document.getElementById('newTaskCategory').value,
+    task_group: document.getElementById('newTaskGroup').value,
+    task_detail: document.getElementById('newTaskDetail').value,
+    assigned_to: document.getElementById('newTaskAssigned').value,
+    note: document.getElementById('newTaskNote').value
+  };
+  if (!body.task_detail) { toast('업무 내용을 입력해주세요'); return; }
+  await api('/api/tasks', { method: 'POST', body });
+  toast('신규 업무가 등록되었습니다');
+  showTaskMaster();
+}
+
+// ─── 개별 담당 업무표 ───
+async function showPersonalTasks() {
+  const persons = await api('/api/personal-tasks/persons') || [];
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <p class="section-title">&#128221; 개별 담당 업무표</p>
+    <p style="font-size:13px; color:var(--gray-500); margin-bottom:16px;">담당자를 선택하면 상세 업무를 확인할 수 있습니다</p>
+    ${persons.map(p => `
+      <div class="list-item" onclick="viewPersonTasks('${escAttr(p.person_name)}')">
+        <div class="list-item-content">
+          <div class="list-item-title">${escHtml(p.person_name)}</div>
+          <div class="list-item-sub">${escHtml(p.position)}</div>
+        </div>
+        <span style="color:var(--gray-500); font-size:18px;">&rsaquo;</span>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function viewPersonTasks(personName) {
+  const tasks = await api(`/api/personal-tasks?person=${encodeURIComponent(personName)}`) || [];
+  const grouped = {};
+  tasks.forEach(t => {
+    const key = t.task_group || '기타';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(t);
+  });
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showPersonalTasks()" style="margin-bottom:12px;">&larr; 목록</button>
+    <div class="card" style="margin-bottom:16px;">
+      <p class="card-title">${escHtml(personName)}</p>
+      <p style="font-size:13px; color:var(--gray-500);">${tasks.length > 0 ? escHtml(tasks[0].position) + ' / ' + escHtml(tasks[0].division) : ''}</p>
+    </div>
+    ${Object.entries(grouped).map(([group, items]) => `
+      <div class="card" style="padding:12px; margin-bottom:8px;">
+        <div style="font-weight:600; font-size:14px; color:var(--primary); margin-bottom:8px;">${escHtml(group)}</div>
+        ${items.map(t => `
+          <div style="padding:6px 0; border-bottom:1px solid var(--gray-100);">
+            <div style="font-size:13px;">${escHtml(t.task_detail || '')}</div>
+            ${t.note ? `<div style="font-size:11px; color:var(--gray-500);">${escHtml(t.note)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `).join('')}
   `;
 }
 
@@ -684,32 +998,56 @@ async function showWorkTable() {
   document.getElementById('mainContent').innerHTML = tableHtml;
 }
 
-// ─── 개인업무 매뉴얼 자동생성 ───
+// ─── 개인업무 매뉴얼 (자동+수동) ───
 async function showManual() {
   const data = await api('/api/manual');
   if (!data) return;
 
   let html = `
-    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:16px;">&larr; 뒤로</button>
-    <p class="section-title">&#128214; 개인업무 매뉴얼</p>
-    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">자동 생성일: ${new Date(data.generated_at).toLocaleDateString('ko-KR')}</p>
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <p class="section-title" style="margin-bottom:0;">&#128214; 개인업무 매뉴얼</p>
+      <button class="btn btn-primary btn-sm" onclick="openNewManualEntry()">+ 항목 추가</button>
+    </div>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">업무 기록 기반 자동 생성 + 직접 편집 가능 (업데이트: ${new Date(data.generated_at).toLocaleDateString('ko-KR')})</p>
   `;
 
-  const categories = Object.keys(data.manual);
-  if (categories.length === 0) {
-    html += '<div class="card"><p style="text-align:center; color:var(--gray-500);">업무 기록이 쌓이면 자동으로 매뉴얼이 생성됩니다</p></div>';
-  } else {
+  // 수동 매뉴얼 항목
+  if (data.custom && data.custom.length > 0) {
+    html += `<p style="font-size:14px; font-weight:600; margin-bottom:8px; color:var(--primary);">&#9998; 직접 작성 매뉴얼</p>`;
+    data.custom.forEach(item => {
+      html += `<div class="card" style="padding:12px; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div style="flex:1;">
+            ${item.task_group ? `<span class="badge badge-내근" style="margin-bottom:4px;">${escHtml(item.task_group)}</span>` : ''}
+            <p style="font-size:14px; font-weight:500;">${escHtml(item.title)}</p>
+            ${item.content ? `<p style="font-size:13px; margin-top:4px;">${escHtml(item.content)}</p>` : ''}
+            ${item.steps ? `<p style="font-size:12px; color:var(--gray-700); margin-top:4px;"><strong>절차:</strong> ${escHtml(item.steps)}</p>` : ''}
+            ${item.tips ? `<p style="font-size:12px; color:var(--success); margin-top:4px;"><strong>TIP:</strong> ${escHtml(item.tips)}</p>` : ''}
+          </div>
+          <div style="display:flex; gap:4px;">
+            <button class="btn btn-sm btn-outline" onclick="editManualEntry('${item.id}','${escAttr(item.title)}','${escAttr(item.content||'')}','${escAttr(item.steps||'')}','${escAttr(item.tips||'')}')">수정</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteManualEntry('${item.id}')">삭제</button>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+
+  // 자동 매뉴얼
+  const categories = Object.keys(data.auto || {});
+  if (categories.length > 0) {
+    html += `<p style="font-size:14px; font-weight:600; margin:16px 0 8px; color:var(--gray-700);">&#9889; 업무 기록 기반 자동 매뉴얼</p>`;
     categories.forEach(cat => {
-      html += `<div class="card">
-        <p class="card-title"><span class="badge badge-${cat}">${cat}</span> 업무 매뉴얼</p>
-        <div style="margin-top:12px;">
-          ${data.manual[cat].map(item => `
-            <div style="padding:8px; background:var(--gray-50); border-radius:8px; margin-bottom:8px; font-size:13px;">
+      html += `<div class="card" style="padding:12px;">
+        <p class="card-title"><span class="badge badge-${cat}">${cat}</span> 업무</p>
+        <div style="margin-top:8px;">
+          ${data.auto[cat].map(item => `
+            <div style="padding:6px; background:var(--gray-50); border-radius:8px; margin-bottom:6px; font-size:13px;">
               <strong>${escHtml(item.task || '-')}</strong>
-              ${item.method ? `<br>방법: ${escHtml(item.method)}` : ''}
-              ${item.location ? `<br>장소: ${escHtml(item.location)}` : ''}
-              ${item.purpose ? `<br>목적: ${escHtml(item.purpose)}` : ''}
-              <span style="color:var(--gray-500);"> (${item.frequency}회 수행)</span>
+              ${item.method ? ` / ${escHtml(item.method)}` : ''}
+              ${item.location ? ` @ ${escHtml(item.location)}` : ''}
+              <span style="color:var(--gray-500);"> (${item.frequency}회)</span>
             </div>
           `).join('')}
         </div>
@@ -717,7 +1055,100 @@ async function showManual() {
     });
   }
 
+  if (categories.length === 0 && (!data.custom || data.custom.length === 0)) {
+    html += '<div class="card"><p style="text-align:center; color:var(--gray-500);">업무 기록이 쌓이면 자동으로 매뉴얼이 생성됩니다<br>"+ 항목 추가" 버튼으로 직접 작성도 가능합니다</p></div>';
+  }
+
   document.getElementById('mainContent').innerHTML = html;
+}
+
+function openNewManualEntry() {
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showManual()" style="margin-bottom:12px;">&larr; 매뉴얼</button>
+    <p class="section-title">매뉴얼 항목 추가</p>
+    <div class="card">
+      <div class="form-group">
+        <label>업무 그룹</label>
+        <input type="text" id="manualGroup" class="form-control" placeholder="예: 가맹영업, 행정업무">
+      </div>
+      <div class="form-group">
+        <label>제목</label>
+        <input type="text" id="manualTitle" class="form-control" placeholder="업무 제목">
+      </div>
+      <div class="form-group">
+        <label>내용</label>
+        <textarea id="manualContent" class="form-control" placeholder="업무 내용 설명"></textarea>
+      </div>
+      <div class="form-group">
+        <label>절차/단계</label>
+        <textarea id="manualSteps" class="form-control" placeholder="1. 첫번째 단계&#10;2. 두번째 단계&#10;3. ..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>TIP / 참고사항</label>
+        <input type="text" id="manualTips" class="form-control" placeholder="업무 시 참고할 팁">
+      </div>
+      <button class="btn btn-success btn-block" onclick="submitManualEntry()">저장</button>
+    </div>
+  `;
+}
+
+async function submitManualEntry() {
+  const body = {
+    task_group: document.getElementById('manualGroup').value,
+    title: document.getElementById('manualTitle').value,
+    content: document.getElementById('manualContent').value,
+    steps: document.getElementById('manualSteps').value,
+    tips: document.getElementById('manualTips').value
+  };
+  if (!body.title) { toast('제목을 입력해주세요'); return; }
+  await api('/api/manual', { method: 'POST', body });
+  toast('매뉴얼 항목이 추가되었습니다');
+  showManual();
+}
+
+async function editManualEntry(id, title, content, steps, tips) {
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showManual()" style="margin-bottom:12px;">&larr; 매뉴얼</button>
+    <p class="section-title">매뉴얼 항목 수정</p>
+    <div class="card">
+      <div class="form-group">
+        <label>제목</label>
+        <input type="text" id="editManualTitle" class="form-control" value="${escAttr(title)}">
+      </div>
+      <div class="form-group">
+        <label>내용</label>
+        <textarea id="editManualContent" class="form-control">${escHtml(content)}</textarea>
+      </div>
+      <div class="form-group">
+        <label>절차/단계</label>
+        <textarea id="editManualSteps" class="form-control">${escHtml(steps)}</textarea>
+      </div>
+      <div class="form-group">
+        <label>TIP</label>
+        <input type="text" id="editManualTips" class="form-control" value="${escAttr(tips)}">
+      </div>
+      <button class="btn btn-success btn-block" onclick="updateManualEntry('${id}')">수정 저장</button>
+    </div>
+  `;
+}
+
+async function updateManualEntry(id) {
+  const body = {
+    title: document.getElementById('editManualTitle').value,
+    content: document.getElementById('editManualContent').value,
+    steps: document.getElementById('editManualSteps').value,
+    tips: document.getElementById('editManualTips').value
+  };
+  await api(`/api/manual/${id}`, { method: 'PUT', body });
+  toast('매뉴얼이 수정되었습니다');
+  showManual();
+}
+
+async function deleteManualEntry(id) {
+  if (!confirm('삭제하시겠습니까?')) return;
+  await api(`/api/manual/${id}`, { method: 'DELETE' });
+  toast('삭제되었습니다');
+  showManual();
 }
 
 // ─── 템플릿 관리 ───
