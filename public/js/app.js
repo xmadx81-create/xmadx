@@ -1,10 +1,3 @@
-window.onerror = function(msg, url, line) {
-  alert('JS오류: ' + msg + ' (줄:' + line + ')');
-};
-window.addEventListener('unhandledrejection', function(e) {
-  alert('비동기오류: ' + (e.reason && e.reason.message || e.reason));
-});
-
 let currentUser = null;
 let currentPage = 'home';
 let editingReportId = null;
@@ -2044,7 +2037,6 @@ function backToLogin() {
 }
 
 async function submitRegister() {
-  alert('가입신청 버튼 클릭됨! 처리를 시작합니다.');
   toast('가입 처리 중...');
   try {
     const name = document.getElementById('regName').value.trim();
