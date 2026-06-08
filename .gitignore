@@ -1,3 +1,7 @@
+# Node
+node_modules/
+data/*.db
+
 # Gradle files
 .gradle/
 build/

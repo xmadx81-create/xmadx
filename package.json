@@ -1,0 +1,23 @@
+{
+  "name": "xmadx",
+  "version": "1.0.0",
+  "description": "석유사업본부 업무공유 시스템",
+  "main": "server/app.js",
+  "scripts": {
+    "start": "node server/app.js",
+    "dev": "node server/app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:36641/git/xmadx81-create/xmadx"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "uuid": "^14.0.0"
+  }
+}

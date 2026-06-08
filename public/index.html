@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a73e8">
+  <title>석유사업본부 업무시스템</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+
+<!-- ═══ 로그인 화면 ═══ -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h1>석유사업본부</h1>
+    <p class="subtitle">업무공유 시스템</p>
+    <div class="form-group">
+      <label>이메일</label>
+      <input type="email" id="loginEmail" class="form-control" placeholder="이메일 입력" value="demo@petroleum.co.kr">
+    </div>
+    <div class="form-group">
+      <label>비밀번호</label>
+      <input type="password" id="loginPassword" class="form-control" placeholder="비밀번호 입력" value="demo1234">
+    </div>
+    <button class="btn btn-primary btn-block btn-lg" onclick="login()">로그인</button>
+  </div>
+</div>
+
+<!-- ═══ 메인 앱 ═══ -->
+<div id="appContainer" class="app-container">
+
+  <!-- 헤더 -->
+  <header class="app-header">
+    <h1 id="pageTitle">석유사업본부</h1>
+    <div class="header-actions">
+      <button class="header-btn" onclick="showUserInfo()" title="내 정보">&#128100;</button>
+      <button class="header-btn" onclick="logout()" title="로그아웃">&#9654;</button>
+    </div>
+  </header>
+
+  <!-- 메인 컨텐츠 영역 -->
+  <main class="main-content" id="mainContent"></main>
+
+  <!-- FAB 버튼 -->
+  <button class="fab" id="fabBtn" onclick="openNewReport()">+</button>
+
+  <!-- 하단 네비게이션 -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-page="home" onclick="navigate('home')">
+      <span class="nav-icon">&#127968;</span>
+      <span>홈</span>
+    </button>
+    <button class="nav-item" data-page="reports" onclick="navigate('reports')">
+      <span class="nav-icon">&#128221;</span>
+      <span>업무일지</span>
+    </button>
+    <button class="nav-item" data-page="weekly" onclick="navigate('weekly')">
+      <span class="nav-icon">&#128197;</span>
+      <span>주간계획</span>
+    </button>
+    <button class="nav-item" data-page="franchise" onclick="navigate('franchise')">
+      <span class="nav-icon">&#127970;</span>
+      <span>가맹관리</span>
+    </button>
+    <button class="nav-item" data-page="more" onclick="navigate('more')">
+      <span class="nav-icon">&#9776;</span>
+      <span>더보기</span>
+    </button>
+  </nav>
+</div>
+
+<!-- ═══ 업무일지 작성 모달 ═══ -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal-content">
+    <div class="modal-handle"></div>
+    <h2 class="modal-title" id="reportModalTitle">업무일지 작성</h2>
+
+    <div class="form-group">
+      <label>보고 유형</label>
+      <div class="chip-group">
+        <button class="chip selected" data-field="report_type" data-value="daily" onclick="selectChip(this)">일일보고</button>
+        <button class="chip" data-field="report_type" data-value="weekly" onclick="selectChip(this)">주간보고</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>근무 유형</label>
+      <div class="chip-group">
+        <button class="chip selected" data-field="work_category" data-value="내근" onclick="selectChip(this)">내근</button>
+        <button class="chip" data-field="work_category" data-value="외근" onclick="selectChip(this)">외근</button>
+        <button class="chip" data-field="work_category" data-value="출장" onclick="selectChip(this)">출장</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>보고일자</label>
+      <input type="date" id="reportDate" class="form-control">
+    </div>
+
+    <div class="form-group form-group-autocomplete">
+      <label>목적</label>
+      <input type="text" id="reportPurpose" class="form-control" placeholder="업무 목적"
+        onfocus="loadSuggestions('purpose', this)" oninput="filterSuggestions(this)">
+      <div class="autocomplete-list" id="suggest-purpose"></div>
+    </div>
+
+    <p class="section-title" style="font-size:14px; margin-top:20px;">&#128270; 육하원칙 (5W1H)</p>
+    <div class="w5h1-grid">
+      <div class="form-group form-group-autocomplete">
+        <label>누가 (Who)</label>
+        <input type="text" id="reportWho" class="form-control" placeholder="담당자">
+      </div>
+      <div class="form-group">
+        <label>언제 (When)</label>
+        <input type="text" id="reportWhen" class="form-control" placeholder="시간/기간">
+      </div>
+      <div class="form-group form-group-autocomplete">
+        <label>어디서 (Where)</label>
+        <input type="text" id="reportWhere" class="form-control" placeholder="장소"
+          onfocus="loadSuggestions('where_place', this)" oninput="filterSuggestions(this)">
+        <div class="autocomplete-list" id="suggest-where_place"></div>
+      </div>
+      <div class="form-group form-group-autocomplete">
+        <label>무엇을 (What)</label>
+        <input type="text" id="reportWhat" class="form-control" placeholder="업무내용"
+          onfocus="loadSuggestions('what_task', this)" oninput="filterSuggestions(this)">
+        <div class="autocomplete-list" id="suggest-what_task"></div>
+      </div>
+      <div class="form-group form-group-autocomplete">
+        <label>어떻게 (How)</label>
+        <input type="text" id="reportHow" class="form-control" placeholder="수행방법"
+          onfocus="loadSuggestions('how_method', this)" oninput="filterSuggestions(this)">
+        <div class="autocomplete-list" id="suggest-how_method"></div>
+      </div>
+      <div class="form-group form-group-autocomplete">
+        <label>왜 (Why)</label>
+        <input type="text" id="reportWhy" class="form-control" placeholder="사유/목적"
+          onfocus="loadSuggestions('why_reason', this)" oninput="filterSuggestions(this)">
+        <div class="autocomplete-list" id="suggest-why_reason"></div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>상세 내용</label>
+      <textarea id="reportContent" class="form-control" placeholder="업무 상세 내용을 입력하세요"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>결재라인</label>
+      <select id="reportApprover1" class="form-control">
+        <option value="">1차 결재자 선택</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <select id="reportApprover2" class="form-control">
+        <option value="">2차 결재자 선택 (선택사항)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>수신</label>
+      <select id="reportRecipient" class="form-control" multiple size="3">
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>템플릿 불러오기</label>
+      <select id="templateSelect" class="form-control" onchange="loadTemplate()">
+        <option value="">반복 업무 템플릿 선택</option>
+      </select>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-top:20px;">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal('reportModal')">취소</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveAsTemplate()">템플릿 저장</button>
+      <button class="btn btn-success" style="flex:1" onclick="submitReport()">제출</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 주간계획 모달 ═══ -->
+<div class="modal-overlay" id="weeklyModal">
+  <div class="modal-content">
+    <div class="modal-handle"></div>
+    <h2 class="modal-title">주간계획 작성</h2>
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <div class="form-group" style="flex:1">
+        <label>시작일</label>
+        <input type="date" id="weekStart" class="form-control">
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>종료일</label>
+        <input type="date" id="weekEnd" class="form-control">
+      </div>
+    </div>
+    <div id="weeklyPlanItems"></div>
+    <button class="btn btn-outline btn-block" style="margin-bottom:16px" onclick="addWeeklyItem()">+ 항목 추가</button>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal('weeklyModal')">취소</button>
+      <button class="btn btn-success" style="flex:1" onclick="submitWeeklyPlan()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 가맹점 등록 모달 ═══ -->
+<div class="modal-overlay" id="franchiseModal">
+  <div class="modal-content">
+    <div class="modal-handle"></div>
+    <h2 class="modal-title" id="franchiseModalTitle">가맹점 등록</h2>
+    <div class="form-group">
+      <label>구분</label>
+      <div class="chip-group">
+        <button class="chip selected" data-field="franchise_type" data-value="existing" onclick="selectChip(this)">기존 가맹</button>
+        <button class="chip" data-field="franchise_type" data-value="new_prospect" onclick="selectChip(this)">신규 영업</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>상호명</label>
+      <input type="text" id="franchiseName" class="form-control" placeholder="가맹점 상호">
+    </div>
+    <div class="form-group">
+      <label>지역</label>
+      <select id="franchiseRegion" class="form-control">
+        <option value="">지역 선택</option>
+        <option>서울</option><option>경기</option><option>인천</option>
+        <option>강원</option><option>충북</option><option>충남</option>
+        <option>대전</option><option>전북</option><option>전남</option>
+        <option>광주</option><option>경북</option><option>경남</option>
+        <option>대구</option><option>울산</option><option>부산</option>
+        <option>제주</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>주소</label>
+      <input type="text" id="franchiseAddress" class="form-control" placeholder="상세 주소">
+    </div>
+    <div class="form-group">
+      <label>대표자명</label>
+      <input type="text" id="franchiseOwner" class="form-control" placeholder="대표자명">
+    </div>
+    <div class="form-group">
+      <label>연락처</label>
+      <input type="tel" id="franchisePhone" class="form-control" placeholder="010-0000-0000">
+    </div>
+    <div class="form-group">
+      <label>계약일</label>
+      <input type="date" id="franchiseContractDate" class="form-control">
+    </div>
+    <div class="form-group">
+      <label>비고</label>
+      <textarea id="franchiseNotes" class="form-control" placeholder="메모"></textarea>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:20px;">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal('franchiseModal')">취소</button>
+      <button class="btn btn-success" style="flex:1" onclick="submitFranchise()">등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- 토스트 -->
+<div class="toast" id="toast"></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
