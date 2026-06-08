@@ -62,7 +62,7 @@ app.post('/api/register', (req, res) => {
 });
 
 // ─── 관리자 로그인 ───
-const ADMIN_PASSWORD = 'petroleum2024!';
+const ADMIN_PASSWORD = '2024!';
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
