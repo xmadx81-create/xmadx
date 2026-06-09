@@ -4603,66 +4603,40 @@ async function deleteNotice(id) {
   if (res) { toast('공지가 삭제되었습니다'); renderAdminNoticesTab(); }
 }
 
-// ─── 음성 입력 (Web Speech API) ───
+// ─── FAB 메뉴 ───
+function showFabMenu() {
+  document.getElementById('fabMenu').style.display = 'block';
+  document.getElementById('fabOverlay').style.display = 'block';
+  document.getElementById('fabBtn').style.transform = 'rotate(45deg)';
+}
+function closeFabMenu() {
+  document.getElementById('fabMenu').style.display = 'none';
+  document.getElementById('fabOverlay').style.display = 'none';
+  document.getElementById('fabBtn').style.transform = '';
+}
+
+// ─── 음성 녹음 업무일지 ───
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-let _fieldRecog = null;
-let _fullRecog = null;
-let _fullText = '';
+let _vrRecog = null;
+let _vrFinalText = '';
+let _vrInterim = '';
 
-function voiceSupported() {
-  if (!SpeechRecognition) { toast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari를 사용해주세요.'); return false; }
-  return true;
-}
+function startVoiceReport() {
+  if (!SpeechRecognition) { toast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari를 사용해주세요.'); return; }
 
-function voiceToField(fieldId) {
-  if (!voiceSupported()) return;
-  if (_fieldRecog) { _fieldRecog.stop(); _fieldRecog = null; }
-  if (_fullRecog) { stopFullVoice(); }
-
-  const btn = event.currentTarget;
-  const recog = new SpeechRecognition();
-  recog.lang = 'ko-KR';
-  recog.interimResults = true;
-  recog.continuous = false;
-  recog.maxAlternatives = 1;
-  _fieldRecog = recog;
-
-  btn.classList.add('recording');
-
-  recog.onresult = (e) => {
-    let transcript = '';
-    for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript;
-    const el = document.getElementById(fieldId);
-    if (el) {
-      if (el.tagName === 'TEXTAREA') el.value = el.value ? el.value + ' ' + transcript : transcript;
-      else el.value = transcript;
-    }
-  };
-  recog.onend = () => { btn.classList.remove('recording'); _fieldRecog = null; };
-  recog.onerror = (e) => {
-    btn.classList.remove('recording'); _fieldRecog = null;
-    if (e.error === 'not-allowed') toast('마이크 권한을 허용해주세요');
-    else if (e.error !== 'aborted') toast('음성 인식 오류: ' + e.error);
-  };
-  recog.start();
-}
-
-function startFullVoice() {
-  if (!voiceSupported()) return;
-  if (_fieldRecog) { _fieldRecog.stop(); _fieldRecog = null; }
-  if (_fullRecog) { stopFullVoice(); return; }
+  const screen = document.getElementById('voiceRecordScreen');
+  screen.style.display = 'flex';
+  _vrFinalText = '';
+  _vrInterim = '';
+  document.getElementById('vrText').textContent = '듣고 있습니다...';
+  document.getElementById('vrTitle').textContent = '업무 내용을 말씀해 주세요';
 
   const recog = new SpeechRecognition();
   recog.lang = 'ko-KR';
   recog.interimResults = true;
   recog.continuous = true;
   recog.maxAlternatives = 1;
-  _fullRecog = recog;
-  _fullText = '';
-
-  document.getElementById('voiceStatus').style.display = 'block';
-  document.getElementById('voiceFullBtn').style.background = '#ef4444';
-  document.getElementById('voiceFullBtn').innerHTML = '<span style="font-size:18px;">&#9724;</span> 녹음 중...';
+  _vrRecog = recog;
 
   recog.onresult = (e) => {
     let final = '', interim = '';
@@ -4670,88 +4644,111 @@ function startFullVoice() {
       if (e.results[i].isFinal) final += e.results[i][0].transcript + ' ';
       else interim += e.results[i][0].transcript;
     }
-    _fullText = final;
-    document.getElementById('voicePreview').textContent = final + interim;
+    _vrFinalText = final;
+    _vrInterim = interim;
+    const display = (final + interim).trim() || '듣고 있습니다...';
+    document.getElementById('vrText').textContent = display;
   };
 
   recog.onend = () => {
-    if (_fullRecog) {
-      if (_fullText.trim()) parseVoiceToFields(_fullText.trim());
-      resetFullVoiceUI();
+    if (_vrRecog) {
+      try { _vrRecog.start(); } catch(e) {}
     }
   };
+
   recog.onerror = (e) => {
-    resetFullVoiceUI();
-    if (e.error === 'not-allowed') toast('마이크 권한을 허용해주세요');
-    else if (e.error !== 'aborted') toast('음성 인식 오류: ' + e.error);
+    if (e.error === 'not-allowed') {
+      toast('마이크 권한을 허용해주세요');
+      cancelVoiceReport();
+    } else if (e.error === 'no-speech') {
+      document.getElementById('vrTitle').textContent = '소리가 감지되지 않았습니다. 다시 말씀해 주세요.';
+    }
   };
+
   recog.start();
 }
 
-function stopFullVoice() {
-  if (_fullRecog) {
-    const recog = _fullRecog;
-    _fullRecog = null;
-    recog.stop();
-    if (_fullText.trim()) parseVoiceToFields(_fullText.trim());
-    resetFullVoiceUI();
-  }
+function cancelVoiceReport() {
+  if (_vrRecog) { const r = _vrRecog; _vrRecog = null; r.stop(); }
+  document.getElementById('voiceRecordScreen').style.display = 'none';
 }
 
-function resetFullVoiceUI() {
-  _fullRecog = null;
-  document.getElementById('voiceStatus').style.display = 'none';
-  document.getElementById('voiceFullBtn').style.background = '#7c3aed';
-  document.getElementById('voiceFullBtn').innerHTML = '<span style="font-size:18px;">&#127908;</span> 음성으로 입력';
+function finishVoiceReport() {
+  if (_vrRecog) { const r = _vrRecog; _vrRecog = null; r.stop(); }
+  document.getElementById('voiceRecordScreen').style.display = 'none';
+
+  const text = (_vrFinalText + _vrInterim).trim();
+  if (!text) { toast('음성이 인식되지 않았습니다'); return; }
+
+  openNewReport();
+
+  setTimeout(() => {
+    parseVoiceToFields(text);
+  }, 300);
 }
 
 function parseVoiceToFields(text) {
-  const keywords = {
-    who: ['누가','담당자','사람'],
-    when: ['언제','시간','기간','날짜','오전','오후'],
-    where: ['어디서','어디','장소','사무실','현장'],
-    what: ['무엇을','뭐','업무','일','작업','회의','보고'],
-    how: ['어떻게','방법','방식','전화','이메일','대면','온라인'],
-    why: ['왜','이유','목적','때문','위해'],
-    purpose: ['목적은','목적이','목표']
-  };
+  const patterns = [
+    { field: 'who', re: /(?:담당자는?|누가|내가|제가|저는|본인이)\s*(.+?)(?:\s*이고|\s*이며|\s*이\s|,|\.|\s+(?:에서|을|를|이|가|는|은))/i },
+    { field: 'when', re: /(?:오전|오후|아침|저녁|낮|밤|\d{1,2}시|\d{1,2}월|\d{1,2}일|어제|오늘|내일|이번\s*주|지난\s*주|월요일|화요일|수요일|목요일|금요일|토요일|일요일)[\s\S]{0,20}/i },
+    { field: 'where', re: /(?:에서|장소는?|(?:본사|지사|사무실|현장|지국|센터|회의실|출장지)[\s가-힣]{0,10})/i },
+    { field: 'what', re: /(?:업무는?|할\s*일은?|작업은?|(?:보고서|회의|미팅|점검|방문|교육|상담|전화|접수|처리|확인|검토|작성|발송|정리|분석)[\s가-힣]{0,15})/i },
+    { field: 'how', re: /(?:방법은?|방식은?|(?:전화로|이메일로|대면으로|온라인으로|직접|팩스로|문자로|카톡으로|시스템으로)[\s가-힣]{0,10})/i },
+    { field: 'why', re: /(?:이유는?|때문에?|위해서?|목적은?|위하여|사유는?)/i }
+  ];
 
-  const sentences = text.split(/[.!?。,，\n]+/).map(s => s.trim()).filter(s => s);
-  const fields = { who: '', when: '', where: '', what: '', how: '', why: '', purpose: '' };
-  const unmatched = [];
+  const clauses = text.split(/[.!?。]+/).map(s => s.trim()).filter(s => s.length > 1);
+  if (clauses.length === 0) clauses.push(text);
 
-  for (const s of sentences) {
-    let matched = false;
-    for (const [field, kws] of Object.entries(keywords)) {
-      if (kws.some(k => s.includes(k))) {
-        fields[field] = fields[field] ? fields[field] + ', ' + s : s;
-        matched = true;
+  const fields = { who: '', when: '', where: '', what: '', how: '', why: '' };
+  const used = new Set();
+
+  for (let ci = 0; ci < clauses.length; ci++) {
+    const c = clauses[ci];
+    for (const p of patterns) {
+      if (!fields[p.field] && p.re.test(c)) {
+        fields[p.field] = c;
+        used.add(ci);
         break;
       }
     }
-    if (!matched) unmatched.push(s);
   }
 
-  const fieldMap = { who: 'reportWho', when: 'reportWhen', where: 'reportWhere', what: 'reportWhat', how: 'reportHow', why: 'reportWhy', purpose: 'reportPurpose' };
+  const timeMatch = text.match(/(오전|오후)?\s*(\d{1,2})\s*시\s*(\d{1,2}\s*분)?/);
+  if (timeMatch && !fields.when) fields.when = timeMatch[0];
+
+  const placeMatch = text.match(/(본사|지사|사무실|현장|회의실|센터|지국|연수원|출장지)[\s가-힣]{0,8}/);
+  if (placeMatch && !fields.where) fields.where = placeMatch[0];
+
+  const taskMatch = text.match(/(보고서|회의|미팅|점검|방문|교육|상담|전화|접수|처리|확인|검토|작성|발송|정리|분석|출장|세미나|교육|연수)[\s가-힣]{0,12}/);
+  if (taskMatch && !fields.what) fields.what = taskMatch[0];
+
+  const personMatch = text.match(/([가-힣]{2,4})\s*(님|씨|과장|대리|차장|부장|팀장|본부장|이사|사원|주임|계장)/);
+  if (personMatch && !fields.who) fields.who = personMatch[0];
+
+  const methodMatch = text.match(/(전화|이메일|대면|온라인|직접|팩스|문자|카톡|시스템|현장|방문)\s*(으?로|통해|통하여)?/);
+  if (methodMatch && !fields.how) fields.how = methodMatch[0];
+
+  const fieldMap = { who: 'reportWho', when: 'reportWhen', where: 'reportWhere', what: 'reportWhat', how: 'reportHow', why: 'reportWhy' };
   let filled = 0;
   for (const [key, id] of Object.entries(fieldMap)) {
     if (fields[key]) {
       const el = document.getElementById(id);
-      if (el && !el.value) { el.value = fields[key]; filled++; }
+      if (el) { el.value = fields[key].trim(); filled++; }
     }
   }
 
+  const unmatched = clauses.filter((_, i) => !used.has(i));
   const contentEl = document.getElementById('reportContent');
   if (contentEl) {
-    const remaining = unmatched.length > 0 ? unmatched.join('. ') : '';
-    if (filled === 0) {
-      contentEl.value = contentEl.value ? contentEl.value + '\n' + text : text;
-    } else if (remaining) {
-      contentEl.value = contentEl.value ? contentEl.value + '\n' + remaining : remaining;
+    if (unmatched.length > 0) {
+      contentEl.value = unmatched.join('. ');
+    } else if (filled === 0) {
+      contentEl.value = text;
     }
   }
 
-  toast(`음성 입력 완료 (${filled}개 항목 자동 분류)`);
+  toast(`음성 분석 완료! ${filled}개 항목 자동 입력, 나머지는 상세내용에 기록됨`);
 }
 
 // 초기화
