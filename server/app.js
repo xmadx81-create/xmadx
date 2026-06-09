@@ -1780,6 +1780,202 @@ app.get('/api/onboarding', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 부서 목표 & 방향성 ───
+app.get('/api/direction', authMiddleware, async (req, res) => {
+  const notesResult = await query(`SELECT * FROM meeting_notes WHERE summary IS NOT NULL ORDER BY meeting_date DESC`);
+  const notes = notesResult.rows;
+
+  const peopleResult = await query(`
+    SELECT u.name, u.position, COUNT(r.id) as cnt,
+      STRING_AGG(DISTINCT r.work_category, ',') as categories
+    FROM users u JOIN work_reports r ON u.id = r.author_id
+    GROUP BY u.name, u.position ORDER BY cnt DESC
+  `);
+
+  const recentTasksResult = await query(`
+    SELECT what_task, work_category, COUNT(*) as cnt, STRING_AGG(DISTINCT u.name, ',') as people
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE what_task IS NOT NULL AND what_task != '' AND report_date >= NOW() - INTERVAL '30 days'
+    GROUP BY what_task, work_category ORDER BY cnt DESC LIMIT 20
+  `);
+
+  const goals = [];
+  const actions = [];
+  const themes = [];
+
+  notes.forEach(note => {
+    const lines = (note.summary || '').split('\n');
+    let currentSection = '';
+    lines.forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('##')) {
+        currentSection = trimmed.replace(/^#+\s*/, '');
+        themes.push(currentSection);
+      } else if (trimmed.startsWith('- ')) {
+        const item = trimmed.substring(2).trim();
+        if (/목표|방향|전략|계획|추진|확대|강화|완성|달성|구축/.test(currentSection + item)) {
+          goals.push({ text: item, from: note.title, date: note.meeting_date });
+        }
+        if (/액션|실행|할\s*일|조치|이행|추진|과제/.test(currentSection)) {
+          actions.push({ text: item, from: note.title, date: note.meeting_date });
+        }
+      }
+    });
+  });
+
+  const uniqueGoals = [];
+  const goalTexts = new Set();
+  goals.forEach(g => {
+    const key = g.text.substring(0, 20);
+    if (!goalTexts.has(key)) { goalTexts.add(key); uniqueGoals.push(g); }
+  });
+
+  const uniqueActions = [];
+  const actionTexts = new Set();
+  actions.forEach(a => {
+    const key = a.text.substring(0, 20);
+    if (!actionTexts.has(key)) { actionTexts.add(key); uniqueActions.push(a); }
+  });
+
+  const memberDirections = peopleResult.rows.map(p => {
+    const cats = (p.categories || '').split(',');
+    const mainCat = cats[0] || '내근';
+    const focus = [];
+    if (mainCat === '외근') focus.push('현장 방문 및 가맹점 관리 집중');
+    if (mainCat === '내근') focus.push('내부 행정 및 보고 업무 지원');
+    if (mainCat === '출장') focus.push('지역 확장 및 네트워크 강화');
+    if (parseInt(p.cnt) < 5) focus.push('업무일지 작성 빈도 높이기');
+    uniqueGoals.slice(0, 2).forEach(g => {
+      focus.push(g.text.length > 30 ? g.text.substring(0, 30) + '..' : g.text);
+    });
+    return { name: p.name, position: p.position, mainCategory: mainCat, reportCount: parseInt(p.cnt), directions: focus.slice(0, 3) };
+  });
+
+  res.json({
+    goals: uniqueGoals.slice(0, 10),
+    actions: uniqueActions.slice(0, 15),
+    themes: [...new Set(themes)].slice(0, 10),
+    member_directions: memberDirections,
+    meeting_count: notes.length,
+    recent_tasks: recentTasksResult.rows.map(r => ({
+      task: r.what_task, category: r.work_category, count: parseInt(r.cnt), people: r.people
+    }))
+  });
+});
+
+// ─── 개인 업무 인사이트 ───
+app.get('/api/personal-insight', authMiddleware, async (req, res) => {
+  const userId = req.query.user_id || req.session.userId;
+
+  const userResult = await query('SELECT name, position FROM users WHERE id = $1', [userId]);
+  const user = userResult.rows[0] || { name: '사용자', position: '' };
+
+  const totalResult = await query('SELECT COUNT(*) as cnt FROM work_reports WHERE author_id = $1', [userId]);
+  const total = parseInt(totalResult.rows[0].cnt);
+  if (total === 0) return res.json({ empty: true, user });
+
+  const catResult = await query(`
+    SELECT work_category, COUNT(*) as cnt FROM work_reports
+    WHERE author_id = $1 AND work_category IS NOT NULL GROUP BY work_category ORDER BY cnt DESC
+  `, [userId]);
+
+  const monthlyResult = await query(`
+    SELECT TO_CHAR(report_date, 'YYYY-MM') as month, COUNT(*) as cnt
+    FROM work_reports WHERE author_id = $1
+    GROUP BY TO_CHAR(report_date, 'YYYY-MM') ORDER BY month DESC LIMIT 6
+  `, [userId]);
+
+  const topTasksResult = await query(`
+    SELECT what_task, work_category, purpose, how_method, COUNT(*) as cnt, MAX(report_date) as last
+    FROM work_reports WHERE author_id = $1 AND what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category, purpose, how_method ORDER BY cnt DESC LIMIT 10
+  `, [userId]);
+
+  const recentResult = await query(`
+    SELECT what_task, work_category, report_date FROM work_reports
+    WHERE author_id = $1 ORDER BY report_date DESC LIMIT 20
+  `, [userId]);
+
+  const dateResult = await query(`
+    SELECT MIN(report_date) as first, MAX(report_date) as last FROM work_reports WHERE author_id = $1
+  `, [userId]);
+
+  const cats = catResult.rows;
+  const monthly = monthlyResult.rows;
+  const topTasks = topTasksResult.rows;
+  const recent = recentResult.rows;
+
+  const positive = [];
+  const negative = [];
+  const predictions = [];
+  const recommendations = [];
+
+  if (total >= 10) positive.push({ title: '꾸준한 기록', detail: `총 ${total}건의 업무일지를 작성했습니다. 업무 데이터가 축적되고 있습니다.` });
+  if (total < 5) negative.push({ title: '기록 부족', detail: '업무일지 작성이 부족합니다. 일일 업무를 기록하면 업무 추적과 인수인계에 도움이 됩니다.' });
+
+  const mainCat = cats[0];
+  if (mainCat) {
+    const pct = Math.round(mainCat.cnt / total * 100);
+    if (pct > 70) {
+      positive.push({ title: `${mainCat.work_category} 전문성`, detail: `업무의 ${pct}%가 ${mainCat.work_category}으로, 해당 영역의 전문성이 높습니다.` });
+      if (cats.length === 1) {
+        negative.push({ title: '업무 편중', detail: `${mainCat.work_category} 업무에 집중되어 있습니다. 다양한 업무 경험이 필요할 수 있습니다.` });
+      }
+    }
+    if (cats.length >= 3) positive.push({ title: '다양한 업무 경험', detail: `${cats.map(c => c.work_category).join(', ')} 등 ${cats.length}가지 유형의 업무를 수행하고 있습니다.` });
+  }
+
+  const coreTasks = topTasks.filter(t => parseInt(t.cnt) >= 3);
+  if (coreTasks.length > 0) {
+    positive.push({ title: '확립된 핵심 업무', detail: `${coreTasks.map(t => t.what_task).join(', ')} 등 ${coreTasks.length}개의 정기 업무가 확립되었습니다.` });
+  }
+
+  if (monthly.length >= 2) {
+    const cur = parseInt(monthly[0].cnt);
+    const prev = parseInt(monthly[1].cnt);
+    if (cur > prev) {
+      positive.push({ title: '활동량 증가', detail: `지난달(${prev}건) 대비 이번달(${cur}건) 활동량이 ${Math.round((cur - prev) / prev * 100)}% 증가했습니다.` });
+      predictions.push({ type: 'positive', text: '현재 추세가 유지되면 업무 기여도가 지속적으로 상승할 것으로 예상됩니다.' });
+    } else if (cur < prev * 0.5) {
+      negative.push({ title: '활동량 급감', detail: `지난달(${prev}건) 대비 이번달(${cur}건)으로 활동량이 크게 줄었습니다.` });
+      predictions.push({ type: 'negative', text: '활동량 감소가 지속되면 업무 공백이 발생할 수 있습니다. 원인 파악이 필요합니다.' });
+    }
+  }
+
+  if (coreTasks.length >= 3) {
+    predictions.push({ type: 'positive', text: `${coreTasks.length}개의 핵심 업무를 안정적으로 수행 중이며, 해당 분야의 전문가로 성장할 가능성이 높습니다.` });
+  }
+
+  const lastDate = dateResult.rows[0].last;
+  const daysSinceLast = lastDate ? Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000) : 999;
+  if (daysSinceLast > 7) {
+    negative.push({ title: '최근 기록 공백', detail: `마지막 업무일지 작성 후 ${daysSinceLast}일이 지났습니다.` });
+    predictions.push({ type: 'negative', text: '기록 공백이 길어지면 업무 히스토리 추적이 어려워집니다.' });
+  }
+
+  if (negative.length > positive.length) {
+    recommendations.push('업무일지를 매일 작성하는 습관을 만들어보세요. 간단한 기록이라도 축적되면 큰 자산이 됩니다.');
+  }
+  if (cats.length === 1 && total >= 5) {
+    recommendations.push(`현재 ${cats[0].work_category} 중심이므로, 다른 유형의 업무에도 참여해보면 시야를 넓힐 수 있습니다.`);
+  }
+  if (coreTasks.length > 0) {
+    recommendations.push(`핵심 업무(${coreTasks[0].what_task})의 절차를 매뉴얼로 정리해두면 인수인계 시 큰 도움이 됩니다.`);
+  }
+  if (total >= 10 && positive.length > negative.length) {
+    recommendations.push('현재 방향이 좋습니다. 꾸준한 기록과 다양한 업무 경험을 유지해주세요.');
+  }
+
+  res.json({
+    user, total,
+    date_range: { from: dateResult.rows[0].first, to: dateResult.rows[0].last },
+    categories: cats.map(c => ({ name: c.work_category, count: parseInt(c.cnt), pct: Math.round(parseInt(c.cnt) / total * 100) })),
+    monthly: monthly.reverse(),
+    top_tasks: topTasks.map(t => ({ task: t.what_task, category: t.work_category, count: parseInt(t.cnt), last: t.last })),
+    positive, negative, predictions, recommendations
+  });
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);

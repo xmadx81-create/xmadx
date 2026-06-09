@@ -1200,6 +1200,18 @@ async function renderMore() {
       </button>
     </div>
 
+    <p class="section-title">&#128161; 분석 & 인사이트</p>
+    <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showDirection()" style="border:2px solid #7c3aed;">
+        <span class="qa-icon">&#127919;</span>
+        <span class="qa-label" style="color:#7c3aed; font-weight:700;">목표 & 방향</span>
+      </button>
+      <button class="quick-action-btn" onclick="showPersonalInsight()" style="border:2px solid #0891b2;">
+        <span class="qa-icon">&#128161;</span>
+        <span class="qa-label" style="color:#0891b2; font-weight:700;">내 업무 분석</span>
+      </button>
+    </div>
+
     <p class="section-title">&#9881; 도구</p>
     <div class="quick-actions">
       <button class="quick-action-btn" onclick="showWorkTable()">
@@ -3199,6 +3211,210 @@ async function renderMermaidChart(code) {
   } catch (e) {
     document.getElementById('mermaidDiagram').innerHTML = '<p style="color:var(--gray-500); font-size:13px;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 부서 목표 & 방향성 ───
+async function showDirection() {
+  const data = await api('/api/direction');
+  if (!data) return;
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = 'none';
+
+  let goalsHtml = '';
+  if (data.goals.length > 0) {
+    goalsHtml = data.goals.map((g, i) => `
+      <div style="padding:12px; background:#f3e8ff; border-radius:8px; margin-bottom:8px; border-left:4px solid #7c3aed;">
+        <div style="font-size:14px; font-weight:600;">${escHtml(g.text)}</div>
+        <div style="font-size:11px; color:var(--gray-500); margin-top:4px;">${escHtml(g.from)} · ${(g.date||'').toString().split('T')[0]}</div>
+      </div>
+    `).join('');
+  } else {
+    goalsHtml = '<p style="color:var(--gray-400); text-align:center; padding:16px;">회의록에서 추출된 목표가 없습니다</p>';
+  }
+
+  let actionsHtml = '';
+  if (data.actions.length > 0) {
+    actionsHtml = data.actions.map(a => `
+      <div style="padding:8px 12px; border-bottom:1px solid var(--gray-100); display:flex; align-items:start; gap:8px;">
+        <span style="color:#7c3aed; font-size:14px; flex-shrink:0;">&#9745;</span>
+        <div>
+          <div style="font-size:13px;">${escHtml(a.text)}</div>
+          <div style="font-size:11px; color:var(--gray-400);">${escHtml(a.from)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  let membersHtml = data.member_directions.map(m => `
+    <div class="card" style="padding:12px; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <div>
+          <span style="font-size:14px; font-weight:700;">${escHtml(m.name)}</span>
+          <span style="font-size:12px; color:var(--gray-500); margin-left:4px;">${escHtml(m.position || '')}</span>
+        </div>
+        <span class="badge badge-${m.mainCategory}">${m.mainCategory} ${m.reportCount}건</span>
+      </div>
+      <div style="font-size:12px; font-weight:600; color:#7c3aed; margin-bottom:4px;">행동 지침:</div>
+      ${m.directions.map(d => `<div style="font-size:13px; padding:3px 0; padding-left:12px; border-left:2px solid #e9d5ff;">· ${escHtml(d)}</div>`).join('')}
+    </div>
+  `).join('');
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-size:36px; margin-bottom:8px;">&#127919;</div>
+      <p style="font-size:20px; font-weight:800;">부서 목표 & 방향성</p>
+      <p style="font-size:13px; color:var(--gray-500);">회의록 ${data.meeting_count}건 분석 기반</p>
+    </div>
+
+    <div class="card" style="margin-bottom:16px; border-left:4px solid #7c3aed;">
+      <p style="font-size:16px; font-weight:700; margin-bottom:12px;">&#127919; 부서 목표</p>
+      ${goalsHtml}
+    </div>
+
+    ${data.actions.length > 0 ? `
+    <div class="card" style="margin-bottom:16px; border-left:4px solid #0891b2;">
+      <p style="font-size:16px; font-weight:700; margin-bottom:12px;">&#9889; 실행 과제</p>
+      ${actionsHtml}
+    </div>` : ''}
+
+    ${data.recent_tasks.length > 0 ? `
+    <div class="card" style="margin-bottom:16px; border-left:4px solid #43a047;">
+      <p style="font-size:16px; font-weight:700; margin-bottom:8px;">&#128200; 최근 30일 주요 활동</p>
+      <p style="font-size:12px; color:var(--gray-500); margin-bottom:8px;">현재 팀이 집중하고 있는 업무</p>
+      ${data.recent_tasks.slice(0, 8).map(t => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--gray-100);">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="badge badge-${t.category}" style="font-size:10px;">${t.category}</span>
+            <span style="font-size:13px;">${escHtml(t.task)}</span>
+          </div>
+          <span style="font-size:12px; color:var(--gray-500);">${t.count}회</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <div class="card" style="margin-bottom:16px; border-left:4px solid #e65100;">
+      <p style="font-size:16px; font-weight:700; margin-bottom:12px;">&#128101; 팀원별 행동 지침</p>
+      <p style="font-size:12px; color:var(--gray-500); margin-bottom:12px;">각 팀원이 집중해야 할 방향</p>
+      ${membersHtml}
+    </div>
+  `;
+}
+
+// ─── 개인 업무 인사이트 ───
+async function showPersonalInsight() {
+  const data = await api('/api/personal-insight');
+  if (!data) return;
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = 'none';
+
+  if (data.empty) {
+    document.getElementById('mainContent').innerHTML = `
+      <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+      <div class="card" style="text-align:center; padding:40px;">
+        <div style="font-size:48px; margin-bottom:16px;">&#128161;</div>
+        <p style="font-size:18px; font-weight:700; margin-bottom:8px;">업무 분석</p>
+        <p style="font-size:14px; color:var(--gray-500);">업무일지를 작성하면 분석 결과가 표시됩니다.</p>
+      </div>`;
+    return;
+  }
+
+  const fromDate = data.date_range.from ? data.date_range.from.toString().split('T')[0] : '-';
+  const toDate = data.date_range.to ? data.date_range.to.toString().split('T')[0] : '-';
+
+  const catColors = { '내근': '#1a73e8', '외근': '#34a853', '출장': '#ea4335' };
+  const catBar = data.categories.length > 0 ? `
+    <div style="display:flex; border-radius:6px; overflow:hidden; height:20px; margin:8px 0;">
+      ${data.categories.map(c => `<div style="width:${c.pct}%; background:${catColors[c.name] || '#999'}; min-width:15px;" title="${c.name} ${c.pct}%"></div>`).join('')}
+    </div>
+    <div style="display:flex; gap:8px; font-size:11px; flex-wrap:wrap;">
+      ${data.categories.map(c => `<span><span style="width:8px; height:8px; border-radius:2px; background:${catColors[c.name] || '#999'}; display:inline-block;"></span> ${c.name} ${c.pct}%</span>`).join('')}
+    </div>` : '';
+
+  const monthMax = Math.max(...data.monthly.map(m => m.cnt), 1);
+  const monthChart = data.monthly.length > 1 ? `
+    <div style="display:flex; gap:4px; align-items:flex-end; height:60px; margin:8px 0;">
+      ${data.monthly.map(m => {
+        const h = Math.max(4, Math.round(parseInt(m.cnt) / monthMax * 56));
+        return `<div style="flex:1; display:flex; flex-direction:column; align-items:center;">
+          <div style="font-size:10px; color:var(--gray-500);">${m.cnt}</div>
+          <div style="width:100%; max-width:30px; height:${h}px; background:var(--primary); border-radius:4px 4px 0 0;"></div>
+          <div style="font-size:10px; color:var(--gray-500); margin-top:2px;">${m.month.substring(5)}</div>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <div style="text-align:center; margin-bottom:16px;">
+      <div style="font-size:36px; margin-bottom:8px;">&#128161;</div>
+      <p style="font-size:20px; font-weight:800;">${escHtml(data.user.name)} ${escHtml(data.user.position || '')} 업무 분석</p>
+      <p style="font-size:12px; color:var(--gray-500);">${fromDate} ~ ${toDate} · 총 ${data.total}건</p>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <p style="font-size:14px; font-weight:700; margin-bottom:8px;">&#128200; 활동 추이</p>
+      ${monthChart}
+      ${catBar}
+    </div>
+
+    ${data.positive.length > 0 ? `
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #43a047;">
+      <p style="font-size:14px; font-weight:700; margin-bottom:10px; color:#2e7d32;">&#128994; 긍정적 분석</p>
+      ${data.positive.map(p => `
+        <div style="padding:10px; background:#e8f5e9; border-radius:8px; margin-bottom:6px;">
+          <div style="font-size:14px; font-weight:600; color:#2e7d32;">${escHtml(p.title)}</div>
+          <div style="font-size:13px; color:var(--gray-700); margin-top:4px;">${escHtml(p.detail)}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    ${data.negative.length > 0 ? `
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #c62828;">
+      <p style="font-size:14px; font-weight:700; margin-bottom:10px; color:#c62828;">&#128308; 개선 필요</p>
+      ${data.negative.map(n => `
+        <div style="padding:10px; background:#ffebee; border-radius:8px; margin-bottom:6px;">
+          <div style="font-size:14px; font-weight:600; color:#c62828;">${escHtml(n.title)}</div>
+          <div style="font-size:13px; color:var(--gray-700); margin-top:4px;">${escHtml(n.detail)}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    ${data.predictions.length > 0 ? `
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #f9a825;">
+      <p style="font-size:14px; font-weight:700; margin-bottom:10px; color:#f57f17;">&#128302; 예상 결과</p>
+      ${data.predictions.map(p => `
+        <div style="padding:10px; background:${p.type === 'positive' ? '#f1f8e9' : '#fff8e1'}; border-radius:8px; margin-bottom:6px;">
+          <span style="font-size:12px; font-weight:600; color:${p.type === 'positive' ? '#558b2f' : '#e65100'};">${p.type === 'positive' ? '&#9650; 긍정' : '&#9660; 주의'}</span>
+          <div style="font-size:13px; color:var(--gray-700); margin-top:4px;">${escHtml(p.text)}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    ${data.recommendations.length > 0 ? `
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #0891b2;">
+      <p style="font-size:14px; font-weight:700; margin-bottom:10px; color:#0891b2;">&#128204; 방향 제안</p>
+      ${data.recommendations.map(r => `
+        <div style="padding:10px; background:#e0f7fa; border-radius:8px; margin-bottom:6px;">
+          <div style="font-size:13px; color:var(--gray-800); line-height:1.6;">${escHtml(r)}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    ${data.top_tasks.length > 0 ? `
+    <div class="card" style="margin-bottom:12px;">
+      <p style="font-size:14px; font-weight:700; margin-bottom:8px;">&#128293; 주요 수행 업무</p>
+      ${data.top_tasks.map(t => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--gray-100);">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="badge badge-${t.category}" style="font-size:10px;">${t.category}</span>
+            <span style="font-size:13px;">${escHtml(t.task)}</span>
+          </div>
+          <span style="font-size:12px; color:var(--gray-500);">${t.count}회</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+  `;
 }
 
 // ─── 통합 검색 ───
