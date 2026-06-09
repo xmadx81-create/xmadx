@@ -2098,6 +2098,61 @@ app.get('/api/monthly-summary', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 업무 캘린더 ───
+app.get('/api/calendar', authMiddleware, async (req, res) => {
+  const userId = req.query.user_id || req.session.userId;
+  const month = req.query.month || new Date().toISOString().substring(0, 7);
+
+  const reportsResult = await query(`
+    SELECT id, report_date, work_category, what_task, result_status
+    FROM work_reports WHERE author_id = $1 AND TO_CHAR(report_date, 'YYYY-MM') = $2
+    ORDER BY report_date ASC
+  `, [userId, month]);
+
+  const attResult = await query(`
+    SELECT work_date, check_in, check_out, status
+    FROM attendance WHERE user_id = $1 AND TO_CHAR(work_date, 'YYYY-MM') = $2
+  `, [userId, month]);
+
+  const todoResult = await query(`
+    SELECT due_date, title, done
+    FROM todos WHERE user_id = $1 AND TO_CHAR(due_date, 'YYYY-MM') = $2
+  `, [userId, month]);
+
+  const eventResult = await query(`
+    SELECT event_date, title, event_type
+    FROM team_events WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+  `, [month]);
+
+  const days = {};
+
+  reportsResult.rows.forEach(r => {
+    const d = (r.report_date || '').toString().split('T')[0];
+    if (!days[d]) days[d] = { reports: [], attendance: null, todos: [], events: [] };
+    days[d].reports.push({ id: r.id, category: r.work_category, task: r.what_task, result: r.result_status });
+  });
+
+  attResult.rows.forEach(a => {
+    const d = (a.work_date || '').toString().split('T')[0];
+    if (!days[d]) days[d] = { reports: [], attendance: null, todos: [], events: [] };
+    days[d].attendance = { check_in: a.check_in, check_out: a.check_out, status: a.status };
+  });
+
+  todoResult.rows.forEach(t => {
+    const d = (t.due_date || '').toString().split('T')[0];
+    if (!days[d]) days[d] = { reports: [], attendance: null, todos: [], events: [] };
+    days[d].todos.push({ title: t.title, done: t.done });
+  });
+
+  eventResult.rows.forEach(e => {
+    const d = (e.event_date || '').toString().split('T')[0];
+    if (!days[d]) days[d] = { reports: [], attendance: null, todos: [], events: [] };
+    days[d].events.push({ title: e.title, type: e.event_type });
+  });
+
+  res.json({ month, days });
+});
+
 // ─── 업무 인수인계 문서 ───
 app.get('/api/handover', authMiddleware, async (req, res) => {
   const userId = req.query.user_id || req.session.userId;

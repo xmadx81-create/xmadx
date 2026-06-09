@@ -1389,6 +1389,10 @@ async function renderMore() {
         <span class="qa-icon">&#128197;</span>
         <span class="qa-label" style="color:#0ea5e9; font-weight:700;">팀 일정</span>
       </button>
+      <button class="quick-action-btn" onclick="showWorkCalendar()" style="border:2px solid #8b5cf6;">
+        <span class="qa-icon">&#128467;</span>
+        <span class="qa-label" style="color:#8b5cf6; font-weight:700;">업무 캘린더</span>
+      </button>
       <button class="quick-action-btn" onclick="showWorkTable()">
         <span class="qa-icon">&#128202;</span>
         <span class="qa-label">업무표 생성</span>
@@ -4048,6 +4052,143 @@ async function showMonthlySummary() {
       </div>
     </div>
   `;
+}
+
+// ─── 업무 캘린더 ───
+let calMonth = new Date().toISOString().substring(0, 7);
+
+async function showWorkCalendar() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">캘린더 로딩 중...</p>';
+
+  const d = await api(`/api/calendar?month=${calMonth}`);
+  if (!d) return;
+
+  const [year, mon] = calMonth.split('-').map(Number);
+  const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+  const dayNames = ['일','월','화','수','목','금','토'];
+  const firstDay = new Date(year, mon - 1, 1).getDay();
+  const daysInMonth = new Date(year, mon, 0).getDate();
+  const today = new Date().toISOString().split('T')[0];
+
+  let calCells = '';
+  for (let i = 0; i < firstDay; i++) calCells += '<div class="cal-cell cal-empty"></div>';
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const info = d.days[dateStr];
+    const isToday = dateStr === today;
+    const dow = new Date(year, mon - 1, day).getDay();
+    const isSun = dow === 0;
+    const isSat = dow === 6;
+
+    let dots = '';
+    if (info) {
+      if (info.reports.length) dots += '<span class="cal-dot" style="background:#2563eb;"></span>';
+      if (info.attendance) dots += '<span class="cal-dot" style="background:#10b981;"></span>';
+      if (info.todos.length) dots += '<span class="cal-dot" style="background:#f59e0b;"></span>';
+      if (info.events.length) dots += '<span class="cal-dot" style="background:#ec4899;"></span>';
+    }
+
+    calCells += `
+      <div class="cal-cell ${isToday ? 'cal-today' : ''} ${info ? 'cal-has-data' : ''}"
+           onclick="showCalDay('${dateStr}')" style="cursor:${info ? 'pointer' : 'default'};">
+        <span class="cal-day-num ${isSun ? 'cal-sun' : ''} ${isSat ? 'cal-sat' : ''}">${day}</span>
+        <div class="cal-dots">${dots}</div>
+      </div>`;
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <button class="btn btn-outline btn-sm" onclick="calMonth=prevMonth(calMonth); showWorkCalendar();">&lsaquo;</button>
+      <span style="font-size:18px; font-weight:800;">${year}년 ${monthNames[mon-1]}</span>
+      <button class="btn btn-outline btn-sm" onclick="calMonth=nextMonth(calMonth); showWorkCalendar();">&rsaquo;</button>
+    </div>
+
+    <div style="margin-bottom:10px; display:flex; justify-content:center; gap:12px; font-size:11px; color:var(--gray-500);">
+      <span><span class="cal-dot-legend" style="background:#2563eb;"></span> 업무일지</span>
+      <span><span class="cal-dot-legend" style="background:#10b981;"></span> 출근</span>
+      <span><span class="cal-dot-legend" style="background:#f59e0b;"></span> 할 일</span>
+      <span><span class="cal-dot-legend" style="background:#ec4899;"></span> 일정</span>
+    </div>
+
+    <div class="cal-grid">
+      ${dayNames.map((dn, i) => `<div class="cal-header ${i===0?'cal-sun':''} ${i===6?'cal-sat':''}">${dn}</div>`).join('')}
+      ${calCells}
+    </div>
+
+    <div id="calDayDetail"></div>
+  `;
+}
+
+function showCalDay(dateStr) {
+  api(`/api/calendar?month=${dateStr.substring(0,7)}`).then(d => {
+    if (!d) return;
+    const info = d.days[dateStr];
+    const el = document.getElementById('calDayDetail');
+    if (!el) return;
+
+    if (!info) { el.innerHTML = ''; return; }
+
+    const [y, m, day] = dateStr.split('-');
+    let html = `
+      <div class="card" style="padding:14px; margin-top:16px;">
+        <div style="font-size:15px; font-weight:700; margin-bottom:12px;">
+          &#128197; ${parseInt(m)}월 ${parseInt(day)}일 활동
+        </div>`;
+
+    if (info.reports.length) {
+      html += `<div style="margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:600; color:#2563eb; margin-bottom:6px;">&#128221; 업무일지 (${info.reports.length}건)</div>
+        ${info.reports.map(r => `
+          <div class="list-item" onclick="showReportDetail(${r.id})" style="cursor:pointer; padding:8px;">
+            <div class="list-item-content">
+              <div class="list-item-title">${escHtml(r.task || '업무')}</div>
+              <div class="list-item-sub">${escHtml(r.category || '')} ${r.result ? '| ' + escHtml(r.result) : ''}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    if (info.attendance) {
+      const a = info.attendance;
+      const cin = a.check_in ? new Date(a.check_in).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}) : '-';
+      const cout = a.check_out ? new Date(a.check_out).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}) : '-';
+      html += `<div style="margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:600; color:#10b981; margin-bottom:6px;">&#128339; 출퇴근</div>
+        <div style="padding:8px; background:var(--gray-50); border-radius:8px; font-size:13px;">
+          출근: ${cin} &nbsp;|&nbsp; 퇴근: ${cout}
+          ${a.status === 'late' ? ' <span style="color:#dc2626; font-size:11px;">지각</span>' : ''}
+        </div>
+      </div>`;
+    }
+
+    if (info.todos.length) {
+      html += `<div style="margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:600; color:#f59e0b; margin-bottom:6px;">&#9745; 할 일 (${info.todos.length}건)</div>
+        ${info.todos.map(t => `
+          <div style="padding:6px 8px; font-size:13px; ${t.done ? 'text-decoration:line-through; color:var(--gray-400);' : ''}">
+            ${t.done ? '&#9989;' : '&#11036;'} ${escHtml(t.title)}
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    if (info.events.length) {
+      html += `<div style="margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:600; color:#ec4899; margin-bottom:6px;">&#128197; 팀 일정 (${info.events.length}건)</div>
+        ${info.events.map(e => `
+          <div style="padding:6px 8px; font-size:13px;">
+            &#128204; ${escHtml(e.title)} <span style="font-size:11px; color:var(--gray-400);">${escHtml(e.type || '')}</span>
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+  });
 }
 
 // ─── 업무 인수인계 ───

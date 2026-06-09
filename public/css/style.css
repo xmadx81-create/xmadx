@@ -609,3 +609,19 @@ select.form-control {
   .form-control { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
   select.form-control { background-color: #2a2a2a; }
 }
+
+/* 업무 캘린더 */
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-header { text-align: center; font-size: 12px; font-weight: 600; padding: 6px 0; color: var(--gray-500); }
+.cal-header.cal-sun { color: #dc2626; }
+.cal-header.cal-sat { color: #2563eb; }
+.cal-cell { min-height: 48px; padding: 4px 2px; text-align: center; border-radius: 8px; position: relative; transition: background 0.15s; }
+.cal-cell.cal-has-data:active { background: var(--gray-100); }
+.cal-cell.cal-today { background: #eff6ff; border: 2px solid #2563eb; }
+.cal-cell.cal-empty { min-height: 0; }
+.cal-day-num { font-size: 13px; font-weight: 600; display: block; }
+.cal-day-num.cal-sun { color: #dc2626; }
+.cal-day-num.cal-sat { color: #2563eb; }
+.cal-dots { display: flex; justify-content: center; gap: 3px; margin-top: 3px; flex-wrap: wrap; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.cal-dot-legend { width: 8px; height: 8px; border-radius: 50%; display: inline-block; vertical-align: middle; margin-right: 3px; }
