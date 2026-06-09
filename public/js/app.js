@@ -1407,6 +1407,10 @@ async function renderMore() {
         <span class="qa-icon">&#128467;</span>
         <span class="qa-label" style="color:#8b5cf6; font-weight:700;">업무 캘린더</span>
       </button>
+      <button class="quick-action-btn" onclick="showTimeline()" style="border:2px solid #64748b;">
+        <span class="qa-icon">&#128337;</span>
+        <span class="qa-label" style="color:#64748b; font-weight:700;">타임라인</span>
+      </button>
       <button class="quick-action-btn" onclick="showWorkTable()">
         <span class="qa-icon">&#128202;</span>
         <span class="qa-label">업무표 생성</span>
@@ -4070,6 +4074,80 @@ async function showMonthlySummary() {
       </div>
     </div>
   `;
+}
+
+// ─── 활동 타임라인 ───
+async function showTimeline() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">타임라인 로딩 중...</p>';
+
+  const d = await api('/api/timeline');
+  if (!d) return;
+
+  if (!d.items || d.items.length === 0) {
+    document.getElementById('mainContent').innerHTML = `
+      <div style="text-align:center; padding:60px 20px;">
+        <div style="font-size:48px; margin-bottom:16px;">&#128337;</div>
+        <p style="font-size:16px; font-weight:600; color:var(--gray-600);">활동 내역이 없습니다</p>
+        <p style="font-size:13px; color:var(--gray-400);">업무일지를 작성하면 타임라인에 표시됩니다.</p>
+      </div>`;
+    return;
+  }
+
+  const grouped = {};
+  d.items.forEach(item => {
+    const dt = (item.date || '').toString().substring(0, 10);
+    if (!grouped[dt]) grouped[dt] = [];
+    grouped[dt].push(item);
+  });
+
+  const dayNames = ['일','월','화','수','목','금','토'];
+
+  let html = `
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
+      <span style="font-size:20px;">&#128337;</span>
+      <span style="font-size:18px; font-weight:800;">활동 타임라인</span>
+    </div>`;
+
+  Object.entries(grouped).forEach(([date, items]) => {
+    const dow = new Date(date).getDay();
+    const isToday = date === new Date().toISOString().split('T')[0];
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date === yesterday.toISOString().split('T')[0];
+    const dateLabel = isToday ? '오늘' : isYesterday ? '어제' : `${date} (${dayNames[dow]})`;
+
+    html += `
+      <div style="margin-bottom:20px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+          <div style="width:10px; height:10px; border-radius:50%; background:${isToday ? '#2563eb' : 'var(--gray-300)'};"></div>
+          <span style="font-size:14px; font-weight:700; color:${isToday ? '#2563eb' : 'var(--gray-700)'};">${dateLabel}</span>
+          <span style="font-size:11px; color:var(--gray-400);">${items.length}건</span>
+        </div>
+        <div style="margin-left:4px; border-left:2px solid var(--gray-200); padding-left:16px;">
+          ${items.map(item => {
+            const time = (item.date || '').toString().substring(11, 16);
+            const clickable = item.type === 'report' && item.link_id ? `onclick="viewReport(${item.link_id})" style="cursor:pointer;"` : item.type === 'comment' && item.link_id ? `onclick="viewReport(${item.link_id})" style="cursor:pointer;"` : '';
+            return `
+            <div class="list-item" ${clickable} style="margin-bottom:4px; padding:10px; ${clickable ? 'cursor:pointer;' : ''}">
+              <div style="display:flex; align-items:flex-start; gap:10px;">
+                <div style="width:32px; height:32px; border-radius:50%; background:${item.color}15; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">
+                  ${item.icon}
+                </div>
+                <div style="flex:1; min-width:0;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:13px; font-weight:600;">${item.title}</span>
+                    <span style="font-size:11px; color:var(--gray-400); flex-shrink:0;">${time}</span>
+                  </div>
+                  <div style="font-size:12px; color:var(--gray-500); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(item.sub || '')}</div>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  });
+
+  document.getElementById('mainContent').innerHTML = html;
 }
 
 // ─── 즐겨찾기 ───

@@ -2098,6 +2098,84 @@ app.get('/api/monthly-summary', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 활동 타임라인 ───
+app.get('/api/timeline', authMiddleware, async (req, res) => {
+  const userId = req.query.user_id || req.session.userId;
+  const page = parseInt(req.query.page) || 1;
+  const limit = 30;
+  const offset = (page - 1) * limit;
+
+  const items = [];
+
+  const reports = await query(`
+    SELECT id, report_date, work_category, what_task, where_place, result_status, created_at
+    FROM work_reports WHERE author_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+  `, [userId, limit, offset]);
+  reports.rows.forEach(r => items.push({
+    type: 'report', icon: '&#128221;', color: '#2563eb',
+    title: r.what_task || '업무일지 작성',
+    sub: `${r.work_category || ''} ${r.where_place ? '@ ' + r.where_place : ''} ${r.result_status ? '| ' + r.result_status : ''}`,
+    date: r.created_at, link_id: r.id
+  }));
+
+  const att = await query(`
+    SELECT work_date, check_in, check_out, status, created_at
+    FROM attendance WHERE user_id = $1 ORDER BY work_date DESC LIMIT $2 OFFSET $3
+  `, [userId, limit, offset]);
+  att.rows.forEach(a => {
+    if (a.check_in) items.push({
+      type: 'checkin', icon: '&#128994;', color: '#16a34a',
+      title: '출근',
+      sub: new Date(a.check_in).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) + (a.status === 'late' ? ' (지각)' : ''),
+      date: a.check_in
+    });
+    if (a.check_out) items.push({
+      type: 'checkout', icon: '&#128308;', color: '#dc2626',
+      title: '퇴근',
+      sub: new Date(a.check_out).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+      date: a.check_out
+    });
+  });
+
+  const comments = await query(`
+    SELECT c.id, c.content, c.created_at, c.report_id, r.what_task
+    FROM comments c LEFT JOIN work_reports r ON c.report_id = r.id
+    WHERE c.user_id = $1 ORDER BY c.created_at DESC LIMIT $2 OFFSET $3
+  `, [userId, limit, offset]);
+  comments.rows.forEach(c => items.push({
+    type: 'comment', icon: '&#128172;', color: '#8b5cf6',
+    title: '댓글 작성',
+    sub: `"${(c.content || '').substring(0, 40)}${(c.content || '').length > 40 ? '...' : ''}" → ${c.what_task || '보고서'}`,
+    date: c.created_at, link_id: c.report_id
+  }));
+
+  const todos = await query(`
+    SELECT title, done, updated_at, created_at FROM todos WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3
+  `, [userId, limit, offset]);
+  todos.rows.forEach(t => {
+    if (t.done) items.push({
+      type: 'todo_done', icon: '&#9989;', color: '#10b981',
+      title: '할 일 완료',
+      sub: t.title,
+      date: t.updated_at || t.created_at
+    });
+  });
+
+  const posts = await query(`
+    SELECT id, title, created_at FROM board_posts WHERE author_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+  `, [userId, limit, offset]);
+  posts.rows.forEach(p => items.push({
+    type: 'board', icon: '&#128172;', color: '#0ea5e9',
+    title: '게시판 글 작성',
+    sub: p.title,
+    date: p.created_at, link_id: p.id
+  }));
+
+  items.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  res.json({ items: items.slice(0, limit), page });
+});
+
 // ─── 즐겨찾기 ───
 app.get('/api/bookmarks', authMiddleware, async (req, res) => {
   const userId = req.session.userId;
