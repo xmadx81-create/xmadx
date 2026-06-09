@@ -1407,10 +1407,13 @@ app.get('/api/admin/insights', adminMiddleware, async (req, res) => {
 
   const uniqueThemes = Object.entries(themeCounts).sort((a, b) => b[1] - a[1]).map(([t, c]) => ({ theme: t, count: c }));
 
-  const earliestDate = notes.length > 0 ? notes[notes.length - 1].meeting_date : (repStats.first_date || new Date());
-  const latestDate = repStats.last_date || (notes.length > 0 ? notes[0].meeting_date : new Date());
-  const from = new Date(earliestDate) < new Date(repStats.first_date || earliestDate) ? earliestDate : repStats.first_date;
-  const to = new Date(latestDate) > new Date(notes.length > 0 ? notes[0].meeting_date : '1970-01-01') ? latestDate : notes[0].meeting_date;
+  const dates = [];
+  if (notes.length > 0) { dates.push(notes[notes.length - 1].meeting_date); dates.push(notes[0].meeting_date); }
+  if (repStats.first_date) dates.push(repStats.first_date);
+  if (repStats.last_date) dates.push(repStats.last_date);
+  const sortedDates = dates.map(d => (d||'').toString().split('T')[0]).filter(d => d).sort();
+  const dateFrom = sortedDates[0] || new Date().toISOString().split('T')[0];
+  const dateTo = sortedDates[sortedDates.length - 1] || new Date().toISOString().split('T')[0];
 
   const topCategories = catResult.rows.slice(0, 5).map(c => c.work_category).join(', ');
   const topPlaces = [...new Set(recentReports.map(r => r.where_place).filter(Boolean))].slice(0, 5).join(', ');
@@ -1421,7 +1424,7 @@ app.get('/api/admin/insights', adminMiddleware, async (req, res) => {
     notes_analyzed: notes.length + parseInt(repStats.cnt || 0),
     total_notes: (await query('SELECT COUNT(*) as cnt FROM meeting_notes')).rows[0].cnt,
     total_reports: parseInt(repStats.cnt || 0),
-    date_range: { from: (from || '').toString().split('T')[0], to: (to || '').toString().split('T')[0] },
+    date_range: { from: dateFrom, to: dateTo },
     report_stats: { categories: topCategories, places: topPlaces, completion_rate: completionRate, recent_count: totalRecent },
     notes_summary: notes.map(n => ({ id: n.id, title: n.title, date: n.meeting_date })),
     themes: uniqueThemes,
