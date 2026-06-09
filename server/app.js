@@ -2014,6 +2014,90 @@ app.delete('/api/notices/:id', adminMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── 월간 업무 요약 ───
+app.get('/api/monthly-summary', authMiddleware, async (req, res) => {
+  const userId = req.query.user_id || req.session.userId;
+  const month = req.query.month || new Date().toISOString().substring(0, 7);
+
+  const userResult = await query('SELECT name, position FROM users WHERE id = $1', [userId]);
+  const user = userResult.rows[0] || { name: '사용자', position: '' };
+
+  const reportsResult = await query(`
+    SELECT * FROM work_reports WHERE author_id = $1 AND TO_CHAR(report_date, 'YYYY-MM') = $2
+    ORDER BY report_date ASC
+  `, [userId, month]);
+  const reports = reportsResult.rows;
+
+  if (reports.length === 0) return res.json({ empty: true, user, month });
+
+  const catCount = {};
+  const taskCount = {};
+  const placeCount = {};
+  const weeklyBreakdown = {};
+  const dailyDates = [];
+
+  reports.forEach(r => {
+    const cat = r.work_category || '기타';
+    catCount[cat] = (catCount[cat] || 0) + 1;
+
+    if (r.what_task) {
+      taskCount[r.what_task] = (taskCount[r.what_task] || 0) + 1;
+    }
+    if (r.where_place) {
+      placeCount[r.where_place] = (placeCount[r.where_place] || 0) + 1;
+    }
+
+    const date = (r.report_date || '').split('T')[0];
+    dailyDates.push(date);
+    const weekNum = Math.ceil(new Date(date).getDate() / 7);
+    const wk = `${weekNum}주차`;
+    if (!weeklyBreakdown[wk]) weeklyBreakdown[wk] = [];
+    weeklyBreakdown[wk].push({ task: r.what_task || r.content || '', category: cat, date });
+  });
+
+  const topTasks = Object.entries(taskCount).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([task, count]) => ({ task, count }));
+  const topPlaces = Object.entries(placeCount).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([place, count]) => ({ place, count }));
+  const categories = Object.entries(catCount).map(([name, count]) => ({ name, count, pct: Math.round(count / reports.length * 100) }));
+
+  const uniqueDays = [...new Set(dailyDates)].length;
+  const [sy, sm] = month.split('-').map(Number);
+  const workDaysInMonth = (() => {
+    let cnt = 0;
+    const dim = new Date(sy, sm, 0).getDate();
+    for (let d = 1; d <= dim; d++) { const day = new Date(sy, sm - 1, d).getDay(); if (day > 0 && day < 6) cnt++; }
+    return cnt;
+  })();
+
+  const weekly = Object.entries(weeklyBreakdown).map(([week, items]) => ({
+    week,
+    count: items.length,
+    tasks: [...new Set(items.map(i => i.task))].filter(t => t).slice(0, 5)
+  }));
+
+  const attResult = await query(`
+    SELECT COUNT(*) as days, COUNT(CASE WHEN status = 'late' THEN 1 END) as late,
+    AVG(EXTRACT(EPOCH FROM (check_out - check_in))/3600) as avg_hours
+    FROM attendance WHERE user_id = $1 AND TO_CHAR(work_date, 'YYYY-MM') = $2 AND check_out IS NOT NULL
+  `, [userId, month]);
+  const att = attResult.rows[0] || {};
+
+  res.json({
+    user, month,
+    total_reports: reports.length,
+    unique_days: uniqueDays,
+    work_days: workDaysInMonth,
+    categories,
+    top_tasks: topTasks,
+    top_places: topPlaces,
+    weekly,
+    attendance: {
+      days: parseInt(att.days) || 0,
+      late: parseInt(att.late) || 0,
+      avg_hours: att.avg_hours ? parseFloat(att.avg_hours).toFixed(1) : null
+    }
+  });
+});
+
 // ─── 알림 센터 ───
 app.get('/api/notifications', authMiddleware, async (req, res) => {
   const userId = req.session.userId;
