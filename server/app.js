@@ -267,6 +267,31 @@ app.get('/api/search', authMiddleware, async (req, res) => {
   res.json({ query: q, total: results.length, results });
 });
 
+// ─── 캘린더 ───
+app.get('/api/calendar', authMiddleware, async (req, res) => {
+  const { year, month } = req.query;
+  const y = parseInt(year) || new Date().getFullYear();
+  const m = parseInt(month) || (new Date().getMonth() + 1);
+  const from = `${y}-${String(m).padStart(2, '0')}-01`;
+  const last = new Date(y, m, 0).getDate();
+  const to = `${y}-${String(m).padStart(2, '0')}-${last}`;
+
+  const result = await query(`
+    SELECT r.report_date::text as d, r.work_category, r.what_task, r.id, u.name as author_name
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE r.report_date >= $1 AND r.report_date <= $2
+    ORDER BY r.report_date, r.created_at
+  `, [from, to]);
+
+  const byDate = {};
+  result.rows.forEach(r => {
+    if (!byDate[r.d]) byDate[r.d] = [];
+    byDate[r.d].push({ id: r.id, task: r.what_task, category: r.work_category, author: r.author_name });
+  });
+
+  res.json({ year: y, month: m, days: byDate });
+});
+
 // ─── 대시보드 ───
 app.get('/api/dashboard', authMiddleware, async (req, res) => {
   const userId = req.session.userId;

@@ -286,8 +286,11 @@ async function renderHome() {
 
 // ─── 업무일지 목록 ───
 let reportViewMode = 'mine';
+let reportDisplayMode = 'list';
+let calYear, calMonth;
 
 async function renderReports() {
+  if (reportDisplayMode === 'calendar') { renderCalendarView(); return; }
   const reports = await api('/api/reports') || [];
   window._allReports = reports;
   if (reportViewMode === 'mine') {
@@ -302,9 +305,12 @@ function renderReportsPage(pg) {
   const reports = window._filteredReports || [];
   const { data, page, totalPages, total } = paginate(reports, pg);
   document.getElementById('mainContent').innerHTML = `
-    <div class="tabs" style="margin-bottom:8px;">
-      <button class="tab ${reportViewMode === 'mine' ? 'active' : ''}" onclick="switchReportView('mine')">내 업무</button>
-      <button class="tab ${reportViewMode === 'all' ? 'active' : ''}" onclick="switchReportView('all')">전체 업무</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div class="tabs" style="margin-bottom:0;">
+        <button class="tab ${reportViewMode === 'mine' ? 'active' : ''}" onclick="switchReportView('mine')">내 업무</button>
+        <button class="tab ${reportViewMode === 'all' ? 'active' : ''}" onclick="switchReportView('all')">전체 업무</button>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="reportDisplayMode='calendar'; renderReports();" style="white-space:nowrap;">&#128197; 캘린더</button>
     </div>
     <div class="tabs">
       <button class="tab active" onclick="filterReports(this, '')">전체</button>
@@ -316,6 +322,117 @@ function renderReportsPage(pg) {
     <div id="reportsList">${renderReportList(data)}</div>
     ${renderPagination(page, totalPages, 'gotoReportsPage')}
   `;
+}
+
+async function renderCalendarView() {
+  const now = new Date();
+  if (!calYear) calYear = now.getFullYear();
+  if (!calMonth) calMonth = now.getMonth() + 1;
+
+  const data = await api(`/api/calendar?year=${calYear}&month=${calMonth}`);
+  if (!data) return;
+
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = 'flex';
+  fab.onclick = () => openNewReport();
+
+  const today = now.toISOString().split('T')[0];
+  const firstDay = new Date(calYear, calMonth - 1, 1).getDay();
+  const lastDate = new Date(calYear, calMonth, 0).getDate();
+  const catColors = { '내근': '#1a73e8', '외근': '#34a853', '출장': '#ea4335' };
+
+  let cells = '';
+  for (let i = 0; i < firstDay; i++) cells += '<div style="min-height:48px;"></div>';
+  for (let d = 1; d <= lastDate; d++) {
+    const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const reports = data.days[dateStr] || [];
+    const isToday = dateStr === today;
+    const isSun = (firstDay + d - 1) % 7 === 0;
+    const isSat = (firstDay + d - 1) % 7 === 6;
+
+    let dots = '';
+    if (reports.length > 0) {
+      const cats = [...new Set(reports.map(r => r.category))];
+      dots = `<div style="display:flex; gap:2px; justify-content:center; margin-top:2px;">
+        ${cats.slice(0, 3).map(c => `<span style="width:6px; height:6px; border-radius:50%; background:${catColors[c] || '#999'};"></span>`).join('')}
+      </div>`;
+      if (reports.length > 1) dots += `<div style="font-size:9px; color:var(--gray-500);">${reports.length}</div>`;
+    }
+
+    cells += `
+      <div onclick="showCalendarDay('${dateStr}')" style="min-height:48px; padding:4px 2px; text-align:center; cursor:pointer;
+        border-radius:8px; ${isToday ? 'background:var(--primary-light); border:2px solid var(--primary);' : ''} ${reports.length > 0 ? 'font-weight:600;' : ''}">
+        <div style="font-size:13px; ${isSun ? 'color:#ea4335;' : ''} ${isSat ? 'color:#1a73e8;' : ''}">${d}</div>
+        ${dots}
+      </div>`;
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <button class="btn btn-outline btn-sm" onclick="reportDisplayMode='list'; calYear=null; calMonth=null; renderReports();">&#128221; 목록</button>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button class="btn btn-outline btn-sm" onclick="changeCalMonth(-1)">&larr;</button>
+        <span style="font-size:16px; font-weight:700;">${calYear}년 ${calMonth}월</span>
+        <button class="btn btn-outline btn-sm" onclick="changeCalMonth(1)">&rarr;</button>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="calYear=${now.getFullYear()}; calMonth=${now.getMonth()+1}; renderCalendarView();">오늘</button>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px;">
+      ${['일','월','화','수','목','금','토'].map((d,i) =>
+        `<div style="text-align:center; font-size:12px; font-weight:600; padding:4px; color:${i===0?'#ea4335':i===6?'#1a73e8':'var(--gray-500)'};">${d}</div>`
+      ).join('')}
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:16px;">
+      ${cells}
+    </div>
+
+    <div style="display:flex; gap:12px; justify-content:center; font-size:11px; color:var(--gray-500); margin-bottom:12px;">
+      <span style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#1a73e8;"></span>내근</span>
+      <span style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#34a853;"></span>외근</span>
+      <span style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#ea4335;"></span>출장</span>
+    </div>
+
+    <div id="calDayDetail"></div>
+  `;
+}
+
+function changeCalMonth(delta) {
+  calMonth += delta;
+  if (calMonth > 12) { calMonth = 1; calYear++; }
+  if (calMonth < 1) { calMonth = 12; calYear--; }
+  renderCalendarView();
+}
+
+function showCalendarDay(dateStr) {
+  const data = window._calDayCache || {};
+  const el = document.getElementById('calDayDetail');
+  if (!el) return;
+
+  const calData = window._kmData; // won't work, need to get from current calendar data
+  // re-fetch from the already loaded calendar API data
+  // Actually, let's fetch from the reports API
+  api(`/api/reports?from=${dateStr}&to=${dateStr}`).then(reports => {
+    if (!reports || reports.length === 0) {
+      el.innerHTML = `<div class="card" style="text-align:center; padding:16px; color:var(--gray-500);">
+        <p>${dateStr} - 업무기록 없음</p>
+        <button class="btn btn-primary btn-sm" onclick="openNewReport()" style="margin-top:8px;">+ 업무일지 작성</button>
+      </div>`;
+      return;
+    }
+    el.innerHTML = `
+      <p style="font-size:14px; font-weight:700; margin-bottom:8px;">${dateStr} (${reports.length}건)</p>
+      ${reports.map(r => `
+        <div class="list-item" onclick="viewReport('${r.id}')">
+          <div class="list-item-content">
+            <div class="list-item-title">${escHtml(r.what_task || r.content || '(내용 없음)')}</div>
+            <div class="list-item-sub">${r.author_name} ${r.author_position || ''}</div>
+          </div>
+          <span class="badge badge-${r.work_category}">${r.work_category}</span>
+        </div>
+      `).join('')}`;
+  });
 }
 
 function switchReportView(mode) {
