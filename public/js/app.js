@@ -1369,6 +1369,10 @@ async function renderMore() {
         <span class="qa-icon">&#128202;</span>
         <span class="qa-label" style="color:#ea580c; font-weight:700;">월간 요약</span>
       </button>
+      <button class="quick-action-btn" onclick="showHandover()" style="border:2px solid #1e3a5f;">
+        <span class="qa-icon">&#128196;</span>
+        <span class="qa-label" style="color:#1e3a5f; font-weight:700;">인수인계</span>
+      </button>
     </div>
 
     <p class="section-title">&#9881; 도구</p>
@@ -4042,6 +4046,196 @@ async function showMonthlySummary() {
         ${d.top_tasks.length > 0 ? `<br>&#128293; 핵심 업무: ${d.top_tasks.slice(0, 3).map(t => t.task).join(', ')}` : ''}
         ${d.attendance.late > 2 ? `<br>&#9888;&#65039; 지각 ${d.attendance.late}회로 출근 관리가 필요합니다.` : ''}
       </div>
+    </div>
+  `;
+}
+
+// ─── 업무 인수인계 ───
+async function showHandover() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">인수인계 문서 생성 중...</p>';
+
+  const d = await api('/api/handover');
+  if (!d) return;
+
+  if (d.empty) {
+    document.getElementById('mainContent').innerHTML = `
+      <div style="text-align:center; padding:60px 20px;">
+        <div style="font-size:48px; margin-bottom:16px;">&#128196;</div>
+        <p style="font-size:16px; font-weight:600; color:var(--gray-600); margin-bottom:8px;">인수인계 문서를 생성할 수 없습니다</p>
+        <p style="font-size:13px; color:var(--gray-400);">작성된 업무일지가 없습니다. 업무일지를 먼저 작성해주세요.</p>
+      </div>`;
+    return;
+  }
+
+  const u = d.user;
+  const today = new Date().toISOString().split('T')[0];
+
+  document.getElementById('mainContent').innerHTML = `
+    <!-- 문서 헤더 -->
+    <div class="card" style="padding:16px; margin-bottom:16px; background:linear-gradient(135deg, #1e3a5f, #2563eb); color:#fff; border-radius:12px;">
+      <div style="text-align:center;">
+        <div style="font-size:22px; font-weight:800; margin-bottom:4px;">&#128196; 업무 인수인계 문서</div>
+        <div style="font-size:12px; opacity:0.8;">Work Handover Document</div>
+      </div>
+      <div style="margin-top:14px; padding:12px; background:rgba(255,255,255,0.15); border-radius:8px; font-size:13px; line-height:1.8;">
+        <div><b>&#128100; 작성자:</b> ${escHtml(u.name)} ${u.position ? '('+escHtml(u.position)+')' : ''}</div>
+        <div><b>&#128197; 작성일:</b> ${today}</div>
+        <div><b>&#128338; 업무기간:</b> ${d.period.from} ~ ${d.period.to}</div>
+        <div><b>&#128221; 총 보고서:</b> ${d.total_reports}건</div>
+      </div>
+    </div>
+
+    <!-- 1. 담당 업무 개요 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span style="background:#2563eb; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">1</span>
+        담당 업무 개요
+      </div>
+      <p style="font-size:12px; color:var(--gray-500); margin-bottom:10px;">업무 카테고리별 비중</p>
+      ${d.categories.map(c => `
+        <div style="margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:3px;">
+            <span style="font-weight:600;">${escHtml(c.name)}</span>
+            <span style="color:var(--gray-500);">${c.count}건 (${c.pct}%)</span>
+          </div>
+          <div style="height:6px; background:var(--gray-100); border-radius:3px; overflow:hidden;">
+            <div style="height:100%; width:${c.pct}%; background:#2563eb; border-radius:3px;"></div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- 2. 핵심 업무 상세 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span style="background:#dc2626; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">2</span>
+        핵심 업무 상세
+      </div>
+      ${d.core_tasks.map((t, i) => `
+        <div style="padding:10px; margin-bottom:8px; background:${i < 3 ? '#fef3c7' : 'var(--gray-50)'}; border-radius:8px; border-left:3px solid ${i < 3 ? '#f59e0b' : 'var(--gray-300)'};">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span style="font-size:14px; font-weight:700;">${i < 3 ? '&#11088;' : '&#8226;'} ${escHtml(t.name)}</span>
+            <span class="badge" style="background:var(--gray-200); font-size:10px;">${t.count}회</span>
+          </div>
+          <div style="font-size:12px; color:var(--gray-500); line-height:1.6;">
+            ${t.category ? `<span>&#128194; ${escHtml(t.category)}</span> &nbsp;` : ''}
+            ${t.places.length ? `<span>&#128205; ${t.places.map(p => escHtml(p)).join(', ')}</span> &nbsp;` : ''}
+            ${t.methods.length ? `<span>&#128295; ${t.methods.map(m => escHtml(m)).join(', ')}</span>` : ''}
+          </div>
+          <div style="font-size:11px; color:var(--gray-400); margin-top:4px;">
+            최근: ${t.latestDate} ${t.latestResult ? '| 결과: ' + escHtml(t.latestResult) : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- 3. 주요 장소/거래처 -->
+    ${d.places.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span style="background:#059669; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">3</span>
+        주요 장소 / 거래처
+      </div>
+      ${d.places.map(p => `
+        <div style="padding:8px 10px; margin-bottom:6px; background:var(--gray-50); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <span style="font-size:13px; font-weight:600;">&#128205; ${escHtml(p.name)}</span>
+            ${p.tasks.length ? `<div style="font-size:11px; color:var(--gray-500); margin-top:2px;">${p.tasks.map(t => escHtml(t)).join(', ')}</div>` : ''}
+          </div>
+          <span style="font-size:12px; color:var(--gray-400);">${p.count}회 방문</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- 4. 업무 수행 방법 -->
+    ${d.methods.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span style="background:#7c3aed; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">4</span>
+        업무 수행 방법
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${d.methods.map(m => `
+          <div style="padding:8px 14px; background:var(--gray-50); border-radius:20px; font-size:13px;">
+            &#128295; ${escHtml(m.name)} <span style="color:var(--gray-400); font-size:11px;">(${m.count}회)</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- 5. 업무 진행 현황 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span style="background:#0891b2; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">5</span>
+        업무 진행 현황
+      </div>
+      <div style="display:flex; gap:10px; text-align:center;">
+        <div style="flex:1; padding:12px; background:#dcfce7; border-radius:10px;">
+          <div style="font-size:22px; font-weight:800; color:#16a34a;">${d.result_summary.complete}</div>
+          <div style="font-size:11px; color:#15803d;">완료</div>
+        </div>
+        <div style="flex:1; padding:12px; background:#fef3c7; border-radius:10px;">
+          <div style="font-size:22px; font-weight:800; color:#d97706;">${d.result_summary.ongoing}</div>
+          <div style="font-size:11px; color:#b45309;">진행중</div>
+        </div>
+        <div style="flex:1; padding:12px; background:#fee2e2; border-radius:10px;">
+          <div style="font-size:22px; font-weight:800; color:#dc2626;">${d.result_summary.issue}</div>
+          <div style="font-size:11px; color:#b91c1c;">미완/보류</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. 주의사항 & 이슈 -->
+    ${d.recent_issues.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span style="background:#dc2626; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">6</span>
+        &#9888;&#65039; 주의사항 & 이슈
+      </div>
+      <p style="font-size:11px; color:var(--gray-400); margin-bottom:8px;">후임자가 반드시 알아야 할 이슈입니다</p>
+      ${d.recent_issues.map(issue => `
+        <div style="padding:8px 10px; margin-bottom:6px; background:#fef2f2; border-radius:8px; border-left:3px solid #ef4444;">
+          <div style="font-size:12px; font-weight:600; color:#b91c1c; margin-bottom:2px;">${escHtml(issue.task)} <span style="color:var(--gray-400); font-weight:400;">${issue.date}</span></div>
+          <div style="font-size:12px; color:#7f1d1d;">${escHtml(issue.issue)}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- 7. 참고사항 & 메모 -->
+    ${d.recent_notes.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span style="background:#ea580c; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">7</span>
+        &#128221; 참고사항 & 메모
+      </div>
+      ${d.recent_notes.map(n => `
+        <div style="padding:8px 10px; margin-bottom:6px; background:#fff7ed; border-radius:8px; border-left:3px solid #f97316;">
+          <div style="font-size:12px; font-weight:600; color:#c2410c; margin-bottom:2px;">${escHtml(n.task)} <span style="color:var(--gray-400); font-weight:400;">${n.date}</span></div>
+          <div style="font-size:12px; color:#7c2d12;">${escHtml(n.note)}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- 8. 관련 매뉴얼 -->
+    ${d.manuals.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span style="background:#4f46e5; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">8</span>
+        &#128214; 관련 매뉴얼
+      </div>
+      ${d.manuals.map(m => `
+        <div style="padding:10px; margin-bottom:6px; background:var(--gray-50); border-radius:8px;">
+          <div style="font-size:13px; font-weight:600; margin-bottom:4px;">&#128214; ${escHtml(m.title)}</div>
+          <div style="font-size:12px; color:var(--gray-600); line-height:1.5; white-space:pre-wrap;">${escHtml((m.content || '').substring(0, 200))}${(m.content || '').length > 200 ? '...' : ''}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- 문서 끝 -->
+    <div style="text-align:center; padding:20px 0; font-size:12px; color:var(--gray-400); border-top:1px solid var(--gray-200); margin-top:16px;">
+      &#128196; 본 인수인계 문서는 업무일지 ${d.total_reports}건을 기반으로 자동 생성되었습니다.<br>
+      생성일: ${today}
     </div>
   `;
 }

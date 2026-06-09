@@ -2098,6 +2098,105 @@ app.get('/api/monthly-summary', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 업무 인수인계 문서 ───
+app.get('/api/handover', authMiddleware, async (req, res) => {
+  const userId = req.query.user_id || req.session.userId;
+
+  const userResult = await query('SELECT name, position, phone FROM users WHERE id = $1', [userId]);
+  const user = userResult.rows[0] || { name: '사용자', position: '', phone: '' };
+
+  const reportsResult = await query(`
+    SELECT * FROM work_reports WHERE author_id = $1 ORDER BY report_date DESC
+  `, [userId]);
+  const reports = reportsResult.rows;
+
+  if (reports.length === 0) return res.json({ empty: true, user });
+
+  const firstDate = reports[reports.length - 1].report_date;
+  const lastDate = reports[0].report_date;
+
+  const catCount = {};
+  const taskDetails = {};
+  const placeInfo = {};
+  const howMethods = {};
+  const resultSummary = { complete: 0, ongoing: 0, issue: 0 };
+  const issueList = [];
+  const notesList = [];
+
+  reports.forEach(r => {
+    const cat = r.work_category || '기타';
+    catCount[cat] = (catCount[cat] || 0) + 1;
+
+    if (r.what_task) {
+      if (!taskDetails[r.what_task]) taskDetails[r.what_task] = { count: 0, category: cat, places: new Set(), methods: new Set(), latestDate: '', latestResult: '' };
+      const td = taskDetails[r.what_task];
+      td.count++;
+      if (r.where_place) td.places.add(r.where_place);
+      if (r.how_method) td.methods.add(r.how_method);
+      const dt = (r.report_date || '').toString().split('T')[0];
+      if (!td.latestDate || dt > td.latestDate) { td.latestDate = dt; td.latestResult = r.result_status || ''; }
+    }
+
+    if (r.where_place) {
+      if (!placeInfo[r.where_place]) placeInfo[r.where_place] = { count: 0, tasks: new Set() };
+      placeInfo[r.where_place].count++;
+      if (r.what_task) placeInfo[r.where_place].tasks.add(r.what_task);
+    }
+
+    if (r.how_method) howMethods[r.how_method] = (howMethods[r.how_method] || 0) + 1;
+
+    const rs = (r.result_status || '').toLowerCase();
+    if (rs.includes('완료') || rs.includes('성공')) resultSummary.complete++;
+    else if (rs.includes('진행') || rs.includes('중')) resultSummary.ongoing++;
+    else if (rs.includes('미완') || rs.includes('실패') || rs.includes('보류')) resultSummary.issue++;
+
+    if (r.issues && r.issues.trim()) issueList.push({ task: r.what_task || '', issue: r.issues, date: (r.report_date || '').toString().split('T')[0] });
+    if (r.notes && r.notes.trim()) notesList.push({ task: r.what_task || '', note: r.notes, date: (r.report_date || '').toString().split('T')[0] });
+  });
+
+  const coreTasks = Object.entries(taskDetails)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 15)
+    .map(([name, info]) => ({
+      name, count: info.count, category: info.category,
+      places: [...info.places], methods: [...info.methods],
+      latestDate: info.latestDate, latestResult: info.latestResult
+    }));
+
+  const coreCategories = Object.entries(catCount)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({ name, count, pct: Math.round(count / reports.length * 100) }));
+
+  const corePlaces = Object.entries(placeInfo)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 10)
+    .map(([name, info]) => ({ name, count: info.count, tasks: [...info.tasks].slice(0, 5) }));
+
+  const coreMethods = Object.entries(howMethods)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([name, count]) => ({ name, count }));
+
+  const manualsResult = await query('SELECT title, content FROM personal_manual WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 10', [userId]);
+
+  const recentIssues = issueList.slice(0, 10);
+  const recentNotes = notesList.slice(0, 10);
+
+  res.json({
+    user,
+    period: { from: (firstDate || '').toString().split('T')[0], to: (lastDate || '').toString().split('T')[0] },
+    total_reports: reports.length,
+    core_tasks: coreTasks,
+    categories: coreCategories,
+    places: corePlaces,
+    methods: coreMethods,
+    result_summary: resultSummary,
+    recent_issues: recentIssues,
+    recent_notes: recentNotes,
+    manuals: manualsResult.rows
+  });
+});
+
 // ─── 알림 센터 ───
 app.get('/api/notifications', authMiddleware, async (req, res) => {
   const userId = req.session.userId;
