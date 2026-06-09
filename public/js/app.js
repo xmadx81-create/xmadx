@@ -84,6 +84,7 @@ async function checkAuth() {
     navigate('home');
     setTimeout(checkNotiCount, 2000);
     setInterval(checkNotiCount, 120000);
+    setTimeout(checkAttendancePopup, 3000);
   }
 }
 
@@ -216,12 +217,13 @@ async function renderHome() {
           <span style="font-size:14px; font-weight:700;">&#128339; 출퇴근</span>
           ${atd ? `<span style="font-size:12px; color:var(--gray-500); margin-left:8px;">${atd.status === 'late' ? '<span style="color:#ef4444;">지각</span>' : '정상'}</span>` : ''}
         </div>
-        <div style="display:flex; gap:6px;">
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button class="btn btn-outline btn-sm" onclick="showTeamAttBoard()" style="padding:4px 10px; font-size:11px;">현황판</button>
           ${!atd ? `<button class="btn btn-primary btn-sm" onclick="doCheckIn()" style="padding:6px 16px;">출근</button>` :
             !atd.check_out ? `
-              <span style="font-size:12px; color:var(--success); display:flex; align-items:center; gap:4px;">&#9679; 근무중 ${(atd.check_in||'').substring(11,16)}</span>
+              <span style="font-size:12px; color:var(--success); display:flex; align-items:center; gap:4px;">&#9679; ${atd.work_type === '외근' ? '🚗외근' : '🏢내근'} ${(atd.check_in||'').substring(11,16)}</span>
               <button class="btn btn-sm" onclick="doCheckOut()" style="padding:6px 16px; background:#ef4444; color:#fff; border:none;">퇴근</button>` :
-            `<span style="font-size:12px; color:var(--gray-500);">${(atd.check_in||'').substring(11,16)} ~ ${(atd.check_out||'').substring(11,16)} (${calcWorkHours(atd.check_in, atd.check_out)})</span>`}
+            `<span style="font-size:12px; color:var(--gray-500);">${atd.work_type === '외근' ? '🚗' : '🏢'} ${(atd.check_in||'').substring(11,16)} ~ ${(atd.check_out||'').substring(11,16)} (${calcWorkHours(atd.check_in, atd.check_out)})</span>`}
         </div>
       </div>
     </div>
@@ -5225,9 +5227,114 @@ function calcWorkHours(cin, cout) {
   return `${h}시간 ${m}분`;
 }
 
-async function doCheckIn() {
-  const res = await api('/api/attendance/check-in', { method: 'POST' });
-  if (res) { toast('출근 완료!'); renderHome(); }
+function doCheckIn() {
+  const overlay = document.createElement('div');
+  overlay.id = 'checkinOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9998;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;width:90%;max-width:340px;color:#222;">
+      <div style="font-size:18px;font-weight:700;text-align:center;margin-bottom:20px;">출근 체크</div>
+      <div style="display:flex;gap:12px;margin-bottom:16px;">
+        <button id="ci_office" onclick="selectWorkType('내근')" style="flex:1;padding:16px 0;border-radius:12px;border:2px solid var(--primary);background:#f0f5ff;cursor:pointer;font-size:15px;font-weight:600;color:var(--primary);">
+          🏢 내근
+        </button>
+        <button id="ci_field" onclick="selectWorkType('외근')" style="flex:1;padding:16px 0;border-radius:12px;border:2px solid #e5e7eb;background:#fff;cursor:pointer;font-size:15px;font-weight:600;color:#555;">
+          🚗 외근
+        </button>
+      </div>
+      <div id="ci_summary_box" style="display:none;margin-bottom:16px;">
+        <input id="ci_summary" type="text" placeholder="외근 업무 요약 (예: 강남 가맹점 방문)" maxlength="100"
+          style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;color:#222;background:#fff;">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="document.getElementById('checkinOverlay').remove()" style="flex:1;padding:12px;border-radius:10px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:14px;color:#555;">취소</button>
+        <button onclick="submitCheckIn()" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-size:14px;font-weight:600;">출근하기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  window._ciWorkType = '내근';
+}
+
+function selectWorkType(type) {
+  window._ciWorkType = type;
+  const office = document.getElementById('ci_office');
+  const field = document.getElementById('ci_field');
+  const summaryBox = document.getElementById('ci_summary_box');
+  if (type === '내근') {
+    office.style.borderColor = 'var(--primary)';
+    office.style.background = '#f0f5ff';
+    office.style.color = 'var(--primary)';
+    field.style.borderColor = '#e5e7eb';
+    field.style.background = '#fff';
+    field.style.color = '#555';
+    summaryBox.style.display = 'none';
+  } else {
+    field.style.borderColor = '#10b981';
+    field.style.background = '#f0fdf4';
+    field.style.color = '#059669';
+    office.style.borderColor = '#e5e7eb';
+    office.style.background = '#fff';
+    office.style.color = '#555';
+    summaryBox.style.display = 'block';
+  }
+}
+
+async function showTeamAttBoard() {
+  const board = await api('/api/attendance/team-board');
+  if (!board) return;
+  const checked = board.board.filter(b => b.checked_in);
+  const notChecked = board.board.filter(b => !b.checked_in);
+  const overlay = document.createElement('div');
+  overlay.id = 'attBoardOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9998;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;width:92%;max-width:380px;color:#222;max-height:80vh;overflow-y:auto;">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:18px;font-weight:700;">오늘 출근 현황판</div>
+        <div style="margin-top:8px;font-size:14px;font-weight:600;color:var(--primary);">${board.checked_count} / ${board.total}명 출근</div>
+        <div style="background:#e5e7eb;border-radius:99px;height:8px;margin-top:8px;overflow:hidden;">
+          <div style="background:${board.all_checked ? '#10b981' : 'var(--primary)'};height:100%;width:${Math.round(board.checked_count / board.total * 100)}%;border-radius:99px;"></div>
+        </div>
+      </div>
+      ${checked.length > 0 ? `
+        <div style="margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:600;color:#10b981;margin-bottom:8px;">✅ 출근 (${checked.length}명)</div>
+          ${checked.map(c => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f0fdf4;border-radius:8px;margin-bottom:4px;">
+              <div><span style="font-weight:600;font-size:14px;">${escHtml(c.name)}</span> <span style="font-size:12px;color:#888;">${escHtml(c.position || '')}</span></div>
+              <div style="text-align:right;">
+                <span style="font-size:12px;font-weight:600;color:${c.work_type === '외근' ? '#059669' : '#2563eb'};">${c.work_type === '외근' ? '🚗외근' : '🏢내근'}</span>
+                <span style="font-size:11px;color:#888;margin-left:4px;">${(c.check_in||'').substring(11,16)}</span>
+                ${c.work_summary ? `<div style="font-size:11px;color:#666;margin-top:2px;">${escHtml(c.work_summary)}</div>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+      ${notChecked.length > 0 ? `
+        <div style="margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:600;color:#ef4444;margin-bottom:8px;">⏳ 미출근 (${notChecked.length}명)</div>
+          ${notChecked.map(nc => `
+            <div style="padding:8px 10px;background:#fef2f2;border-radius:8px;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:14px;">${escHtml(nc.name)}</span>
+              <span style="font-size:12px;color:#888;margin-left:4px;">${escHtml(nc.position || '')}</span>
+            </div>`).join('')}
+        </div>` : ''}
+      <button onclick="document.getElementById('attBoardOverlay').remove()"
+        style="width:100%;padding:12px;border-radius:10px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:14px;color:#555;">닫기</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function submitCheckIn() {
+  const workType = window._ciWorkType || '내근';
+  const summary = (document.getElementById('ci_summary') || {}).value || '';
+  const overlay = document.getElementById('checkinOverlay');
+  if (overlay) overlay.remove();
+  const res = await api('/api/attendance/check-in', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ work_type: workType, work_summary: summary })
+  });
+  if (res) { toast(`출근 완료! (${workType})`); renderHome(); }
 }
 
 async function doCheckOut() {
@@ -5285,13 +5392,15 @@ async function showAttendancePage() {
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
               <span style="font-size:14px; font-weight:600;">${(r.work_date||'').split('T')[0]}</span>
-              ${r.status === 'late' ? '<span style="font-size:10px; color:#ef4444; margin-left:6px; font-weight:600;">지각</span>' : ''}
+              <span style="font-size:11px; margin-left:4px; color:${r.work_type === '외근' ? '#059669' : '#2563eb'}; font-weight:600;">${r.work_type === '외근' ? '🚗외근' : '🏢내근'}</span>
+              ${r.status === 'late' ? '<span style="font-size:10px; color:#ef4444; margin-left:4px; font-weight:600;">지각</span>' : ''}
             </div>
             <div style="font-size:13px; color:var(--gray-500);">
               ${(r.check_in||'').substring(11,16)} ~ ${r.check_out ? (r.check_out||'').substring(11,16) : '--:--'}
               <span style="margin-left:6px; font-weight:600; color:var(--gray-700);">${r.check_out ? calcWorkHours(r.check_in, r.check_out) : '근무중'}</span>
             </div>
           </div>
+          ${r.work_summary ? `<div style="font-size:12px; color:var(--gray-500); margin-top:4px; padding-left:2px;">${escHtml(r.work_summary)}</div>` : ''}
         </div>
       `).join('')}
 
@@ -5303,12 +5412,14 @@ async function showAttendancePage() {
             <div>
               <span style="font-weight:600; font-size:14px;">${escHtml(t.user_name)}</span>
               <span style="font-size:12px; color:var(--gray-500); margin-left:4px;">${escHtml(t.position || '')}</span>
+              <span style="font-size:11px; margin-left:4px; font-weight:600; color:${t.work_type === '외근' ? '#059669' : '#2563eb'};">${t.work_type === '외근' ? '🚗외근' : '🏢내근'}</span>
               ${t.status === 'late' ? '<span style="font-size:10px; color:#ef4444; margin-left:4px;">지각</span>' : ''}
             </div>
             <div style="font-size:12px; color:var(--gray-500);">
               ${(t.check_in||'').substring(11,16)} ${t.check_out ? '~ ' + (t.check_out||'').substring(11,16) : '<span style="color:var(--success);">근무중</span>'}
             </div>
           </div>
+          ${t.work_summary ? `<div style="font-size:11px; color:var(--gray-500); margin-top:4px;">${escHtml(t.work_summary)}</div>` : ''}
         </div>
       `).join('')}
     ` : ''}
@@ -5821,6 +5932,73 @@ function parseVoiceToFields(text) {
 
   toast(`음성 분석 완료! ${filled}개 항목 자동 입력`);
 }
+
+// ─── 출근 체크 팝업 (매일 10시까지, 전원 출근시 종료) ───
+let _attPopupDismissedAt = null;
+
+async function checkAttendancePopup() {
+  if (!currentUser) return;
+  const now = new Date();
+  const hour = now.getHours();
+  if (hour >= 10) return;
+  if (_attPopupDismissedAt && (Date.now() - _attPopupDismissedAt) < 30000) return;
+  if (document.getElementById('attPopupOverlay')) return;
+
+  const board = await api('/api/attendance/team-board');
+  if (!board || board.all_checked) return;
+
+  const notChecked = board.board.filter(b => !b.checked_in);
+  const checked = board.board.filter(b => b.checked_in);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'attPopupOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9997;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;width:92%;max-width:380px;color:#222;max-height:80vh;overflow-y:auto;">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:20px;font-weight:700;">출근 현황판</div>
+        <div style="font-size:13px;color:#888;margin-top:4px;">전원 출근 완료시 자동 종료</div>
+        <div style="margin-top:8px;font-size:14px;font-weight:600;color:var(--primary);">${board.checked_count} / ${board.total}명 출근</div>
+        <div style="background:#e5e7eb;border-radius:99px;height:8px;margin-top:8px;overflow:hidden;">
+          <div style="background:var(--primary);height:100%;width:${Math.round(board.checked_count / board.total * 100)}%;border-radius:99px;transition:width .3s;"></div>
+        </div>
+      </div>
+      ${checked.length > 0 ? `
+        <div style="margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:600;color:#10b981;margin-bottom:8px;">✅ 출근 완료 (${checked.length}명)</div>
+          ${checked.map(c => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f0fdf4;border-radius:8px;margin-bottom:4px;">
+              <div>
+                <span style="font-weight:600;font-size:14px;">${escHtml(c.name)}</span>
+                <span style="font-size:12px;color:#888;margin-left:4px;">${escHtml(c.position || '')}</span>
+              </div>
+              <div style="text-align:right;">
+                <span style="font-size:12px;font-weight:600;color:${c.work_type === '외근' ? '#059669' : '#2563eb'};">${c.work_type === '외근' ? '🚗외근' : '🏢내근'}</span>
+                <span style="font-size:11px;color:#888;margin-left:4px;">${(c.check_in||'').substring(11,16)}</span>
+                ${c.work_summary ? `<div style="font-size:11px;color:#666;margin-top:2px;">${escHtml(c.work_summary)}</div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      ${notChecked.length > 0 ? `
+        <div style="margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:600;color:#ef4444;margin-bottom:8px;">⏳ 미출근 (${notChecked.length}명)</div>
+          ${notChecked.map(nc => `
+            <div style="display:flex;align-items:center;padding:8px 10px;background:#fef2f2;border-radius:8px;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:14px;">${escHtml(nc.name)}</span>
+              <span style="font-size:12px;color:#888;margin-left:4px;">${escHtml(nc.position || '')}</span>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      <button onclick="_attPopupDismissedAt=Date.now();document.getElementById('attPopupOverlay').remove();"
+        style="width:100%;padding:12px;border-radius:10px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:14px;color:#555;">닫기 (30초 후 다시 표시)</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+setInterval(checkAttendancePopup, 60000);
 
 // 초기화
 checkAuth();

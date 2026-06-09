@@ -2698,9 +2698,11 @@ app.post('/api/attendance/check-in', authMiddleware, async (req, res) => {
   const now = new Date();
   const hour = now.getHours() + now.getMinutes() / 60;
   const status = hour > 9.5 ? 'late' : 'normal';
-  await query('INSERT INTO attendance (id, user_id, work_date, check_in, status) VALUES ($1,$2,$3,$4,$5)',
-    [id, req.session.userId, today, now, status]);
-  res.json({ id, check_in: now.toISOString(), status });
+  const workType = req.body.work_type || '내근';
+  const workSummary = req.body.work_summary || '';
+  await query('INSERT INTO attendance (id, user_id, work_date, check_in, status, work_type, work_summary) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [id, req.session.userId, today, now, status, workType, workSummary]);
+  res.json({ id, check_in: now.toISOString(), status, work_type: workType, work_summary: workSummary });
 });
 
 app.post('/api/attendance/check-out', authMiddleware, async (req, res) => {
@@ -2729,6 +2731,27 @@ app.get('/api/attendance/team', authMiddleware, async (req, res) => {
     `SELECT a.*, u.name as user_name, u.position FROM attendance a JOIN users u ON a.user_id = u.id
      WHERE a.work_date = $1 ORDER BY a.check_in ASC`, [today]);
   res.json(result.rows);
+});
+
+app.get('/api/attendance/team-board', authMiddleware, async (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  const allUsers = await query('SELECT id, name, position, department FROM users ORDER BY name');
+  const checked = await query(
+    `SELECT a.*, u.name as user_name, u.position FROM attendance a JOIN users u ON a.user_id = u.id
+     WHERE a.work_date = $1 ORDER BY a.check_in ASC`, [today]);
+  const checkedMap = {};
+  checked.rows.forEach(r => { checkedMap[r.user_id] = r; });
+  const board = allUsers.rows.map(u => ({
+    user_id: u.id, name: u.name, position: u.position, department: u.department,
+    checked_in: !!checkedMap[u.id],
+    work_type: checkedMap[u.id] ? checkedMap[u.id].work_type : null,
+    work_summary: checkedMap[u.id] ? checkedMap[u.id].work_summary : null,
+    check_in: checkedMap[u.id] ? checkedMap[u.id].check_in : null,
+    status: checkedMap[u.id] ? checkedMap[u.id].status : null
+  }));
+  const total = allUsers.rows.length;
+  const checkedCount = checked.rows.length;
+  res.json({ total, checked_count: checkedCount, all_checked: checkedCount >= total, board });
 });
 
 // ─── 팀 일정 ───

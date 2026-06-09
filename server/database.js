@@ -134,6 +134,7 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS attendance (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, work_date DATE NOT NULL,
       check_in TIMESTAMP, check_out TIMESTAMP, status TEXT DEFAULT 'normal',
+      work_type TEXT DEFAULT '내근', work_summary TEXT DEFAULT '',
       memo TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(user_id, work_date))`,
     `CREATE TABLE IF NOT EXISTS board_posts (
@@ -163,6 +164,8 @@ async function initDB() {
   for (const sql of tables) {
     await query(sql);
   }
+  await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS work_type TEXT DEFAULT '내근'`).catch(() => {});
+  await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS work_summary TEXT DEFAULT ''`).catch(() => {});
   console.log('All tables created');
 
   // ═══ SEED DATA ═══
