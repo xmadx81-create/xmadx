@@ -505,7 +505,7 @@ function renderReportList(reports) {
     <div class="list-item" onclick="viewReport('${r.id}')">
       <div class="list-item-content">
         <div class="list-item-title">${escHtml(r.what_task || r.content || '(내용 없음)')}</div>
-        <div class="list-item-sub">${r.author_name} ${r.author_position} &middot; ${(r.report_date||'').split('T')[0]}</div>
+        <div class="list-item-sub">${r.author_name} ${r.author_position} &middot; ${(r.report_date||'').split('T')[0]}${parseInt(r.comment_count) > 0 ? ` &middot; <span style="color:var(--primary);">&#128172;${r.comment_count}</span>` : ''}</div>
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
         <span class="badge badge-${r.work_category}">${r.work_category}</span>
@@ -532,8 +532,12 @@ async function filterReports(btn, category) {
 
 // ─── 업무일지 상세보기 ───
 async function viewReport(id) {
-  const data = await api(`/api/reports/${id}`);
+  const [data, comments] = await Promise.all([
+    api(`/api/reports/${id}`),
+    api(`/api/reports/${id}/comments`)
+  ]);
   if (!data) return;
+  const cmts = comments || [];
 
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('reports')" style="margin-bottom:16px;">&larr; 목록</button>
@@ -590,7 +594,53 @@ async function viewReport(id) {
         </div>
       </div>
     ` : ''}
+
+    <!-- 댓글/피드백 -->
+    <div class="card" style="margin-top:12px;">
+      <p class="card-title" style="margin-bottom:12px;">&#128172; 댓글 (${cmts.length})</p>
+      <div id="commentList">
+        ${cmts.length === 0 ? '<p style="font-size:13px; color:var(--gray-500); text-align:center; padding:8px 0;">아직 댓글이 없습니다</p>' :
+          cmts.map(c => renderComment(c)).join('')}
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <input type="text" id="commentInput" class="form-control" placeholder="댓글을 입력하세요..." style="flex:1; font-size:13px;" onkeydown="if(event.key==='Enter')postComment('${data.id}')">
+        <button class="btn btn-primary btn-sm" onclick="postComment('${data.id}')" style="white-space:nowrap;">등록</button>
+      </div>
+    </div>
   `;
+}
+
+function renderComment(c) {
+  const isMe = currentUser && (c.author_id === currentUser.id || (currentUser.isAdmin && c.author_id === 'admin-user'));
+  const timeStr = (c.created_at || '').substring(0, 16).replace('T', ' ');
+  return `<div style="padding:8px 0; border-bottom:1px solid var(--gray-100);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+      <span style="font-size:12px; font-weight:600;">${escHtml(c.author_name)}</span>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="font-size:11px; color:var(--gray-400);">${timeStr}</span>
+        ${isMe ? `<button onclick="deleteComment('${c.id}','${c.report_id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:13px; padding:0;">&times;</button>` : ''}
+      </div>
+    </div>
+    <p style="font-size:13px; line-height:1.6; white-space:pre-wrap;">${escHtml(c.content)}</p>
+  </div>`;
+}
+
+async function postComment(reportId) {
+  const input = document.getElementById('commentInput');
+  if (!input) return;
+  const content = input.value.trim();
+  if (!content) { toast('댓글을 입력하세요'); return; }
+  const res = await api(`/api/reports/${reportId}/comments`, { method: 'POST', body: { content } });
+  if (res) {
+    input.value = '';
+    viewReport(reportId);
+  }
+}
+
+async function deleteComment(commentId, reportId) {
+  if (!confirm('이 댓글을 삭제하시겠습니까?')) return;
+  const res = await api(`/api/comments/${commentId}`, { method: 'DELETE' });
+  if (res) viewReport(reportId);
 }
 
 function w5h1Field(label, value) {

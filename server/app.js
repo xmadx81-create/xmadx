@@ -356,7 +356,7 @@ app.get('/api/dashboard', authMiddleware, async (req, res) => {
 // ─── 업무일지 CRUD ───
 app.get('/api/reports', authMiddleware, async (req, res) => {
   const { type, category, from, to } = req.query;
-  let sql = 'SELECT r.*, u.name as author_name, u.position as author_position FROM work_reports r JOIN users u ON r.author_id = u.id WHERE 1=1';
+  let sql = 'SELECT r.*, u.name as author_name, u.position as author_position, (SELECT COUNT(*) FROM comments c WHERE c.report_id = r.id) as comment_count FROM work_reports r JOIN users u ON r.author_id = u.id WHERE 1=1';
   const params = [];
   let paramIdx = 1;
   if (type) { sql += ` AND r.report_type = $${paramIdx++}`; params.push(type); }
@@ -380,7 +380,8 @@ app.get('/api/reports/:id', authMiddleware, async (req, res) => {
     FROM approval_lines a JOIN users u ON a.approver_id = u.id
     WHERE a.report_id = $1 ORDER BY a.step_order
   `, [req.params.id]);
-  res.json({ ...report, approvals: approvalsResult.rows });
+  const commentCount = await query('SELECT COUNT(*) as cnt FROM comments WHERE report_id = $1', [req.params.id]);
+  res.json({ ...report, approvals: approvalsResult.rows, comment_count: parseInt(commentCount.rows[0].cnt) });
 });
 
 app.post('/api/reports', authMiddleware, async (req, res) => {
@@ -2010,6 +2011,39 @@ app.put('/api/notices/:id', adminMiddleware, async (req, res) => {
 
 app.delete('/api/notices/:id', adminMiddleware, async (req, res) => {
   await query('DELETE FROM notices WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// ─── 댓글/피드백 ───
+app.get('/api/reports/:id/comments', authMiddleware, async (req, res) => {
+  const result = await query('SELECT * FROM comments WHERE report_id = $1 ORDER BY created_at ASC', [req.params.id]);
+  res.json(result.rows);
+});
+
+app.post('/api/reports/:id/comments', authMiddleware, async (req, res) => {
+  const { content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: '댓글 내용을 입력하세요' });
+  let authorName = '관리자';
+  if (req.session.userId && req.session.userId !== 'admin-user') {
+    const u = await query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+    if (u.rows[0]) authorName = u.rows[0].name;
+  }
+  const id = uuidv4();
+  await query(
+    'INSERT INTO comments (id, report_id, author_id, author_name, content) VALUES ($1,$2,$3,$4,$5)',
+    [id, req.params.id, req.session.userId || 'admin-user', authorName, content.trim()]
+  );
+  res.json({ id, author_name: authorName, content: content.trim(), created_at: new Date().toISOString() });
+});
+
+app.delete('/api/comments/:id', authMiddleware, async (req, res) => {
+  const comment = await query('SELECT * FROM comments WHERE id = $1', [req.params.id]);
+  if (comment.rows.length === 0) return res.status(404).json({ error: '댓글을 찾을 수 없습니다' });
+  const c = comment.rows[0];
+  if (c.author_id !== req.session.userId && !req.session.isAdmin) {
+    return res.status(403).json({ error: '본인의 댓글만 삭제할 수 있습니다' });
+  }
+  await query('DELETE FROM comments WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 

@@ -126,7 +126,11 @@ async function initDB() {
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL,
       memo TEXT DEFAULT '', priority TEXT DEFAULT 'normal',
       due_date DATE, completed BOOLEAN DEFAULT FALSE,
-      completed_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`
+      completed_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS comments (
+      id TEXT PRIMARY KEY, report_id TEXT NOT NULL, author_id TEXT NOT NULL,
+      author_name TEXT NOT NULL, content TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
     await query(sql);
