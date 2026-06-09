@@ -1015,6 +1015,10 @@ async function renderMore() {
         <span class="qa-icon">&#128200;</span>
         <span class="qa-label" style="color:#43a047; font-weight:700;">업무 흐름도</span>
       </button>
+      <button class="quick-action-btn" onclick="showOnboarding()" style="border:2px solid #e65100; background:#fff3e0;">
+        <span class="qa-icon">&#127891;</span>
+        <span class="qa-label" style="color:#e65100; font-weight:700;">신입 가이드</span>
+      </button>
     </div>
 
     <p class="section-title">&#9881; 도구</p>
@@ -3016,6 +3020,132 @@ async function renderMermaidChart(code) {
   } catch (e) {
     document.getElementById('mermaidDiagram').innerHTML = '<p style="color:var(--gray-500); font-size:13px;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 신입 온보딩 가이드 ───
+async function showOnboarding() {
+  const data = await api('/api/onboarding');
+  if (!data) return;
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = 'none';
+
+  if (data.total_reports === 0) {
+    document.getElementById('mainContent').innerHTML = `
+      <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+      <div class="card" style="text-align:center; padding:40px 20px;">
+        <div style="font-size:48px; margin-bottom:16px;">&#127891;</div>
+        <p style="font-size:18px; font-weight:700; margin-bottom:8px;">신입 온보딩 가이드</p>
+        <p style="font-size:14px; color:var(--gray-500); line-height:1.7;">
+          업무일지가 쌓이면 자동으로<br>온보딩 가이드가 만들어집니다.
+        </p>
+      </div>`;
+    return;
+  }
+
+  const catIcons = { '내근': '&#128187;', '외근': '&#128694;', '출장': '&#9992;' };
+
+  let peopleHtml = '';
+  Object.entries(data.person_roles).forEach(([name, info]) => {
+    const topTasks = info.tasks.slice(0, 3);
+    peopleHtml += `
+      <div style="padding:10px; background:var(--gray-50); border-radius:8px; margin-bottom:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-size:14px; font-weight:700;">${escHtml(name)}</span>
+          <span style="font-size:12px; color:var(--gray-500);">${escHtml(info.position || '')}</span>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+          ${topTasks.map(t => `<span style="font-size:11px; padding:2px 8px; background:#e3f2fd; border-radius:10px; color:#1565c0;">${escHtml(t.task)} (${t.cnt})</span>`).join('')}
+          ${info.tasks.length > 3 ? `<span style="font-size:11px; color:var(--gray-400);">+${info.tasks.length - 3}</span>` : ''}
+        </div>
+      </div>`;
+  });
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-size:36px; margin-bottom:8px;">&#127891;</div>
+      <p style="font-size:20px; font-weight:800;">석유사업본부 업무 가이드</p>
+      <p style="font-size:13px; color:var(--gray-500);">이 가이드는 업무일지 ${data.total_reports}건 기반으로 자동 생성되었습니다</p>
+    </div>
+
+    <!-- 1. 조직 개요 -->
+    <div class="card" style="margin-bottom:12px; border-left:4px solid var(--primary);">
+      <p style="font-size:16px; font-weight:700; margin-bottom:12px;">&#127970; 조직 개요</p>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-number">${data.total_people}</div><div class="stat-label">근무 인원</div></div>
+        <div class="stat-card"><div class="stat-number">${data.branch_count}</div><div class="stat-label">전국 지국</div></div>
+        <div class="stat-card"><div class="stat-number">${data.franchise_count}</div><div class="stat-label">가맹점</div></div>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+        ${data.categories.map(c => `
+          <span style="font-size:13px; padding:4px 12px; background:var(--gray-100); border-radius:12px;">
+            ${catIcons[c.name] || ''} ${c.name} ${c.count}건
+          </span>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- 2. 핵심 업무 TOP -->
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #43a047;">
+      <p style="font-size:16px; font-weight:700; margin-bottom:4px;">&#11088; 핵심 업무 (반드시 알아야 할 것)</p>
+      <p style="font-size:12px; color:var(--gray-500); margin-bottom:12px;">3회 이상 반복된 업무 = 핵심 업무</p>
+      ${data.core_tasks.length === 0 ? `
+        <p style="font-size:13px; color:var(--gray-400); text-align:center; padding:12px;">아직 확립된 핵심 업무가 없습니다</p>
+      ` : data.core_tasks.map((t, i) => `
+        <div style="padding:10px; background:${t.frequency >= 5 ? '#e8f5e9' : '#fff8e1'}; border-radius:8px; margin-bottom:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:start;">
+            <div style="flex:1;">
+              <div style="font-size:11px; color:${t.frequency >= 5 ? '#2e7d32' : '#e65100'}; font-weight:600; margin-bottom:2px;">
+                ${t.frequency >= 5 ? '&#128308; 정기 업무' : '&#128992; 반복 업무'} · ${t.frequency}회 수행
+              </div>
+              <div style="font-size:14px; font-weight:600;">${escHtml(t.task)}</div>
+            </div>
+            <span class="badge badge-${t.category}" style="flex-shrink:0;">${t.category}</span>
+          </div>
+          ${t.purpose ? `<div style="font-size:12px; color:var(--gray-600); margin-top:4px;">목적: ${escHtml(t.purpose)}</div>` : ''}
+          ${t.methods.length > 0 ? `<div style="font-size:12px; color:var(--gray-600); margin-top:2px;">방법: ${t.methods.map(m => escHtml(m)).join(' / ')}</div>` : ''}
+          <div style="font-size:11px; color:var(--gray-500); margin-top:4px;">담당: ${t.people.join(', ')}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- 3. 담당자별 역할 -->
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #1565c0;">
+      <p style="font-size:16px; font-weight:700; margin-bottom:4px;">&#128101; 누가 무엇을 하는가</p>
+      <p style="font-size:12px; color:var(--gray-500); margin-bottom:12px;">담당자별 주요 업무</p>
+      ${peopleHtml}
+    </div>
+
+    <!-- 4. 빠른 이동 -->
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #e65100;">
+      <p style="font-size:16px; font-weight:700; margin-bottom:12px;">&#128204; 더 알아보기</p>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button class="btn btn-outline btn-block" onclick="showManual()" style="text-align:left; padding:12px;">
+          &#128214; <strong>업무 매뉴얼</strong> — 절차서와 수행 방법 상세
+        </button>
+        <button class="btn btn-outline btn-block" onclick="showKnowledgeMap()" style="text-align:left; padding:12px;">
+          &#129504; <strong>업무 지식맵</strong> — 카테고리, 패턴, 통계 분석
+        </button>
+        <button class="btn btn-outline btn-block" onclick="showWorkflowDiagrams()" style="text-align:left; padding:12px;">
+          &#128200; <strong>업무 흐름도</strong> — 구조도와 담당자 관계 다이어그램
+        </button>
+        <button class="btn btn-outline btn-block" onclick="showTaskMaster()" style="text-align:left; padding:12px;">
+          &#128203; <strong>주요업무표</strong> — 전체 업무 목록
+        </button>
+        <button class="btn btn-outline btn-block" onclick="showPersonalTasks()" style="text-align:left; padding:12px;">
+          &#128221; <strong>개별 업무표</strong> — 담당자별 상세 업무
+        </button>
+        <button class="btn btn-outline btn-block" onclick="showBranches()" style="text-align:left; padding:12px;">
+          &#127970; <strong>전국 지국</strong> — 지국 현황과 연락처
+        </button>
+      </div>
+    </div>
+
+    <div style="text-align:center; padding:20px; color:var(--gray-400); font-size:12px;">
+      업무일지를 꾸준히 작성하면 이 가이드가 더 풍부해집니다
+    </div>
+  `;
 }
 
 // ─── 워크플로우 다이어그램 ───

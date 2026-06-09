@@ -1582,6 +1582,78 @@ app.get('/api/workflow-diagrams', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 신입 온보딩 가이드 ───
+app.get('/api/onboarding', authMiddleware, async (req, res) => {
+  const totalResult = await query('SELECT COUNT(*) as cnt FROM work_reports');
+  const totalReports = parseInt(totalResult.rows[0].cnt);
+
+  const peopleResult = await query(`
+    SELECT u.name, u.position, COUNT(r.id) as cnt
+    FROM users u JOIN work_reports r ON u.id = r.author_id
+    GROUP BY u.name, u.position ORDER BY cnt DESC
+  `);
+
+  const catResult = await query(`
+    SELECT work_category, COUNT(*) as cnt FROM work_reports
+    WHERE work_category IS NOT NULL GROUP BY work_category ORDER BY cnt DESC
+  `);
+
+  const topTasksResult = await query(`
+    SELECT r.what_task, r.work_category, r.purpose, r.how_method, r.where_place,
+      COUNT(*) as frequency, STRING_AGG(DISTINCT u.name, ',') as people
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE r.what_task IS NOT NULL AND r.what_task != ''
+    GROUP BY r.what_task, r.work_category, r.purpose, r.how_method, r.where_place
+    ORDER BY frequency DESC
+  `);
+
+  const consolidated = {};
+  topTasksResult.rows.forEach(r => {
+    const key = r.what_task;
+    if (!consolidated[key]) {
+      consolidated[key] = { task: r.what_task, category: r.work_category || '기타', purpose: r.purpose || '',
+        methods: [], locations: [], people: [], frequency: 0 };
+    }
+    const c = consolidated[key];
+    c.frequency += parseInt(r.frequency);
+    if (r.how_method && !c.methods.includes(r.how_method)) c.methods.push(r.how_method);
+    if (r.where_place && !c.locations.includes(r.where_place)) c.locations.push(r.where_place);
+    if (r.people) r.people.split(',').forEach(p => { if (!c.people.includes(p)) c.people.push(p); });
+  });
+
+  const allTasks = Object.values(consolidated).sort((a, b) => b.frequency - a.frequency);
+  const coreTasks = allTasks.filter(t => t.frequency >= 3);
+  const regularTasks = allTasks.filter(t => t.frequency >= 5);
+
+  const personRoles = {};
+  const personTaskResult = await query(`
+    SELECT u.name, u.position, r.what_task, r.work_category, COUNT(*) as cnt
+    FROM work_reports r JOIN users u ON r.author_id = u.id
+    WHERE r.what_task IS NOT NULL AND r.what_task != ''
+    GROUP BY u.name, u.position, r.what_task, r.work_category ORDER BY cnt DESC
+  `);
+  personTaskResult.rows.forEach(r => {
+    if (!personRoles[r.name]) personRoles[r.name] = { position: r.position, tasks: [] };
+    personRoles[r.name].tasks.push({ task: r.what_task, category: r.work_category, cnt: parseInt(r.cnt) });
+  });
+
+  const branchCount = await query('SELECT COUNT(*) as cnt FROM branches WHERE exclude_service = 0');
+  const franchiseCount = await query('SELECT COUNT(*) as cnt FROM franchises');
+
+  res.json({
+    total_reports: totalReports,
+    total_people: peopleResult.rows.length,
+    people: peopleResult.rows.map(r => ({ name: r.name, position: r.position, reports: parseInt(r.cnt) })),
+    categories: catResult.rows.map(r => ({ name: r.work_category, count: parseInt(r.cnt) })),
+    core_tasks: coreTasks.slice(0, 15),
+    regular_tasks: regularTasks.slice(0, 10),
+    all_tasks_count: allTasks.length,
+    person_roles: personRoles,
+    branch_count: parseInt(branchCount.rows[0].cnt),
+    franchise_count: parseInt(franchiseCount.rows[0].cnt)
+  });
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);
