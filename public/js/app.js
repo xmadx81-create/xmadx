@@ -3035,7 +3035,13 @@ async function runInsightsAnalysis() {
   document.getElementById('adminTabContent').innerHTML = `
     <div style="background:#fff; color:#222; border-radius:8px; padding:12px;">
 
-    <p style="font-size:12px; color:#666; margin-bottom:16px;">기간 ${escHtml(dateFrom)} ~ ${escHtml(dateTo)} · ${data.notes_analyzed}건 분석</p>
+    <p style="font-size:12px; color:#666; margin-bottom:16px;">기간 ${escHtml(dateFrom)} ~ ${escHtml(dateTo)} · 회의록 ${data.total_notes || 0}건 + 업무일지 ${data.total_reports || 0}건 분석</p>
+
+    ${data.report_stats ? `<div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; font-size:11px;">
+      ${data.report_stats.categories ? `<span style="padding:4px 8px; background:#e0f2fe; border-radius:12px; color:#0369a1;">📂 ${escHtml(data.report_stats.categories)}</span>` : ''}
+      ${data.report_stats.places ? `<span style="padding:4px 8px; background:#dcfce7; border-radius:12px; color:#15803d;">📍 ${escHtml(data.report_stats.places)}</span>` : ''}
+      <span style="padding:4px 8px; background:#fef3c7; border-radius:12px; color:#92400e;">✅ 완료율 ${data.report_stats.completion_rate}%</span>
+    </div>` : ''}
 
     <div style="display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;">
       <button class="tab active" onclick="switchInsightView(this,'positive')">긍정적 분석</button>

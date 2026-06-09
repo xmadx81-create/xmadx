@@ -1366,6 +1366,27 @@ app.get('/api/admin/insights', adminMiddleware, async (req, res) => {
   const notesResult = await query('SELECT * FROM meeting_notes WHERE summary IS NOT NULL ORDER BY meeting_date DESC');
   const notes = notesResult.rows;
 
+  const reportsResult = await query(`
+    SELECT MIN(report_date) as first_date, MAX(report_date) as last_date, COUNT(*) as cnt
+    FROM work_reports
+  `);
+  const repStats = reportsResult.rows[0];
+
+  const catResult = await query(`
+    SELECT work_category, COUNT(*) as cnt FROM work_reports
+    WHERE work_category IS NOT NULL GROUP BY work_category ORDER BY cnt DESC
+  `);
+
+  const recentResult = await query(`
+    SELECT what_task, work_category, where_place, result_status, report_date
+    FROM work_reports WHERE report_date >= NOW() - INTERVAL '14 days' ORDER BY report_date DESC
+  `);
+  const recentReports = recentResult.rows;
+
+  const completedCount = recentReports.filter(r => (r.result_status||'').includes('완료')).length;
+  const ongoingCount = recentReports.filter(r => (r.result_status||'').includes('진행')).length;
+  const totalRecent = recentReports.length;
+
   const allActions = [];
   const allThemes = [];
   const themeCounts = {};
@@ -1386,11 +1407,22 @@ app.get('/api/admin/insights', adminMiddleware, async (req, res) => {
 
   const uniqueThemes = Object.entries(themeCounts).sort((a, b) => b[1] - a[1]).map(([t, c]) => ({ theme: t, count: c }));
 
+  const earliestDate = notes.length > 0 ? notes[notes.length - 1].meeting_date : (repStats.first_date || new Date());
+  const latestDate = repStats.last_date || (notes.length > 0 ? notes[0].meeting_date : new Date());
+  const from = new Date(earliestDate) < new Date(repStats.first_date || earliestDate) ? earliestDate : repStats.first_date;
+  const to = new Date(latestDate) > new Date(notes.length > 0 ? notes[0].meeting_date : '1970-01-01') ? latestDate : notes[0].meeting_date;
+
+  const topCategories = catResult.rows.slice(0, 5).map(c => c.work_category).join(', ');
+  const topPlaces = [...new Set(recentReports.map(r => r.where_place).filter(Boolean))].slice(0, 5).join(', ');
+  const completionRate = totalRecent > 0 ? Math.round(completedCount / totalRecent * 100) : 0;
+
   res.json({
     generated_at: new Date().toISOString(),
-    notes_analyzed: notes.length,
+    notes_analyzed: notes.length + parseInt(repStats.cnt || 0),
     total_notes: (await query('SELECT COUNT(*) as cnt FROM meeting_notes')).rows[0].cnt,
-    date_range: notes.length > 0 ? { from: notes[notes.length - 1].meeting_date, to: notes[0].meeting_date } : null,
+    total_reports: parseInt(repStats.cnt || 0),
+    date_range: { from: (from || '').toString().split('T')[0], to: (to || '').toString().split('T')[0] },
+    report_stats: { categories: topCategories, places: topPlaces, completion_rate: completionRate, recent_count: totalRecent },
     notes_summary: notes.map(n => ({ id: n.id, title: n.title, date: n.meeting_date })),
     themes: uniqueThemes,
     action_items: allActions,
