@@ -130,7 +130,12 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS comments (
       id TEXT PRIMARY KEY, report_id TEXT NOT NULL, author_id TEXT NOT NULL,
       author_name TEXT NOT NULL, content TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW())`
+      created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS attendance (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, work_date DATE NOT NULL,
+      check_in TIMESTAMP, check_out TIMESTAMP, status TEXT DEFAULT 'normal',
+      memo TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(user_id, work_date))`
   ];
   for (const sql of tables) {
     await query(sql);

@@ -2096,6 +2096,54 @@ app.delete('/api/comments/:id', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── 출퇴근 기록 ───
+app.get('/api/attendance/today', authMiddleware, async (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  const result = await query('SELECT * FROM attendance WHERE user_id = $1 AND work_date = $2', [req.session.userId, today]);
+  res.json(result.rows[0] || null);
+});
+
+app.post('/api/attendance/check-in', authMiddleware, async (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  const existing = await query('SELECT * FROM attendance WHERE user_id = $1 AND work_date = $2', [req.session.userId, today]);
+  if (existing.rows.length > 0) return res.status(400).json({ error: '이미 출근 기록이 있습니다' });
+  const id = uuidv4();
+  const now = new Date();
+  const hour = now.getHours() + now.getMinutes() / 60;
+  const status = hour > 9.5 ? 'late' : 'normal';
+  await query('INSERT INTO attendance (id, user_id, work_date, check_in, status) VALUES ($1,$2,$3,$4,$5)',
+    [id, req.session.userId, today, now, status]);
+  res.json({ id, check_in: now.toISOString(), status });
+});
+
+app.post('/api/attendance/check-out', authMiddleware, async (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  const existing = await query('SELECT * FROM attendance WHERE user_id = $1 AND work_date = $2', [req.session.userId, today]);
+  if (existing.rows.length === 0) return res.status(400).json({ error: '출근 기록이 없습니다. 먼저 출근하세요.' });
+  if (existing.rows[0].check_out) return res.status(400).json({ error: '이미 퇴근 처리되었습니다' });
+  const now = new Date();
+  await query('UPDATE attendance SET check_out = $1 WHERE user_id = $2 AND work_date = $3', [now, req.session.userId, today]);
+  res.json({ check_out: now.toISOString() });
+});
+
+app.get('/api/attendance/history', authMiddleware, async (req, res) => {
+  const userId = req.query.user_id || req.session.userId;
+  const month = req.query.month || new Date().toISOString().substring(0, 7);
+  const result = await query(
+    `SELECT a.*, u.name as user_name FROM attendance a JOIN users u ON a.user_id = u.id
+     WHERE a.user_id = $1 AND TO_CHAR(a.work_date, 'YYYY-MM') = $2 ORDER BY a.work_date DESC`,
+    [userId, month]);
+  res.json(result.rows);
+});
+
+app.get('/api/attendance/team', authMiddleware, async (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  const result = await query(
+    `SELECT a.*, u.name as user_name, u.position FROM attendance a JOIN users u ON a.user_id = u.id
+     WHERE a.work_date = $1 ORDER BY a.check_in ASC`, [today]);
+  res.json(result.rows);
+});
+
 // ─── 할 일 관리 ───
 app.get('/api/todos', authMiddleware, async (req, res) => {
   const userId = req.session.userId;

@@ -118,11 +118,12 @@ function isManager() {
 async function renderHome() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-  const [reports, dash, notices, todos] = await Promise.all([
+  const [reports, dash, notices, todos, atd] = await Promise.all([
     api(`/api/reports?from=${weekAgo}&to=${today}`),
     api('/api/dashboard'),
     api('/api/notices'),
-    api('/api/todos')
+    api('/api/todos'),
+    api('/api/attendance/today')
   ]);
   const rpts = reports || [];
   const d = dash || {};
@@ -205,6 +206,23 @@ async function renderHome() {
       `).join('')}
       ${activeNotices.length > 3 ? `<button class="btn btn-outline btn-sm btn-block" onclick="showNoticesList()" style="margin-top:4px;">공지사항 전체보기 (${activeNotices.length}건)</button>` : ''}
     </div>` : ''}
+
+    <!-- 출퇴근 -->
+    <div class="card" style="margin-bottom:16px; padding:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <span style="font-size:14px; font-weight:700;">&#128339; 출퇴근</span>
+          ${atd ? `<span style="font-size:12px; color:var(--gray-500); margin-left:8px;">${atd.status === 'late' ? '<span style="color:#ef4444;">지각</span>' : '정상'}</span>` : ''}
+        </div>
+        <div style="display:flex; gap:6px;">
+          ${!atd ? `<button class="btn btn-primary btn-sm" onclick="doCheckIn()" style="padding:6px 16px;">출근</button>` :
+            !atd.check_out ? `
+              <span style="font-size:12px; color:var(--success); display:flex; align-items:center; gap:4px;">&#9679; 근무중 ${(atd.check_in||'').substring(11,16)}</span>
+              <button class="btn btn-sm" onclick="doCheckOut()" style="padding:6px 16px; background:#ef4444; color:#fff; border:none;">퇴근</button>` :
+            `<span style="font-size:12px; color:var(--gray-500);">${(atd.check_in||'').substring(11,16)} ~ ${(atd.check_out||'').substring(11,16)} (${calcWorkHours(atd.check_in, atd.check_out)})</span>`}
+        </div>
+      </div>
+    </div>
 
     <div class="stats-row">
       <div class="stat-card">
@@ -1327,6 +1345,10 @@ async function renderMore() {
       <button class="quick-action-btn" onclick="showTodoPage()" style="border:2px solid #10b981;">
         <span class="qa-icon">&#9745;</span>
         <span class="qa-label" style="color:#10b981; font-weight:700;">할 일 관리</span>
+      </button>
+      <button class="quick-action-btn" onclick="showAttendancePage()" style="border:2px solid #6366f1;">
+        <span class="qa-icon">&#128339;</span>
+        <span class="qa-label" style="color:#6366f1; font-weight:700;">출퇴근 기록</span>
       </button>
       <button class="quick-action-btn" onclick="showWorkTable()">
         <span class="qa-icon">&#128202;</span>
@@ -3854,6 +3876,116 @@ async function doRenderWf(code) {
   } catch (e) {
     area.innerHTML = '<p style="color:var(--gray-500); font-size:13px; text-align:center;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 출퇴근 기록 ───
+function calcWorkHours(cin, cout) {
+  if (!cin || !cout) return '-';
+  const diff = Math.floor((new Date(cout) - new Date(cin)) / 60000);
+  const h = Math.floor(diff / 60);
+  const m = diff % 60;
+  return `${h}시간 ${m}분`;
+}
+
+async function doCheckIn() {
+  const res = await api('/api/attendance/check-in', { method: 'POST' });
+  if (res) { toast('출근 완료!'); renderHome(); }
+}
+
+async function doCheckOut() {
+  if (!confirm('퇴근 처리하시겠습니까?')) return;
+  const res = await api('/api/attendance/check-out', { method: 'POST' });
+  if (res) { toast('퇴근 완료! 수고하셨습니다.'); renderHome(); }
+}
+
+let attMonth = new Date().toISOString().substring(0, 7);
+
+async function showAttendancePage() {
+  const [history, team] = await Promise.all([
+    api(`/api/attendance/history?month=${attMonth}`),
+    isManager() ? api('/api/attendance/team') : Promise.resolve([])
+  ]);
+  const records = history || [];
+  const teamToday = team || [];
+  const totalDays = records.length;
+  const lateDays = records.filter(r => r.status === 'late').length;
+  const totalMinutes = records.reduce((s, r) => {
+    if (r.check_in && r.check_out) return s + Math.floor((new Date(r.check_out) - new Date(r.check_in)) / 60000);
+    return s;
+  }, 0);
+  const avgH = totalDays > 0 ? Math.floor(totalMinutes / totalDays / 60) : 0;
+  const avgM = totalDays > 0 ? Math.floor(totalMinutes / totalDays % 60) : 0;
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <p class="section-title">&#128339; 출퇴근 기록</p>
+
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="stat-number">${totalDays}</div>
+        <div class="stat-label">출근일</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" ${lateDays > 0 ? 'style="color:#ef4444;"' : ''}>${lateDays}</div>
+        <div class="stat-label">지각</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${avgH}:${String(avgM).padStart(2,'0')}</div>
+        <div class="stat-label">평균 근무</div>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <button class="btn btn-outline btn-sm" onclick="attMonth=prevMonth(attMonth); showAttendancePage();">&lsaquo;</button>
+      <span style="font-size:15px; font-weight:600;">${attMonth}</span>
+      <button class="btn btn-outline btn-sm" onclick="attMonth=nextMonth(attMonth); showAttendancePage();">&rsaquo;</button>
+    </div>
+
+    ${records.length === 0 ? '<p style="font-size:13px; color:var(--gray-500); text-align:center; padding:16px;">이번 달 출퇴근 기록이 없습니다</p>' :
+      records.map(r => `
+        <div class="card" style="padding:10px; margin-bottom:4px; ${r.status === 'late' ? 'border-left:3px solid #ef4444;' : ''}">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="font-size:14px; font-weight:600;">${(r.work_date||'').split('T')[0]}</span>
+              ${r.status === 'late' ? '<span style="font-size:10px; color:#ef4444; margin-left:6px; font-weight:600;">지각</span>' : ''}
+            </div>
+            <div style="font-size:13px; color:var(--gray-500);">
+              ${(r.check_in||'').substring(11,16)} ~ ${r.check_out ? (r.check_out||'').substring(11,16) : '--:--'}
+              <span style="margin-left:6px; font-weight:600; color:var(--gray-700);">${r.check_out ? calcWorkHours(r.check_in, r.check_out) : '근무중'}</span>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+
+    ${isManager() && teamToday.length > 0 ? `
+      <p class="section-title" style="margin-top:20px;">&#128101; 오늘 팀 출퇴근 현황</p>
+      ${teamToday.map(t => `
+        <div class="card" style="padding:10px; margin-bottom:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="font-weight:600; font-size:14px;">${escHtml(t.user_name)}</span>
+              <span style="font-size:12px; color:var(--gray-500); margin-left:4px;">${escHtml(t.position || '')}</span>
+              ${t.status === 'late' ? '<span style="font-size:10px; color:#ef4444; margin-left:4px;">지각</span>' : ''}
+            </div>
+            <div style="font-size:12px; color:var(--gray-500);">
+              ${(t.check_in||'').substring(11,16)} ${t.check_out ? '~ ' + (t.check_out||'').substring(11,16) : '<span style="color:var(--success);">근무중</span>'}
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    ` : ''}
+  `;
+}
+
+function prevMonth(m) {
+  const [y, mo] = m.split('-').map(Number);
+  const d = new Date(y, mo - 2, 1);
+  return d.toISOString().substring(0, 7);
+}
+function nextMonth(m) {
+  const [y, mo] = m.split('-').map(Number);
+  const d = new Date(y, mo, 1);
+  return d.toISOString().substring(0, 7);
 }
 
 // ─── 알림 센터 ───
