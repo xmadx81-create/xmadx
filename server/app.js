@@ -2098,6 +2098,107 @@ app.get('/api/monthly-summary', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 주간 업무 보고서 ───
+app.get('/api/weekly-report', authMiddleware, async (req, res) => {
+  const userId = req.query.user_id || req.session.userId;
+  const dateParam = req.query.date || new Date().toISOString().split('T')[0];
+
+  const d = new Date(dateParam);
+  const day = d.getDay();
+  const mon = new Date(d); mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  const fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const weekStart = mon.toISOString().split('T')[0];
+  const weekEnd = sun.toISOString().split('T')[0];
+  const friStr = fri.toISOString().split('T')[0];
+
+  const userResult = await query('SELECT name, position FROM users WHERE id = $1', [userId]);
+  const user = userResult.rows[0] || { name: '사용자', position: '' };
+
+  const reportsResult = await query(`
+    SELECT * FROM work_reports WHERE author_id = $1 AND report_date >= $2 AND report_date <= $3
+    ORDER BY report_date ASC
+  `, [userId, weekStart, weekEnd]);
+  const reports = reportsResult.rows;
+
+  if (reports.length === 0) return res.json({ empty: true, user, weekStart, weekEnd });
+
+  const dailyMap = {};
+  const catCount = {};
+  const taskList = [];
+  let completedCount = 0;
+  let ongoingCount = 0;
+  let issueCount = 0;
+  const issues = [];
+  const notes = [];
+
+  reports.forEach(r => {
+    const dt = (r.report_date || '').toString().split('T')[0];
+    if (!dailyMap[dt]) dailyMap[dt] = [];
+    dailyMap[dt].push(r);
+
+    const cat = r.work_category || '기타';
+    catCount[cat] = (catCount[cat] || 0) + 1;
+
+    if (r.what_task) taskList.push({ task: r.what_task, category: cat, place: r.where_place, method: r.how_method, result: r.result_status, date: dt });
+
+    const rs = (r.result_status || '').toLowerCase();
+    if (rs.includes('완료') || rs.includes('성공')) completedCount++;
+    else if (rs.includes('진행') || rs.includes('중')) ongoingCount++;
+    else if (rs.includes('미완') || rs.includes('실패') || rs.includes('보류')) issueCount++;
+
+    if (r.issues && r.issues.trim()) issues.push({ task: r.what_task || '', issue: r.issues, date: dt });
+    if (r.notes && r.notes.trim()) notes.push({ task: r.what_task || '', note: r.notes, date: dt });
+  });
+
+  const attResult = await query(`
+    SELECT work_date, check_in, check_out, status
+    FROM attendance WHERE user_id = $1 AND work_date >= $2 AND work_date <= $3
+    ORDER BY work_date ASC
+  `, [userId, weekStart, weekEnd]);
+
+  const attendance = attResult.rows.map(a => ({
+    date: (a.work_date || '').toString().split('T')[0],
+    check_in: a.check_in,
+    check_out: a.check_out,
+    status: a.status
+  }));
+
+  const todoResult = await query(`
+    SELECT title, done, due_date FROM todos
+    WHERE user_id = $1 AND due_date >= $2 AND due_date <= $3
+    ORDER BY due_date ASC
+  `, [userId, weekStart, weekEnd]);
+
+  const categories = Object.entries(catCount).map(([name, count]) => ({ name, count }));
+
+  const dayNames = ['일','월','화','수','목','금','토'];
+  const daily = Object.entries(dailyMap).sort((a,b) => a[0].localeCompare(b[0])).map(([date, reps]) => {
+    const dow = new Date(date).getDay();
+    return {
+      date, dayName: dayNames[dow],
+      reports: reps.map(r => ({ task: r.what_task, category: r.work_category, result: r.result_status, place: r.where_place }))
+    };
+  });
+
+  const weekNum = Math.ceil((mon.getDate()) / 7);
+  const monthNum = mon.getMonth() + 1;
+
+  res.json({
+    user, weekStart, weekEnd,
+    weekLabel: `${monthNum}월 ${weekNum}주차`,
+    total_reports: reports.length,
+    work_days: Object.keys(dailyMap).length,
+    daily,
+    categories,
+    tasks: taskList,
+    result_summary: { completed: completedCount, ongoing: ongoingCount, issue: issueCount },
+    issues, notes,
+    attendance,
+    todos: todoResult.rows.map(t => ({ title: t.title, done: t.done, due_date: (t.due_date || '').toString().split('T')[0] }))
+  });
+});
+
 // ─── 업무 캘린더 ───
 app.get('/api/calendar', authMiddleware, async (req, res) => {
   const userId = req.query.user_id || req.session.userId;

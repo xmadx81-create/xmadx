@@ -1373,6 +1373,10 @@ async function renderMore() {
         <span class="qa-icon">&#128196;</span>
         <span class="qa-label" style="color:#1e3a5f; font-weight:700;">인수인계</span>
       </button>
+      <button class="quick-action-btn" onclick="showWeeklyReport()" style="border:2px solid #0f766e;">
+        <span class="qa-icon">&#128203;</span>
+        <span class="qa-label" style="color:#0f766e; font-weight:700;">주간 보고서</span>
+      </button>
     </div>
 
     <p class="section-title">&#9881; 도구</p>
@@ -4050,6 +4054,167 @@ async function showMonthlySummary() {
         ${d.top_tasks.length > 0 ? `<br>&#128293; 핵심 업무: ${d.top_tasks.slice(0, 3).map(t => t.task).join(', ')}` : ''}
         ${d.attendance.late > 2 ? `<br>&#9888;&#65039; 지각 ${d.attendance.late}회로 출근 관리가 필요합니다.` : ''}
       </div>
+    </div>
+  `;
+}
+
+// ─── 주간 업무 보고서 ───
+let weeklyDate = new Date().toISOString().split('T')[0];
+
+function shiftWeek(dateStr, delta) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + delta * 7);
+  return d.toISOString().split('T')[0];
+}
+
+async function showWeeklyReport() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">주간 보고서 생성 중...</p>';
+
+  const d = await api(`/api/weekly-report?date=${weeklyDate}`);
+  if (!d) return;
+
+  if (d.empty) {
+    document.getElementById('mainContent').innerHTML = `
+      <div style="text-align:center; padding:40px 20px;">
+        <div style="display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:24px;">
+          <button class="btn btn-outline btn-sm" onclick="weeklyDate=shiftWeek(weeklyDate,-1); showWeeklyReport();">&lsaquo; 이전주</button>
+          <span style="font-size:14px; font-weight:600;">${d.weekStart} ~ ${d.weekEnd}</span>
+          <button class="btn btn-outline btn-sm" onclick="weeklyDate=shiftWeek(weeklyDate,1); showWeeklyReport();">다음주 &rsaquo;</button>
+        </div>
+        <div style="font-size:48px; margin-bottom:16px;">&#128203;</div>
+        <p style="font-size:14px; color:var(--gray-500);">이 주에 작성된 업무일지가 없습니다.</p>
+      </div>`;
+    return;
+  }
+
+  const resultColors = { completed: '#16a34a', ongoing: '#d97706', issue: '#dc2626' };
+  const resultLabels = { completed: '완료', ongoing: '진행중', issue: '미완/보류' };
+  const totalResults = d.result_summary.completed + d.result_summary.ongoing + d.result_summary.issue;
+
+  document.getElementById('mainContent').innerHTML = `
+    <!-- 헤더 -->
+    <div class="card" style="padding:16px; margin-bottom:16px; background:linear-gradient(135deg, #0f766e, #14b8a6); color:#fff; border-radius:12px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <button class="btn btn-sm" style="background:rgba(255,255,255,0.2); color:#fff; border:none;" onclick="weeklyDate=shiftWeek(weeklyDate,-1); showWeeklyReport();">&lsaquo; 이전</button>
+        <div style="text-align:center;">
+          <div style="font-size:18px; font-weight:800;">&#128203; ${d.weekLabel} 주간 보고서</div>
+          <div style="font-size:12px; opacity:0.85; margin-top:2px;">${d.weekStart} ~ ${d.weekEnd}</div>
+        </div>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,0.2); color:#fff; border:none;" onclick="weeklyDate=shiftWeek(weeklyDate,1); showWeeklyReport();">다음 &rsaquo;</button>
+      </div>
+      <div style="display:flex; justify-content:space-around; padding:10px; background:rgba(255,255,255,0.15); border-radius:8px; text-align:center;">
+        <div><div style="font-size:20px; font-weight:800;">${d.total_reports}</div><div style="font-size:11px; opacity:0.8;">총 보고서</div></div>
+        <div><div style="font-size:20px; font-weight:800;">${d.work_days}</div><div style="font-size:11px; opacity:0.8;">근무일</div></div>
+        <div><div style="font-size:20px; font-weight:800;">${d.categories.length}</div><div style="font-size:11px; opacity:0.8;">업무유형</div></div>
+      </div>
+    </div>
+
+    <!-- 요일별 업무 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#128197; 요일별 업무 내역</div>
+      ${d.daily.map(day => `
+        <div style="margin-bottom:10px; padding:10px; background:var(--gray-50); border-radius:8px; border-left:3px solid #14b8a6;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:14px; font-weight:700;">${day.dayName}요일 <span style="font-size:12px; color:var(--gray-400); font-weight:400;">${day.date}</span></span>
+            <span style="font-size:11px; color:var(--gray-400);">${day.reports.length}건</span>
+          </div>
+          ${day.reports.map(r => `
+            <div style="font-size:12px; line-height:1.7; padding-left:8px; border-left:2px solid var(--gray-200); margin-bottom:4px;">
+              <span style="font-weight:600;">${escHtml(r.task || '업무')}</span>
+              ${r.place ? `<span style="color:var(--gray-400);"> @ ${escHtml(r.place)}</span>` : ''}
+              ${r.result ? `<span style="margin-left:6px; padding:1px 6px; border-radius:4px; font-size:10px; background:${r.result.includes('완료') ? '#dcfce7;color:#16a34a' : r.result.includes('진행') ? '#fef3c7;color:#d97706' : '#f3f4f6;color:#6b7280'};">${escHtml(r.result)}</span>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- 업무 유형 분포 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#128202; 업무 유형 분포</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${d.categories.map(c => `
+          <div style="padding:8px 14px; background:var(--gray-50); border-radius:20px; font-size:13px;">
+            ${escHtml(c.name)} <span style="font-weight:700; color:#14b8a6;">${c.count}건</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- 진행 현황 -->
+    ${totalResults > 0 ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#9989; 진행 현황</div>
+      <div style="display:flex; gap:10px; text-align:center;">
+        <div style="flex:1; padding:12px; background:#dcfce7; border-radius:10px;">
+          <div style="font-size:22px; font-weight:800; color:#16a34a;">${d.result_summary.completed}</div>
+          <div style="font-size:11px; color:#15803d;">완료</div>
+        </div>
+        <div style="flex:1; padding:12px; background:#fef3c7; border-radius:10px;">
+          <div style="font-size:22px; font-weight:800; color:#d97706;">${d.result_summary.ongoing}</div>
+          <div style="font-size:11px; color:#b45309;">진행중</div>
+        </div>
+        <div style="flex:1; padding:12px; background:#fee2e2; border-radius:10px;">
+          <div style="font-size:22px; font-weight:800; color:#dc2626;">${d.result_summary.issue}</div>
+          <div style="font-size:11px; color:#b91c1c;">미완/보류</div>
+        </div>
+      </div>
+    </div>` : ''}
+
+    <!-- 출퇴근 현황 -->
+    ${d.attendance.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#128339; 출퇴근 현황</div>
+      ${d.attendance.map(a => {
+        const cin = a.check_in ? new Date(a.check_in).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : '-';
+        const cout = a.check_out ? new Date(a.check_out).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : '-';
+        const hrs = (a.check_in && a.check_out) ? ((new Date(a.check_out) - new Date(a.check_in)) / 3600000).toFixed(1) : '-';
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--gray-100); font-size:13px;">
+            <span>${a.date}</span>
+            <span>출근 ${cin} | 퇴근 ${cout} | ${hrs}h ${a.status === 'late' ? '<span style="color:#dc2626;">지각</span>' : ''}</span>
+          </div>`;
+      }).join('')}
+    </div>` : ''}
+
+    <!-- 할 일 현황 -->
+    ${d.todos.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#9745; 할 일 현황 <span style="font-size:12px; color:var(--gray-400); font-weight:400;">${d.todos.filter(t=>t.done).length}/${d.todos.length} 완료</span></div>
+      ${d.todos.map(t => `
+        <div style="padding:5px 0; font-size:13px; ${t.done ? 'text-decoration:line-through; color:var(--gray-400);' : ''}">
+          ${t.done ? '&#9989;' : '&#11036;'} ${escHtml(t.title)} <span style="font-size:11px; color:var(--gray-400);">${t.due_date}</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- 이슈 & 특이사항 -->
+    ${d.issues.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#9888;&#65039; 이슈 & 특이사항</div>
+      ${d.issues.map(i => `
+        <div style="padding:8px 10px; margin-bottom:6px; background:#fef2f2; border-radius:8px; border-left:3px solid #ef4444;">
+          <div style="font-size:12px; font-weight:600; color:#b91c1c;">${escHtml(i.task)} <span style="color:var(--gray-400); font-weight:400;">${i.date}</span></div>
+          <div style="font-size:12px; color:#7f1d1d; margin-top:2px;">${escHtml(i.issue)}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- 비고 -->
+    ${d.notes.length ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#128221; 비고</div>
+      ${d.notes.map(n => `
+        <div style="padding:8px 10px; margin-bottom:6px; background:#fff7ed; border-radius:8px; border-left:3px solid #f97316;">
+          <div style="font-size:12px; font-weight:600; color:#c2410c;">${escHtml(n.task)} <span style="color:var(--gray-400); font-weight:400;">${n.date}</span></div>
+          <div style="font-size:12px; color:#7c2d12; margin-top:2px;">${escHtml(n.note)}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <div style="text-align:center; padding:16px 0; font-size:12px; color:var(--gray-400);">
+      &#128203; ${d.weekLabel} 주간 보고서 | ${escHtml(d.user.name)} ${d.user.position ? '('+escHtml(d.user.position)+')' : ''}
     </div>
   `;
 }
