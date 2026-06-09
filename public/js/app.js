@@ -5655,25 +5655,28 @@ function startVoiceReport() {
   screen.style.display = 'flex';
   _vrFinalText = '';
   _vrInterim = '';
+  _vrProcessed = 0;
   document.getElementById('vrText').textContent = '듣고 있습니다...';
   document.getElementById('vrTitle').textContent = '업무 내용을 말씀해 주세요';
 
   const recog = new SpeechRecognition();
   recog.lang = 'ko-KR';
   recog.interimResults = true;
-  recog.continuous = true;
+  recog.continuous = false;
   recog.maxAlternatives = 1;
   _vrRecog = recog;
 
   recog.onresult = (e) => {
-    let final = '', interim = '';
-    for (let i = 0; i < e.results.length; i++) {
-      if (e.results[i].isFinal) final += e.results[i][0].transcript + ' ';
-      else interim += e.results[i][0].transcript;
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        _vrFinalText += e.results[i][0].transcript + ' ';
+      } else {
+        interim += e.results[i][0].transcript;
+      }
     }
-    _vrFinalText = final;
     _vrInterim = interim;
-    const display = (final + interim).trim() || '듣고 있습니다...';
+    const display = (_vrFinalText + interim).trim() || '듣고 있습니다...';
     document.getElementById('vrText').textContent = display;
   };
 
