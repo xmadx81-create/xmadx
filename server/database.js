@@ -121,7 +121,12 @@ async function initDB() {
       id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
       priority TEXT DEFAULT 'normal', pinned BOOLEAN DEFAULT FALSE,
       active BOOLEAN DEFAULT TRUE, author_name TEXT DEFAULT '관리자',
-      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL,
+      memo TEXT DEFAULT '', priority TEXT DEFAULT 'normal',
+      due_date DATE, completed BOOLEAN DEFAULT FALSE,
+      completed_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
     await query(sql);

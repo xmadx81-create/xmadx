@@ -116,10 +116,11 @@ function isManager() {
 async function renderHome() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-  const [reports, dash, notices] = await Promise.all([
+  const [reports, dash, notices, todos] = await Promise.all([
     api(`/api/reports?from=${weekAgo}&to=${today}`),
     api('/api/dashboard'),
-    api('/api/notices')
+    api('/api/notices'),
+    api('/api/todos')
   ]);
   const rpts = reports || [];
   const d = dash || {};
@@ -284,6 +285,31 @@ async function renderHome() {
         <span class="qa-icon">&#128197;</span>
         <span class="qa-label">주간계획</span>
       </button>
+    </div>
+
+    <!-- 할 일 위젯 -->
+    <div class="card" style="margin-bottom:16px; padding:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span style="font-size:14px; font-weight:700;">&#9745; 할 일</span>
+        <button class="btn btn-outline btn-sm" onclick="showTodoPage()" style="font-size:11px; padding:3px 10px;">전체보기</button>
+      </div>
+      <div style="display:flex; gap:6px; margin-bottom:10px;">
+        <input type="text" id="homeQuickTodo" class="form-control" placeholder="할 일 빠른 추가..." style="font-size:13px; padding:8px 10px; flex:1;">
+        <button class="btn btn-primary btn-sm" onclick="quickAddTodo()" style="white-space:nowrap; padding:8px 12px;">추가</button>
+      </div>
+      ${(todos || []).length === 0 ? '<p style="font-size:13px; color:var(--gray-500); text-align:center; padding:8px 0;">등록된 할 일이 없습니다</p>' :
+        (todos || []).slice(0, 5).map(t => {
+          const overdue = t.due_date && (t.due_date.split('T')[0] < today) && !t.completed;
+          const pDot = { high: '#ef4444', normal: '#3b82f6', low: '#9ca3af' };
+          return `<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--gray-100);">
+            <input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodoHome('${t.id}', this.checked)" style="width:18px; height:18px; cursor:pointer; accent-color:var(--primary);">
+            <div style="flex:1; min-width:0;">
+              <span style="font-size:13px; ${t.completed ? 'text-decoration:line-through; color:var(--gray-400);' : ''} ${overdue ? 'color:#ef4444;' : ''}">${escHtml(t.title)}</span>
+              ${t.due_date ? `<span style="font-size:10px; color:${overdue ? '#ef4444' : 'var(--gray-500)'}; margin-left:4px;">${t.due_date.split('T')[0]}</span>` : ''}
+            </div>
+            <span style="width:6px; height:6px; border-radius:50%; background:${pDot[t.priority] || pDot.normal}; flex-shrink:0;"></span>
+          </div>`;
+        }).join('') + ((todos || []).length > 5 ? `<p style="font-size:12px; color:var(--gray-500); text-align:center; margin-top:6px;">+${(todos||[]).length - 5}개 더</p>` : '')}
     </div>
 
     ${teamSection}
@@ -1246,6 +1272,10 @@ async function renderMore() {
 
     <p class="section-title">&#9881; 도구</p>
     <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showTodoPage()" style="border:2px solid #10b981;">
+        <span class="qa-icon">&#9745;</span>
+        <span class="qa-label" style="color:#10b981; font-weight:700;">할 일 관리</span>
+      </button>
       <button class="quick-action-btn" onclick="showWorkTable()">
         <span class="qa-icon">&#128202;</span>
         <span class="qa-label">업무표 생성</span>
@@ -3772,6 +3802,127 @@ async function doRenderWf(code) {
   } catch (e) {
     area.innerHTML = '<p style="color:var(--gray-500); font-size:13px; text-align:center;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 할 일 관리 ───
+async function quickAddTodo() {
+  const input = document.getElementById('homeQuickTodo');
+  if (!input) return;
+  const title = input.value.trim();
+  if (!title) { toast('할 일을 입력하세요'); return; }
+  const res = await api('/api/todos', { method: 'POST', body: { title } });
+  if (res) { toast('추가됨'); renderHome(); }
+}
+
+async function toggleTodoHome(id, completed) {
+  await api(`/api/todos/${id}`, { method: 'PUT', body: { completed } });
+  renderHome();
+}
+
+let todoShowDone = false;
+
+async function showTodoPage() {
+  const todos = await api(`/api/todos?done=${todoShowDone ? '1' : '0'}`) || [];
+  const today = new Date().toISOString().split('T')[0];
+  const pending = todos.filter(t => !t.completed);
+  const done = todos.filter(t => t.completed);
+  const pDot = { high: '#ef4444', normal: '#3b82f6', low: '#9ca3af' };
+  const pLabel = { high: '높음', normal: '보통', low: '낮음' };
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('home')" style="margin-bottom:12px;">&larr; 홈으로</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <p class="section-title" style="margin:0;">&#9745; 할 일 관리</p>
+      <span style="font-size:13px; color:var(--gray-500);">${pending.length}개 남음</span>
+    </div>
+
+    <div class="card" style="padding:12px; margin-bottom:16px;">
+      <p style="font-weight:600; margin-bottom:8px; font-size:14px;">새 할 일</p>
+      <div class="form-group">
+        <input type="text" id="todoTitle" class="form-control" placeholder="할 일 내용">
+      </div>
+      <div class="form-group">
+        <input type="text" id="todoMemo" class="form-control" placeholder="메모 (선택)">
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <select id="todoPriority" class="form-control" style="font-size:13px;">
+            <option value="normal">보통</option>
+            <option value="high">높음</option>
+            <option value="low">낮음</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <input type="date" id="todoDue" class="form-control" style="font-size:13px;">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="addTodo()">추가</button>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <button class="btn ${!todoShowDone ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="todoShowDone=false; showTodoPage();">진행중 (${pending.length})</button>
+      <button class="btn ${todoShowDone ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="todoShowDone=true; showTodoPage();">완료 포함</button>
+    </div>
+
+    ${pending.length === 0 && !todoShowDone ? '<div class="empty-state"><div class="empty-icon">&#127881;</div><div class="empty-text">할 일을 모두 완료했습니다!</div></div>' : ''}
+
+    ${pending.map(t => {
+      const overdue = t.due_date && (t.due_date.split('T')[0] < today);
+      return `
+      <div class="card" style="padding:10px; margin-bottom:6px; ${overdue ? 'border-left:3px solid #ef4444;' : ''}">
+        <div style="display:flex; align-items:flex-start; gap:10px;">
+          <input type="checkbox" onchange="toggleTodo('${t.id}', true)" style="width:20px; height:20px; margin-top:2px; cursor:pointer; accent-color:var(--primary); flex-shrink:0;">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+              <span style="font-size:10px; padding:1px 6px; border-radius:3px; background:${pDot[t.priority]}22; color:${pDot[t.priority]}; font-weight:600;">${pLabel[t.priority]}</span>
+              ${overdue ? '<span style="font-size:10px; color:#ef4444; font-weight:600;">지연</span>' : ''}
+            </div>
+            <div style="font-size:14px; font-weight:500;">${escHtml(t.title)}</div>
+            ${t.memo ? `<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">${escHtml(t.memo)}</div>` : ''}
+            ${t.due_date ? `<div style="font-size:11px; color:${overdue ? '#ef4444' : 'var(--gray-500)'}; margin-top:2px;">마감: ${t.due_date.split('T')[0]}</div>` : ''}
+          </div>
+          <button onclick="deleteTodo('${t.id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px; padding:2px; flex-shrink:0;">&times;</button>
+        </div>
+      </div>`;
+    }).join('')}
+
+    ${todoShowDone && done.length > 0 ? `
+      <p class="section-title" style="margin-top:16px;">&#9989; 완료됨 (${done.length}건)</p>
+      ${done.map(t => `
+        <div class="card" style="padding:10px; margin-bottom:4px; opacity:0.6;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" checked onchange="toggleTodo('${t.id}', false)" style="width:18px; height:18px; cursor:pointer; accent-color:var(--primary); flex-shrink:0;">
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:13px; text-decoration:line-through; color:var(--gray-400);">${escHtml(t.title)}</div>
+              <div style="font-size:11px; color:var(--gray-400);">${(t.completed_at||'').substring(0,10)} 완료</div>
+            </div>
+            <button onclick="deleteTodo('${t.id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px; padding:2px;">&times;</button>
+          </div>
+        </div>
+      `).join('')}
+    ` : ''}
+  `;
+}
+
+async function addTodo() {
+  const title = document.getElementById('todoTitle').value.trim();
+  if (!title) { toast('할 일을 입력하세요'); return; }
+  const memo = document.getElementById('todoMemo').value.trim();
+  const priority = document.getElementById('todoPriority').value;
+  const due_date = document.getElementById('todoDue').value || null;
+  const res = await api('/api/todos', { method: 'POST', body: { title, memo, priority, due_date } });
+  if (res) { toast('추가됨'); showTodoPage(); }
+}
+
+async function toggleTodo(id, completed) {
+  await api(`/api/todos/${id}`, { method: 'PUT', body: { completed } });
+  showTodoPage();
+}
+
+async function deleteTodo(id) {
+  if (!confirm('이 할 일을 삭제하시겠습니까?')) return;
+  await api(`/api/todos/${id}`, { method: 'DELETE' });
+  showTodoPage();
 }
 
 // ─── 공지사항 ───

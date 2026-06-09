@@ -2013,6 +2013,49 @@ app.delete('/api/notices/:id', adminMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── 할 일 관리 ───
+app.get('/api/todos', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const showDone = req.query.done === '1';
+  const sql = showDone
+    ? 'SELECT * FROM todos WHERE user_id = $1 ORDER BY completed ASC, priority DESC, due_date ASC NULLS LAST, created_at DESC'
+    : 'SELECT * FROM todos WHERE user_id = $1 AND completed = FALSE ORDER BY priority DESC, due_date ASC NULLS LAST, created_at DESC';
+  const result = await query(sql, [userId]);
+  res.json(result.rows);
+});
+
+app.post('/api/todos', authMiddleware, async (req, res) => {
+  const { title, memo, priority, due_date } = req.body;
+  if (!title) return res.status(400).json({ error: '할 일을 입력하세요' });
+  const id = uuidv4();
+  await query(
+    'INSERT INTO todos (id, user_id, title, memo, priority, due_date) VALUES ($1,$2,$3,$4,$5,$6)',
+    [id, req.session.userId, title, memo || '', priority || 'normal', due_date || null]
+  );
+  res.json({ id });
+});
+
+app.put('/api/todos/:id', authMiddleware, async (req, res) => {
+  const { title, memo, priority, due_date, completed } = req.body;
+  if (completed !== undefined) {
+    await query(
+      'UPDATE todos SET completed = $1, completed_at = $2 WHERE id = $3 AND user_id = $4',
+      [completed, completed ? new Date() : null, req.params.id, req.session.userId]
+    );
+  } else {
+    await query(
+      'UPDATE todos SET title = COALESCE($1, title), memo = COALESCE($2, memo), priority = COALESCE($3, priority), due_date = $4 WHERE id = $5 AND user_id = $6',
+      [title, memo, priority, due_date || null, req.params.id, req.session.userId]
+    );
+  }
+  res.json({ ok: true });
+});
+
+app.delete('/api/todos/:id', authMiddleware, async (req, res) => {
+  await query('DELETE FROM todos WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+  res.json({ ok: true });
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);
