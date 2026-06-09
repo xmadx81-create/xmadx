@@ -166,6 +166,7 @@ async function initDB() {
   }
   await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS work_type TEXT DEFAULT '내근'`).catch(() => {});
   await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS work_summary TEXT DEFAULT ''`).catch(() => {});
+  await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS result_status TEXT DEFAULT ''`).catch(() => {});
   console.log('All tables created');
 
   // ═══ SEED DATA ═══
