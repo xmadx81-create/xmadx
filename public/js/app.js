@@ -5721,64 +5721,83 @@ function finishVoiceReport() {
 
 function parseVoiceToFields(text) {
   const fields = { who: '', when: '', where: '', what: '', how: '', why: '' };
+  let remaining = text;
 
-  const segments = text.split(/\s+/).reduce((acc, word) => {
-    if (acc.length === 0) { acc.push(word); return acc; }
-    acc[acc.length - 1] += ' ' + word;
-    return acc;
-  }, []);
+  function extract(re) {
+    const m = remaining.match(re);
+    if (m) { remaining = remaining.replace(m[0], ' ').replace(/\s{2,}/g, ' ').trim(); return m[0].trim(); }
+    return '';
+  }
 
-  const chunks = text.split(/[,.]/).map(s => s.trim()).filter(s => s);
-  if (chunks.length <= 1) {
-    const words = text.split(/\s+/);
-    const parts = [];
-    let buf = '';
-    for (const w of words) {
-      buf += (buf ? ' ' : '') + w;
-      if (buf.length >= 8 || /[을를에서으로]$/.test(w)) {
-        parts.push(buf);
-        buf = '';
-      }
+  // 1. 언제 (When) - 날짜/시간 추출
+  const whenPatterns = [
+    /\d{1,2}월\s*\d{1,2}일\s*(?:오전|오후)?\s*(?:\d{1,2}시\s*(?:\d{1,2}분)?)?/,
+    /(?:오전|오후)\s*\d{1,2}시\s*(?:\d{1,2}분)?/,
+    /\d{1,2}월\s*\d{1,2}일/,
+    /(?:어제|오늘|내일|모레|그저께)/,
+    /(?:이번|지난|다음)\s*주\s*(?:월|화|수|목|금|토|일)?요?일?/,
+    /(?:월|화|수|목|금|토|일)요일/
+  ];
+  for (const re of whenPatterns) {
+    if (!fields.when) fields.when = extract(re);
+  }
+
+  // 2. 어디서 (Where) - 지역/장소 추출
+  const wherePatterns = [
+    /(충청[남북]?도?|경기도?|서울|부산|대구|인천|광주|대전|울산|세종|경[상남북]+도?|전[라남북]+도?|강원도?|제주도?)\s*[가-힣]{0,4}(?:지역|지사|지국|센터|사무소|현장|공장)?/,
+    /(?:본사|지사|사무실|현장|지국|센터|회의실|연수원|공장|창고|매장|지점|사무소|영업소|출장지)\s*[가-힣]{0,4}/,
+    /[가-힣]{1,10}(?:지국|센터|지사|사무소|영업소|지점|매장|현장)/
+  ];
+  for (const re of wherePatterns) {
+    if (!fields.where) fields.where = extract(re);
+  }
+
+  // 3. 누가 (Who) - 사람 추출
+  const whoPatterns = [
+    /[가-힣]{2,4}\s*(?:님|씨|과장|대리|차장|부장|팀장|본부장|이사|사원|주임|계장|담당|선임|책임|매니저)/,
+    /(?:담당자|본인|내가|제가)\s*[가-힣]{0,4}/,
+    /[가-힣]{2,3}(?:가|이|는|은)\s/
+  ];
+  for (const re of whoPatterns) {
+    if (!fields.who) {
+      fields.who = extract(re);
+      fields.who = fields.who.replace(/[가이는은]\s*$/, '').trim();
     }
-    if (buf) parts.push(buf);
-    chunks.length = 0;
-    chunks.push(...parts);
   }
 
-  const whenRe = /(\d{1,2}월\s*\d{1,2}일|\d{1,2}시|\d{1,2}:\d{2}|오전|오후|아침|저녁|어제|오늘|내일|월요일|화요일|수요일|목요일|금요일|토요일|일요일|이번\s*주|지난\s*주|다음\s*주)/;
-  const whereRe = /(충청|경기|서울|부산|대구|인천|광주|대전|울산|세종|경북|경남|전북|전남|강원|제주|본사|지사|사무실|현장|지국|센터|회의실|출장|연수원|공장|창고|매장|지점)/;
-  const whatRe = /(인수인계|보고서|회의|미팅|점검|방문|교육|상담|전화|접수|처리|확인|검토|작성|발송|정리|분석|출장|세미나|연수|업무|파견|조사|설명회|감사|계약|협의|영업|배송|수거|설치|수리|AS|유지보수)/;
-  const howRe = /(전화로?|이메일로?|대면|온라인|직접|팩스|문자|카톡|시스템|차량|KTX|비행기|버스|방문하여|출장하여)/;
-  const whyRe = /(위해|위하여|때문에?|목적|사유|이유|건으로|관련하여|관련해서|요청|지시|필요)/;
-  const whoRe = /([가-힣]{2,4})\s*(님|씨|과장|대리|차장|부장|팀장|본부장|이사|사원|주임|계장|담당|선임|책임)|담당자|내가|제가|본인/;
-
-  const usedIdx = new Set();
-
-  for (let i = 0; i < chunks.length; i++) {
-    const c = chunks[i];
-    if (whenRe.test(c) && !fields.when) { fields.when = c; usedIdx.add(i); continue; }
-    if (whereRe.test(c) && !whenRe.test(c) && !fields.where) { fields.where = c; usedIdx.add(i); continue; }
+  // 4. 어떻게 (How) - 방법 추출
+  const howPatterns = [
+    /(?:전화|이메일|대면|온라인|직접|팩스|문자|카톡|시스템|차량|KTX|비행기|버스|택시|지하철)\s*(?:로|으로|통해|이용|타고)?\s*[가-힣]{0,4}/,
+    /(?:방문하여|출장하여|전화하여|메일로|유선으로)/
+  ];
+  for (const re of howPatterns) {
+    if (!fields.how) fields.how = extract(re);
   }
 
-  for (let i = 0; i < chunks.length; i++) {
-    if (usedIdx.has(i)) continue;
-    const c = chunks[i];
-    if (whatRe.test(c) && !fields.what) { fields.what = c; usedIdx.add(i); continue; }
-    if (howRe.test(c) && !fields.how) { fields.how = c; usedIdx.add(i); continue; }
-    if (whyRe.test(c) && !fields.why) { fields.why = c; usedIdx.add(i); continue; }
-    if (whoRe.test(c) && !fields.who) { fields.who = c; usedIdx.add(i); continue; }
+  // 5. 왜 (Why) - 사유 추출
+  const whyPatterns = [
+    /[가-힣\s]{2,15}(?:위해서?|위하여|때문에|건으로|관련하여|관련해서|목적으로)/,
+    /(?:요청|지시|필요|예정)\s*(?:에\s*의해|으로|이\s*있어)/
+  ];
+  for (const re of whyPatterns) {
+    if (!fields.why) fields.why = extract(re);
   }
 
-  const whenMatch = text.match(/\d{1,2}월\s*\d{1,2}일/);
-  if (whenMatch && !fields.when) fields.when = whenMatch[0];
-  const whereMatch = text.match(/(충청|경기|서울|부산|대구|인천|광주|대전|울산|세종|경북|경남|전북|전남|강원|제주|본사|지사|현장|지국|센터)[도시]?\s*[가-힣]{0,6}/);
-  if (whereMatch && !fields.where) fields.where = whereMatch[0].trim();
-  const whatMatch = text.match(/(인수인계|보고서|회의|미팅|점검|방문|교육|상담|처리|확인|검토|작성|출장|세미나|연수|업무|파견|조사|감사|계약|협의|영업|배송|설치|수리|유지보수)[가-힣\s]{0,10}/);
-  if (whatMatch && !fields.what) fields.what = whatMatch[0].trim();
-  const whoMatch = text.match(/([가-힣]{2,4})\s*(님|과장|대리|차장|부장|팀장|본부장|이사|사원|주임|계장|담당|선임|책임)/);
-  if (whoMatch && !fields.who) fields.who = whoMatch[0];
-  const howMatch = text.match(/(전화|이메일|대면|온라인|직접|팩스|문자|카톡|시스템|차량|KTX|비행기|버스)[로으]?\s*[가-힣]{0,5}/);
-  if (howMatch && !fields.how) fields.how = howMatch[0].trim();
+  // 6. 무엇을 (What) - 업무 내용 추출 (남은 텍스트에서)
+  const whatPatterns = [
+    /(?:인수인계|보고서\s*작성|회의|미팅|점검|교육|상담|접수|처리|확인|검토|작성|발송|정리|분석|세미나|연수|파견|조사|설명회|감사|계약|협의|영업|배송|수거|설치|수리|유지보수|AS)\s*[가-힣]{0,8}/,
+    /(?:방문|출장)\s*[가-힣]{0,8}/
+  ];
+  for (const re of whatPatterns) {
+    if (!fields.what) fields.what = extract(re);
+  }
+
+  // 남은 텍스트가 있고 what이 비어있으면 남은 걸 what으로
+  remaining = remaining.trim();
+  if (!fields.what && remaining.length > 1) {
+    fields.what = remaining;
+    remaining = '';
+  }
 
   const fieldMap = { who: 'reportWho', when: 'reportWhen', where: 'reportWhere', what: 'reportWhat', how: 'reportHow', why: 'reportWhy' };
   let filled = 0;
@@ -5791,7 +5810,7 @@ function parseVoiceToFields(text) {
 
   const contentEl = document.getElementById('reportContent');
   if (contentEl) {
-    contentEl.value = '[음성 원문] ' + text;
+    contentEl.value = '[음성 원문] ' + text + (remaining ? '\n[미분류] ' + remaining : '');
   }
 
   toast(`음성 분석 완료! ${filled}개 항목 자동 입력`);
