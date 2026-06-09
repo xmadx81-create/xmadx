@@ -118,12 +118,14 @@ function isManager() {
 async function renderHome() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-  const [reports, dash, notices, todos, atd] = await Promise.all([
+  const weekLater = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+  const [reports, dash, notices, todos, atd, events] = await Promise.all([
     api(`/api/reports?from=${weekAgo}&to=${today}`),
     api('/api/dashboard'),
     api('/api/notices'),
     api('/api/todos'),
-    api('/api/attendance/today')
+    api('/api/attendance/today'),
+    api(`/api/events?from=${today}&to=${weekLater}`)
   ]);
   const rpts = reports || [];
   const d = dash || {};
@@ -331,6 +333,27 @@ async function renderHome() {
           </div>`;
         }).join('') + ((todos || []).length > 5 ? `<p style="font-size:12px; color:var(--gray-500); text-align:center; margin-top:6px;">+${(todos||[]).length - 5}개 더</p>` : '')}
     </div>
+
+    ${(events || []).length > 0 ? `
+    <!-- 다가오는 일정 -->
+    <div class="card" style="margin-bottom:16px; padding:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span style="font-size:14px; font-weight:700;">&#128197; 다가오는 일정</span>
+        <button class="btn btn-outline btn-sm" onclick="showSchedulePage()" style="font-size:11px; padding:3px 10px;">전체보기</button>
+      </div>
+      ${(events || []).slice(0, 4).map(e => {
+        const eDate = (e.event_date||'').split('T')[0];
+        const isToday = eDate === today;
+        return `<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--gray-100);">
+          <div style="width:4px; height:28px; border-radius:2px; background:${e.color || '#3b82f6'}; flex-shrink:0;"></div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:500;">${escHtml(e.title)}</div>
+            <div style="font-size:11px; color:var(--gray-500);">${isToday ? '<span style="color:var(--primary); font-weight:600;">오늘</span>' : eDate} ${e.event_time || ''}</div>
+          </div>
+          <span style="font-size:10px; padding:1px 6px; border-radius:3px; background:${e.color || '#3b82f6'}22; color:${e.color || '#3b82f6'}; font-weight:600;">${e.event_type}</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
 
     ${teamSection}
 
@@ -1353,6 +1376,10 @@ async function renderMore() {
       <button class="quick-action-btn" onclick="showAttendancePage()" style="border:2px solid #6366f1;">
         <span class="qa-icon">&#128339;</span>
         <span class="qa-label" style="color:#6366f1; font-weight:700;">출퇴근 기록</span>
+      </button>
+      <button class="quick-action-btn" onclick="showSchedulePage()" style="border:2px solid #0ea5e9;">
+        <span class="qa-icon">&#128197;</span>
+        <span class="qa-label" style="color:#0ea5e9; font-weight:700;">팀 일정</span>
       </button>
       <button class="quick-action-btn" onclick="showWorkTable()">
         <span class="qa-icon">&#128202;</span>
@@ -3880,6 +3907,141 @@ async function doRenderWf(code) {
   } catch (e) {
     area.innerHTML = '<p style="color:var(--gray-500); font-size:13px; text-align:center;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 팀 일정 ───
+let scheduleMonth = new Date().toISOString().substring(0, 7);
+
+async function showSchedulePage() {
+  const events = await api(`/api/events?month=${scheduleMonth}`) || [];
+  const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
+  const today = new Date().toISOString().split('T')[0];
+
+  const [sy, sm] = scheduleMonth.split('-').map(Number);
+  const daysInMonth = new Date(sy, sm, 0).getDate();
+  const firstDay = new Date(sy, sm - 1, 1).getDay();
+  const dayNames = ['일','월','화','수','목','금','토'];
+
+  let calGrid = dayNames.map(d => `<div style="text-align:center; font-size:11px; font-weight:600; color:var(--gray-500); padding:4px 0;">${d}</div>`).join('');
+  for (let i = 0; i < firstDay; i++) calGrid += '<div></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${scheduleMonth}-${String(d).padStart(2,'0')}`;
+    const dayEvents = events.filter(e => (e.event_date||'').split('T')[0] === ds);
+    const isToday = ds === today;
+    calGrid += `<div style="min-height:36px; padding:2px; border-radius:6px; ${isToday ? 'background:var(--primary); color:#fff;' : ''} text-align:center; position:relative; cursor:${dayEvents.length ? 'pointer' : 'default'};" ${dayEvents.length ? `onclick="showDayEvents('${ds}')"` : ''}>
+      <div style="font-size:12px; font-weight:${isToday ? '700' : '400'};">${d}</div>
+      ${dayEvents.length > 0 ? `<div style="display:flex; justify-content:center; gap:2px; margin-top:1px;">${dayEvents.slice(0, 3).map(e => `<div style="width:5px; height:5px; border-radius:50%; background:${isToday ? '#fff' : (e.color || '#3b82f6')};"></div>`).join('')}</div>` : ''}
+    </div>`;
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <p class="section-title" style="margin:0;">&#128197; 팀 일정</p>
+      <button class="btn btn-primary btn-sm" onclick="showEventForm()">일정 추가</button>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <button class="btn btn-outline btn-sm" onclick="scheduleMonth=prevMonth(scheduleMonth); showSchedulePage();">&lsaquo;</button>
+      <span style="font-size:16px; font-weight:700;">${sy}년 ${sm}월</span>
+      <button class="btn btn-outline btn-sm" onclick="scheduleMonth=nextMonth(scheduleMonth); showSchedulePage();">&rsaquo;</button>
+    </div>
+
+    <div class="card" style="padding:10px; margin-bottom:16px;">
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;">
+        ${calGrid}
+      </div>
+    </div>
+
+    <p class="section-title">${scheduleMonth} 일정 (${events.length}건)</p>
+    ${events.length === 0 ? '<p style="font-size:13px; color:var(--gray-500); text-align:center; padding:16px;">이번 달 일정이 없습니다</p>' :
+      events.map(e => {
+        const eDate = (e.event_date||'').split('T')[0];
+        const isAuthor = currentUser && (e.author_id === currentUser.id || currentUser.isAdmin);
+        return `
+        <div class="card" style="padding:10px; margin-bottom:6px; border-left:3px solid ${e.color || '#3b82f6'};">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div style="flex:1;">
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+                <span style="font-size:10px; padding:1px 6px; border-radius:3px; background:${(e.color||'#3b82f6')}22; color:${e.color||'#3b82f6'}; font-weight:600;">${e.event_type}</span>
+                <span style="font-size:12px; color:${eDate === today ? 'var(--primary)' : 'var(--gray-500)'}; font-weight:${eDate === today ? '700' : '400'};">${eDate}${e.event_time ? ' ' + e.event_time : ''}</span>
+              </div>
+              <div style="font-size:14px; font-weight:600;">${escHtml(e.title)}</div>
+              ${e.description ? `<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">${escHtml(e.description)}</div>` : ''}
+              <div style="font-size:11px; color:var(--gray-400); margin-top:2px;">${escHtml(e.author_name)}</div>
+            </div>
+            ${isAuthor ? `<button onclick="deleteEvent('${e.id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px; padding:2px; flex-shrink:0;">&times;</button>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+  `;
+}
+
+function showDayEvents(date) {
+  const cards = document.querySelectorAll('.card[style*="border-left"]');
+  for (const card of cards) {
+    if (card.textContent.includes(date)) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.boxShadow = '0 0 0 2px var(--primary)';
+      setTimeout(() => card.style.boxShadow = '', 2000);
+      break;
+    }
+  }
+}
+
+function showEventForm() {
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showSchedulePage()" style="margin-bottom:12px;">&larr; 캘린더</button>
+    <p class="section-title">&#128197; 새 일정 등록</p>
+    <div class="card" style="padding:14px;">
+      <div class="form-group">
+        <label>제목</label>
+        <input type="text" id="evTitle" class="form-control" placeholder="일정 제목">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <div class="form-group" style="flex:1;">
+          <label>날짜</label>
+          <input type="date" id="evDate" class="form-control" value="${new Date().toISOString().split('T')[0]}">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>시간 (선택)</label>
+          <input type="time" id="evTime" class="form-control">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>유형</label>
+        <select id="evType" class="form-control">
+          <option value="회의">회의</option>
+          <option value="마감">마감</option>
+          <option value="행사">행사</option>
+          <option value="출장">출장</option>
+          <option value="기타">기타</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>설명 (선택)</label>
+        <textarea id="evDesc" class="form-control" rows="3" placeholder="일정 설명" style="resize:vertical;"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="submitEvent()">등록</button>
+    </div>
+  `;
+}
+
+async function submitEvent() {
+  const title = document.getElementById('evTitle').value.trim();
+  const event_date = document.getElementById('evDate').value;
+  const event_time = document.getElementById('evTime').value;
+  const event_type = document.getElementById('evType').value;
+  const description = document.getElementById('evDesc').value.trim();
+  if (!title || !event_date) { toast('제목과 날짜를 입력하세요'); return; }
+  const res = await api('/api/events', { method: 'POST', body: { title, event_date, event_time, event_type, description } });
+  if (res) { toast('일정이 등록되었습니다'); showSchedulePage(); }
+}
+
+async function deleteEvent(id) {
+  if (!confirm('이 일정을 삭제하시겠습니까?')) return;
+  const res = await api(`/api/events/${id}`, { method: 'DELETE' });
+  if (res) { toast('삭제되었습니다'); showSchedulePage(); }
 }
 
 // ─── 팀 게시판 ───

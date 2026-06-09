@@ -2144,6 +2144,45 @@ app.get('/api/attendance/team', authMiddleware, async (req, res) => {
   res.json(result.rows);
 });
 
+// ─── 팀 일정 ───
+app.get('/api/events', authMiddleware, async (req, res) => {
+  const { month, from, to } = req.query;
+  let sql = 'SELECT * FROM team_events WHERE 1=1';
+  const params = [];
+  let idx = 1;
+  if (month) { sql += ` AND TO_CHAR(event_date, 'YYYY-MM') = $${idx++}`; params.push(month); }
+  if (from) { sql += ` AND event_date >= $${idx++}`; params.push(from); }
+  if (to) { sql += ` AND event_date <= $${idx++}`; params.push(to); }
+  sql += ' ORDER BY event_date ASC, event_time ASC';
+  const result = await query(sql, params);
+  res.json(result.rows);
+});
+
+app.post('/api/events', authMiddleware, async (req, res) => {
+  const { title, description, event_date, event_time, event_type } = req.body;
+  if (!title || !event_date) return res.status(400).json({ error: '제목과 날짜를 입력하세요' });
+  let authorName = '관리자';
+  if (req.session.userId && req.session.userId !== 'admin-user') {
+    const u = await query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+    if (u.rows[0]) authorName = u.rows[0].name;
+  }
+  const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
+  const id = uuidv4();
+  await query('INSERT INTO team_events (id, author_id, author_name, title, description, event_date, event_time, event_type, color) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [id, req.session.userId, authorName, title, description || '', event_date, event_time || '', event_type || '회의', typeColors[event_type] || '#3b82f6']);
+  res.json({ id });
+});
+
+app.delete('/api/events/:id', authMiddleware, async (req, res) => {
+  const ev = await query('SELECT * FROM team_events WHERE id = $1', [req.params.id]);
+  if (ev.rows.length === 0) return res.status(404).json({ error: '일정을 찾을 수 없습니다' });
+  if (ev.rows[0].author_id !== req.session.userId && !req.session.isAdmin) {
+    return res.status(403).json({ error: '본인의 일정만 삭제할 수 있습니다' });
+  }
+  await query('DELETE FROM team_events WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+});
+
 // ─── 팀 게시판 ───
 app.get('/api/board', authMiddleware, async (req, res) => {
   const { category } = req.query;

@@ -144,6 +144,12 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS board_comments (
       id TEXT PRIMARY KEY, post_id TEXT NOT NULL, author_id TEXT NOT NULL,
       author_name TEXT NOT NULL, content TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS team_events (
+      id TEXT PRIMARY KEY, author_id TEXT NOT NULL, author_name TEXT NOT NULL,
+      title TEXT NOT NULL, description TEXT DEFAULT '',
+      event_date DATE NOT NULL, event_time TEXT DEFAULT '',
+      event_type TEXT DEFAULT '회의', color TEXT DEFAULT '#3b82f6',
       created_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
