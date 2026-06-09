@@ -3084,6 +3084,102 @@ async function renderMermaidChart(code) {
   }
 }
 
+// ─── 통합 검색 ───
+let _searchTimer = null;
+
+function showGlobalSearch() {
+  const fab = document.getElementById('fabBtn');
+  fab.style.display = 'none';
+
+  document.getElementById('mainContent').innerHTML = `
+    <div style="margin-bottom:16px;">
+      <div style="position:relative;">
+        <input type="text" id="globalSearchInput" class="form-control" placeholder="업무, 지국, 매뉴얼, 회의록 검색..."
+          oninput="onSearchInput()" autofocus
+          style="padding-left:36px; font-size:16px; height:48px; border-radius:24px;">
+        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:18px;">&#128269;</span>
+      </div>
+      <p style="font-size:12px; color:var(--gray-400); margin-top:6px; text-align:center;">2글자 이상 입력하면 자동 검색됩니다</p>
+    </div>
+    <div id="searchResults"></div>
+  `;
+  setTimeout(() => document.getElementById('globalSearchInput').focus(), 100);
+}
+
+function onSearchInput() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(doGlobalSearch, 300);
+}
+
+async function doGlobalSearch() {
+  const q = (document.getElementById('globalSearchInput') || {}).value || '';
+  const el = document.getElementById('searchResults');
+  if (!el) return;
+
+  if (q.trim().length < 2) {
+    el.innerHTML = `
+      <div style="text-align:center; padding:40px 0; color:var(--gray-400);">
+        <div style="font-size:36px; margin-bottom:12px;">&#128269;</div>
+        <p>검색어를 입력해주세요</p>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = '<p style="text-align:center; color:var(--gray-500); padding:20px;">검색 중...</p>';
+  const data = await api(`/api/search?q=${encodeURIComponent(q)}`);
+  if (!data) return;
+
+  if (data.results.length === 0) {
+    el.innerHTML = `
+      <div style="text-align:center; padding:40px 0; color:var(--gray-400);">
+        <div style="font-size:36px; margin-bottom:12px;">&#128530;</div>
+        <p>"${escHtml(q)}" 검색 결과가 없습니다</p>
+      </div>`;
+    return;
+  }
+
+  const typeLabels = { report: '업무일지', task: '업무표', branch: '지국', manual: '매뉴얼', meeting: '회의록' };
+  const typeIcons = { report: '&#128221;', task: '&#128203;', branch: '&#127970;', manual: '&#128214;', meeting: '&#128466;' };
+
+  const grouped = {};
+  data.results.forEach(r => {
+    if (!grouped[r.type]) grouped[r.type] = [];
+    grouped[r.type].push(r);
+  });
+
+  let html = `<p style="font-size:13px; color:var(--gray-500); margin-bottom:12px;">"${escHtml(q)}" 검색 결과 ${data.total}건</p>`;
+
+  Object.entries(grouped).forEach(([type, items]) => {
+    html += `
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+          <span style="font-size:16px;">${typeIcons[type] || ''}</span>
+          <span style="font-size:14px; font-weight:700;">${typeLabels[type] || type}</span>
+          <span style="font-size:12px; color:var(--gray-400);">${items.length}건</span>
+        </div>
+        ${items.map(r => `
+          <div class="list-item" onclick="openSearchResult('${r.type}','${r.id}')" style="cursor:pointer;">
+            <div class="list-item-content">
+              <div class="list-item-title">${escHtml(r.title)}</div>
+              <div class="list-item-sub">${escHtml(r.sub || '')}</div>
+            </div>
+            ${r.category ? `<span class="badge badge-${r.category}" style="font-size:10px;">${escHtml(r.category)}</span>` : ''}
+          </div>
+        `).join('')}
+      </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function openSearchResult(type, id) {
+  if (type === 'report') viewReport(id);
+  else if (type === 'task') viewTask(id);
+  else if (type === 'branch') viewBranch(id);
+  else if (type === 'manual') showManual();
+  else if (type === 'meeting') viewMeetingNote(id);
+}
+
 // ─── 신입 온보딩 가이드 ───
 async function showOnboarding() {
   const data = await api('/api/onboarding');

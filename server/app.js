@@ -227,6 +227,46 @@ app.get('/api/users', authMiddleware, async (req, res) => {
   res.json(result.rows);
 });
 
+// ─── 통합 검색 ───
+app.get('/api/search', authMiddleware, async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) return res.json({ results: [] });
+  const kw = `%${q.trim()}%`;
+
+  const [reports, tasks, branches, manuals, meetings] = await Promise.all([
+    query(`SELECT r.id, r.what_task, r.content, r.work_category, r.report_date, u.name as author_name
+      FROM work_reports r JOIN users u ON r.author_id = u.id
+      WHERE r.what_task ILIKE $1 OR r.content ILIKE $1 OR r.where_place ILIKE $1 OR r.how_method ILIKE $1
+      ORDER BY r.report_date DESC LIMIT 10`, [kw]),
+    query(`SELECT id, task_detail, task_group, category1, assigned_to
+      FROM task_master WHERE task_detail ILIKE $1 OR task_group ILIKE $1 OR assigned_to ILIKE $1
+      ORDER BY task_group LIMIT 10`, [kw]),
+    query(`SELECT id, name, address, manager_name, manager_phone
+      FROM branches WHERE name ILIKE $1 OR address ILIKE $1 OR manager_name ILIKE $1
+      ORDER BY seq LIMIT 10`, [kw]),
+    query(`SELECT id, title, content, task_group
+      FROM personal_manual WHERE title ILIKE $1 OR content ILIKE $1
+      ORDER BY created_at DESC LIMIT 10`, [kw]),
+    query(`SELECT id, title, meeting_date
+      FROM meeting_notes WHERE title ILIKE $1 OR summary ILIKE $1
+      ORDER BY meeting_date DESC LIMIT 10`, [kw])
+  ]);
+
+  const results = [];
+  reports.rows.forEach(r => results.push({ type: 'report', id: r.id, title: r.what_task || r.content || '(내용 없음)',
+    sub: `${r.author_name} · ${(r.report_date||'').toString().split('T')[0]}`, category: r.work_category }));
+  tasks.rows.forEach(r => results.push({ type: 'task', id: r.id, title: r.task_detail || '',
+    sub: `${r.task_group || ''} · ${r.assigned_to || '미지정'}`, category: r.category1 }));
+  branches.rows.forEach(r => results.push({ type: 'branch', id: r.id, title: r.name,
+    sub: `${r.address || ''} · ${r.manager_name || ''}`, category: '지국' }));
+  manuals.rows.forEach(r => results.push({ type: 'manual', id: r.id, title: r.title,
+    sub: r.task_group || '', category: '매뉴얼' }));
+  meetings.rows.forEach(r => results.push({ type: 'meeting', id: r.id, title: r.title,
+    sub: (r.meeting_date||'').toString().split('T')[0], category: '회의록' }));
+
+  res.json({ query: q, total: results.length, results });
+});
+
 // ─── 대시보드 ───
 app.get('/api/dashboard', authMiddleware, async (req, res) => {
   const userId = req.session.userId;
