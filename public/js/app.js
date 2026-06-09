@@ -4610,16 +4610,16 @@ async function showWeeklyReport() {
 }
 
 // ─── 업무 캘린더 ───
-let calMonth = new Date().toISOString().substring(0, 7);
+let workCalMonth = new Date().toISOString().substring(0, 7);
 
 async function showWorkCalendar() {
   const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
   document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">캘린더 로딩 중...</p>';
 
-  const d = await api(`/api/calendar?month=${calMonth}`);
+  const d = await api(`/api/calendar?month=${workCalMonth}`);
   if (!d) return;
 
-  const [year, mon] = calMonth.split('-').map(Number);
+  const [year, mon] = workCalMonth.split('-').map(Number);
   const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
   const dayNames = ['일','월','화','수','목','금','토'];
   const firstDay = new Date(year, mon - 1, 1).getDay();
@@ -4655,9 +4655,9 @@ async function showWorkCalendar() {
 
   document.getElementById('mainContent').innerHTML = `
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-      <button class="btn btn-outline btn-sm" onclick="calMonth=prevMonth(calMonth); showWorkCalendar();">&lsaquo;</button>
+      <button class="btn btn-outline btn-sm" onclick="workCalMonth=prevMonth(workCalMonth); showWorkCalendar();">&lsaquo;</button>
       <span style="font-size:18px; font-weight:800;">${year}년 ${monthNames[mon-1]}</span>
-      <button class="btn btn-outline btn-sm" onclick="calMonth=nextMonth(calMonth); showWorkCalendar();">&rsaquo;</button>
+      <button class="btn btn-outline btn-sm" onclick="workCalMonth=nextMonth(workCalMonth); showWorkCalendar();">&rsaquo;</button>
     </div>
 
     <div style="margin-bottom:10px; display:flex; justify-content:center; gap:12px; font-size:11px; color:var(--gray-500);">
