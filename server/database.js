@@ -135,7 +135,16 @@ async function initDB() {
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, work_date DATE NOT NULL,
       check_in TIMESTAMP, check_out TIMESTAMP, status TEXT DEFAULT 'normal',
       memo TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
-      UNIQUE(user_id, work_date))`
+      UNIQUE(user_id, work_date))`,
+    `CREATE TABLE IF NOT EXISTS board_posts (
+      id TEXT PRIMARY KEY, author_id TEXT NOT NULL, author_name TEXT NOT NULL,
+      category TEXT DEFAULT '자유', title TEXT NOT NULL, content TEXT NOT NULL,
+      view_count INTEGER DEFAULT 0, comment_count INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS board_comments (
+      id TEXT PRIMARY KEY, post_id TEXT NOT NULL, author_id TEXT NOT NULL,
+      author_name TEXT NOT NULL, content TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
     await query(sql);

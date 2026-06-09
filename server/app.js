@@ -2144,6 +2144,76 @@ app.get('/api/attendance/team', authMiddleware, async (req, res) => {
   res.json(result.rows);
 });
 
+// ─── 팀 게시판 ───
+app.get('/api/board', authMiddleware, async (req, res) => {
+  const { category } = req.query;
+  let sql = 'SELECT * FROM board_posts';
+  const params = [];
+  if (category) { sql += ' WHERE category = $1'; params.push(category); }
+  sql += ' ORDER BY created_at DESC';
+  const result = await query(sql, params);
+  res.json(result.rows);
+});
+
+app.get('/api/board/:id', authMiddleware, async (req, res) => {
+  const post = await query('SELECT * FROM board_posts WHERE id = $1', [req.params.id]);
+  if (post.rows.length === 0) return res.status(404).json({ error: '게시글을 찾을 수 없습니다' });
+  await query('UPDATE board_posts SET view_count = view_count + 1 WHERE id = $1', [req.params.id]);
+  const comments = await query('SELECT * FROM board_comments WHERE post_id = $1 ORDER BY created_at ASC', [req.params.id]);
+  res.json({ ...post.rows[0], view_count: post.rows[0].view_count + 1, comments: comments.rows });
+});
+
+app.post('/api/board', authMiddleware, async (req, res) => {
+  const { category, title, content } = req.body;
+  if (!title || !content) return res.status(400).json({ error: '제목과 내용을 입력하세요' });
+  let authorName = '관리자';
+  if (req.session.userId && req.session.userId !== 'admin-user') {
+    const u = await query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+    if (u.rows[0]) authorName = u.rows[0].name;
+  }
+  const id = uuidv4();
+  await query('INSERT INTO board_posts (id, author_id, author_name, category, title, content) VALUES ($1,$2,$3,$4,$5,$6)',
+    [id, req.session.userId, authorName, category || '자유', title, content]);
+  res.json({ id });
+});
+
+app.delete('/api/board/:id', authMiddleware, async (req, res) => {
+  const post = await query('SELECT * FROM board_posts WHERE id = $1', [req.params.id]);
+  if (post.rows.length === 0) return res.status(404).json({ error: '게시글을 찾을 수 없습니다' });
+  if (post.rows[0].author_id !== req.session.userId && !req.session.isAdmin) {
+    return res.status(403).json({ error: '본인의 글만 삭제할 수 있습니다' });
+  }
+  await query('DELETE FROM board_comments WHERE post_id = $1', [req.params.id]);
+  await query('DELETE FROM board_posts WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+app.post('/api/board/:id/comments', authMiddleware, async (req, res) => {
+  const { content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: '댓글을 입력하세요' });
+  let authorName = '관리자';
+  if (req.session.userId && req.session.userId !== 'admin-user') {
+    const u = await query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+    if (u.rows[0]) authorName = u.rows[0].name;
+  }
+  const id = uuidv4();
+  await query('INSERT INTO board_comments (id, post_id, author_id, author_name, content) VALUES ($1,$2,$3,$4,$5)',
+    [id, req.params.id, req.session.userId, authorName, content.trim()]);
+  await query('UPDATE board_posts SET comment_count = comment_count + 1 WHERE id = $1', [req.params.id]);
+  res.json({ id, author_name: authorName, content: content.trim(), created_at: new Date().toISOString() });
+});
+
+app.delete('/api/board-comments/:id', authMiddleware, async (req, res) => {
+  const c = await query('SELECT * FROM board_comments WHERE id = $1', [req.params.id]);
+  if (c.rows.length === 0) return res.status(404).json({ error: '댓글을 찾을 수 없습니다' });
+  if (c.rows[0].author_id !== req.session.userId && !req.session.isAdmin) {
+    return res.status(403).json({ error: '본인의 댓글만 삭제할 수 있습니다' });
+  }
+  await query('DELETE FROM board_comments WHERE id = $1', [req.params.id]);
+  await query('UPDATE board_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = $1', [c.rows[0].post_id]);
+  res.json({ ok: true });
+});
+
 // ─── 할 일 관리 ───
 app.get('/api/todos', authMiddleware, async (req, res) => {
   const userId = req.session.userId;

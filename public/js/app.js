@@ -1284,11 +1284,15 @@ async function renderMore() {
   fab.style.display = 'none';
 
   document.getElementById('mainContent').innerHTML = `
-    <p class="section-title">&#128227; 공지사항</p>
+    <p class="section-title">&#128227; 소통</p>
     <div class="quick-actions">
       <button class="quick-action-btn" onclick="showNoticesList()" style="border:2px solid #f59e0b; background:#fffbeb;">
         <span class="qa-icon">&#128227;</span>
         <span class="qa-label" style="color:#92400e; font-weight:700;">공지사항</span>
+      </button>
+      <button class="quick-action-btn" onclick="showBoard()" style="border:2px solid #6366f1;">
+        <span class="qa-icon">&#128172;</span>
+        <span class="qa-label" style="color:#6366f1; font-weight:700;">팀 게시판</span>
       </button>
     </div>
 
@@ -3876,6 +3880,145 @@ async function doRenderWf(code) {
   } catch (e) {
     area.innerHTML = '<p style="color:var(--gray-500); font-size:13px; text-align:center;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 팀 게시판 ───
+let boardCategory = '';
+let boardPage = 1;
+
+async function showBoard(pg) {
+  boardPage = pg || 1;
+  const posts = await api(`/api/board${boardCategory ? '?category=' + encodeURIComponent(boardCategory) : ''}`) || [];
+  const { data, page, totalPages, total } = paginate(posts, boardPage);
+  const cats = ['전체', '자유', '질문', '정보공유', '건의'];
+  const catColor = { '자유': '#6366f1', '질문': '#f59e0b', '정보공유': '#10b981', '건의': '#ef4444' };
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <p class="section-title" style="margin:0;">&#128172; 팀 게시판</p>
+      <button class="btn btn-primary btn-sm" onclick="showBoardWrite()">글쓰기</button>
+    </div>
+    <div class="tabs" style="margin-bottom:12px;">
+      ${cats.map(c => `<button class="tab ${(c === '전체' && !boardCategory) || c === boardCategory ? 'active' : ''}" onclick="boardCategory='${c === '전체' ? '' : c}'; showBoard(1);">${c}</button>`).join('')}
+    </div>
+    ${total > 0 ? `<p style="font-size:12px; color:var(--gray-500); margin-bottom:8px;">총 ${total}건</p>` : ''}
+    ${data.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#128172;</div><div class="empty-text">게시글이 없습니다</div></div>' :
+      data.map(p => `
+        <div class="list-item" onclick="showBoardPost('${p.id}')" style="cursor:pointer;">
+          <div class="list-item-content">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+              <span style="font-size:10px; padding:1px 6px; border-radius:3px; background:${(catColor[p.category] || '#6366f1')}22; color:${catColor[p.category] || '#6366f1'}; font-weight:600;">${p.category}</span>
+            </div>
+            <div class="list-item-title">${escHtml(p.title)}</div>
+            <div class="list-item-sub">${escHtml(p.author_name)} &middot; ${(p.created_at||'').substring(0,10)} &middot; &#128065;${p.view_count}${p.comment_count > 0 ? ` &middot; <span style="color:var(--primary);">&#128172;${p.comment_count}</span>` : ''}</div>
+          </div>
+        </div>
+      `).join('')}
+    ${renderPagination(page, totalPages, 'showBoard')}
+  `;
+}
+
+function showBoardWrite() {
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showBoard()" style="margin-bottom:12px;">&larr; 목록</button>
+    <p class="section-title">&#9997; 새 글 작성</p>
+    <div class="card" style="padding:14px;">
+      <div class="form-group">
+        <label>카테고리</label>
+        <select id="bpCategory" class="form-control">
+          <option value="자유">자유</option>
+          <option value="질문">질문</option>
+          <option value="정보공유">정보공유</option>
+          <option value="건의">건의</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>제목</label>
+        <input type="text" id="bpTitle" class="form-control" placeholder="제목을 입력하세요">
+      </div>
+      <div class="form-group">
+        <label>내용</label>
+        <textarea id="bpContent" class="form-control" rows="8" placeholder="내용을 입력하세요" style="resize:vertical;"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="submitBoardPost()">등록</button>
+    </div>
+  `;
+}
+
+async function submitBoardPost() {
+  const category = document.getElementById('bpCategory').value;
+  const title = document.getElementById('bpTitle').value.trim();
+  const content = document.getElementById('bpContent').value.trim();
+  if (!title || !content) { toast('제목과 내용을 입력하세요'); return; }
+  const res = await api('/api/board', { method: 'POST', body: { category, title, content } });
+  if (res) { toast('게시글이 등록되었습니다'); showBoard(1); }
+}
+
+async function showBoardPost(id) {
+  const post = await api(`/api/board/${id}`);
+  if (!post) return;
+  const cmts = post.comments || [];
+  const catColor = { '자유': '#6366f1', '질문': '#f59e0b', '정보공유': '#10b981', '건의': '#ef4444' };
+  const isAuthor = currentUser && (post.author_id === currentUser.id || currentUser.isAdmin);
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showBoard(${boardPage})" style="margin-bottom:12px;">&larr; 목록</button>
+    <div class="card" style="padding:14px;">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+        <span style="font-size:11px; padding:2px 8px; border-radius:4px; background:${(catColor[post.category]||'#6366f1')}22; color:${catColor[post.category]||'#6366f1'}; font-weight:600;">${post.category}</span>
+        <span style="font-size:11px; color:var(--gray-400);">&#128065; ${post.view_count}</span>
+      </div>
+      <h3 style="font-size:18px; font-weight:700; margin-bottom:8px;">${escHtml(post.title)}</h3>
+      <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">${escHtml(post.author_name)} &middot; ${(post.created_at||'').substring(0,16).replace('T',' ')}</p>
+      <div style="font-size:14px; line-height:1.8; white-space:pre-wrap;">${escHtml(post.content)}</div>
+    </div>
+
+    ${isAuthor ? `<button class="btn btn-danger btn-sm" onclick="deleteBoardPost('${post.id}')" style="margin-top:8px;">삭제</button>` : ''}
+
+    <div class="card" style="margin-top:12px; padding:14px;">
+      <p class="card-title" style="margin-bottom:12px;">&#128172; 댓글 (${cmts.length})</p>
+      ${cmts.length === 0 ? '<p style="font-size:13px; color:var(--gray-500); text-align:center; padding:8px 0;">아직 댓글이 없습니다</p>' :
+        cmts.map(c => {
+          const isMe = currentUser && (c.author_id === currentUser.id || currentUser.isAdmin);
+          return `<div style="padding:8px 0; border-bottom:1px solid var(--gray-100);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-size:12px; font-weight:600;">${escHtml(c.author_name)}</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11px; color:var(--gray-400);">${(c.created_at||'').substring(0,16).replace('T',' ')}</span>
+                ${isMe ? `<button onclick="deleteBoardComment('${c.id}','${post.id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:13px; padding:0;">&times;</button>` : ''}
+              </div>
+            </div>
+            <p style="font-size:13px; line-height:1.6; white-space:pre-wrap;">${escHtml(c.content)}</p>
+          </div>`;
+        }).join('')}
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <input type="text" id="boardCommentInput" class="form-control" placeholder="댓글을 입력하세요..." style="flex:1; font-size:13px;" onkeydown="if(event.key==='Enter')postBoardComment('${post.id}')">
+        <button class="btn btn-primary btn-sm" onclick="postBoardComment('${post.id}')" style="white-space:nowrap;">등록</button>
+      </div>
+    </div>
+  `;
+}
+
+async function postBoardComment(postId) {
+  const input = document.getElementById('boardCommentInput');
+  if (!input) return;
+  const content = input.value.trim();
+  if (!content) { toast('댓글을 입력하세요'); return; }
+  const res = await api(`/api/board/${postId}/comments`, { method: 'POST', body: { content } });
+  if (res) { input.value = ''; showBoardPost(postId); }
+}
+
+async function deleteBoardComment(commentId, postId) {
+  if (!confirm('이 댓글을 삭제하시겠습니까?')) return;
+  await api(`/api/board-comments/${commentId}`, { method: 'DELETE' });
+  showBoardPost(postId);
+}
+
+async function deleteBoardPost(id) {
+  if (!confirm('이 게시글을 삭제하시겠습니까?')) return;
+  const res = await api(`/api/board/${id}`, { method: 'DELETE' });
+  if (res) { toast('삭제되었습니다'); showBoard(1); }
 }
 
 // ─── 출퇴근 기록 ───
