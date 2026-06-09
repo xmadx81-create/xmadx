@@ -4603,5 +4603,156 @@ async function deleteNotice(id) {
   if (res) { toast('공지가 삭제되었습니다'); renderAdminNoticesTab(); }
 }
 
+// ─── 음성 입력 (Web Speech API) ───
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let _fieldRecog = null;
+let _fullRecog = null;
+let _fullText = '';
+
+function voiceSupported() {
+  if (!SpeechRecognition) { toast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari를 사용해주세요.'); return false; }
+  return true;
+}
+
+function voiceToField(fieldId) {
+  if (!voiceSupported()) return;
+  if (_fieldRecog) { _fieldRecog.stop(); _fieldRecog = null; }
+  if (_fullRecog) { stopFullVoice(); }
+
+  const btn = event.currentTarget;
+  const recog = new SpeechRecognition();
+  recog.lang = 'ko-KR';
+  recog.interimResults = true;
+  recog.continuous = false;
+  recog.maxAlternatives = 1;
+  _fieldRecog = recog;
+
+  btn.classList.add('recording');
+
+  recog.onresult = (e) => {
+    let transcript = '';
+    for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript;
+    const el = document.getElementById(fieldId);
+    if (el) {
+      if (el.tagName === 'TEXTAREA') el.value = el.value ? el.value + ' ' + transcript : transcript;
+      else el.value = transcript;
+    }
+  };
+  recog.onend = () => { btn.classList.remove('recording'); _fieldRecog = null; };
+  recog.onerror = (e) => {
+    btn.classList.remove('recording'); _fieldRecog = null;
+    if (e.error === 'not-allowed') toast('마이크 권한을 허용해주세요');
+    else if (e.error !== 'aborted') toast('음성 인식 오류: ' + e.error);
+  };
+  recog.start();
+}
+
+function startFullVoice() {
+  if (!voiceSupported()) return;
+  if (_fieldRecog) { _fieldRecog.stop(); _fieldRecog = null; }
+  if (_fullRecog) { stopFullVoice(); return; }
+
+  const recog = new SpeechRecognition();
+  recog.lang = 'ko-KR';
+  recog.interimResults = true;
+  recog.continuous = true;
+  recog.maxAlternatives = 1;
+  _fullRecog = recog;
+  _fullText = '';
+
+  document.getElementById('voiceStatus').style.display = 'block';
+  document.getElementById('voiceFullBtn').style.background = '#ef4444';
+  document.getElementById('voiceFullBtn').innerHTML = '<span style="font-size:18px;">&#9724;</span> 녹음 중...';
+
+  recog.onresult = (e) => {
+    let final = '', interim = '';
+    for (let i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript + ' ';
+      else interim += e.results[i][0].transcript;
+    }
+    _fullText = final;
+    document.getElementById('voicePreview').textContent = final + interim;
+  };
+
+  recog.onend = () => {
+    if (_fullRecog) {
+      if (_fullText.trim()) parseVoiceToFields(_fullText.trim());
+      resetFullVoiceUI();
+    }
+  };
+  recog.onerror = (e) => {
+    resetFullVoiceUI();
+    if (e.error === 'not-allowed') toast('마이크 권한을 허용해주세요');
+    else if (e.error !== 'aborted') toast('음성 인식 오류: ' + e.error);
+  };
+  recog.start();
+}
+
+function stopFullVoice() {
+  if (_fullRecog) {
+    const recog = _fullRecog;
+    _fullRecog = null;
+    recog.stop();
+    if (_fullText.trim()) parseVoiceToFields(_fullText.trim());
+    resetFullVoiceUI();
+  }
+}
+
+function resetFullVoiceUI() {
+  _fullRecog = null;
+  document.getElementById('voiceStatus').style.display = 'none';
+  document.getElementById('voiceFullBtn').style.background = '#7c3aed';
+  document.getElementById('voiceFullBtn').innerHTML = '<span style="font-size:18px;">&#127908;</span> 음성으로 입력';
+}
+
+function parseVoiceToFields(text) {
+  const keywords = {
+    who: ['누가','담당자','사람'],
+    when: ['언제','시간','기간','날짜','오전','오후'],
+    where: ['어디서','어디','장소','사무실','현장'],
+    what: ['무엇을','뭐','업무','일','작업','회의','보고'],
+    how: ['어떻게','방법','방식','전화','이메일','대면','온라인'],
+    why: ['왜','이유','목적','때문','위해'],
+    purpose: ['목적은','목적이','목표']
+  };
+
+  const sentences = text.split(/[.!?。,，\n]+/).map(s => s.trim()).filter(s => s);
+  const fields = { who: '', when: '', where: '', what: '', how: '', why: '', purpose: '' };
+  const unmatched = [];
+
+  for (const s of sentences) {
+    let matched = false;
+    for (const [field, kws] of Object.entries(keywords)) {
+      if (kws.some(k => s.includes(k))) {
+        fields[field] = fields[field] ? fields[field] + ', ' + s : s;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) unmatched.push(s);
+  }
+
+  const fieldMap = { who: 'reportWho', when: 'reportWhen', where: 'reportWhere', what: 'reportWhat', how: 'reportHow', why: 'reportWhy', purpose: 'reportPurpose' };
+  let filled = 0;
+  for (const [key, id] of Object.entries(fieldMap)) {
+    if (fields[key]) {
+      const el = document.getElementById(id);
+      if (el && !el.value) { el.value = fields[key]; filled++; }
+    }
+  }
+
+  const contentEl = document.getElementById('reportContent');
+  if (contentEl) {
+    const remaining = unmatched.length > 0 ? unmatched.join('. ') : '';
+    if (filled === 0) {
+      contentEl.value = contentEl.value ? contentEl.value + '\n' + text : text;
+    } else if (remaining) {
+      contentEl.value = contentEl.value ? contentEl.value + '\n' + remaining : remaining;
+    }
+  }
+
+  toast(`음성 입력 완료 (${filled}개 항목 자동 분류)`);
+}
+
 // 초기화
 checkAuth();

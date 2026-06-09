@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#1a73e8">
   <title>석유사업본부 업무시스템</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260609l">
+  <link rel="stylesheet" href="/css/style.css?v=20260609m">
   <link rel="manifest" href="/manifest.json">
 </head>
 <body>
@@ -180,6 +180,21 @@
     <div class="modal-handle"></div>
     <h2 class="modal-title" id="reportModalTitle">업무일지 작성</h2>
 
+    <!-- 음성 입력 버튼 -->
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <button class="btn btn-block" id="voiceFullBtn" onclick="startFullVoice()" style="flex:1; background:#7c3aed; color:#fff; border:none; display:flex; align-items:center; justify-content:center; gap:6px; padding:12px;">
+        <span style="font-size:18px;">&#127908;</span> 음성으로 입력
+      </button>
+    </div>
+    <div id="voiceStatus" style="display:none; text-align:center; padding:10px; margin-bottom:12px; border-radius:8px; background:#f5f3ff; border:1px solid #c4b5fd;">
+      <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
+        <span id="voicePulse" style="width:12px; height:12px; background:#ef4444; border-radius:50%; animation:pulse 1s infinite;"></span>
+        <span id="voiceStatusText" style="font-size:13px; color:#7c3aed; font-weight:600;">녹음 중... 말씀해 주세요</span>
+      </div>
+      <p id="voicePreview" style="font-size:12px; color:#666; margin-top:6px; min-height:16px;"></p>
+      <button class="btn btn-sm" onclick="stopFullVoice()" style="margin-top:8px; background:#ef4444; color:#fff; border:none; padding:6px 20px;">녹음 중지</button>
+    </div>
+
     <div class="form-group">
       <label>보고 유형</label>
       <div class="chip-group">
@@ -213,40 +228,43 @@
     <div class="w5h1-grid">
       <div class="form-group form-group-autocomplete">
         <label>누가 (Who)</label>
-        <input type="text" id="reportWho" class="form-control" placeholder="담당자">
+        <div style="display:flex; gap:4px;"><input type="text" id="reportWho" class="form-control" placeholder="담당자" style="flex:1;"><button type="button" class="mic-btn" onclick="voiceToField('reportWho')">&#127908;</button></div>
       </div>
       <div class="form-group">
         <label>언제 (When)</label>
-        <input type="text" id="reportWhen" class="form-control" placeholder="시간/기간">
+        <div style="display:flex; gap:4px;"><input type="text" id="reportWhen" class="form-control" placeholder="시간/기간" style="flex:1;"><button type="button" class="mic-btn" onclick="voiceToField('reportWhen')">&#127908;</button></div>
       </div>
       <div class="form-group form-group-autocomplete">
         <label>어디서 (Where)</label>
-        <input type="text" id="reportWhere" class="form-control" placeholder="장소"
-          onfocus="loadSuggestions('where_place', this)" oninput="filterSuggestions(this)">
+        <div style="display:flex; gap:4px;"><input type="text" id="reportWhere" class="form-control" placeholder="장소" style="flex:1;"
+          onfocus="loadSuggestions('where_place', this)" oninput="filterSuggestions(this)"><button type="button" class="mic-btn" onclick="voiceToField('reportWhere')">&#127908;</button></div>
         <div class="autocomplete-list" id="suggest-where_place"></div>
       </div>
       <div class="form-group form-group-autocomplete">
         <label>무엇을 (What)</label>
-        <input type="text" id="reportWhat" class="form-control" placeholder="업무내용"
-          onfocus="loadSuggestions('what_task', this)" oninput="filterSuggestions(this)">
+        <div style="display:flex; gap:4px;"><input type="text" id="reportWhat" class="form-control" placeholder="업무내용" style="flex:1;"
+          onfocus="loadSuggestions('what_task', this)" oninput="filterSuggestions(this)"><button type="button" class="mic-btn" onclick="voiceToField('reportWhat')">&#127908;</button></div>
         <div class="autocomplete-list" id="suggest-what_task"></div>
       </div>
       <div class="form-group form-group-autocomplete">
         <label>어떻게 (How)</label>
-        <input type="text" id="reportHow" class="form-control" placeholder="수행방법"
-          onfocus="loadSuggestions('how_method', this)" oninput="filterSuggestions(this)">
+        <div style="display:flex; gap:4px;"><input type="text" id="reportHow" class="form-control" placeholder="수행방법" style="flex:1;"
+          onfocus="loadSuggestions('how_method', this)" oninput="filterSuggestions(this)"><button type="button" class="mic-btn" onclick="voiceToField('reportHow')">&#127908;</button></div>
         <div class="autocomplete-list" id="suggest-how_method"></div>
       </div>
       <div class="form-group form-group-autocomplete">
         <label>왜 (Why)</label>
-        <input type="text" id="reportWhy" class="form-control" placeholder="사유/목적"
-          onfocus="loadSuggestions('why_reason', this)" oninput="filterSuggestions(this)">
+        <div style="display:flex; gap:4px;"><input type="text" id="reportWhy" class="form-control" placeholder="사유/목적" style="flex:1;"
+          onfocus="loadSuggestions('why_reason', this)" oninput="filterSuggestions(this)"><button type="button" class="mic-btn" onclick="voiceToField('reportWhy')">&#127908;</button></div>
         <div class="autocomplete-list" id="suggest-why_reason"></div>
       </div>
     </div>
 
     <div class="form-group">
-      <label>상세 내용</label>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <label>상세 내용</label>
+        <button type="button" class="mic-btn" onclick="voiceToField('reportContent')" style="margin-bottom:4px;">&#127908;</button>
+      </div>
       <textarea id="reportContent" class="form-control" placeholder="업무 상세 내용을 입력하세요"></textarea>
     </div>
 
@@ -365,6 +383,11 @@
 <!-- 토스트 -->
 <div class="toast" id="toast"></div>
 
-<script src="/js/app.js?v=20260609l"></script>
+<style>
+.mic-btn { width:36px; height:36px; border-radius:8px; border:1px solid #c4b5fd; background:#f5f3ff; color:#7c3aed; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.mic-btn.recording { background:#ef4444; color:#fff; border-color:#ef4444; animation:pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+</style>
+<script src="/js/app.js?v=20260609m"></script>
 </body>
 </html>
