@@ -1365,6 +1365,10 @@ async function renderMore() {
         <span class="qa-icon">&#128161;</span>
         <span class="qa-label" style="color:#0891b2; font-weight:700;">내 업무 분석</span>
       </button>
+      <button class="quick-action-btn" onclick="showMonthlySummary()" style="border:2px solid #ea580c;">
+        <span class="qa-icon">&#128202;</span>
+        <span class="qa-label" style="color:#ea580c; font-weight:700;">월간 요약</span>
+      </button>
     </div>
 
     <p class="section-title">&#9881; 도구</p>
@@ -3907,6 +3911,139 @@ async function doRenderWf(code) {
   } catch (e) {
     area.innerHTML = '<p style="color:var(--gray-500); font-size:13px; text-align:center;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 월간 업무 요약 ───
+let summaryMonth = new Date().toISOString().substring(0, 7);
+
+async function showMonthlySummary() {
+  const data = await api(`/api/monthly-summary?month=${summaryMonth}`);
+  if (!data) return;
+
+  if (data.empty) {
+    document.getElementById('mainContent').innerHTML = `
+      <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+      <p class="section-title">&#128202; 월간 업무 요약</p>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <button class="btn btn-outline btn-sm" onclick="summaryMonth=prevMonth(summaryMonth); showMonthlySummary();">&lsaquo;</button>
+        <span style="font-size:16px; font-weight:700;">${summaryMonth}</span>
+        <button class="btn btn-outline btn-sm" onclick="summaryMonth=nextMonth(summaryMonth); showMonthlySummary();">&rsaquo;</button>
+      </div>
+      <div class="empty-state"><div class="empty-icon">&#128202;</div><div class="empty-text">이번 달 업무일지가 없습니다</div></div>
+    `;
+    return;
+  }
+
+  const d = data;
+  const catColors = { '내근': '#1a73e8', '외근': '#34a853', '출장': '#ea4335', '기타': '#999' };
+  const fillRate = Math.round(d.unique_days / d.work_days * 100);
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+      <p class="section-title" style="margin:0;">&#128202; 월간 업무 요약</p>
+    </div>
+    <p style="font-size:13px; color:var(--gray-500); margin-bottom:12px;">${d.user.name} ${d.user.position || ''}</p>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <button class="btn btn-outline btn-sm" onclick="summaryMonth=prevMonth(summaryMonth); showMonthlySummary();">&lsaquo;</button>
+      <span style="font-size:16px; font-weight:700;">${d.month}</span>
+      <button class="btn btn-outline btn-sm" onclick="summaryMonth=nextMonth(summaryMonth); showMonthlySummary();">&rsaquo;</button>
+    </div>
+
+    <!-- 핵심 통계 -->
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="stat-number">${d.total_reports}</div>
+        <div class="stat-label">총 보고</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${d.unique_days}/${d.work_days}</div>
+        <div class="stat-label">작성일</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" style="${fillRate >= 80 ? 'color:var(--success);' : fillRate < 50 ? 'color:#ef4444;' : ''}">${fillRate}%</div>
+        <div class="stat-label">작성률</div>
+      </div>
+    </div>
+
+    ${d.attendance.days > 0 ? `
+    <!-- 근태 요약 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <span style="font-size:14px; font-weight:700; display:block; margin-bottom:10px;">&#128339; 근태 요약</span>
+      <div style="display:flex; gap:16px; font-size:13px;">
+        <div><span style="color:var(--gray-500);">출근일</span> <strong>${d.attendance.days}일</strong></div>
+        <div><span style="color:var(--gray-500);">지각</span> <strong style="${d.attendance.late > 0 ? 'color:#ef4444;' : ''}">${d.attendance.late}회</strong></div>
+        ${d.attendance.avg_hours ? `<div><span style="color:var(--gray-500);">평균근무</span> <strong>${d.attendance.avg_hours}시간</strong></div>` : ''}
+      </div>
+    </div>` : ''}
+
+    <!-- 업무 유형 분포 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <span style="font-size:14px; font-weight:700; display:block; margin-bottom:10px;">&#128200; 업무 유형 분포</span>
+      <div style="display:flex; border-radius:6px; overflow:hidden; height:28px; margin-bottom:10px;">
+        ${d.categories.map(c => `<div style="width:${c.pct}%; background:${catColors[c.name] || '#999'}; min-width:20px;" title="${c.name} ${c.count}건"></div>`).join('')}
+      </div>
+      <div style="display:flex; gap:14px; flex-wrap:wrap; font-size:13px;">
+        ${d.categories.map(c => `<span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; border-radius:2px; background:${catColors[c.name] || '#999'};"></span>${c.name} ${c.count}건 (${c.pct}%)</span>`).join('')}
+      </div>
+    </div>
+
+    <!-- 주요 업무 TOP -->
+    ${d.top_tasks.length > 0 ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <span style="font-size:14px; font-weight:700; display:block; margin-bottom:10px;">&#127942; 주요 업무 TOP ${d.top_tasks.length}</span>
+      ${d.top_tasks.map((t, i) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--gray-100);">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:12px; font-weight:700; color:${i < 3 ? 'var(--primary)' : 'var(--gray-400)'}; width:20px;">${i + 1}</span>
+            <span style="font-size:13px;">${escHtml(t.task)}</span>
+          </div>
+          <span style="font-size:12px; color:var(--gray-500); font-weight:600;">${t.count}회</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- 주요 활동 장소 -->
+    ${d.top_places.length > 0 ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <span style="font-size:14px; font-weight:700; display:block; margin-bottom:10px;">&#128205; 주요 활동 장소</span>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${d.top_places.map(p => `<span style="font-size:12px; padding:4px 10px; background:var(--gray-100); border-radius:12px;">${escHtml(p.place)} <strong>${p.count}</strong></span>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- 주차별 활동 -->
+    ${d.weekly.length > 0 ? `
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <span style="font-size:14px; font-weight:700; display:block; margin-bottom:10px;">&#128197; 주차별 활동</span>
+      ${d.weekly.map(w => `
+        <div style="margin-bottom:10px; padding:8px; background:var(--gray-50); border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span style="font-size:13px; font-weight:600;">${w.week}</span>
+            <span style="font-size:12px; color:var(--gray-500);">${w.count}건</span>
+          </div>
+          <div style="font-size:12px; color:var(--gray-600); line-height:1.6;">
+            ${w.tasks.map(t => `<span style="display:inline-block; margin-right:8px;">&#8226; ${escHtml(t)}</span>`).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- 종합 평가 -->
+    <div class="card" style="padding:14px; margin-bottom:16px; background:linear-gradient(135deg, #f0f9ff, #e0f2fe);">
+      <span style="font-size:14px; font-weight:700; display:block; margin-bottom:10px; color:#0369a1;">&#128161; 종합 평가</span>
+      <div style="font-size:13px; line-height:1.8; color:#0c4a6e;">
+        ${fillRate >= 80 ? `&#9989; 작성률 ${fillRate}%로 우수합니다. 꾸준한 기록 습관이 잘 유지되고 있습니다.` :
+          fillRate >= 50 ? `&#9888;&#65039; 작성률 ${fillRate}%입니다. 좀 더 꾸준한 기록을 권장합니다.` :
+          `&#10060; 작성률 ${fillRate}%로 낮습니다. 일일 업무 기록을 습관화해주세요.`}<br>
+        ${d.categories.length >= 3 ? '&#9989; 다양한 유형의 업무를 수행하고 있습니다.' : d.categories.length === 1 ? `&#9888;&#65039; ${d.categories[0].name} 업무에 편중되어 있습니다.` : ''}
+        ${d.top_tasks.length > 0 ? `<br>&#128293; 핵심 업무: ${d.top_tasks.slice(0, 3).map(t => t.task).join(', ')}` : ''}
+        ${d.attendance.late > 2 ? `<br>&#9888;&#65039; 지각 ${d.attendance.late}회로 출근 관리가 필요합니다.` : ''}
+      </div>
+    </div>
+  `;
 }
 
 // ─── 팀 일정 ───
