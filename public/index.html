@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#1a73e8">
   <title>석유사업본부 업무시스템</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260609h">
+  <link rel="stylesheet" href="/css/style.css?v=20260609i">
   <link rel="manifest" href="/manifest.json">
 </head>
 <body>
@@ -137,6 +137,7 @@
     <h1 id="pageTitle">석유사업본부</h1>
     <div class="header-actions">
       <button class="header-btn" onclick="showGlobalSearch()" title="통합 검색">&#128269;</button>
+      <button class="header-btn" onclick="showNotifications()" title="알림" style="position:relative;" id="notiBtn">&#128276;<span id="notiBadge" style="display:none; position:absolute; top:2px; right:2px; width:8px; height:8px; background:#ef4444; border-radius:50%;"></span></button>
       <button class="header-btn" onclick="showUserInfo()" title="내 정보">&#128100;</button>
       <button class="header-btn" onclick="logout()" title="로그아웃">&#9654;</button>
     </div>
@@ -364,6 +365,6 @@
 <!-- 토스트 -->
 <div class="toast" id="toast"></div>
 
-<script src="/js/app.js?v=20260609h"></script>
+<script src="/js/app.js?v=20260609i"></script>
 </body>
 </html>

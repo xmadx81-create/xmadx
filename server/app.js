@@ -2014,6 +2014,55 @@ app.delete('/api/notices/:id', adminMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── 알림 센터 ───
+app.get('/api/notifications', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const items = [];
+
+  const cmtResult = await query(`
+    SELECT c.id, c.report_id, c.author_name, c.content, c.created_at, r.what_task
+    FROM comments c JOIN work_reports r ON c.report_id = r.id
+    WHERE r.author_id = $1 AND c.author_id != $1
+    ORDER BY c.created_at DESC LIMIT 20
+  `, [userId]);
+  cmtResult.rows.forEach(c => {
+    items.push({ type: 'comment', id: c.id, report_id: c.report_id, title: `${c.author_name}님이 댓글을 남겼습니다`, detail: c.content.substring(0, 60), sub: c.what_task || '', time: c.created_at });
+  });
+
+  const apprResult = await query(`
+    SELECT a.report_id, a.status, a.approved_at, a.comment, u.name as approver_name, r.what_task
+    FROM approval_lines a JOIN users u ON a.approver_id = u.id JOIN work_reports r ON a.report_id = r.id
+    WHERE r.author_id = $1 AND a.status != 'pending'
+    ORDER BY a.approved_at DESC NULLS LAST LIMIT 15
+  `, [userId]);
+  apprResult.rows.forEach(a => {
+    const label = a.status === 'approved' ? '승인' : '반려';
+    items.push({ type: 'approval', report_id: a.report_id, title: `${a.approver_name}님이 ${label}했습니다`, detail: a.comment || '', sub: a.what_task || '', time: a.approved_at });
+  });
+
+  const noticeResult = await query(`
+    SELECT id, title, priority, created_at FROM notices
+    WHERE active = TRUE ORDER BY created_at DESC LIMIT 5
+  `);
+  noticeResult.rows.forEach(n => {
+    const pLabel = { urgent: '긴급', important: '중요', normal: '' };
+    items.push({ type: 'notice', notice_id: n.id, title: `${pLabel[n.priority] ? '[' + pLabel[n.priority] + '] ' : ''}${n.title}`, detail: '', sub: '공지사항', time: n.created_at });
+  });
+
+  const today = new Date().toISOString().split('T')[0];
+  const todoResult = await query(`
+    SELECT id, title, due_date FROM todos
+    WHERE user_id = $1 AND completed = FALSE AND due_date IS NOT NULL AND due_date <= $2
+    ORDER BY due_date ASC LIMIT 10
+  `, [userId, today]);
+  todoResult.rows.forEach(t => {
+    items.push({ type: 'todo', todo_id: t.id, title: `할 일 마감: ${t.title}`, detail: '', sub: `마감일: ${(t.due_date||'').split('T')[0]}`, time: t.due_date });
+  });
+
+  items.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+  res.json(items.slice(0, 30));
+});
+
 // ─── 댓글/피드백 ───
 app.get('/api/reports/:id/comments', authMiddleware, async (req, res) => {
   const result = await query('SELECT * FROM comments WHERE report_id = $1 ORDER BY created_at ASC', [req.params.id]);

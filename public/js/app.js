@@ -82,6 +82,8 @@ async function checkAuth() {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
     navigate('home');
+    setTimeout(checkNotiCount, 2000);
+    setInterval(checkNotiCount, 120000);
   }
 }
 
@@ -3852,6 +3854,74 @@ async function doRenderWf(code) {
   } catch (e) {
     area.innerHTML = '<p style="color:var(--gray-500); font-size:13px; text-align:center;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 알림 센터 ───
+async function showNotifications() {
+  const items = await api('/api/notifications') || [];
+  const typeIcon = { comment: '&#128172;', approval: '&#9989;', notice: '&#128227;', todo: '&#9888;&#65039;' };
+  const typeColor = { comment: '#3b82f6', approval: '#10b981', notice: '#f59e0b', todo: '#ef4444' };
+  const typeLabel = { comment: '댓글', approval: '결재', notice: '공지', todo: '할 일' };
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('home')" style="margin-bottom:12px;">&larr; 홈으로</button>
+    <p class="section-title">&#128276; 알림 센터</p>
+    ${items.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#128276;</div><div class="empty-text">새로운 알림이 없습니다</div></div>' :
+      items.map(n => `
+        <div class="card" style="padding:10px; margin-bottom:6px; cursor:pointer; border-left:3px solid ${typeColor[n.type]};" onclick="${notiAction(n)}">
+          <div style="display:flex; align-items:flex-start; gap:10px;">
+            <span style="font-size:18px; flex-shrink:0; margin-top:2px;">${typeIcon[n.type]}</span>
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+                <span style="font-size:10px; padding:1px 6px; border-radius:3px; background:${typeColor[n.type]}22; color:${typeColor[n.type]}; font-weight:600;">${typeLabel[n.type]}</span>
+                <span style="font-size:11px; color:var(--gray-400);">${formatNotiTime(n.time)}</span>
+              </div>
+              <div style="font-size:13px; font-weight:600;">${escHtml(n.title)}</div>
+              ${n.detail ? `<div style="font-size:12px; color:var(--gray-500); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(n.detail)}</div>` : ''}
+              ${n.sub ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">${escHtml(n.sub)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('')}
+  `;
+  localStorage.setItem('lastNotiCheck', new Date().toISOString());
+  const badge = document.getElementById('notiBadge');
+  if (badge) badge.style.display = 'none';
+}
+
+function notiAction(n) {
+  if (n.type === 'comment' || n.type === 'approval') return `viewReport('${n.report_id}')`;
+  if (n.type === 'notice') return `showNoticeDetail('${n.notice_id}')`;
+  if (n.type === 'todo') return `showTodoPage()`;
+  return '';
+}
+
+function formatNotiTime(t) {
+  if (!t) return '';
+  const d = new Date(t);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 60000);
+  if (diff < 1) return '방금';
+  if (diff < 60) return `${diff}분 전`;
+  if (diff < 1440) return `${Math.floor(diff / 60)}시간 전`;
+  if (diff < 10080) return `${Math.floor(diff / 1440)}일 전`;
+  return t.substring(0, 10);
+}
+
+async function checkNotiCount() {
+  try {
+    const items = await api('/api/notifications');
+    if (!items || items.length === 0) return;
+    const lastCheck = localStorage.getItem('lastNotiCheck');
+    const badge = document.getElementById('notiBadge');
+    if (!badge) return;
+    if (lastCheck) {
+      const newCount = items.filter(n => new Date(n.time) > new Date(lastCheck)).length;
+      badge.style.display = newCount > 0 ? 'block' : 'none';
+    } else {
+      badge.style.display = items.length > 0 ? 'block' : 'none';
+    }
+  } catch (e) {}
 }
 
 // ─── 할 일 관리 ───
