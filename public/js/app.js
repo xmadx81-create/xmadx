@@ -1410,6 +1410,10 @@ async function renderMore() {
         <span class="qa-label">내 정보</span>
       </button>
       ${currentUser && currentUser.isAdmin ? `
+      <button class="quick-action-btn" onclick="showTeamDashboard()" style="border:2px solid #4338ca;">
+        <span class="qa-icon">&#128101;</span>
+        <span class="qa-label" style="color:#4338ca; font-weight:700;">팀 실적</span>
+      </button>
       <button class="quick-action-btn" onclick="showAdminPanel()" style="border:2px solid var(--danger);">
         <span class="qa-icon">&#128272;</span>
         <span class="qa-label" style="color:var(--danger); font-weight:700;">시스템 관리</span>
@@ -4053,6 +4057,128 @@ async function showMonthlySummary() {
         ${d.categories.length >= 3 ? '&#9989; 다양한 유형의 업무를 수행하고 있습니다.' : d.categories.length === 1 ? `&#9888;&#65039; ${d.categories[0].name} 업무에 편중되어 있습니다.` : ''}
         ${d.top_tasks.length > 0 ? `<br>&#128293; 핵심 업무: ${d.top_tasks.slice(0, 3).map(t => t.task).join(', ')}` : ''}
         ${d.attendance.late > 2 ? `<br>&#9888;&#65039; 지각 ${d.attendance.late}회로 출근 관리가 필요합니다.` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// ─── 팀 실적 대시보드 ───
+let teamDashMonth = new Date().toISOString().substring(0, 7);
+
+async function showTeamDashboard() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">팀 실적 분석 중...</p>';
+
+  const d = await api(`/api/team-dashboard?month=${teamDashMonth}`);
+  if (!d) return;
+
+  const ts = d.team_summary;
+  const [year, mon] = teamDashMonth.split('-').map(Number);
+
+  const medalIcons = ['&#129351;', '&#129352;', '&#129353;'];
+
+  document.getElementById('mainContent').innerHTML = `
+    <!-- 헤더 -->
+    <div class="card" style="padding:16px; margin-bottom:16px; background:linear-gradient(135deg, #4338ca, #6366f1); color:#fff; border-radius:12px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <button class="btn btn-sm" style="background:rgba(255,255,255,0.2); color:#fff; border:none;" onclick="teamDashMonth=prevMonth(teamDashMonth); showTeamDashboard();">&lsaquo;</button>
+        <div style="text-align:center;">
+          <div style="font-size:18px; font-weight:800;">&#128101; 팀 실적 대시보드</div>
+          <div style="font-size:13px; opacity:0.85; margin-top:2px;">${year}년 ${mon}월</div>
+        </div>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,0.2); color:#fff; border:none;" onclick="teamDashMonth=nextMonth(teamDashMonth); showTeamDashboard();">&rsaquo;</button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
+        <div style="padding:10px; background:rgba(255,255,255,0.15); border-radius:8px; text-align:center;">
+          <div style="font-size:20px; font-weight:800;">${ts.total_reports}</div>
+          <div style="font-size:11px; opacity:0.8;">총 보고서</div>
+        </div>
+        <div style="padding:10px; background:rgba(255,255,255,0.15); border-radius:8px; text-align:center;">
+          <div style="font-size:20px; font-weight:800;">${ts.avg_fill_rate}%</div>
+          <div style="font-size:11px; opacity:0.8;">평균 작성률</div>
+        </div>
+        <div style="padding:10px; background:rgba(255,255,255,0.15); border-radius:8px; text-align:center;">
+          <div style="font-size:20px; font-weight:800;">${ts.avg_hours || '-'}h</div>
+          <div style="font-size:11px; opacity:0.8;">평균 근무시간</div>
+        </div>
+        <div style="padding:10px; background:rgba(255,255,255,0.15); border-radius:8px; text-align:center;">
+          <div style="font-size:20px; font-weight:800;">${ts.total_late}</div>
+          <div style="font-size:11px; opacity:0.8;">총 지각</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 팀원 순위 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#127942; 업무일지 작성 순위</div>
+      ${d.members.map((m, i) => {
+        const barColor = m.fill_rate >= 80 ? '#16a34a' : m.fill_rate >= 50 ? '#d97706' : '#dc2626';
+        return `
+        <div style="padding:10px; margin-bottom:8px; background:${i < 3 ? '#fefce8' : 'var(--gray-50)'}; border-radius:10px; border-left:3px solid ${i < 3 ? '#eab308' : 'var(--gray-300)'};">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:${i < 3 ? '18' : '14'}px;">${i < 3 ? medalIcons[i] : (i+1)+'.'}</span>
+              <div>
+                <span style="font-size:14px; font-weight:700;">${escHtml(m.name)}</span>
+                ${m.position ? `<span style="font-size:11px; color:var(--gray-400); margin-left:4px;">${escHtml(m.position)}</span>` : ''}
+              </div>
+            </div>
+            <span style="font-size:16px; font-weight:800; color:${barColor};">${m.fill_rate}%</span>
+          </div>
+          <div style="height:6px; background:var(--gray-200); border-radius:3px; overflow:hidden; margin-bottom:6px;">
+            <div style="height:100%; width:${Math.min(m.fill_rate, 100)}%; background:${barColor}; border-radius:3px; transition:width 0.5s;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--gray-500);">
+            <span>&#128221; ${m.reports}건</span>
+            <span>&#9989; 완료 ${m.completed}</span>
+            <span>&#128339; ${m.avg_hours || '-'}h</span>
+            <span>${m.att_late > 0 ? '<span style="color:#dc2626;">지각 '+m.att_late+'</span>' : '정상출근'}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- 상세 비교 테이블 -->
+    <div class="card" style="padding:14px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">&#128202; 상세 비교</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; font-size:12px; border-collapse:collapse;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--gray-300);">
+              <th style="text-align:left; padding:6px 4px;">이름</th>
+              <th style="text-align:center; padding:6px 4px;">보고서</th>
+              <th style="text-align:center; padding:6px 4px;">출근일</th>
+              <th style="text-align:center; padding:6px 4px;">할일</th>
+              <th style="text-align:center; padding:6px 4px;">댓글</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${d.members.map(m => `
+              <tr style="border-bottom:1px solid var(--gray-100);">
+                <td style="padding:6px 4px; font-weight:600;">${escHtml(m.name)}</td>
+                <td style="text-align:center; padding:6px 4px;">${m.reports}/${d.work_days}</td>
+                <td style="text-align:center; padding:6px 4px;">${m.att_days}일</td>
+                <td style="text-align:center; padding:6px 4px;">${m.todo_done}/${m.todo_total}</td>
+                <td style="text-align:center; padding:6px 4px;">${m.comments}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 팀 종합 평가 -->
+    <div class="card" style="padding:14px; margin-bottom:16px; background:linear-gradient(135deg, #f0f9ff, #e0f2fe);">
+      <div style="font-size:15px; font-weight:700; margin-bottom:10px; color:#0369a1;">&#128161; 팀 종합 평가</div>
+      <div style="font-size:13px; line-height:1.8; color:#0c4a6e;">
+        ${ts.avg_fill_rate >= 80 ? '&#9989; 팀 전체 작성률이 우수합니다. 꾸준한 업무 기록이 잘 이루어지고 있습니다.' :
+          ts.avg_fill_rate >= 50 ? '&#9888;&#65039; 팀 평균 작성률이 보통 수준입니다. 미작성 팀원에 대한 독려가 필요합니다.' :
+          '&#10060; 팀 평균 작성률이 낮습니다. 업무일지 작성을 강화해주세요.'}<br>
+        ${ts.total_late > 5 ? `&#9888;&#65039; 이번 달 총 지각 ${ts.total_late}회로 출근 관리가 필요합니다.` :
+          ts.total_late > 0 ? `&#128161; 지각 ${ts.total_late}회로 비교적 양호합니다.` :
+          '&#9989; 지각 없이 출근 관리가 잘 되고 있습니다.'}<br>
+        ${d.members.filter(m => m.fill_rate === 0).length > 0 ?
+          `&#10060; 미작성 팀원: ${d.members.filter(m => m.fill_rate === 0).map(m => m.name).join(', ')}` : ''}
       </div>
     </div>
   `;

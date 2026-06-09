@@ -2098,6 +2098,81 @@ app.get('/api/monthly-summary', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 팀 실적 대시보드 ───
+app.get('/api/team-dashboard', adminMiddleware, async (req, res) => {
+  const month = req.query.month || new Date().toISOString().substring(0, 7);
+  const [sy, sm] = month.split('-').map(Number);
+  const daysInMonth = new Date(sy, sm, 0).getDate();
+  let workDays = 0;
+  for (let d = 1; d <= daysInMonth; d++) { const dow = new Date(sy, sm - 1, d).getDay(); if (dow > 0 && dow < 6) workDays++; }
+
+  const usersResult = await query('SELECT id, name, position, phone FROM users ORDER BY name');
+  const users = usersResult.rows;
+
+  const members = [];
+
+  for (const u of users) {
+    const repResult = await query(`
+      SELECT COUNT(*) as cnt,
+        COUNT(DISTINCT work_category) as cat_cnt,
+        COUNT(CASE WHEN result_status ILIKE '%완료%' OR result_status ILIKE '%성공%' THEN 1 END) as completed
+      FROM work_reports WHERE author_id = $1 AND TO_CHAR(report_date, 'YYYY-MM') = $2
+    `, [u.id, month]);
+    const rep = repResult.rows[0];
+
+    const attResult = await query(`
+      SELECT COUNT(*) as days,
+        COUNT(CASE WHEN status = 'late' THEN 1 END) as late,
+        AVG(EXTRACT(EPOCH FROM (check_out - check_in))/3600) as avg_hours
+      FROM attendance WHERE user_id = $1 AND TO_CHAR(work_date, 'YYYY-MM') = $2 AND check_out IS NOT NULL
+    `, [u.id, month]);
+    const att = attResult.rows[0];
+
+    const todoResult = await query(`
+      SELECT COUNT(*) as total, COUNT(CASE WHEN done = true THEN 1 END) as done
+      FROM todos WHERE user_id = $1 AND TO_CHAR(created_at, 'YYYY-MM') = $2
+    `, [u.id, month]);
+    const todo = todoResult.rows[0];
+
+    const commentResult = await query(`
+      SELECT COUNT(*) as cnt FROM comments WHERE user_id = $1 AND TO_CHAR(created_at, 'YYYY-MM') = $2
+    `, [u.id, month]);
+
+    const reportCount = parseInt(rep.cnt) || 0;
+    const fillRate = workDays > 0 ? Math.round(reportCount / workDays * 100) : 0;
+
+    members.push({
+      id: u.id, name: u.name, position: u.position,
+      reports: reportCount,
+      fill_rate: fillRate,
+      categories: parseInt(rep.cat_cnt) || 0,
+      completed: parseInt(rep.completed) || 0,
+      att_days: parseInt(att.days) || 0,
+      att_late: parseInt(att.late) || 0,
+      avg_hours: att.avg_hours ? parseFloat(att.avg_hours).toFixed(1) : null,
+      todo_total: parseInt(todo.total) || 0,
+      todo_done: parseInt(todo.done) || 0,
+      comments: parseInt(commentResult.rows[0].cnt) || 0
+    });
+  }
+
+  members.sort((a, b) => b.reports - a.reports);
+
+  const teamTotal = members.reduce((s, m) => s + m.reports, 0);
+  const teamAvgFill = members.length ? Math.round(members.reduce((s, m) => s + m.fill_rate, 0) / members.length) : 0;
+  const teamAvgHours = (() => {
+    const hrs = members.filter(m => m.avg_hours).map(m => parseFloat(m.avg_hours));
+    return hrs.length ? (hrs.reduce((a, b) => a + b, 0) / hrs.length).toFixed(1) : null;
+  })();
+  const totalLate = members.reduce((s, m) => s + m.att_late, 0);
+
+  res.json({
+    month, work_days: workDays,
+    team_summary: { total_reports: teamTotal, avg_fill_rate: teamAvgFill, avg_hours: teamAvgHours, total_late: totalLate, member_count: members.length },
+    members
+  });
+});
+
 // ─── 주간 업무 보고서 ───
 app.get('/api/weekly-report', authMiddleware, async (req, res) => {
   const userId = req.query.user_id || req.session.userId;
