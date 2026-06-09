@@ -116,7 +116,12 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS meeting_notes (
       id TEXT PRIMARY KEY, notion_id TEXT UNIQUE, title TEXT NOT NULL,
       meeting_date DATE NOT NULL, summary TEXT, notion_url TEXT,
-      created_at TIMESTAMP DEFAULT NOW())`
+      created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS notices (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
+      priority TEXT DEFAULT 'normal', pinned BOOLEAN DEFAULT FALSE,
+      active BOOLEAN DEFAULT TRUE, author_name TEXT DEFAULT '관리자',
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
     await query(sql);

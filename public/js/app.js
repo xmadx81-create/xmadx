@@ -116,9 +116,10 @@ function isManager() {
 async function renderHome() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-  const [reports, dash] = await Promise.all([
+  const [reports, dash, notices] = await Promise.all([
     api(`/api/reports?from=${weekAgo}&to=${today}`),
-    api('/api/dashboard')
+    api('/api/dashboard'),
+    api('/api/notices')
   ]);
   const rpts = reports || [];
   const d = dash || {};
@@ -173,11 +174,34 @@ async function renderHome() {
     `;
   }
 
+  const activeNotices = (notices || []).filter(n => n.active);
+  const pinnedNotices = activeNotices.filter(n => n.pinned);
+  const normalNotices = activeNotices.filter(n => !n.pinned);
+  const showNotices = [...pinnedNotices, ...normalNotices].slice(0, 3);
+
+  const priorityStyle = { urgent: 'background:#fef2f2; border-left:4px solid #ef4444; color:#991b1b;', important: 'background:#fffbeb; border-left:4px solid #f59e0b; color:#92400e;', normal: 'background:#f0f9ff; border-left:4px solid #3b82f6; color:#1e40af;' };
+  const priorityIcon = { urgent: '&#128680;', important: '&#9888;&#65039;', normal: '&#128227;' };
+
   document.getElementById('mainContent').innerHTML = `
     <div style="margin-bottom:20px;">
       <p style="font-size:15px; color:var(--gray-500);">안녕하세요,</p>
       <p style="font-size:22px; font-weight:600;">${currentUser.name} ${currentUser.position || ''}님</p>
     </div>
+
+    ${showNotices.length > 0 ? `
+    <div style="margin-bottom:16px;">
+      ${showNotices.map(n => `
+        <div onclick="showNoticeDetail('${n.id}')" style="${priorityStyle[n.priority] || priorityStyle.normal} padding:10px 12px; border-radius:8px; margin-bottom:6px; cursor:pointer;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:14px;">${priorityIcon[n.priority] || priorityIcon.normal}</span>
+            ${n.pinned ? '<span style="font-size:10px; background:#ef4444; color:#fff; padding:1px 5px; border-radius:3px;">고정</span>' : ''}
+            <span style="font-size:13px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(n.title)}</span>
+            <span style="font-size:11px; opacity:0.6; white-space:nowrap;">${(n.created_at||'').substring(0,10)}</span>
+          </div>
+        </div>
+      `).join('')}
+      ${activeNotices.length > 3 ? `<button class="btn btn-outline btn-sm btn-block" onclick="showNoticesList()" style="margin-top:4px;">공지사항 전체보기 (${activeNotices.length}건)</button>` : ''}
+    </div>` : ''}
 
     <div class="stats-row">
       <div class="stat-card">
@@ -1164,6 +1188,14 @@ async function renderMore() {
   fab.style.display = 'none';
 
   document.getElementById('mainContent').innerHTML = `
+    <p class="section-title">&#128227; 공지사항</p>
+    <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showNoticesList()" style="border:2px solid #f59e0b; background:#fffbeb;">
+        <span class="qa-icon">&#128227;</span>
+        <span class="qa-label" style="color:#92400e; font-weight:700;">공지사항</span>
+      </button>
+    </div>
+
     <p class="section-title">&#128203; 업무 참조</p>
     <div class="quick-actions">
       <button class="quick-action-btn" onclick="showTaskMaster()">
@@ -2577,6 +2609,7 @@ async function renderAdminPage() {
       <button class="tab ${adminTab === 'staff' ? 'active' : ''}" onclick="switchAdminTab('staff')">사전승인 인원</button>
       <button class="tab ${adminTab === 'users' ? 'active' : ''}" onclick="switchAdminTab('users')">회원관리</button>
       <button class="tab ${adminTab === 'register' ? 'active' : ''}" onclick="switchAdminTab('register')">직접가입</button>
+      <button class="tab ${adminTab === 'notices' ? 'active' : ''}" onclick="switchAdminTab('notices')">공지사항</button>
       <button class="tab ${adminTab === 'insights' ? 'active' : ''}" onclick="switchAdminTab('insights')">인사이트</button>
     </div>
     <div id="adminTabContent"></div>
@@ -2588,6 +2621,7 @@ async function renderAdminPage() {
   if (adminTab === 'staff') renderAdminStaffTab();
   else if (adminTab === 'users') renderAdminUsersTab();
   else if (adminTab === 'register') renderAdminRegisterTab();
+  else if (adminTab === 'notices') renderAdminNoticesTab();
   else if (adminTab === 'insights') renderInsightsTab();
 }
 
@@ -3738,6 +3772,127 @@ async function doRenderWf(code) {
   } catch (e) {
     area.innerHTML = '<p style="color:var(--gray-500); font-size:13px; text-align:center;">다이어그램 생성 중 오류가 발생했습니다.</p>';
   }
+}
+
+// ─── 공지사항 ───
+async function showNoticesList() {
+  const notices = await api('/api/notices') || [];
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('home')" style="margin-bottom:12px;">&larr; 홈으로</button>
+    <p class="section-title">&#128227; 공지사항 (${notices.length}건)</p>
+    ${notices.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#128227;</div><div class="empty-text">등록된 공지사항이 없습니다</div></div>' : notices.map(n => {
+      const pColor = { urgent: '#ef4444', important: '#f59e0b', normal: '#3b82f6' };
+      const pLabel = { urgent: '긴급', important: '중요', normal: '일반' };
+      return `
+      <div class="list-item" onclick="showNoticeDetail('${n.id}')" style="cursor:pointer;">
+        <div class="list-item-content">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+            ${n.pinned ? '<span style="font-size:10px; background:#ef4444; color:#fff; padding:1px 5px; border-radius:3px;">고정</span>' : ''}
+            <span style="font-size:10px; background:${pColor[n.priority] || pColor.normal}22; color:${pColor[n.priority] || pColor.normal}; padding:1px 6px; border-radius:3px; font-weight:600;">${pLabel[n.priority] || '일반'}</span>
+          </div>
+          <div class="list-item-title">${escHtml(n.title)}</div>
+          <div class="list-item-sub">${(n.created_at||'').substring(0,10)} · ${escHtml(n.author_name || '관리자')}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+async function showNoticeDetail(id) {
+  const notices = await api('/api/notices') || [];
+  const n = notices.find(x => x.id === id);
+  if (!n) { toast('공지사항을 찾을 수 없습니다'); return; }
+  const pColor = { urgent: '#ef4444', important: '#f59e0b', normal: '#3b82f6' };
+  const pLabel = { urgent: '긴급', important: '중요', normal: '일반' };
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showNoticesList()" style="margin-bottom:12px;">&larr; 목록으로</button>
+    <div class="card" style="padding:16px;">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+        ${n.pinned ? '<span style="font-size:11px; background:#ef4444; color:#fff; padding:2px 6px; border-radius:4px;">고정</span>' : ''}
+        <span style="font-size:11px; background:${pColor[n.priority] || pColor.normal}22; color:${pColor[n.priority] || pColor.normal}; padding:2px 7px; border-radius:4px; font-weight:600;">${pLabel[n.priority] || '일반'}</span>
+      </div>
+      <h3 style="font-size:18px; font-weight:700; margin-bottom:8px;">${escHtml(n.title)}</h3>
+      <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">${(n.created_at||'').substring(0,16).replace('T',' ')} · ${escHtml(n.author_name || '관리자')}</p>
+      <div style="font-size:14px; line-height:1.8; white-space:pre-wrap;">${escHtml(n.content)}</div>
+    </div>
+  `;
+}
+
+// ─── 공지사항 관리 (관리자) ───
+async function renderAdminNoticesTab() {
+  const notices = await api('/api/notices?all=1') || [];
+  document.getElementById('adminTabContent').innerHTML = `
+    <p class="section-title">공지사항 관리</p>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:16px;">총 ${notices.length}건 등록됨</p>
+
+    <div class="card" style="padding:12px; margin-bottom:16px;">
+      <p style="font-weight:600; margin-bottom:8px;">새 공지 작성</p>
+      <div class="form-group">
+        <input type="text" id="noticeTitle" class="form-control" placeholder="제목">
+      </div>
+      <div class="form-group">
+        <textarea id="noticeContent" class="form-control" rows="4" placeholder="내용" style="resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div class="form-group" style="flex:1;">
+          <select id="noticePriority" class="form-control">
+            <option value="normal">일반</option>
+            <option value="important">중요</option>
+            <option value="urgent">긴급</option>
+          </select>
+        </div>
+        <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;">
+          <input type="checkbox" id="noticePinned"> 상단 고정
+        </label>
+      </div>
+      <button class="btn btn-success btn-block" onclick="createNotice()">공지 등록</button>
+    </div>
+
+    <p class="section-title">등록된 공지</p>
+    ${notices.length === 0 ? '<p style="font-size:13px; color:var(--gray-500); text-align:center;">등록된 공지가 없습니다</p>' : notices.map(n => {
+      const pColor = { urgent: '#ef4444', important: '#f59e0b', normal: '#3b82f6' };
+      const pLabel = { urgent: '긴급', important: '중요', normal: '일반' };
+      return `
+      <div class="card" style="padding:10px; margin-bottom:6px; ${!n.active ? 'opacity:0.5;' : ''}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:4px; margin-bottom:4px; flex-wrap:wrap;">
+              ${n.pinned ? '<span style="font-size:10px; background:#ef4444; color:#fff; padding:1px 4px; border-radius:3px;">고정</span>' : ''}
+              <span style="font-size:10px; background:${pColor[n.priority]}22; color:${pColor[n.priority]}; padding:1px 5px; border-radius:3px; font-weight:600;">${pLabel[n.priority]}</span>
+              ${!n.active ? '<span style="font-size:10px; color:#999;">비활성</span>' : '<span style="font-size:10px; color:var(--success);">게시중</span>'}
+            </div>
+            <div style="font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(n.title)}</div>
+            <div style="font-size:11px; color:var(--gray-500);">${(n.created_at||'').substring(0,10)}</div>
+          </div>
+          <div style="display:flex; gap:4px; flex-shrink:0; margin-left:8px;">
+            <button class="btn btn-outline btn-sm" onclick="toggleNoticeActive('${n.id}', ${!n.active})" style="font-size:11px; padding:3px 8px;">${n.active ? '숨김' : '게시'}</button>
+            <button class="btn btn-sm" onclick="deleteNotice('${n.id}')" style="font-size:11px; padding:3px 8px; color:var(--danger); border:1px solid var(--danger);">삭제</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+async function createNotice() {
+  const title = document.getElementById('noticeTitle').value.trim();
+  const content = document.getElementById('noticeContent').value.trim();
+  const priority = document.getElementById('noticePriority').value;
+  const pinned = document.getElementById('noticePinned').checked;
+  if (!title || !content) { toast('제목과 내용을 입력하세요'); return; }
+  const res = await api('/api/notices', { method: 'POST', body: { title, content, priority, pinned } });
+  if (res) { toast('공지가 등록되었습니다'); renderAdminNoticesTab(); }
+}
+
+async function toggleNoticeActive(id, active) {
+  const res = await api(`/api/notices/${id}`, { method: 'PUT', body: { active } });
+  if (res) { toast(active ? '공지가 게시되었습니다' : '공지가 숨김 처리되었습니다'); renderAdminNoticesTab(); }
+}
+
+async function deleteNotice(id) {
+  if (!confirm('이 공지를 삭제하시겠습니까?')) return;
+  const res = await api(`/api/notices/${id}`, { method: 'DELETE' });
+  if (res) { toast('공지가 삭제되었습니다'); renderAdminNoticesTab(); }
 }
 
 // 초기화

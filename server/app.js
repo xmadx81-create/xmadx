@@ -1976,6 +1976,43 @@ app.get('/api/personal-insight', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 공지사항 ───
+app.get('/api/notices', authMiddleware, async (req, res) => {
+  const all = req.query.all === '1';
+  const sql = all
+    ? 'SELECT * FROM notices ORDER BY pinned DESC, created_at DESC'
+    : 'SELECT * FROM notices WHERE active = TRUE ORDER BY pinned DESC, created_at DESC';
+  const result = await query(sql);
+  res.json(result.rows);
+});
+
+app.post('/api/notices', adminMiddleware, async (req, res) => {
+  const { title, content, priority, pinned } = req.body;
+  if (!title || !content) return res.status(400).json({ error: '제목과 내용을 입력하세요' });
+  const id = uuidv4();
+  await query(
+    `INSERT INTO notices (id, title, content, priority, pinned) VALUES ($1, $2, $3, $4, $5)`,
+    [id, title, content, priority || 'normal', pinned || false]
+  );
+  res.json({ id });
+});
+
+app.put('/api/notices/:id', adminMiddleware, async (req, res) => {
+  const { title, content, priority, pinned, active } = req.body;
+  await query(
+    `UPDATE notices SET title = COALESCE($1, title), content = COALESCE($2, content),
+     priority = COALESCE($3, priority), pinned = COALESCE($4, pinned),
+     active = COALESCE($5, active), updated_at = NOW() WHERE id = $6`,
+    [title, content, priority, pinned, active, req.params.id]
+  );
+  res.json({ ok: true });
+});
+
+app.delete('/api/notices/:id', adminMiddleware, async (req, res) => {
+  await query('DELETE FROM notices WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);
