@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#1a73e8">
   <title>석유사업본부 업무시스템</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260609p">
+  <link rel="stylesheet" href="/css/style.css?v=20260609q">
   <link rel="manifest" href="/manifest.json">
 </head>
 <body>
@@ -399,6 +399,16 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260609x"></script>
+<script src="/js/app.js?v=20260609y"></script>
+<script>
+window.onerror = function(msg, url, line) {
+  document.title = 'ERR:' + line + ':' + msg;
+  console.error('JS Error:', msg, 'at line', line);
+};
+if (typeof login !== 'function') {
+  document.title = 'app.js 로드 실패';
+  document.getElementById('loginScreen').innerHTML = '<div style="padding:40px; text-align:center; color:#fff;"><h2>앱 로드 오류</h2><p>새로고침 해주세요 (캐시 삭제)</p><button onclick="location.reload(true)" style="margin-top:16px; padding:12px 24px; font-size:16px; border:2px solid #fff; background:none; color:#fff; border-radius:8px; cursor:pointer;">새로고침</button></div>';
+}
+</script>
 </body>
 </html>
