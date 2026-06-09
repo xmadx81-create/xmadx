@@ -227,6 +227,67 @@ app.get('/api/users', authMiddleware, async (req, res) => {
   res.json(result.rows);
 });
 
+// ─── 대시보드 ───
+app.get('/api/dashboard', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const today = new Date().toISOString().split('T')[0];
+
+  const weekDays = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000);
+    weekDays.push(d.toISOString().split('T')[0]);
+  }
+
+  const dailyResult = await query(`
+    SELECT report_date::text as d, COUNT(*) as cnt
+    FROM work_reports WHERE report_date >= $1
+    GROUP BY report_date ORDER BY report_date
+  `, [weekDays[0]]);
+  const dailyMap = {};
+  dailyResult.rows.forEach(r => { dailyMap[r.d] = parseInt(r.cnt); });
+  const weekActivity = weekDays.map(d => ({ date: d, day: ['일','월','화','수','목','금','토'][new Date(d).getDay()], count: dailyMap[d] || 0 }));
+
+  const myDailyResult = await query(`
+    SELECT report_date::text as d, COUNT(*) as cnt
+    FROM work_reports WHERE author_id = $1 AND report_date >= $2
+    GROUP BY report_date ORDER BY report_date
+  `, [userId, weekDays[0]]);
+  const myDailyMap = {};
+  myDailyResult.rows.forEach(r => { myDailyMap[r.d] = parseInt(r.cnt); });
+  const myWeekActivity = weekDays.map(d => ({ date: d, count: myDailyMap[d] || 0 }));
+
+  const catResult = await query(`
+    SELECT work_category, COUNT(*) as cnt FROM work_reports
+    WHERE author_id = $1 AND report_date >= $2 AND work_category IS NOT NULL
+    GROUP BY work_category ORDER BY cnt DESC
+  `, [userId, weekDays[0]]);
+
+  const monthStart = today.substring(0, 7) + '-01';
+  const monthResult = await query(`
+    SELECT COUNT(*) as cnt FROM work_reports WHERE author_id = $1 AND report_date >= $2
+  `, [userId, monthStart]);
+
+  const pendingResult = await query(`
+    SELECT COUNT(*) as cnt FROM approval_lines
+    WHERE approver_id = $1 AND status = 'pending'
+  `, [userId]);
+
+  const recentTaskResult = await query(`
+    SELECT what_task, work_category, COUNT(*) as cnt
+    FROM work_reports WHERE author_id = $1 AND what_task IS NOT NULL AND what_task != ''
+    GROUP BY what_task, work_category ORDER BY cnt DESC LIMIT 5
+  `, [userId]);
+
+  res.json({
+    week_activity: weekActivity,
+    my_week_activity: myWeekActivity,
+    my_categories: catResult.rows.map(r => ({ name: r.work_category, count: parseInt(r.cnt) })),
+    month_count: parseInt(monthResult.rows[0].cnt),
+    pending_approvals: parseInt(pendingResult.rows[0].cnt),
+    my_top_tasks: recentTaskResult.rows.map(r => ({ task: r.what_task, category: r.work_category, count: parseInt(r.cnt) }))
+  });
+});
+
 // ─── 업무일지 CRUD ───
 app.get('/api/reports', authMiddleware, async (req, res) => {
   const { type, category, from, to } = req.query;

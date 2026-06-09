@@ -116,11 +116,37 @@ function isManager() {
 async function renderHome() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-  const reports = await api(`/api/reports?from=${weekAgo}&to=${today}`) || [];
+  const [reports, dash] = await Promise.all([
+    api(`/api/reports?from=${weekAgo}&to=${today}`),
+    api('/api/dashboard')
+  ]);
+  const rpts = reports || [];
+  const d = dash || {};
 
-  const myReports = reports.filter(r => r.author_id === currentUser.id);
+  const myReports = rpts.filter(r => r.author_id === currentUser.id);
   const todayReports = myReports.filter(r => (r.report_date || '').split('T')[0] === today);
-  const othersReports = reports.filter(r => r.author_id !== currentUser.id);
+  const othersReports = rpts.filter(r => r.author_id !== currentUser.id);
+
+  const maxAct = Math.max(...(d.week_activity || []).map(a => a.count), 1);
+  const actChart = (d.week_activity || []).map(a => {
+    const h = Math.max(4, Math.round(a.count / maxAct * 60));
+    const myC = (d.my_week_activity || []).find(m => m.date === a.date);
+    const myH = myC ? Math.max(0, Math.round(myC.count / maxAct * 60)) : 0;
+    const isToday = a.date === today;
+    return `<div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+      <div style="font-size:10px; color:var(--gray-500); margin-bottom:2px;">${a.count > 0 ? a.count : ''}</div>
+      <div style="width:100%; max-width:28px; height:64px; display:flex; flex-direction:column; justify-content:flex-end; align-items:center;">
+        <div style="width:100%; height:${h}px; background:${isToday ? 'var(--primary)' : 'var(--gray-200)'}; border-radius:4px 4px 0 0; position:relative;">
+          ${myH > 0 ? `<div style="position:absolute; bottom:0; left:0; right:0; height:${myH}px; background:${isToday ? '#1557b0' : 'var(--primary)'}; border-radius:0 0 0 0; opacity:0.7;"></div>` : ''}
+        </div>
+      </div>
+      <div style="font-size:11px; ${isToday ? 'font-weight:700; color:var(--primary);' : 'color:var(--gray-500);'} margin-top:4px;">${a.day}</div>
+    </div>`;
+  }).join('');
+
+  const catColors = { '내근': '#1a73e8', '외근': '#34a853', '출장': '#ea4335' };
+  const myCats = d.my_categories || [];
+  const totalCat = myCats.reduce((s, c) => s + c.count, 0) || 1;
 
   let teamSection = '';
   if (isManager()) {
@@ -163,10 +189,58 @@ async function renderHome() {
         <div class="stat-label">이번 주</div>
       </div>
       <div class="stat-card">
+        <div class="stat-number">${d.month_count || 0}</div>
+        <div class="stat-label">이번 달</div>
+      </div>
+      ${d.pending_approvals > 0 ? `
+      <div class="stat-card" style="border:2px solid var(--danger); cursor:pointer;" onclick="navigate('reports')">
+        <div class="stat-number" style="color:var(--danger);">${d.pending_approvals}</div>
+        <div class="stat-label">결재대기</div>
+      </div>` : `
+      <div class="stat-card">
         <div class="stat-number">${myReports.filter(r => r.status === 'approved').length}</div>
         <div class="stat-label">결재완료</div>
-      </div>
+      </div>`}
     </div>
+
+    <!-- 주간 활동 그래프 -->
+    <div class="card" style="margin-bottom:16px; padding:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span style="font-size:14px; font-weight:700;">&#128202; 주간 활동</span>
+        <div style="display:flex; gap:8px; font-size:11px; color:var(--gray-500);">
+          <span style="display:flex; align-items:center; gap:3px;"><span style="width:8px; height:8px; background:var(--gray-200); border-radius:2px;"></span>전체</span>
+          <span style="display:flex; align-items:center; gap:3px;"><span style="width:8px; height:8px; background:var(--primary); border-radius:2px;"></span>나</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:4px; align-items:flex-end;">${actChart}</div>
+    </div>
+
+    ${myCats.length > 0 ? `
+    <!-- 이번 주 업무 유형 -->
+    <div class="card" style="margin-bottom:16px; padding:14px;">
+      <span style="font-size:14px; font-weight:700; display:block; margin-bottom:10px;">&#128200; 이번 주 업무 비중</span>
+      <div style="display:flex; border-radius:6px; overflow:hidden; height:24px; margin-bottom:8px;">
+        ${myCats.map(c => `<div style="width:${Math.round(c.count / totalCat * 100)}%; background:${catColors[c.name] || '#999'}; min-width:20px;" title="${c.name} ${c.count}건"></div>`).join('')}
+      </div>
+      <div style="display:flex; gap:12px; font-size:12px;">
+        ${myCats.map(c => `<span style="display:flex; align-items:center; gap:3px;"><span style="width:8px; height:8px; border-radius:2px; background:${catColors[c.name] || '#999'};"></span>${c.name} ${c.count}건</span>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${(d.my_top_tasks || []).length > 0 ? `
+    <!-- 자주 하는 업무 -->
+    <div class="card" style="margin-bottom:16px; padding:14px;">
+      <span style="font-size:14px; font-weight:700; display:block; margin-bottom:8px;">&#128293; 자주 하는 업무</span>
+      ${d.my_top_tasks.map(t => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--gray-100);">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="badge badge-${t.category}" style="font-size:10px;">${t.category}</span>
+            <span style="font-size:13px;">${escHtml(t.task)}</span>
+          </div>
+          <span style="font-size:12px; color:var(--gray-500);">${t.count}회</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
 
     <p class="section-title">&#9889; 빠른 작성</p>
     <div class="quick-actions">
@@ -185,18 +259,6 @@ async function renderHome() {
       <button class="quick-action-btn" onclick="openWeeklyPlan()">
         <span class="qa-icon">&#128197;</span>
         <span class="qa-label">주간계획</span>
-      </button>
-    </div>
-
-    <p class="section-title">&#128218; 빠른 참조</p>
-    <div class="quick-actions">
-      <button class="quick-action-btn" onclick="showTaskMaster()">
-        <span class="qa-icon">&#128203;</span>
-        <span class="qa-label">주요업무표</span>
-      </button>
-      <button class="quick-action-btn" onclick="showManual()">
-        <span class="qa-icon">&#128214;</span>
-        <span class="qa-label">업무 매뉴얼</span>
       </button>
     </div>
 
