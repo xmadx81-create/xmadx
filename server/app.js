@@ -2098,6 +2098,38 @@ app.get('/api/monthly-summary', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 즐겨찾기 ───
+app.get('/api/bookmarks', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const result = await query(`
+    SELECT b.id, b.report_id, b.memo, b.created_at,
+      r.report_date, r.work_category, r.what_task, r.where_place, r.result_status
+    FROM bookmarks b JOIN work_reports r ON b.report_id = r.id
+    WHERE b.user_id = $1 ORDER BY b.created_at DESC
+  `, [userId]);
+  res.json(result.rows);
+});
+
+app.post('/api/bookmarks', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const { report_id, memo } = req.body;
+  const id = 'bm_' + Date.now();
+  await query('INSERT INTO bookmarks (id, user_id, report_id, memo) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, report_id) DO NOTHING', [id, userId, report_id, memo || '']);
+  res.json({ ok: true });
+});
+
+app.delete('/api/bookmarks/:reportId', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  await query('DELETE FROM bookmarks WHERE user_id = $1 AND report_id = $2', [userId, parseInt(req.params.reportId)]);
+  res.json({ ok: true });
+});
+
+app.get('/api/bookmarks/check/:reportId', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const result = await query('SELECT id FROM bookmarks WHERE user_id = $1 AND report_id = $2', [userId, parseInt(req.params.reportId)]);
+  res.json({ bookmarked: result.rows.length > 0 });
+});
+
 // ─── 팀 실적 대시보드 ───
 app.get('/api/team-dashboard', adminMiddleware, async (req, res) => {
   const month = req.query.month || new Date().toISOString().substring(0, 7);

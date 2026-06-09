@@ -150,7 +150,11 @@ async function initDB() {
       title TEXT NOT NULL, description TEXT DEFAULT '',
       event_date DATE NOT NULL, event_time TEXT DEFAULT '',
       event_type TEXT DEFAULT '회의', color TEXT DEFAULT '#3b82f6',
-      created_at TIMESTAMP DEFAULT NOW())`
+      created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS bookmarks (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, report_id INTEGER NOT NULL,
+      memo TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(user_id, report_id))`
   ];
   for (const sql of tables) {
     await query(sql);

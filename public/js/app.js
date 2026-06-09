@@ -582,8 +582,14 @@ async function viewReport(id) {
   if (!data) return;
   const cmts = comments || [];
 
+  const bmCheck = await api(`/api/bookmarks/check/${id}`);
+  const isBm = bmCheck && bmCheck.bookmarked;
+
   document.getElementById('mainContent').innerHTML = `
-    <button class="btn btn-outline btn-sm" onclick="navigate('reports')" style="margin-bottom:16px;">&larr; 목록</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <button class="btn btn-outline btn-sm" onclick="navigate('reports')">&larr; 목록</button>
+      <button id="bookmarkBtn" onclick="toggleBookmark(${id})" style="background:none; border:none; font-size:24px; cursor:pointer; padding:4px;" title="${isBm ? '즐겨찾기 해제' : '즐겨찾기 추가'}">${isBm ? '&#11088;' : '&#9734;'}</button>
+    </div>
     <div class="card">
       <div class="card-header">
         <span class="badge badge-${data.work_category}">${data.work_category}</span>
@@ -1392,6 +1398,10 @@ async function renderMore() {
       <button class="quick-action-btn" onclick="showSchedulePage()" style="border:2px solid #0ea5e9;">
         <span class="qa-icon">&#128197;</span>
         <span class="qa-label" style="color:#0ea5e9; font-weight:700;">팀 일정</span>
+      </button>
+      <button class="quick-action-btn" onclick="showBookmarks()" style="border:2px solid #eab308;">
+        <span class="qa-icon">&#11088;</span>
+        <span class="qa-label" style="color:#eab308; font-weight:700;">즐겨찾기</span>
       </button>
       <button class="quick-action-btn" onclick="showWorkCalendar()" style="border:2px solid #8b5cf6;">
         <span class="qa-icon">&#128467;</span>
@@ -4062,6 +4072,63 @@ async function showMonthlySummary() {
   `;
 }
 
+// ─── 즐겨찾기 ───
+async function toggleBookmark(reportId) {
+  const check = await api(`/api/bookmarks/check/${reportId}`);
+  if (!check) return;
+
+  if (check.bookmarked) {
+    await api(`/api/bookmarks/${reportId}`, { method: 'DELETE' });
+    showToast('즐겨찾기에서 제거했습니다');
+  } else {
+    await api('/api/bookmarks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report_id: reportId }) });
+    showToast('즐겨찾기에 추가했습니다');
+  }
+  const starBtn = document.getElementById('bookmarkBtn');
+  if (starBtn) {
+    const recheck = await api(`/api/bookmarks/check/${reportId}`);
+    starBtn.innerHTML = recheck && recheck.bookmarked ? '&#11088;' : '&#9734;';
+    starBtn.title = recheck && recheck.bookmarked ? '즐겨찾기 해제' : '즐겨찾기 추가';
+  }
+}
+
+async function showBookmarks() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">즐겨찾기 로딩 중...</p>';
+
+  const data = await api('/api/bookmarks');
+  if (!data) return;
+
+  if (data.length === 0) {
+    document.getElementById('mainContent').innerHTML = `
+      <div style="text-align:center; padding:60px 20px;">
+        <div style="font-size:48px; margin-bottom:16px;">&#11088;</div>
+        <p style="font-size:16px; font-weight:600; color:var(--gray-600); margin-bottom:8px;">즐겨찾기가 비어있습니다</p>
+        <p style="font-size:13px; color:var(--gray-400);">업무일지 상세에서 &#9734; 버튼을 눌러 중요한 보고서를 저장하세요.</p>
+      </div>`;
+    return;
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
+      <span style="font-size:20px;">&#11088;</span>
+      <span style="font-size:18px; font-weight:800;">즐겨찾기</span>
+      <span style="font-size:13px; color:var(--gray-400);">${data.length}건</span>
+    </div>
+    ${data.map(b => {
+      const dt = (b.report_date || '').toString().split('T')[0];
+      return `
+      <div class="list-item" style="cursor:pointer; position:relative;" onclick="showReportDetail(${b.report_id})">
+        <div class="list-item-content">
+          <div class="list-item-title">&#11088; ${escHtml(b.what_task || '업무')}</div>
+          <div class="list-item-sub">${dt} ${b.where_place ? '| '+escHtml(b.where_place) : ''} ${b.result_status ? '| '+escHtml(b.result_status) : ''}</div>
+        </div>
+        ${b.work_category ? `<span class="badge badge-${b.work_category}" style="font-size:10px;">${escHtml(b.work_category)}</span>` : ''}
+      </div>`;
+    }).join('')}
+  `;
+}
+
 // ─── 팀 실적 대시보드 ───
 let teamDashMonth = new Date().toISOString().substring(0, 7);
 
@@ -4432,7 +4499,7 @@ function showCalDay(dateStr) {
       html += `<div style="margin-bottom:12px;">
         <div style="font-size:13px; font-weight:600; color:#2563eb; margin-bottom:6px;">&#128221; 업무일지 (${info.reports.length}건)</div>
         ${info.reports.map(r => `
-          <div class="list-item" onclick="showReportDetail(${r.id})" style="cursor:pointer; padding:8px;">
+          <div class="list-item" onclick="viewReport(${r.id})" style="cursor:pointer; padding:8px;">
             <div class="list-item-content">
               <div class="list-item-title">${escHtml(r.task || '업무')}</div>
               <div class="list-item-sub">${escHtml(r.category || '')} ${r.result ? '| ' + escHtml(r.result) : ''}</div>
