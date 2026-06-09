@@ -1411,6 +1411,10 @@ async function renderMore() {
         <span class="qa-icon">&#128337;</span>
         <span class="qa-label" style="color:#64748b; font-weight:700;">타임라인</span>
       </button>
+      <button class="quick-action-btn" onclick="showNotes()" style="border:2px solid #d97706;">
+        <span class="qa-icon">&#128221;</span>
+        <span class="qa-label" style="color:#d97706; font-weight:700;">빠른 메모</span>
+      </button>
       <button class="quick-action-btn" onclick="showWorkTable()">
         <span class="qa-icon">&#128202;</span>
         <span class="qa-label">업무표 생성</span>
@@ -4074,6 +4078,121 @@ async function showMonthlySummary() {
       </div>
     </div>
   `;
+}
+
+// ─── 빠른 메모 ───
+const noteColors = ['#fef3c7','#dcfce7','#dbeafe','#fce7f3','#f3e8ff','#fed7aa'];
+
+async function showNotes() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">메모 로딩 중...</p>';
+
+  const notes = await api('/api/notes');
+  if (!notes) return;
+
+  document.getElementById('mainContent').innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:20px;">&#128221;</span>
+        <span style="font-size:18px; font-weight:800;">빠른 메모</span>
+        <span style="font-size:13px; color:var(--gray-400);">${notes.length}개</span>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="showNoteEditor()">+ 새 메모</button>
+    </div>
+    <div id="notesList">
+      ${notes.length === 0 ? `
+        <div style="text-align:center; padding:40px 20px;">
+          <div style="font-size:48px; margin-bottom:16px;">&#128221;</div>
+          <p style="font-size:14px; color:var(--gray-500);">메모가 없습니다. 새 메모를 추가해보세요!</p>
+        </div>` :
+        `<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px;">
+          ${notes.map(n => renderNoteCard(n)).join('')}
+        </div>`}
+    </div>
+    <div id="noteEditorModal"></div>
+  `;
+}
+
+function renderNoteCard(n) {
+  const preview = (n.content || '').substring(0, 80);
+  const timeStr = (n.updated_at || n.created_at || '').toString().substring(0, 10);
+  return `
+    <div onclick="showNoteEditor('${n.id}')" style="background:${n.color || '#fef3c7'}; padding:12px; border-radius:10px; cursor:pointer; min-height:100px; position:relative; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+      ${n.pinned ? '<span style="position:absolute; top:6px; right:8px; font-size:14px;">&#128204;</span>' : ''}
+      <div style="font-size:13px; line-height:1.6; color:#1a1a1a; white-space:pre-wrap; word-break:break-word;">${escHtml(preview)}${(n.content || '').length > 80 ? '...' : ''}</div>
+      <div style="font-size:10px; color:rgba(0,0,0,0.35); margin-top:8px;">${timeStr}</div>
+    </div>`;
+}
+
+async function showNoteEditor(noteId) {
+  let note = { id: '', content: '', color: '#fef3c7', pinned: false };
+
+  if (noteId) {
+    const notes = await api('/api/notes');
+    if (notes) { const found = notes.find(n => n.id === noteId); if (found) note = found; }
+  }
+
+  const isNew = !noteId;
+
+  document.getElementById('noteEditorModal').innerHTML = `
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:2000; display:flex; align-items:flex-end; justify-content:center;" onclick="if(event.target===this)closeNoteEditor()">
+      <div style="background:#fff; width:100%; max-width:500px; border-radius:16px 16px 0 0; padding:20px; max-height:80vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="font-size:16px; font-weight:700;">${isNew ? '새 메모' : '메모 편집'}</span>
+          <button onclick="closeNoteEditor()" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+        </div>
+        <textarea id="noteContent" class="form-control" rows="8" placeholder="메모를 입력하세요..." style="font-size:14px; line-height:1.6; resize:none; background:${note.color}; border:none;">${escHtml(note.content)}</textarea>
+        <div style="display:flex; gap:8px; margin:12px 0; align-items:center;">
+          <span style="font-size:12px; color:var(--gray-500);">색상:</span>
+          ${noteColors.map(c => `
+            <div onclick="document.getElementById('noteContent').style.background='${c}'; document.getElementById('selNoteColor').value='${c}';"
+              style="width:24px; height:24px; border-radius:50%; background:${c}; cursor:pointer; border:2px solid ${c === note.color ? '#333' : 'transparent'};"></div>
+          `).join('')}
+          <input type="hidden" id="selNoteColor" value="${note.color}">
+        </div>
+        <div style="display:flex; gap:8px;">
+          ${!isNew ? `
+            <button class="btn btn-sm" onclick="toggleNotePin('${note.id}', ${!note.pinned})" style="background:${note.pinned ? '#fef3c7' : 'var(--gray-100)'}; border:none;">
+              ${note.pinned ? '&#128204; 고정 해제' : '&#128204; 고정'}
+            </button>
+            <button class="btn btn-sm" onclick="deleteNote('${note.id}')" style="background:#fee2e2; color:#dc2626; border:none;">삭제</button>
+          ` : ''}
+          <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="saveNote('${note.id}')">${isNew ? '저장' : '수정'}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function closeNoteEditor() {
+  const el = document.getElementById('noteEditorModal');
+  if (el) el.innerHTML = '';
+}
+
+async function saveNote(noteId) {
+  const content = document.getElementById('noteContent').value.trim();
+  if (!content) { showToast('내용을 입력해주세요'); return; }
+  const color = document.getElementById('selNoteColor').value;
+
+  if (noteId) {
+    await api(`/api/notes/${noteId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, color }) });
+  } else {
+    await api('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, color }) });
+  }
+  closeNoteEditor();
+  showNotes();
+}
+
+async function deleteNote(noteId) {
+  if (!confirm('이 메모를 삭제하시겠습니까?')) return;
+  await api(`/api/notes/${noteId}`, { method: 'DELETE' });
+  closeNoteEditor();
+  showNotes();
+}
+
+async function toggleNotePin(noteId, pinned) {
+  await api(`/api/notes/${noteId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pinned }) });
+  closeNoteEditor();
+  showNotes();
 }
 
 // ─── 활동 타임라인 ───

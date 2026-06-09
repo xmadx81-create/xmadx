@@ -154,7 +154,11 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS bookmarks (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, report_id INTEGER NOT NULL,
       memo TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
-      UNIQUE(user_id, report_id))`
+      UNIQUE(user_id, report_id))`,
+    `CREATE TABLE IF NOT EXISTS quick_notes (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL,
+      color TEXT DEFAULT '#fef3c7', pinned BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
     await query(sql);

@@ -2098,6 +2098,34 @@ app.get('/api/monthly-summary', authMiddleware, async (req, res) => {
   });
 });
 
+// ─── 빠른 메모 ───
+app.get('/api/notes', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const result = await query('SELECT * FROM quick_notes WHERE user_id = $1 ORDER BY pinned DESC, updated_at DESC', [userId]);
+  res.json(result.rows);
+});
+
+app.post('/api/notes', authMiddleware, async (req, res) => {
+  const userId = req.session.userId;
+  const { content, color } = req.body;
+  const id = 'qn_' + Date.now();
+  await query('INSERT INTO quick_notes (id, user_id, content, color) VALUES ($1, $2, $3, $4)', [id, userId, content, color || '#fef3c7']);
+  res.json({ ok: true, id });
+});
+
+app.put('/api/notes/:id', authMiddleware, async (req, res) => {
+  const { content, color, pinned } = req.body;
+  if (content !== undefined) await query('UPDATE quick_notes SET content = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3', [content, req.params.id, req.session.userId]);
+  if (color !== undefined) await query('UPDATE quick_notes SET color = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3', [color, req.params.id, req.session.userId]);
+  if (pinned !== undefined) await query('UPDATE quick_notes SET pinned = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3', [pinned, req.params.id, req.session.userId]);
+  res.json({ ok: true });
+});
+
+app.delete('/api/notes/:id', authMiddleware, async (req, res) => {
+  await query('DELETE FROM quick_notes WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+  res.json({ ok: true });
+});
+
 // ─── 활동 타임라인 ───
 app.get('/api/timeline', authMiddleware, async (req, res) => {
   const userId = req.query.user_id || req.session.userId;
