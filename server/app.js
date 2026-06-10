@@ -2923,6 +2923,6 @@ app.use((err, req, res, next) => {
     process.exit(1);
   }
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`석유사업본부 업무시스템 서버 실행: http://localhost:${PORT}`);
+    console.log(`WorkFlow 서버 실행: http://localhost:${PORT}`);
   });
 })();

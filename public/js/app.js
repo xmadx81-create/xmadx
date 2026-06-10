@@ -102,8 +102,8 @@ function navigate(page) {
   const fab = document.getElementById('fabBtn');
   fab.style.display = ['home', 'reports'].includes(page) ? 'flex' : 'none';
 
-  const titles = { home: '석유사업본부', reports: '업무일지', weekly: '주간계획', franchise: '가맹관리', more: '더보기' };
-  document.getElementById('pageTitle').textContent = titles[page] || '석유사업본부';
+  const titles = { home: 'WorkFlow', reports: '업무일지', weekly: '주간계획', franchise: '가맹관리', more: '더보기' };
+  document.getElementById('pageTitle').textContent = titles[page] || 'WorkFlow';
 
   const renderers = { home: renderHome, reports: renderReports, weekly: renderWeekly, franchise: renderFranchiseMain, more: renderMore };
   if (renderers[page]) renderers[page]();
@@ -1442,7 +1442,7 @@ async function renderMore() {
 
     <div class="card">
       <p class="card-title" style="margin-bottom:8px;">시스템 정보</p>
-      <p style="font-size:14px; color:var(--gray-500);">석유사업본부 업무공유 시스템 v2.0</p>
+      <p style="font-size:14px; color:var(--gray-500);">WorkFlow - Smart Work Manager v2.0</p>
       <p style="font-size:14px; color:var(--gray-500);">전국 지국/주요업무표 통합 관리</p>
     </div>
   `;
@@ -2955,7 +2955,7 @@ function renderAdminRegisterTab() {
       <div style="display:flex; gap:8px;">
         <div class="form-group" style="flex:1;">
           <label>부서</label>
-          <input type="text" id="arDept" class="form-control" value="석유사업본부">
+          <input type="text" id="arDept" class="form-control" value="">
         </div>
         <div class="form-group" style="flex:1;">
           <label>직급</label>
@@ -3771,7 +3771,7 @@ async function showOnboarding() {
 
     <div style="text-align:center; margin-bottom:20px;">
       <div style="font-size:36px; margin-bottom:8px;">&#127891;</div>
-      <p style="font-size:20px; font-weight:800;">석유사업본부 업무 가이드</p>
+      <p style="font-size:20px; font-weight:800;">WorkFlow 업무 가이드</p>
       <p style="font-size:13px; color:var(--gray-500);">이 가이드는 업무일지 ${data.total_reports}건 기반으로 자동 생성되었습니다</p>
     </div>
 

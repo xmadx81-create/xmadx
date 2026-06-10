@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#1a73e8">
-  <title>석유사업본부 업무시스템</title>
+  <title>WorkFlow - Smart Work Manager</title>
   <link rel="stylesheet" href="/css/style.css?v=20260610f">
   <link rel="manifest" href="/manifest.json">
 </head>
@@ -15,8 +15,8 @@
 <!-- ═══ 로그인 화면 ═══ -->
 <div id="loginScreen" class="login-screen">
   <div class="login-card">
-    <h1>석유사업본부</h1>
-    <p class="subtitle">업무공유 시스템</p>
+    <h1>WorkFlow</h1>
+    <p class="subtitle">Smart Work Manager</p>
     <div class="form-group">
       <label>연락처</label>
       <div style="display:flex; align-items:center; gap:4px;">
@@ -134,7 +134,7 @@
 
   <!-- 헤더 -->
   <header class="app-header">
-    <h1 id="pageTitle">석유사업본부</h1>
+    <h1 id="pageTitle">WorkFlow</h1>
     <div class="header-actions">
       <button class="header-btn" onclick="showGlobalSearch()" title="통합 검색">&#128269;</button>
       <button class="header-btn" onclick="showNotifications()" title="알림" style="position:relative;" id="notiBtn">&#128276;<span id="notiBadge" style="display:none; position:absolute; top:2px; right:2px; width:8px; height:8px; background:#ef4444; border-radius:50%;"></span></button>
@@ -399,7 +399,7 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260610f"></script>
+<script src="/js/app.js?v=20260610g"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;
