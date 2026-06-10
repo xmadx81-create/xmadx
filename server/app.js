@@ -144,75 +144,53 @@ app.put('/api/teams/:id', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ─── 가입신청 ───
+// ─── 회원가입 (자동승인, 누구나 가입 가능) ───
 app.post('/api/register', async (req, res) => {
   try {
-    const { name, phone, password, email, company_code, company_name, team_id } = req.body;
+    const { name, phone, password, email, company_code, company_name, team_id, position, department } = req.body;
     if (!name || !phone || !password) return res.status(400).json({ error: '이름, 연락처, 비밀번호를 입력해주세요' });
 
+    const existingResult = await query('SELECT id FROM users WHERE phone = $1', [phone]);
+    if (existingResult.rows.length > 0) return res.status(409).json({ error: '이미 가입된 연락처입니다. 로그인해주세요.' });
+
     let companyId = null;
+    let companyCode = null;
+    let isNewCompany = false;
 
     if (company_code) {
-      const compResult = await query('SELECT id FROM companies WHERE code = $1', [company_code]);
-      if (compResult.rows.length === 0) return res.status(400).json({ error: '존재하지 않는 회사 코드입니다' });
+      const compResult = await query('SELECT id FROM companies WHERE code = $1', [company_code.toUpperCase()]);
+      if (compResult.rows.length === 0) return res.status(400).json({ error: '존재하지 않는 초대 코드입니다' });
       companyId = compResult.rows[0].id;
     } else if (company_name) {
-      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      companyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       const cid = uuidv4();
-      await query('INSERT INTO companies (id, name, code) VALUES ($1,$2,$3)', [cid, company_name, code]);
+      await query('INSERT INTO companies (id, name, code) VALUES ($1,$2,$3)', [cid, company_name, companyCode]);
       companyId = cid;
+      isNewCompany = true;
     }
 
-    const phoneDigits = phone.replace(/[^0-9]/g, '');
+    const id = uuidv4();
+    await query(
+      `INSERT INTO users (id, name, department, position, phone, email, password_hash, company_id, team_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [id, name, department || '', position || '', phone, email || '', password, companyId, team_id || null]
+    );
 
+    if (isNewCompany) {
+      await query('UPDATE companies SET owner_id = $1 WHERE id = $2', [id, companyId]);
+    }
+
+    req.session.userId = id;
+    req.session.companyId = companyId;
+    req.session.teamId = team_id || null;
+
+    const result = { id, name, department: department || '', position: position || '' };
     if (companyId) {
-      const staffResult = await query('SELECT * FROM approved_staff WHERE name = $1 AND (company_id = $2 OR company_id IS NULL)', [name, companyId]);
-      const staff = staffResult.rows[0];
-
-      const existingResult = await query('SELECT id FROM users WHERE phone = $1', [phone]);
-      if (existingResult.rows.length > 0) return res.status(409).json({ error: '이미 가입된 계정입니다.' });
-
-      const id = uuidv4();
-      const dept = staff ? staff.department : '';
-      const pos = staff ? staff.position : '';
-      await query(`INSERT INTO users (id, name, department, position, phone, email, password_hash, company_id, team_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
-        id, name, dept, pos, phone, email || '', password, companyId, team_id || null
-      ]);
-      if (staff) await query('UPDATE approved_staff SET registered = 1 WHERE id = $1', [staff.id]);
-
-      const ownerCheck = await query('SELECT owner_id FROM companies WHERE id = $1', [companyId]);
-      if (!ownerCheck.rows[0].owner_id) {
-        await query('UPDATE companies SET owner_id = $1 WHERE id = $2', [id, companyId]);
-      }
-
-      req.session.userId = id;
-      req.session.companyId = companyId;
-      req.session.teamId = team_id || null;
-      const cName = (await query('SELECT name FROM companies WHERE id = $1', [companyId])).rows[0]?.name || '';
-      res.json({ id, name, department: dept, position: pos, company_id: companyId, company_name: cName });
-    } else {
-      const staffResult = await query('SELECT * FROM approved_staff WHERE name = $1', [name]);
-      const staff = staffResult.rows[0];
-      if (!staff) return res.status(403).json({ error: '사전 등록된 인원이 아닙니다. 회사 코드를 입력하거나 관리자에게 문의하세요.' });
-
-      const staffPhone = staff.phone.replace(/[^0-9]/g, '');
-      if (!phoneDigits.endsWith(staffPhone) && phoneDigits !== staffPhone) {
-        return res.status(403).json({ error: '이름 또는 연락처가 일치하지 않습니다.' });
-      }
-
-      const existingResult = await query('SELECT id FROM users WHERE phone = $1', [phone]);
-      if (existingResult.rows.length > 0) return res.status(409).json({ error: '이미 가입된 계정입니다.' });
-
-      const id = uuidv4();
-      await query(`INSERT INTO users (id, name, department, position, phone, email, password_hash, company_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [
-        id, staff.name, staff.department, staff.position, phone, email || '', password, staff.company_id || null
-      ]);
-      await query('UPDATE approved_staff SET registered = 1 WHERE id = $1', [staff.id]);
-
-      req.session.userId = id;
-      req.session.companyId = staff.company_id || null;
-      res.json({ id, name: staff.name, department: staff.department, position: staff.position });
+      const cRes = await query('SELECT name, code FROM companies WHERE id = $1', [companyId]);
+      result.company_id = companyId;
+      result.company_name = cRes.rows[0]?.name || '';
+      if (isNewCompany) result.company_code = companyCode;
     }
+    res.json(result);
   } catch (err) {
     console.error('Register error:', err.message);
     return res.status(500).json({ error: '서버 오류: ' + err.message });

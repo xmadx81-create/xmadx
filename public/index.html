@@ -29,7 +29,7 @@
       <input type="password" id="loginPassword" class="form-control" placeholder="비밀번호 입력">
     </div>
     <button class="btn btn-primary btn-block btn-lg" onclick="login()">로그인</button>
-    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="showRegisterForm()">가입신청</button>
+    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="showRegisterForm()">회원가입</button>
     <p style="text-align:center; margin-top:12px;">
       <a href="#" onclick="showResetPassword(); return false;" style="font-size:12px; color:var(--gray-500); text-decoration:none;">비밀번호를 잊으셨나요?</a>
     </p>
@@ -72,53 +72,103 @@
 
 <!-- ═══ 가입신청 화면 ═══ -->
 <div id="registerScreen" class="login-screen" style="display:none;">
-  <div class="login-card">
-    <h1>회원가입</h1>
-    <p class="subtitle">회사 코드로 참여하거나 새 회사를 등록하세요</p>
-    <div class="form-group">
-      <label>가입 방식</label>
-      <div style="display:flex; gap:8px;">
-        <button id="regModeJoin" class="btn btn-primary btn-sm" onclick="setRegMode('join')" style="flex:1;">회사 코드로 참여</button>
-        <button id="regModeNew" class="btn btn-outline btn-sm" onclick="setRegMode('new')" style="flex:1;">새 회사 등록</button>
+  <div class="login-card" id="regCard">
+    <!-- Step 1: 기본 정보 -->
+    <div id="regStep1">
+      <h1>회원가입</h1>
+      <p class="subtitle">누구나 무료로 가입할 수 있습니다</p>
+      <div class="form-group">
+        <label>이름</label>
+        <input type="text" id="regName" class="form-control" placeholder="이름 입력">
+      </div>
+      <div class="form-group">
+        <label>연락처</label>
+        <div style="display:flex; align-items:center; gap:4px;">
+          <span style="font-size:15px; font-weight:600; white-space:nowrap;">010 -</span>
+          <input type="tel" id="regPhone" class="form-control" placeholder="0000-0000" maxlength="9" style="flex:1;">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>이메일 (선택)</label>
+        <input type="email" id="regEmail" class="form-control" placeholder="이메일 입력">
+      </div>
+      <div class="form-group">
+        <label>비밀번호</label>
+        <input type="password" id="regPassword" class="form-control" placeholder="비밀번호 설정">
+      </div>
+      <div class="form-group">
+        <label>비밀번호 확인</label>
+        <input type="password" id="regPasswordConfirm" class="form-control" placeholder="비밀번호 재입력">
+      </div>
+      <button class="btn btn-primary btn-block btn-lg" onclick="regNextStep()">다음</button>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="backToLogin()">뒤로</button>
+    </div>
+    <!-- Step 2: 회사/팀 설정 -->
+    <div id="regStep2" style="display:none;">
+      <h1>소속 설정</h1>
+      <p class="subtitle">회사 또는 팀에 소속되어 협업하세요</p>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
+        <button id="regOptJoin" onclick="setRegMode('join')" style="padding:16px; border-radius:12px; border:2px solid var(--primary); background:#f0f5ff; cursor:pointer; text-align:left;">
+          <div style="font-size:15px; font-weight:700; color:var(--primary);">🏢 기존 회사에 참여</div>
+          <div style="font-size:12px; color:var(--gray-500); margin-top:4px;">동료에게 받은 초대 코드로 참여합니다</div>
+        </button>
+        <button id="regOptNew" onclick="setRegMode('new')" style="padding:16px; border-radius:12px; border:2px solid #e5e7eb; background:#fff; cursor:pointer; text-align:left;">
+          <div style="font-size:15px; font-weight:700; color:#333;">✨ 새 회사(조직) 등록</div>
+          <div style="font-size:12px; color:var(--gray-500); margin-top:4px;">회사를 만들고 초대 코드를 받습니다</div>
+        </button>
+        <button id="regOptSkip" onclick="setRegMode('skip')" style="padding:16px; border-radius:12px; border:2px solid #e5e7eb; background:#fff; cursor:pointer; text-align:left;">
+          <div style="font-size:15px; font-weight:700; color:#333;">👤 개인 사용</div>
+          <div style="font-size:12px; color:var(--gray-500); margin-top:4px;">회사 없이 개인 업무 관리에 사용합니다</div>
+        </button>
+      </div>
+      <!-- 코드 입력 -->
+      <div id="regJoinBox" style="display:none;">
+        <div class="form-group">
+          <label>초대 코드 (6자리)</label>
+          <div style="display:flex; gap:6px;">
+            <input type="text" id="regCompanyCode" class="form-control" placeholder="예: A3KX7B" maxlength="6" style="flex:1; text-transform:uppercase; letter-spacing:3px; font-size:18px; text-align:center; font-weight:700;">
+            <button class="btn btn-primary btn-sm" onclick="checkCompanyCode()" style="white-space:nowrap;">확인</button>
+          </div>
+          <p id="regCompanyName" style="font-size:13px; color:var(--success); margin-top:6px; display:none;"></p>
+        </div>
+        <div id="regTeamSelectBox" style="display:none;">
+          <div class="form-group">
+            <label>소속 팀 선택 (선택사항)</label>
+            <select id="regTeamSelect" class="form-control">
+              <option value="">-- 팀 미지정 --</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>직책 (선택)</label>
+          <input type="text" id="regPosition" class="form-control" placeholder="예: 과장, 대리, 팀장">
+        </div>
+        <div class="form-group">
+          <label>부서 (선택)</label>
+          <input type="text" id="regDepartment" class="form-control" placeholder="예: 영업부, 기획팀">
+        </div>
+      </div>
+      <!-- 새 회사 -->
+      <div id="regNewBox" style="display:none;">
+        <div class="form-group">
+          <label>회사(조직)명</label>
+          <input type="text" id="regNewCompany" class="form-control" placeholder="예: 한국무역(주), 마케팅스터디그룹">
+        </div>
+        <div class="form-group">
+          <label>직책 (선택)</label>
+          <input type="text" id="regNewPosition" class="form-control" placeholder="예: 대표, 팀장">
+        </div>
+        <div class="form-group">
+          <label>부서 (선택)</label>
+          <input type="text" id="regNewDepartment" class="form-control" placeholder="예: 경영지원부">
+        </div>
+        <p style="font-size:12px; color:var(--gray-500); margin-top:4px;">가입 후 팀원 초대용 코드가 자동 생성됩니다</p>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:16px;">
+        <button class="btn btn-outline btn-block" onclick="regPrevStep()">이전</button>
+        <button class="btn btn-success btn-block btn-lg" onclick="submitRegister()">가입 완료</button>
       </div>
     </div>
-    <div id="regJoinBox" class="form-group">
-      <label>회사 코드</label>
-      <div style="display:flex; gap:6px;">
-        <input type="text" id="regCompanyCode" class="form-control" placeholder="6자리 코드 입력" maxlength="6" style="flex:1; text-transform:uppercase;">
-        <button class="btn btn-outline btn-sm" onclick="checkCompanyCode()" style="white-space:nowrap;">확인</button>
-      </div>
-      <p id="regCompanyName" style="font-size:13px; color:var(--success); margin-top:4px; display:none;"></p>
-    </div>
-    <div id="regNewBox" class="form-group" style="display:none;">
-      <label>회사명</label>
-      <input type="text" id="regNewCompany" class="form-control" placeholder="회사 또는 조직명 입력">
-    </div>
-    <div class="form-group">
-      <label>이름</label>
-      <input type="text" id="regName" class="form-control" placeholder="실명 입력">
-    </div>
-    <div class="form-group">
-      <label>연락처</label>
-      <div style="display:flex; align-items:center; gap:4px;">
-        <span style="font-size:15px; font-weight:600; white-space:nowrap;">010 -</span>
-        <input type="tel" id="regPhone" class="form-control" placeholder="0000-0000" maxlength="9" style="flex:1;">
-      </div>
-    </div>
-    <div class="form-group">
-      <label>이메일 (선택)</label>
-      <input type="email" id="regEmail" class="form-control" placeholder="이메일 입력">
-    </div>
-    <div class="form-group">
-      <label>비밀번호</label>
-      <input type="password" id="regPassword" class="form-control" placeholder="비밀번호 설정">
-    </div>
-    <div class="form-group">
-      <label>비밀번호 확인</label>
-      <input type="password" id="regPasswordConfirm" class="form-control" placeholder="비밀번호 재입력">
-    </div>
-    <button class="btn btn-success btn-block btn-lg" onclick="submitRegister()">가입신청</button>
-    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="backToLogin()">뒤로</button>
   </div>
 </div>
 
@@ -418,7 +468,7 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260610i"></script>
+<script src="/js/app.js?v=20260610j"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;

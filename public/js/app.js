@@ -2710,25 +2710,52 @@ async function submitResetPassword() {
 }
 
 // ─── 가입신청 ───
-let _regMode = 'join';
+let _regMode = 'skip';
 
 function showRegisterForm() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('registerScreen').style.display = 'flex';
-  setRegMode('join');
+  document.getElementById('regStep1').style.display = 'block';
+  document.getElementById('regStep2').style.display = 'none';
+  _regMode = 'skip';
+}
+
+function regNextStep() {
+  const name = document.getElementById('regName').value.trim();
+  const phoneRest = document.getElementById('regPhone').value.trim().replace(/[^0-9]/g, '');
+  const password = document.getElementById('regPassword').value;
+  const passwordConfirm = document.getElementById('regPasswordConfirm').value;
+  if (!name) { toast('이름을 입력해주세요'); return; }
+  if (!phoneRest || phoneRest.length !== 8) { toast('연락처 뒷번호 8자리를 입력해주세요'); return; }
+  if (!password) { toast('비밀번호를 입력해주세요'); return; }
+  if (password !== passwordConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
+  document.getElementById('regStep1').style.display = 'none';
+  document.getElementById('regStep2').style.display = 'block';
+  setRegMode('skip');
+}
+
+function regPrevStep() {
+  document.getElementById('regStep2').style.display = 'none';
+  document.getElementById('regStep1').style.display = 'block';
 }
 
 function setRegMode(mode) {
   _regMode = mode;
-  document.getElementById('regModeJoin').className = mode === 'join' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
-  document.getElementById('regModeNew').className = mode === 'new' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+  const styles = { join: ['var(--primary)', '#f0f5ff'], new: ['#333', '#fff'], skip: ['#333', '#fff'] };
+  ['join', 'new', 'skip'].forEach(m => {
+    const btn = document.getElementById('regOpt' + m.charAt(0).toUpperCase() + m.slice(1));
+    if (btn) {
+      btn.style.borderColor = m === mode ? 'var(--primary)' : '#e5e7eb';
+      btn.style.background = m === mode ? '#f0f5ff' : '#fff';
+    }
+  });
   document.getElementById('regJoinBox').style.display = mode === 'join' ? 'block' : 'none';
   document.getElementById('regNewBox').style.display = mode === 'new' ? 'block' : 'none';
 }
 
 async function checkCompanyCode() {
   const code = document.getElementById('regCompanyCode').value.trim().toUpperCase();
-  if (!code) { toast('회사 코드를 입력하세요'); return; }
+  if (!code) { toast('초대 코드를 입력하세요'); return; }
   try {
     const res = await fetch('/api/companies/check/' + code);
     const data = await res.json();
@@ -2736,6 +2763,16 @@ async function checkCompanyCode() {
     const el = document.getElementById('regCompanyName');
     el.textContent = '✅ ' + data.name;
     el.style.display = 'block';
+    const teamsRes = await fetch('/api/companies/' + data.id + '/teams');
+    const teams = await teamsRes.json();
+    const sel = document.getElementById('regTeamSelect');
+    sel.innerHTML = '<option value="">-- 팀 미지정 --</option>';
+    if (teams && teams.length > 0) {
+      teams.forEach(t => { sel.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`; });
+      document.getElementById('regTeamSelectBox').style.display = 'block';
+    } else {
+      document.getElementById('regTeamSelectBox').style.display = 'none';
+    }
   } catch (e) { toast('확인 실패'); }
 }
 
@@ -2755,21 +2792,23 @@ async function submitRegister() {
     const phone = '010' + phoneRest;
     const email = document.getElementById('regEmail').value.trim();
     const password = document.getElementById('regPassword').value;
-    const passwordConfirm = document.getElementById('regPasswordConfirm').value;
-
-    if (!name || !phoneRest || !password) { toast('이름, 연락처, 비밀번호를 입력해주세요'); return; }
-    if (phoneRest.length !== 8) { toast('연락처 뒷번호 8자리를 입력해주세요'); return; }
-    if (password !== passwordConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
 
     const body = { name, phone, email, password };
+
     if (_regMode === 'join') {
       const code = document.getElementById('regCompanyCode').value.trim().toUpperCase();
-      if (!code) { toast('회사 코드를 입력하세요'); return; }
+      if (!code) { toast('초대 코드를 입력하세요'); return; }
       body.company_code = code;
-    } else {
-      const compName = document.getElementById('regNewCompany').value.trim();
-      if (!compName) { toast('회사명을 입력하세요'); return; }
-      body.company_name = compName;
+      body.position = (document.getElementById('regPosition') || {}).value || '';
+      body.department = (document.getElementById('regDepartment') || {}).value || '';
+      const teamSel = document.getElementById('regTeamSelect');
+      if (teamSel && teamSel.value) body.team_id = teamSel.value;
+    } else if (_regMode === 'new') {
+      const compName = (document.getElementById('regNewCompany') || {}).value || '';
+      if (!compName.trim()) { toast('회사명을 입력하세요'); return; }
+      body.company_name = compName.trim();
+      body.position = (document.getElementById('regNewPosition') || {}).value || '';
+      body.department = (document.getElementById('regNewDepartment') || {}).value || '';
     }
 
     const res = await fetch('/api/register', {
@@ -2784,6 +2823,13 @@ async function submitRegister() {
     currentUser = data;
     document.getElementById('registerScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
+
+    if (data.company_code) {
+      setTimeout(() => {
+        alert('회사가 생성되었습니다!\\n\\n팀원 초대 코드: ' + data.company_code + '\\n\\n이 코드를 팀원에게 공유하세요.');
+      }, 500);
+    }
+
     toast(`${data.name}님 환영합니다!`);
     navigate('home');
   } catch (e) {
