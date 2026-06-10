@@ -37,9 +37,19 @@ async function initDB() {
   }
   // ═══ CREATE TABLES (each separately for pooler compatibility) ═══
   const tables = [
+    `CREATE TABLE IF NOT EXISTS companies (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, code TEXT UNIQUE NOT NULL,
+      description TEXT DEFAULT '', owner_id TEXT,
+      team_sharing BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS teams (
+      id TEXT PRIMARY KEY, company_id TEXT NOT NULL, name TEXT NOT NULL,
+      share_reports BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT NOW())`,
     `CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT DEFAULT '석유사업본부',
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT DEFAULT '',
       position TEXT, phone TEXT, email TEXT, password_hash TEXT NOT NULL,
+      company_id TEXT, team_id TEXT,
       created_at TIMESTAMP DEFAULT NOW())`,
     `CREATE TABLE IF NOT EXISTS approval_lines (
       id TEXT PRIMARY KEY, report_id TEXT NOT NULL, approver_id TEXT NOT NULL,
@@ -167,6 +177,20 @@ async function initDB() {
   await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS work_type TEXT DEFAULT '내근'`).catch(() => {});
   await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS work_summary TEXT DEFAULT ''`).catch(() => {});
   await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS result_status TEXT DEFAULT ''`).catch(() => {});
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS team_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE notices ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE team_events ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE todos ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE templates ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE franchises ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE quick_notes ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE approved_staff ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   console.log('All tables created');
 
   // ═══ SEED DATA ═══

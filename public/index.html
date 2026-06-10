@@ -73,8 +73,27 @@
 <!-- ═══ 가입신청 화면 ═══ -->
 <div id="registerScreen" class="login-screen" style="display:none;">
   <div class="login-card">
-    <h1>가입신청</h1>
-    <p class="subtitle">사전 등록된 인원만 가입 가능</p>
+    <h1>회원가입</h1>
+    <p class="subtitle">회사 코드로 참여하거나 새 회사를 등록하세요</p>
+    <div class="form-group">
+      <label>가입 방식</label>
+      <div style="display:flex; gap:8px;">
+        <button id="regModeJoin" class="btn btn-primary btn-sm" onclick="setRegMode('join')" style="flex:1;">회사 코드로 참여</button>
+        <button id="regModeNew" class="btn btn-outline btn-sm" onclick="setRegMode('new')" style="flex:1;">새 회사 등록</button>
+      </div>
+    </div>
+    <div id="regJoinBox" class="form-group">
+      <label>회사 코드</label>
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="regCompanyCode" class="form-control" placeholder="6자리 코드 입력" maxlength="6" style="flex:1; text-transform:uppercase;">
+        <button class="btn btn-outline btn-sm" onclick="checkCompanyCode()" style="white-space:nowrap;">확인</button>
+      </div>
+      <p id="regCompanyName" style="font-size:13px; color:var(--success); margin-top:4px; display:none;"></p>
+    </div>
+    <div id="regNewBox" class="form-group" style="display:none;">
+      <label>회사명</label>
+      <input type="text" id="regNewCompany" class="form-control" placeholder="회사 또는 조직명 입력">
+    </div>
     <div class="form-group">
       <label>이름</label>
       <input type="text" id="regName" class="form-control" placeholder="실명 입력">
@@ -399,7 +418,7 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260610h"></script>
+<script src="/js/app.js?v=20260610i"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;

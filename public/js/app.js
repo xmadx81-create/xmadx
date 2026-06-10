@@ -193,6 +193,7 @@ async function renderHome() {
     <div style="margin-bottom:20px;">
       <p style="font-size:15px; color:var(--gray-500);">안녕하세요,</p>
       <p style="font-size:22px; font-weight:600;">${currentUser.name} ${currentUser.position || ''}님</p>
+      ${currentUser.company_name ? `<p style="font-size:13px; color:var(--primary); margin-top:2px;">${escHtml(currentUser.company_name)}${currentUser.team_name ? ' · ' + escHtml(currentUser.team_name) : ''}</p>` : ''}
     </div>
 
     ${showNotices.length > 0 ? `
@@ -2532,8 +2533,44 @@ async function saveAsTemplate() {
 }
 
 // ─── 사용자 정보 ───
-function showUserInfo() {
+async function showUserInfo() {
+  let teamSection = '';
+  if (currentUser.company_id) {
+    const teams = await api('/api/companies/' + currentUser.company_id + '/teams') || [];
+    teamSection = `
+    <div class="card" style="margin-top:12px;">
+      <p class="card-title" style="margin-bottom:12px;">&#127970; 회사 정보</p>
+      <div style="padding:8px 0; border-bottom:1px solid var(--gray-200);">
+        <span style="font-size:13px; color:var(--gray-500);">회사</span>
+        <span style="font-size:14px; font-weight:600; float:right;">${escHtml(currentUser.company_name || '-')}</span>
+      </div>
+      <div style="padding:8px 0; border-bottom:1px solid var(--gray-200);">
+        <span style="font-size:13px; color:var(--gray-500);">소속 팀</span>
+        <span style="font-size:14px; font-weight:600; float:right;">${escHtml(currentUser.team_name || '미지정')}</span>
+      </div>
+      ${teams.length > 0 ? `
+        <div style="margin-top:12px;">
+          <span style="font-size:13px; font-weight:600;">팀 목록</span>
+          ${teams.map(t => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--gray-100);">
+              <span style="font-size:14px;">${escHtml(t.name)}</span>
+              <span style="font-size:11px; color:${t.share_reports ? 'var(--success)' : '#ef4444'};">${t.share_reports ? '공유 ON' : '공유 OFF'}</span>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+    <div class="card" style="margin-top:12px; padding:12px; background:#f0f9ff; border:1px solid #bfdbfe;">
+      <p style="font-size:13px; color:#1e40af; line-height:1.6;">
+        &#128274; <strong>데이터 보안 안내</strong><br>
+        &#8226; 시스템 관리자는 모든 기업의 기록을 열람할 수 있습니다<br>
+        &#8226; 타 기업과 업무 데이터는 공유되지 않습니다<br>
+        &#8226; 팀별 업무 공유는 팀 설정에 따라 제어됩니다
+      </p>
+    </div>`;
+  }
   document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
     <div class="card">
       <p class="card-title" style="margin-bottom:16px;">내 정보</p>
       <div style="text-align:center; margin-bottom:16px;">
@@ -2546,6 +2583,7 @@ function showUserInfo() {
         <p style="font-size:14px;">&#128222; ${currentUser.phone || '-'}</p>
       </div>
     </div>
+    ${teamSection}
   `;
 }
 
@@ -2672,9 +2710,33 @@ async function submitResetPassword() {
 }
 
 // ─── 가입신청 ───
+let _regMode = 'join';
+
 function showRegisterForm() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('registerScreen').style.display = 'flex';
+  setRegMode('join');
+}
+
+function setRegMode(mode) {
+  _regMode = mode;
+  document.getElementById('regModeJoin').className = mode === 'join' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+  document.getElementById('regModeNew').className = mode === 'new' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+  document.getElementById('regJoinBox').style.display = mode === 'join' ? 'block' : 'none';
+  document.getElementById('regNewBox').style.display = mode === 'new' ? 'block' : 'none';
+}
+
+async function checkCompanyCode() {
+  const code = document.getElementById('regCompanyCode').value.trim().toUpperCase();
+  if (!code) { toast('회사 코드를 입력하세요'); return; }
+  try {
+    const res = await fetch('/api/companies/check/' + code);
+    const data = await res.json();
+    if (!res.ok) { toast(data.error); document.getElementById('regCompanyName').style.display = 'none'; return; }
+    const el = document.getElementById('regCompanyName');
+    el.textContent = '✅ ' + data.name;
+    el.style.display = 'block';
+  } catch (e) { toast('확인 실패'); }
 }
 
 function backToLogin() {
@@ -2699,10 +2761,21 @@ async function submitRegister() {
     if (phoneRest.length !== 8) { toast('연락처 뒷번호 8자리를 입력해주세요'); return; }
     if (password !== passwordConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
 
+    const body = { name, phone, email, password };
+    if (_regMode === 'join') {
+      const code = document.getElementById('regCompanyCode').value.trim().toUpperCase();
+      if (!code) { toast('회사 코드를 입력하세요'); return; }
+      body.company_code = code;
+    } else {
+      const compName = document.getElementById('regNewCompany').value.trim();
+      if (!compName) { toast('회사명을 입력하세요'); return; }
+      body.company_name = compName;
+    }
+
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone, email, password })
+      body: JSON.stringify(body)
     });
     const data = await res.json();
 
