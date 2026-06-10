@@ -6139,22 +6139,149 @@ function startVoiceReport() {
 function cancelVoiceReport() {
   if (_vrRecog) { const r = _vrRecog; _vrRecog = null; r.stop(); }
   document.getElementById('voiceRecordScreen').style.display = 'none';
+  document.getElementById('vrRefineStep').style.display = 'none';
+  document.getElementById('vrRecordingBtns').style.display = 'flex';
+  document.getElementById('vrMicIcon').style.animation = 'vrPulse 1.5s infinite';
+  document.getElementById('vrMicIcon').style.background = '#7c3aed';
 }
 
 function finishVoiceReport() {
   if (_vrRecog) { const r = _vrRecog; _vrRecog = null; r.stop(); }
-  document.getElementById('voiceRecordScreen').style.display = 'none';
 
   const text = (_vrFinalText + _vrInterim).trim();
-  if (!text) { toast('음성이 인식되지 않았습니다'); return; }
+  if (!text) { toast('음성이 인식되지 않았습니다'); cancelVoiceReport(); return; }
 
   localStorage.setItem('voiceCache', text);
 
-  openNewReport();
+  document.getElementById('vrRecordingBtns').style.display = 'none';
+  document.getElementById('vrMicIcon').style.animation = 'none';
+  document.getElementById('vrMicIcon').style.background = '#4a4a6a';
+  document.getElementById('vrTitle').textContent = '음성 인식 완료';
+  document.getElementById('vrText').textContent = text;
+  document.getElementById('vrRawText').textContent = text;
+  document.getElementById('vrRefinedText').value = text;
+  document.getElementById('vrRefinePreview').style.display = 'none';
+  document.getElementById('vrRefineStep').style.display = 'block';
+}
+
+function refineVoiceText() {
+  const btn = document.getElementById('vrRefineBtn');
+  btn.textContent = '정제 중...';
+  btn.disabled = true;
+
+  const raw = document.getElementById('vrRefinedText').value.trim();
+  if (!raw) { toast('텍스트가 없습니다'); btn.textContent = '✨ 글다듬기'; btn.disabled = false; return; }
 
   setTimeout(() => {
-    parseVoiceToFields(text);
+    const refined = polishVoiceText(raw);
+    document.getElementById('vrRefinedText').value = refined;
+
+    const preview = previewVoice5W1H(refined);
+    const fieldsDiv = document.getElementById('vrRefineFields');
+    fieldsDiv.innerHTML = preview;
+    document.getElementById('vrRefinePreview').style.display = 'block';
+
+    btn.textContent = '✨ 글다듬기';
+    btn.disabled = false;
+    toast('텍스트 정제 완료! 내용을 확인해주세요');
   }, 300);
+}
+
+function polishVoiceText(text) {
+  let t = text;
+  t = t.replace(/\s{2,}/g, ' ').trim();
+  t = t.replace(/([.!?])\s*/g, '$1 ').trim();
+  t = t.replace(/(\s)(그래서|그리고|그런데|근데|어|음|아|뭐|저기|있잖아|그니까|그러니까)\s/g, ' ');
+  t = t.replace(/(.)\1{3,}/g, '$1$1');
+  t = t.replace(/\s(요|yo)\s/gi, ' ');
+
+  const sentences = t.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  const cleaned = sentences.map(s => {
+    s = s.trim();
+    if (s && !/[.!?]$/.test(s)) s += '.';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  });
+
+  if (cleaned.length === 0) return t;
+
+  let result = cleaned.join(' ');
+
+  const whoMatch = result.match(/([가-힣]{2,4})\s*(?:님|씨|과장|대리|차장|부장|팀장|사원|주임|매니저|선임|책임|본부장|이사|담당)/);
+  const whenMatch = result.match(/(\d{1,2}월\s*\d{1,2}일|\d{1,2}시|오전|오후|어제|오늘|내일|월요일|화요일|수요일|목요일|금요일|토요일|일요일)/);
+  const whereMatch = result.match(/(본사|지사|사무실|현장|센터|공장|서울|부산|대구|인천|광주|대전|울산|경기|충청|전라|경상|강원|제주|[가-힣]{1,8}(?:지국|센터|지사|사무소|영업소|지점|매장|현장|회의실))/);
+  const whatMatch = result.match(/(회의|미팅|점검|교육|상담|보고|작성|검토|분석|처리|확인|정리|출장|방문|영업|계약|협의|설치|수리|유지보수|인수인계|세미나|연수|감사|발송|접수|조사|배송|수거)\s*[가-힣]{0,6}/);
+  const howMatch = result.match(/(전화|이메일|대면|온라인|직접|팩스|문자|카톡|시스템|차량|방문하여|출장하여|유선으로|메일로)\s*[가-힣]{0,4}/);
+  const whyMatch = result.match(/[가-힣\s]{2,12}(?:위해서?|위하여|때문에|건으로|관련하여|관련해서|목적으로)/);
+
+  const parts = [];
+  if (whenMatch) parts.push(whenMatch[0].trim());
+  if (whereMatch) parts.push(whereMatch[0].trim() + '에서');
+  if (whoMatch) parts.push(whoMatch[0].trim() + '이(가)');
+  if (whatMatch) parts.push(whatMatch[0].trim() + '을(를)');
+  if (howMatch) parts.push(howMatch[0].trim() + '(으)로');
+  if (whyMatch) parts.push(whyMatch[0].trim());
+  parts.push('수행함.');
+
+  if (parts.length >= 4) {
+    result = result + '\n\n[요약] ' + parts.join(' ');
+  }
+
+  return result;
+}
+
+function previewVoice5W1H(text) {
+  const fields = { who:'', when:'', where:'', what:'', how:'', why:'' };
+  let remaining = text.replace(/\[요약\].*$/s, '').trim();
+
+  function extract(re) {
+    const m = remaining.match(re);
+    if (m) { remaining = remaining.replace(m[0], ' ').replace(/\s{2,}/g, ' ').trim(); return m[0].trim(); }
+    return '';
+  }
+
+  const whenP = [/\d{1,2}월\s*\d{1,2}일\s*(?:오전|오후)?\s*(?:\d{1,2}시\s*(?:\d{1,2}분)?)?/, /(?:오전|오후)\s*\d{1,2}시\s*(?:\d{1,2}분)?/, /\d{1,2}월\s*\d{1,2}일/, /(?:어제|오늘|내일|모레|그저께)/, /(?:이번|지난|다음)\s*주\s*(?:월|화|수|목|금|토|일)?요?일?/, /(?:월|화|수|목|금|토|일)요일/];
+  for (const re of whenP) { if (!fields.when) fields.when = extract(re); }
+
+  const whereP = [/(충청[남북]?도?|경기도?|서울|부산|대구|인천|광주|대전|울산|세종|경[상남북]+도?|전[라남북]+도?|강원도?|제주도?)\s*[가-힣]{0,4}(?:지역|지사|지국|센터|사무소|현장|공장)?/, /(?:본사|지사|사무실|현장|지국|센터|회의실|연수원|공장|창고|매장|지점|사무소|영업소|출장지)\s*[가-힣]{0,4}/, /[가-힣]{1,10}(?:지국|센터|지사|사무소|영업소|지점|매장|현장)/];
+  for (const re of whereP) { if (!fields.where) fields.where = extract(re); }
+
+  const whoP = [/[가-힣]{2,4}\s*(?:님|씨|과장|대리|차장|부장|팀장|본부장|이사|사원|주임|계장|담당|선임|책임|매니저)/, /(?:담당자|본인|내가|제가)\s*[가-힣]{0,4}/];
+  for (const re of whoP) { if (!fields.who) { fields.who = extract(re); fields.who = fields.who.replace(/[가이는은]\s*$/, '').trim(); } }
+
+  const howP = [/(?:전화|이메일|대면|온라인|직접|팩스|문자|카톡|시스템|차량|KTX|비행기|버스|택시|지하철)\s*(?:로|으로|통해|이용|타고)?\s*[가-힣]{0,4}/, /(?:방문하여|출장하여|전화하여|메일로|유선으로)/];
+  for (const re of howP) { if (!fields.how) fields.how = extract(re); }
+
+  const whyP = [/[가-힣\s]{2,15}(?:위해서?|위하여|때문에|건으로|관련하여|관련해서|목적으로)/, /(?:요청|지시|필요|예정)\s*(?:에\s*의해|으로|이\s*있어)/];
+  for (const re of whyP) { if (!fields.why) fields.why = extract(re); }
+
+  const whatP = [/(?:인수인계|보고서\s*작성|회의|미팅|점검|교육|상담|접수|처리|확인|검토|작성|발송|정리|분석|세미나|연수|파견|조사|설명회|감사|계약|협의|영업|배송|수거|설치|수리|유지보수|AS)\s*[가-힣]{0,8}/, /(?:방문|출장)\s*[가-힣]{0,8}/];
+  for (const re of whatP) { if (!fields.what) fields.what = extract(re); }
+
+  remaining = remaining.trim();
+  if (!fields.what && remaining.length > 1) fields.what = remaining;
+
+  const labels = { who:'누가', when:'언제', where:'어디서', what:'무엇을', how:'어떻게', why:'왜' };
+  const colors = { who:'#60a5fa', when:'#f59e0b', where:'#34d399', what:'#f472b6', how:'#a78bfa', why:'#fb923c' };
+  let html = '';
+  for (const [k, v] of Object.entries(fields)) {
+    const val = v || '<span style="color:#666;">-</span>';
+    html += `<div style="margin-bottom:4px;"><span style="color:${colors[k]}; font-weight:600;">${labels[k]}:</span> ${val}</div>`;
+  }
+  return html;
+}
+
+function applyRefinedVoice() {
+  const refined = document.getElementById('vrRefinedText').value.trim();
+  if (!refined) { toast('텍스트가 없습니다'); return; }
+
+  document.getElementById('voiceRecordScreen').style.display = 'none';
+  document.getElementById('vrRefineStep').style.display = 'none';
+  document.getElementById('vrRecordingBtns').style.display = 'flex';
+  document.getElementById('vrMicIcon').style.animation = 'vrPulse 1.5s infinite';
+  document.getElementById('vrMicIcon').style.background = '#7c3aed';
+
+  openNewReport();
+  setTimeout(() => { parseVoiceToFields(refined); }, 300);
 }
 
 function parseVoiceToFields(text) {

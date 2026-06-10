@@ -454,9 +454,29 @@
     <div id="vrPreview" style="background:rgba(255,255,255,.08); border-radius:12px; padding:16px; min-height:80px; margin-bottom:24px; text-align:left;">
       <p id="vrText" style="font-size:14px; line-height:1.7; color:#ccc; min-height:20px;">...</p>
     </div>
-    <div style="display:flex; gap:12px; justify-content:center;">
+    <div id="vrRecordingBtns" style="display:flex; gap:12px; justify-content:center;">
       <button onclick="cancelVoiceReport()" style="padding:14px 28px; border-radius:28px; border:none; background:rgba(255,255,255,.15); color:#fff; font-size:15px; font-weight:600; cursor:pointer;">취소</button>
       <button onclick="finishVoiceReport()" style="padding:14px 28px; border-radius:28px; border:none; background:#ef4444; color:#fff; font-size:15px; font-weight:600; cursor:pointer;">&#9724; 완료</button>
+    </div>
+    <!-- 글다듬기 단계 -->
+    <div id="vrRefineStep" style="display:none;">
+      <div style="background:rgba(255,255,255,.06); border-radius:12px; padding:16px; margin-bottom:12px; text-align:left;">
+        <p style="font-size:12px; color:#aaa; margin-bottom:6px;">음성 원문</p>
+        <p id="vrRawText" style="font-size:13px; line-height:1.7; color:#999;"></p>
+      </div>
+      <div style="background:rgba(124,58,237,.15); border:1px solid rgba(124,58,237,.3); border-radius:12px; padding:16px; margin-bottom:16px; text-align:left;">
+        <p style="font-size:12px; color:#b794f4; margin-bottom:6px;">정제된 결과 (수정 가능)</p>
+        <textarea id="vrRefinedText" style="width:100%; min-height:120px; background:transparent; border:none; color:#fff; font-size:14px; line-height:1.7; resize:vertical; outline:none;"></textarea>
+      </div>
+      <div id="vrRefinePreview" style="display:none; background:rgba(255,255,255,.06); border-radius:12px; padding:16px; margin-bottom:16px; text-align:left;">
+        <p style="font-size:12px; color:#aaa; margin-bottom:8px;">5W1H 분류 미리보기</p>
+        <div id="vrRefineFields" style="font-size:13px; line-height:1.8; color:#ccc;"></div>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <button onclick="cancelVoiceReport()" style="padding:12px 22px; border-radius:28px; border:none; background:rgba(255,255,255,.15); color:#fff; font-size:14px; font-weight:600; cursor:pointer;">취소</button>
+        <button id="vrRefineBtn" onclick="refineVoiceText()" style="padding:12px 22px; border-radius:28px; border:none; background:#7c3aed; color:#fff; font-size:14px; font-weight:600; cursor:pointer;">&#10024; 글다듬기</button>
+        <button onclick="applyRefinedVoice()" style="padding:12px 22px; border-radius:28px; border:none; background:#22c55e; color:#fff; font-size:14px; font-weight:600; cursor:pointer;">&#10003; 적용</button>
+      </div>
     </div>
   </div>
 </div>
@@ -468,7 +488,7 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260610k"></script>
+<script src="/js/app.js?v=20260610m"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;
