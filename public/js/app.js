@@ -66,6 +66,7 @@ async function login() {
     document.getElementById('appContainer').classList.add('active');
     navigate('home');
     restorePendingVoice();
+    setTimeout(() => startVoiceGuide(), 1200);
   } catch (e) {
     toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
   }
@@ -96,8 +97,9 @@ async function checkAuth() {
     navigate('home');
     setTimeout(checkNotiCount, 2000);
     setInterval(checkNotiCount, 120000);
-    setTimeout(checkAttendancePopup, 3000);
+    setTimeout(checkAttendancePopup, 4000);
     restorePendingVoice();
+    setTimeout(() => startVoiceGuide(), 1500);
   }
 }
 
@@ -6398,11 +6400,325 @@ function parseVoiceToFields(text) {
   toast(`음성 분석 완료! ${filled}개 항목 자동 입력`);
 }
 
+// ─── 음성 안내 어시스턴트 ───
+let _vgActive = false;
+let _vgResolve = null;
+let _vgRecog = null;
+let _vgSchedules = [];
+let _vgDidCheckin = false;
+
+function startVoiceGuide() {
+  const today = new Date().toISOString().split('T')[0];
+  if (localStorage.getItem('vgDone') === today) return;
+  if (localStorage.getItem('voicePending')) return;
+  if (!currentUser || currentUser.isAdmin) return;
+
+  _vgActive = true;
+  _vgSchedules = [];
+  _vgDidCheckin = false;
+  const overlay = document.getElementById('voiceGuideOverlay');
+  overlay.style.display = 'flex';
+  document.getElementById('vgChatArea').innerHTML = '';
+  document.getElementById('vgQuickReplies').style.display = 'none';
+  document.getElementById('vgScheduleArea').style.display = 'none';
+  document.getElementById('vgMicBtn').style.display = 'none';
+  document.getElementById('vgStatusText').textContent = '';
+
+  setTimeout(() => vgConversation(), 600);
+}
+
+function closeVoiceGuide() {
+  _vgActive = false;
+  if (_vgRecog) { try { _vgRecog.stop(); } catch(e){} _vgRecog = null; }
+  if (_vgResolve) { _vgResolve(''); _vgResolve = null; }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  document.getElementById('voiceGuideOverlay').style.display = 'none';
+  const today = new Date().toISOString().split('T')[0];
+  localStorage.setItem('vgDone', today);
+}
+
+function vgSpeak(text) {
+  return new Promise(resolve => {
+    if (!window.speechSynthesis || !_vgActive) { resolve(); return; }
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ko-KR';
+    u.rate = 1.05;
+    u.pitch = 1.1;
+    u.onend = () => setTimeout(resolve, 200);
+    u.onerror = () => resolve();
+    setTimeout(() => speechSynthesis.speak(u), 100);
+  });
+}
+
+function vgAddBubble(text, who) {
+  const area = document.getElementById('vgChatArea');
+  const isBot = who === 'bot';
+  const div = document.createElement('div');
+  div.style.cssText = `max-width:82%; padding:12px 16px; border-radius:${isBot ? '4px 16px 16px 16px' : '16px 4px 16px 16px'}; font-size:14px; line-height:1.6; animation:fadeIn .3s; word-break:keep-all; ${isBot ? 'background:rgba(255,255,255,.12); color:#fff; align-self:flex-start;' : 'background:#7c3aed; color:#fff; align-self:flex-end;'}`;
+  div.textContent = text;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function vgShowQuickReplies(options) {
+  const c = document.getElementById('vgQuickReplies');
+  c.innerHTML = options.map(o =>
+    `<button onclick="vgQuickReply('${o}')" style="padding:10px 20px; border-radius:20px; border:2px solid rgba(255,255,255,.3); background:rgba(255,255,255,.06); color:#fff; font-size:14px; font-weight:600; cursor:pointer;">${o}</button>`
+  ).join('');
+  c.style.display = 'flex';
+}
+
+function vgHideQuickReplies() {
+  document.getElementById('vgQuickReplies').style.display = 'none';
+}
+
+function vgQuickReply(text) {
+  vgHideQuickReplies();
+  document.getElementById('vgMicBtn').style.display = 'none';
+  document.getElementById('vgStatusText').textContent = '';
+  if (_vgRecog) { try { _vgRecog.stop(); } catch(e){} _vgRecog = null; }
+  if (_vgResolve) { const r = _vgResolve; _vgResolve = null; r(text); }
+}
+
+function vgMicTap() {
+  if (_vgRecog) { try { _vgRecog.stop(); } catch(e){} }
+}
+
+function vgListen(timeout) {
+  timeout = timeout || 8000;
+  return new Promise(resolve => {
+    if (!SpeechRecognition || !_vgActive) { resolve(''); return; }
+
+    document.getElementById('vgMicBtn').style.display = 'inline-flex';
+    document.getElementById('vgStatusText').textContent = '듣고 있습니다... 🎤';
+
+    _vgResolve = function(text) {
+      document.getElementById('vgMicBtn').style.display = 'none';
+      document.getElementById('vgStatusText').textContent = '';
+      _vgResolve = null;
+      resolve(text);
+    };
+
+    const recog = new SpeechRecognition();
+    recog.lang = 'ko-KR';
+    recog.interimResults = false;
+    recog.continuous = false;
+    _vgRecog = recog;
+
+    let result = '';
+    const timer = setTimeout(() => { _vgRecog = null; try { recog.stop(); } catch(e){} }, timeout);
+
+    recog.onresult = function(e) {
+      for (let i = 0; i < e.results.length; i++) {
+        if (e.results[i].isFinal) result += e.results[i][0].transcript + ' ';
+      }
+    };
+    recog.onend = function() {
+      clearTimeout(timer);
+      _vgRecog = null;
+      if (_vgResolve) _vgResolve(result.trim());
+    };
+    recog.onerror = function() {
+      clearTimeout(timer);
+      _vgRecog = null;
+      if (_vgResolve) _vgResolve('');
+    };
+    try { recog.start(); } catch(e) { if (_vgResolve) _vgResolve(''); }
+  });
+}
+
+async function vgConversation() {
+  if (!_vgActive) return;
+  const name = currentUser.name || '사용자';
+
+  vgAddBubble('안녕하세요 ' + name + '님! 출근하신걸 축하드려요! 🎉', 'bot');
+  await vgSpeak('안녕하세요 ' + name + '님! 출근하신걸 축하드려요!');
+  if (!_vgActive) return;
+
+  await new Promise(r => setTimeout(r, 400));
+  vgAddBubble('오늘 하루도 힘차게 시작해봐요! 어떤 일들이 기다리고 있을까요? 😊', 'bot');
+  await vgSpeak('오늘 하루도 힘차게 시작해봐요! 어떤 일들이 기다리고 있을까요?');
+  if (!_vgActive) return;
+
+  await new Promise(r => setTimeout(r, 300));
+  vgAddBubble('오늘은 내근이세요? 외근이세요? 🏢', 'bot');
+  vgShowQuickReplies(['내근', '외근', '출장']);
+  await vgSpeak('오늘은 내근이세요? 외근이세요?');
+  if (!_vgActive) return;
+
+  const wtResp = await vgListen(10000);
+  if (!_vgActive) return;
+  vgHideQuickReplies();
+
+  let workType = '내근';
+  const wt = wtResp.toLowerCase();
+  if (wt.includes('외근')) workType = '외근';
+  else if (wt.includes('출장')) workType = '출장';
+  vgAddBubble(wtResp || workType, 'user');
+
+  try {
+    await api('/api/attendance/checkin', { method: 'POST', body: { work_type: workType, work_summary: '' } });
+    _vgDidCheckin = true;
+  } catch(e) {}
+
+  await new Promise(r => setTimeout(r, 300));
+  const emoji = workType === '외근' ? '🚗' : workType === '출장' ? '✈️' : '🏢';
+  vgAddBubble(workType + '이시군요! ' + emoji + ' 출근 체크도 해드렸어요! 오늘 어떤 업무 계획이 있으세요? 자유롭게 말씀해주세요.', 'bot');
+  await vgSpeak(workType + '이시군요! 출근 체크도 해드렸어요! 오늘 어떤 업무 계획이 있으세요? 자유롭게 말씀해주세요.');
+  if (!_vgActive) return;
+
+  const planResp = await vgListen(20000);
+  if (!_vgActive) return;
+
+  if (planResp) {
+    vgAddBubble(planResp, 'user');
+    _vgSchedules = vgParseSchedules(planResp);
+
+    await new Promise(r => setTimeout(r, 300));
+    vgAddBubble('네! 또 다른 일정이 있으세요?', 'bot');
+    vgShowQuickReplies(['네, 더 있어요', '아니요, 끝이에요']);
+    await vgSpeak('네! 또 다른 일정이 있으세요?');
+    if (!_vgActive) return;
+
+    const moreResp = await vgListen(8000);
+    if (!_vgActive) return;
+    vgHideQuickReplies();
+    vgAddBubble(moreResp || '아니요', 'user');
+
+    const wantMore = moreResp && (moreResp.includes('네') || moreResp.includes('더') || moreResp.includes('있') || moreResp.includes('응'));
+    if (wantMore) {
+      vgAddBubble('네, 말씀해주세요! 🎤', 'bot');
+      await vgSpeak('네, 말씀해주세요!');
+      if (!_vgActive) return;
+
+      const more2 = await vgListen(20000);
+      if (!_vgActive) return;
+      if (more2) {
+        vgAddBubble(more2, 'user');
+        _vgSchedules = _vgSchedules.concat(vgParseSchedules(more2));
+      }
+    }
+  }
+
+  if (_vgSchedules.length > 0) {
+    await new Promise(r => setTimeout(r, 300));
+    vgAddBubble(_vgSchedules.length + '개의 일정을 정리했어요! 확인하고 저장해주세요 📋', 'bot');
+    await vgSpeak(_vgSchedules.length + '개의 일정을 정리했어요! 확인하고 저장해주세요');
+    vgShowSchedulePreview();
+  } else {
+    await new Promise(r => setTimeout(r, 300));
+    vgAddBubble('오늘도 좋은 하루 되세요! 화이팅! 💪', 'bot');
+    await vgSpeak('오늘도 좋은 하루 되세요! 화이팅!');
+    setTimeout(() => closeVoiceGuide(), 2500);
+  }
+}
+
+function vgParseSchedules(text) {
+  const schedules = [];
+  const parts = text.split(/(?:그리고|하고|그\s?다음에?|또|다음으로|이후에?|뒤에|그런\s?다음|끝나고|마치고)/);
+
+  for (const part of parts) {
+    const s = part.trim();
+    if (!s || s.length < 2) continue;
+
+    let time = '';
+    const tm1 = s.match(/(오전|오후)\s*(\d{1,2})시\s*(?:(\d{1,2})분|반)?/);
+    const tm2 = s.match(/(\d{1,2})시\s*(?:(\d{1,2})분|반)?/);
+    const tm3 = s.match(/(아침|점심|저녁|낮)/);
+
+    if (tm1) {
+      let h = parseInt(tm1[2]);
+      if (tm1[1] === '오후' && h < 12) h += 12;
+      if (tm1[1] === '오전' && h === 12) h = 0;
+      const m = tm1[3] ? parseInt(tm1[3]) : (s.includes('반') ? 30 : 0);
+      time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+    } else if (tm2) {
+      let h = parseInt(tm2[1]);
+      if (h >= 1 && h <= 7) h += 12;
+      const m = tm2[2] ? parseInt(tm2[2]) : (s.includes('반') ? 30 : 0);
+      time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+    } else if (tm3) {
+      const map = { '아침': '09:00', '점심': '12:00', '낮': '14:00', '저녁': '18:00' };
+      time = map[tm3[1]] || '';
+    }
+
+    let task = s
+      .replace(/(오전|오후)?\s*\d{1,2}시\s*(?:\d{1,2}분|반)?(?:에|까지|부터|쯤)?\s*/g, '')
+      .replace(/(아침|점심|저녁|낮)(?:에|때|쯤)?\s*/g, '')
+      .replace(/^\s*(에|을|를|는|은)\s*/, '')
+      .trim();
+
+    if (!task && !time) continue;
+    if (!task) task = '일정';
+
+    schedules.push({ time: time, task: task });
+  }
+
+  if (schedules.length === 0 && text.trim().length > 2) {
+    schedules.push({ time: '', task: text.trim() });
+  }
+  return schedules;
+}
+
+function vgShowSchedulePreview() {
+  const area = document.getElementById('vgScheduleArea');
+  area.style.display = 'block';
+  let html = '<div style="background:rgba(255,255,255,.1); border-radius:16px; padding:16px; margin-bottom:12px;">';
+  html += '<p style="font-size:15px; font-weight:700; margin-bottom:12px;">📋 오늘의 일정</p>';
+  _vgSchedules.forEach(function(s, i) {
+    html += '<div style="background:rgba(255,255,255,.08); border-radius:10px; padding:10px 12px; margin-bottom:8px; display:flex; gap:8px; align-items:center;">';
+    html += '<input type="time" value="' + (s.time || '') + '" onchange="_vgSchedules[' + i + '].time=this.value" style="background:rgba(255,255,255,.15); border:none; color:#fff; border-radius:8px; padding:6px; font-size:13px; width:85px;">';
+    html += '<input type="text" value="' + (s.task || '') + '" onchange="_vgSchedules[' + i + '].task=this.value" style="flex:1; background:rgba(255,255,255,.15); border:none; color:#fff; border-radius:8px; padding:8px 10px; font-size:14px;">';
+    html += '<button onclick="vgRemoveSchedule(' + i + ')" style="background:none; border:none; color:#f87171; font-size:18px; cursor:pointer; padding:4px;">✕</button>';
+    html += '</div>';
+  });
+  html += '<button onclick="vgAddScheduleRow()" style="width:100%; padding:10px; border-radius:10px; border:2px dashed rgba(255,255,255,.2); background:transparent; color:rgba(255,255,255,.5); font-size:13px; cursor:pointer; margin-top:4px;">+ 일정 추가</button>';
+  html += '</div>';
+  html += '<div style="display:flex; gap:10px; margin-bottom:16px;">';
+  html += '<button onclick="closeVoiceGuide()" style="flex:1; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,.15); color:#fff; font-size:15px; font-weight:600; cursor:pointer;">나중에</button>';
+  html += '<button onclick="vgSaveSchedules()" style="flex:1; padding:14px; border-radius:12px; border:none; background:#22c55e; color:#fff; font-size:15px; font-weight:700; cursor:pointer;">저장하기 ✓</button>';
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+function vgRemoveSchedule(i) {
+  _vgSchedules.splice(i, 1);
+  if (_vgSchedules.length === 0) {
+    document.getElementById('vgScheduleArea').style.display = 'none';
+    return;
+  }
+  vgShowSchedulePreview();
+}
+
+function vgAddScheduleRow() {
+  _vgSchedules.push({ time: '', task: '' });
+  vgShowSchedulePreview();
+}
+
+async function vgSaveSchedules() {
+  const today = new Date().toISOString().split('T')[0];
+  let saved = 0;
+  for (const s of _vgSchedules) {
+    if (!s.task.trim()) continue;
+    const res = await api('/api/calendar-events', {
+      method: 'POST',
+      body: { title: s.task.trim(), description: '', event_date: today, event_time: s.time || '', event_type: '업무' }
+    });
+    if (res) saved++;
+  }
+  toast(saved + '개 일정이 저장되었습니다!');
+  vgAddBubble(saved + '개 일정이 저장되었습니다! 오늘도 화이팅! 🔥', 'bot');
+  await vgSpeak(saved + '개 일정이 저장되었습니다! 오늘도 화이팅!');
+  setTimeout(() => closeVoiceGuide(), 1500);
+}
+
 // ─── 출근 체크 팝업 (매일 10시까지, 전원 출근시 종료) ───
 let _attPopupDismissedAt = null;
 
 async function checkAttendancePopup() {
   if (!currentUser) return;
+  if (_vgActive || _vgDidCheckin) return;
   const now = new Date();
   const hour = now.getHours();
   if (hour >= 10) return;
