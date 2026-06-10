@@ -3014,6 +3014,179 @@ app.delete('/api/todos/:id', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── 귀납적 인사이트 분석 ───
+app.get('/api/insights/smart', authMiddleware, async (req, res) => {
+  try {
+    const { scope, date_from, date_to, category, team_id } = req.query;
+    const userId = req.session.userId;
+    const companyId = req.session.companyId;
+
+    let sql = `SELECT r.*, u.name as author_name, u.position as author_position, u.team_id, u.department
+      FROM work_reports r JOIN users u ON r.author_id = u.id WHERE 1=1`;
+    const params = [];
+    let idx = 1;
+
+    if (scope === 'personal') {
+      sql += ` AND r.author_id = $${idx++}`; params.push(userId);
+    } else if (scope === 'team' && team_id) {
+      sql += ` AND u.team_id = $${idx++}`; params.push(team_id);
+    } else if (scope === 'company' && companyId) {
+      sql += ` AND (r.company_id = $${idx} OR u.company_id = $${idx})`; params.push(companyId); idx++;
+    }
+
+    if (date_from) { sql += ` AND r.report_date >= $${idx++}`; params.push(date_from); }
+    if (date_to) { sql += ` AND r.report_date <= $${idx++}`; params.push(date_to); }
+    if (category) { sql += ` AND r.work_category = $${idx++}`; params.push(category); }
+
+    sql += ' ORDER BY r.report_date DESC';
+    const result = await query(sql, params);
+    const reports = result.rows;
+
+    if (reports.length === 0) {
+      return res.json({ total: 0, message: '분석할 업무 데이터가 없습니다.', observations: [], positive: null, negative: null });
+    }
+
+    const catCount = {};
+    const placeCount = {};
+    const personCount = {};
+    const dailyCount = {};
+    const taskList = [];
+    const weekdayCount = [0,0,0,0,0,0,0];
+
+    reports.forEach(r => {
+      const cat = r.work_category || '미분류';
+      catCount[cat] = (catCount[cat] || 0) + 1;
+      if (r.where_place) placeCount[r.where_place] = (placeCount[r.where_place] || 0) + 1;
+      personCount[r.author_name] = (personCount[r.author_name] || 0) + 1;
+      const d = (r.report_date || '').toString().split('T')[0];
+      if (d) { dailyCount[d] = (dailyCount[d] || 0) + 1; }
+      if (d) { weekdayCount[new Date(d).getDay()]++; }
+      if (r.what_task) taskList.push({ task: r.what_task, cat, place: r.where_place, date: d, who: r.author_name });
+    });
+
+    const topCats = Object.entries(catCount).sort((a,b) => b[1]-a[1]);
+    const topPlaces = Object.entries(placeCount).sort((a,b) => b[1]-a[1]).slice(0, 5);
+    const topPersons = Object.entries(personCount).sort((a,b) => b[1]-a[1]);
+    const days = Object.keys(dailyCount).sort();
+    const totalDays = days.length;
+    const avgPerDay = totalDays > 0 ? (reports.length / totalDays).toFixed(1) : 0;
+    const dayNames = ['일','월','화','수','목','금','토'];
+    const busiestDay = dayNames[weekdayCount.indexOf(Math.max(...weekdayCount))];
+
+    const halfIdx = Math.floor(days.length / 2);
+    const firstHalf = days.slice(0, halfIdx);
+    const secondHalf = days.slice(halfIdx);
+    const firstHalfCount = firstHalf.reduce((s, d) => s + (dailyCount[d] || 0), 0);
+    const secondHalfCount = secondHalf.reduce((s, d) => s + (dailyCount[d] || 0), 0);
+    const trend = secondHalfCount > firstHalfCount * 1.2 ? 'increasing' : secondHalfCount < firstHalfCount * 0.8 ? 'decreasing' : 'stable';
+
+    const catDiversity = topCats.length;
+    const topCatRatio = topCats.length > 0 ? Math.round(topCats[0][1] / reports.length * 100) : 0;
+    const isConcentrated = topCatRatio > 60;
+
+    const observations = [];
+    observations.push(`총 ${reports.length}건의 업무가 ${totalDays}일에 걸쳐 수행됨 (일 평균 ${avgPerDay}건)`);
+    if (topCats.length > 0) observations.push(`가장 많은 업무 유형: ${topCats[0][0]} (${topCats[0][1]}건, ${topCatRatio}%)`);
+    if (topCats.length > 1) observations.push(`${topCats.slice(0, 3).map(c => c[0]).join(', ')} 순으로 업무 비중이 높음`);
+    if (topPlaces.length > 0) observations.push(`주요 활동 장소: ${topPlaces.map(p => p[0]).join(', ')}`);
+    observations.push(`업무가 가장 활발한 요일: ${busiestDay}요일`);
+    if (trend === 'increasing') observations.push('최근 업무량이 증가 추세를 보이고 있음');
+    else if (trend === 'decreasing') observations.push('최근 업무량이 감소 추세를 보이고 있음');
+    else observations.push('업무량이 안정적으로 유지되고 있음');
+    if (topPersons.length > 1) observations.push(`가장 활발한 구성원: ${topPersons[0][0]} (${topPersons[0][1]}건)`);
+
+    const scopeLabel = scope === 'personal' ? '해당 구성원' : scope === 'team' ? '해당 팀' : '회사';
+
+    let positiveConclusion, positivePrediction;
+    const posObs = [];
+    if (trend === 'increasing') {
+      posObs.push(`업무 기록이 증가세 (전반기 ${firstHalfCount}건 → 후반기 ${secondHalfCount}건) → 조직 활동성 상승 신호`);
+      positivePrediction = `현재 추세가 유지될 경우, ${scopeLabel}의 업무 처리 역량이 지속 강화되어 목표 달성 가능성이 높습니다.`;
+    } else if (trend === 'stable') {
+      posObs.push(`업무량이 일 평균 ${avgPerDay}건으로 안정적 유지 → 체계적 업무 관리의 증거`);
+      positivePrediction = `안정된 업무 흐름은 조직의 성숙도를 나타내며, 이 기반 위에 새로운 프로젝트 추진이 가능합니다.`;
+    } else {
+      posObs.push(`업무 효율화로 인한 자연스러운 업무량 조정 가능성`);
+      positivePrediction = `업무 프로세스 개선을 통해 더 적은 리소스로 동일한 성과를 달성하고 있을 수 있습니다.`;
+    }
+    if (catDiversity >= 4) {
+      posObs.push(`${catDiversity}개 카테고리에 걸친 다양한 업무 수행 → 사업 다각화 역량 확보`);
+    }
+    if (topPlaces.length >= 3) {
+      posObs.push(`${topPlaces.length}개 이상의 활동 거점 → 광범위한 현장 커버리지 확보`);
+    }
+    if (topPersons.length >= 3) {
+      posObs.push(`${topPersons.length}명의 구성원이 골고루 참여 → 업무 분담 체계 안정화`);
+    }
+    positiveConclusion = `관찰된 패턴을 종합하면, ${scopeLabel}은(는) ${topCats.slice(0,2).map(c => c[0]).join('과 ')} 중심의 업무를 체계적으로 수행하고 있으며, 이를 기반으로 역량 확대가 가능한 단계입니다.`;
+
+    let negativeConclusion, negativePrediction;
+    const negObs = [];
+    if (isConcentrated) {
+      negObs.push(`전체 업무의 ${topCatRatio}%가 '${topCats[0][0]}'에 집중 → 특정 업무 과의존 리스크`);
+    }
+    if (trend === 'decreasing') {
+      negObs.push(`업무량 감소 추세 (${firstHalfCount}건 → ${secondHalfCount}건) → 조직 활력 저하 우려`);
+      negativePrediction = `감소 추세가 계속되면 핵심 업무 공백이 발생할 수 있으며, 원인 분석과 대응이 필요합니다.`;
+    } else {
+      negativePrediction = `현재 운영 방식의 한계점을 사전에 파악하고 개선하지 않으면, 조직 확장 시 병목이 발생할 수 있습니다.`;
+    }
+    if (topPersons.length > 0 && topPersons[0][1] > reports.length * 0.5) {
+      negObs.push(`${topPersons[0][0]}에게 전체 업무의 ${Math.round(topPersons[0][1]/reports.length*100)}% 집중 → 핵심 인력 이탈 시 업무 마비 위험`);
+    }
+    if (topPlaces.length <= 1 && reports.length > 10) {
+      negObs.push('활동 범위가 제한적 → 시장 확장 또는 고객 접점 다변화 필요');
+    }
+    const maxGap = findMaxGap(days);
+    if (maxGap >= 3) {
+      negObs.push(`최대 ${maxGap}일간 업무 공백 발생 → 업무 연속성 관리 필요`);
+    }
+    if (negObs.length === 0) {
+      negObs.push('현재까지 특별한 리스크 신호는 감지되지 않았으나, 지속적 모니터링이 필요합니다');
+    }
+    negativeConclusion = `잠재적 리스크 요인을 관리하지 않을 경우, ${scopeLabel}의 성장 모멘텀이 약화될 가능성이 있습니다.`;
+
+    const recommendations = [];
+    if (isConcentrated) recommendations.push({ priority: '주의', action: `'${topCats[0][0]}' 외 업무 영역 확대`, reason: '특정 카테고리 과의존은 환경 변화 시 취약점이 됩니다' });
+    if (trend === 'decreasing') recommendations.push({ priority: '긴급', action: '업무량 감소 원인 분석', reason: '3주 이상 감소 추세가 이어지면 조직 활력이 저하됩니다' });
+    if (topPersons.length > 0 && topPersons[0][1] > reports.length * 0.4) recommendations.push({ priority: '중요', action: '업무 분산 체계 마련', reason: '특정 인력 의존도를 낮춰 조직 안정성을 확보해야 합니다' });
+    if (catDiversity < 3) recommendations.push({ priority: '제안', action: '업무 영역 다각화 검토', reason: '다양한 업무 경험이 조직의 적응력을 높입니다' });
+    recommendations.push({ priority: '제안', action: '주간/월간 인사이트 정기 리뷰', reason: '데이터 기반 의사결정으로 업무 효율을 지속 개선할 수 있습니다' });
+
+    res.json({
+      total: reports.length,
+      period: { from: days[0] || date_from, to: days[days.length - 1] || date_to, total_days: totalDays },
+      scope: scope || 'all',
+      stats: {
+        avg_per_day: parseFloat(avgPerDay),
+        busiest_day: busiestDay,
+        trend,
+        category_count: catDiversity,
+        top_categories: topCats.slice(0, 5).map(c => ({ name: c[0], count: c[1], pct: Math.round(c[1]/reports.length*100) })),
+        top_places: topPlaces.map(p => ({ name: p[0], count: p[1] })),
+        top_persons: topPersons.slice(0, 5).map(p => ({ name: p[0], count: p[1] })),
+        daily_trend: days.map(d => ({ date: d, count: dailyCount[d] }))
+      },
+      observations,
+      positive: { observations: posObs, conclusion: positiveConclusion, prediction: positivePrediction },
+      negative: { observations: negObs, conclusion: negativeConclusion, prediction: negativePrediction },
+      recommendations
+    });
+  } catch (err) {
+    console.error('Smart insights error:', err.message);
+    res.status(500).json({ error: '인사이트 분석 오류: ' + err.message });
+  }
+});
+
+function findMaxGap(sortedDates) {
+  let maxGap = 0;
+  for (let i = 1; i < sortedDates.length; i++) {
+    const diff = Math.round((new Date(sortedDates[i]) - new Date(sortedDates[i-1])) / 86400000);
+    if (diff > maxGap) maxGap = diff;
+  }
+  return maxGap;
+}
+
 // ─── 업데이트 변경이력 ───
 const changelogPath = path.join(__dirname, '..', 'data', 'changelog.json');
 

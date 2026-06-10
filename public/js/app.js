@@ -1386,6 +1386,10 @@ async function renderMore() {
         <span class="qa-icon">&#128203;</span>
         <span class="qa-label" style="color:#0f766e; font-weight:700;">주간 보고서</span>
       </button>
+      <button class="quick-action-btn" onclick="showSmartInsight()" style="border:2px solid #dc2626; background:#fef2f2;">
+        <span class="qa-icon">&#129504;</span>
+        <span class="qa-label" style="color:#dc2626; font-weight:700;">AI 인사이트</span>
+      </button>
     </div>
 
     <p class="section-title">&#9881; 도구</p>
@@ -3631,6 +3635,204 @@ async function showDirection() {
       <p style="font-size:16px; font-weight:700; margin-bottom:12px;">&#128101; 팀원별 행동 지침</p>
       <p style="font-size:12px; color:var(--gray-500); margin-bottom:12px;">각 팀원이 집중해야 할 방향</p>
       ${membersHtml}
+    </div>
+  `;
+}
+
+// ─── AI 귀납적 인사이트 ───
+let _insightScope = 'personal';
+let _insightFrom = '';
+let _insightTo = '';
+let _insightCat = '';
+
+async function showSmartInsight() {
+  const today = new Date().toISOString().split('T')[0];
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+  if (!_insightFrom) _insightFrom = weekAgo;
+  if (!_insightTo) _insightTo = today;
+
+  let teamOptions = '';
+  if (currentUser.company_id) {
+    const teams = await api('/api/companies/' + currentUser.company_id + '/teams') || [];
+    teamOptions = teams.map(t => `<option value="${t.id}" ${_insightScope === t.id ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('');
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
+    <p class="section-title">&#129504; AI 귀납적 인사이트</p>
+
+    <div class="card" style="margin-bottom:16px;">
+      <p style="font-size:14px; font-weight:600; margin-bottom:12px;">분석 조건 설정</p>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="font-size:12px;">분석 범위</label>
+        <select id="insightScope" class="form-control" onchange="onInsightScopeChange()">
+          <option value="personal" ${_insightScope === 'personal' ? 'selected' : ''}>👤 내 업무 (개인)</option>
+          ${currentUser.company_id ? `<option value="company" ${_insightScope === 'company' ? 'selected' : ''}>🏢 회사 전체</option>` : ''}
+          ${teamOptions ? `<optgroup label="팀 단위">${teamOptions}</optgroup>` : ''}
+        </select>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <label style="font-size:12px;">시작일</label>
+          <input type="date" id="insightFrom" class="form-control" value="${_insightFrom}">
+        </div>
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <label style="font-size:12px;">종료일</label>
+          <input type="date" id="insightTo" class="form-control" value="${_insightTo}">
+        </div>
+      </div>
+      <div style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="setInsightPeriod(7)">최근 1주</button>
+        <button class="btn btn-outline btn-sm" onclick="setInsightPeriod(14)">최근 2주</button>
+        <button class="btn btn-outline btn-sm" onclick="setInsightPeriod(30)">최근 1개월</button>
+        <button class="btn btn-outline btn-sm" onclick="setInsightPeriod(90)">최근 3개월</button>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="runSmartInsight()">&#129504; 인사이트 분석 시작</button>
+    </div>
+
+    <div id="insightResult"></div>
+  `;
+}
+
+function setInsightPeriod(days) {
+  const to = new Date().toISOString().split('T')[0];
+  const from = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+  document.getElementById('insightFrom').value = from;
+  document.getElementById('insightTo').value = to;
+}
+
+function onInsightScopeChange() {}
+
+async function runSmartInsight() {
+  const scope = document.getElementById('insightScope').value;
+  const from = document.getElementById('insightFrom').value;
+  const to = document.getElementById('insightTo').value;
+  _insightScope = scope;
+  _insightFrom = from;
+  _insightTo = to;
+
+  let scopeParam = scope;
+  let teamId = '';
+  if (scope !== 'personal' && scope !== 'company') {
+    scopeParam = 'team';
+    teamId = scope;
+  }
+
+  document.getElementById('insightResult').innerHTML = '<div style="text-align:center; padding:40px; color:var(--gray-500);">&#129504; 분석 중...</div>';
+
+  const url = `/api/insights/smart?scope=${scopeParam}&date_from=${from}&date_to=${to}${teamId ? '&team_id=' + teamId : ''}`;
+  const data = await api(url);
+  if (!data) { document.getElementById('insightResult').innerHTML = '<p style="color:#ef4444; text-align:center;">분석 실패</p>'; return; }
+  if (data.total === 0) { document.getElementById('insightResult').innerHTML = '<div class="card" style="text-align:center; padding:30px; color:var(--gray-500);">해당 기간에 분석할 업무 데이터가 없습니다.</div>'; return; }
+
+  const s = data.stats;
+  const trendIcon = s.trend === 'increasing' ? '📈' : s.trend === 'decreasing' ? '📉' : '➡️';
+  const trendText = s.trend === 'increasing' ? '증가 추세' : s.trend === 'decreasing' ? '감소 추세' : '안정 유지';
+  const scopeLabel = scopeParam === 'personal' ? '개인' : scopeParam === 'company' ? '회사' : '팀';
+
+  const maxChart = Math.max(...s.daily_trend.map(d => d.count), 1);
+  const chartBars = s.daily_trend.slice(-14).map(d => {
+    const h = Math.max(4, Math.round(d.count / maxChart * 50));
+    return `<div style="flex:1; display:flex; flex-direction:column; align-items:center;">
+      <div style="font-size:9px; color:var(--gray-500);">${d.count || ''}</div>
+      <div style="width:100%; max-width:20px; height:${h}px; background:var(--primary); border-radius:3px 3px 0 0;"></div>
+      <div style="font-size:8px; color:var(--gray-500); margin-top:2px;">${d.date.substring(5)}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('insightResult').innerHTML = `
+    <div class="card" style="margin-bottom:12px;">
+      <p style="font-size:15px; font-weight:700; margin-bottom:10px;">📊 분석 요약 (${scopeLabel})</p>
+      <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:70px; background:var(--primary-light); border-radius:10px; padding:10px; text-align:center;">
+          <div style="font-size:20px; font-weight:700; color:var(--primary);">${data.total}</div>
+          <div style="font-size:11px; color:var(--gray-500);">총 업무</div>
+        </div>
+        <div style="flex:1; min-width:70px; background:#f0fdf4; border-radius:10px; padding:10px; text-align:center;">
+          <div style="font-size:20px; font-weight:700; color:#059669;">${s.avg_per_day}</div>
+          <div style="font-size:11px; color:var(--gray-500);">일 평균</div>
+        </div>
+        <div style="flex:1; min-width:70px; background:#fef3c7; border-radius:10px; padding:10px; text-align:center;">
+          <div style="font-size:20px; font-weight:700; color:#d97706;">${s.busiest_day}</div>
+          <div style="font-size:11px; color:var(--gray-500);">최다 요일</div>
+        </div>
+        <div style="flex:1; min-width:70px; background:#fef2f2; border-radius:10px; padding:10px; text-align:center;">
+          <div style="font-size:16px; font-weight:700;">${trendIcon}</div>
+          <div style="font-size:11px; color:var(--gray-500);">${trendText}</div>
+        </div>
+      </div>
+      ${s.daily_trend.length > 1 ? `
+        <div style="display:flex; align-items:flex-end; gap:2px; height:70px; margin-bottom:8px; padding:0 4px;">
+          ${chartBars}
+        </div>` : ''}
+      ${s.top_categories.length > 0 ? `
+        <div style="margin-top:10px;">
+          <p style="font-size:12px; font-weight:600; margin-bottom:6px;">업무 유형 분포</p>
+          ${s.top_categories.map(c => `
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span style="font-size:13px; min-width:60px;">${escHtml(c.name)}</span>
+              <div style="flex:1; background:var(--gray-200); border-radius:4px; height:12px; overflow:hidden;">
+                <div style="width:${c.pct}%; height:100%; background:var(--primary); border-radius:4px;"></div>
+              </div>
+              <span style="font-size:11px; color:var(--gray-500); min-width:40px; text-align:right;">${c.count}건 (${c.pct}%)</span>
+            </div>
+          `).join('')}
+        </div>` : ''}
+    </div>
+
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #10b981;">
+      <p style="font-size:15px; font-weight:700; color:#059669; margin-bottom:10px;">✅ 긍정적 전망 (귀납적 분석)</p>
+      <div style="margin-bottom:12px;">
+        <p style="font-size:13px; font-weight:600; color:var(--gray-700); margin-bottom:6px;">관찰된 패턴</p>
+        ${data.positive.observations.map(o => `<p style="font-size:13px; line-height:1.6; margin-bottom:4px; padding-left:12px; border-left:2px solid #a7f3d0;">• ${o}</p>`).join('')}
+      </div>
+      <div style="background:#f0fdf4; border-radius:8px; padding:12px; margin-bottom:8px;">
+        <p style="font-size:13px; font-weight:600; color:#065f46; margin-bottom:4px;">논리적 결론</p>
+        <p style="font-size:13px; color:#065f46; line-height:1.6;">${data.positive.conclusion}</p>
+      </div>
+      <div style="background:#ecfdf5; border-radius:8px; padding:12px;">
+        <p style="font-size:13px; font-weight:600; color:#047857; margin-bottom:4px;">향후 예측</p>
+        <p style="font-size:13px; color:#047857; line-height:1.6;">${data.positive.prediction}</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #ef4444;">
+      <p style="font-size:15px; font-weight:700; color:#dc2626; margin-bottom:10px;">⚠️ 잠재적 리스크 (귀납적 분석)</p>
+      <div style="margin-bottom:12px;">
+        <p style="font-size:13px; font-weight:600; color:var(--gray-700); margin-bottom:6px;">관찰된 패턴</p>
+        ${data.negative.observations.map(o => `<p style="font-size:13px; line-height:1.6; margin-bottom:4px; padding-left:12px; border-left:2px solid #fca5a5;">• ${o}</p>`).join('')}
+      </div>
+      <div style="background:#fef2f2; border-radius:8px; padding:12px; margin-bottom:8px;">
+        <p style="font-size:13px; font-weight:600; color:#991b1b; margin-bottom:4px;">논리적 결론</p>
+        <p style="font-size:13px; color:#991b1b; line-height:1.6;">${data.negative.conclusion}</p>
+      </div>
+      <div style="background:#fff5f5; border-radius:8px; padding:12px;">
+        <p style="font-size:13px; font-weight:600; color:#b91c1c; margin-bottom:4px;">예상 리스크</p>
+        <p style="font-size:13px; color:#b91c1c; line-height:1.6;">${data.negative.prediction}</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px; border-left:4px solid #2563eb;">
+      <p style="font-size:15px; font-weight:700; color:#1d4ed8; margin-bottom:10px;">💡 실행 권고사항</p>
+      ${data.recommendations.map(r => {
+        const pColor = r.priority === '긴급' ? '#dc2626' : r.priority === '주의' ? '#ea580c' : r.priority === '중요' ? '#2563eb' : '#6b7280';
+        return `
+        <div style="padding:10px; background:var(--gray-50); border-radius:8px; margin-bottom:6px;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            <span style="font-size:10px; background:${pColor}; color:#fff; padding:2px 8px; border-radius:4px; font-weight:600;">${r.priority}</span>
+            <span style="font-size:14px; font-weight:600;">${escHtml(r.action)}</span>
+          </div>
+          <p style="font-size:12px; color:var(--gray-500); padding-left:4px;">${escHtml(r.reason)}</p>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div class="card" style="background:#f8fafc;">
+      <p style="font-size:12px; color:var(--gray-500); line-height:1.6;">
+        &#128300; <strong>분석 방법론</strong>: 귀납적 추론(Inductive Reasoning) 기반<br>
+        개별 업무 데이터에서 패턴을 관찰하고, 반복되는 특성으로부터 일반적인 결론과 예측을 도출합니다.
+        실제 데이터 ${data.total}건, ${data.period.total_days}일간의 업무 기록을 분석하였습니다.
+      </p>
     </div>
   `;
 }
