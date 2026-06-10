@@ -4323,7 +4323,7 @@ async function showBookmarks() {
     ${data.map(b => {
       const dt = (b.report_date || '').toString().split('T')[0];
       return `
-      <div class="list-item" style="cursor:pointer; position:relative;" onclick="showReportDetail(${b.report_id})">
+      <div class="list-item" style="cursor:pointer; position:relative;" onclick="viewReport('${b.report_id}')">
         <div class="list-item-content">
           <div class="list-item-title">&#11088; ${escHtml(b.what_task || '업무')}</div>
           <div class="list-item-sub">${dt} ${b.where_place ? '| '+escHtml(b.where_place) : ''} ${b.result_status ? '| '+escHtml(b.result_status) : ''}</div>

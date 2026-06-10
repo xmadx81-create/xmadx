@@ -1,6 +1,7 @@
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
+const fs = require('fs');
 const ExcelJS = require('exceljs');
 const { query, uuidv4, initDB } = require('./database');
 
@@ -2906,6 +2907,51 @@ app.put('/api/todos/:id', authMiddleware, async (req, res) => {
 app.delete('/api/todos/:id', authMiddleware, async (req, res) => {
   await query('DELETE FROM todos WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
   res.json({ ok: true });
+});
+
+// ─── 업데이트 변경이력 ───
+const changelogPath = path.join(__dirname, '..', 'data', 'changelog.json');
+
+app.get('/api/changelog', authMiddleware, async (req, res) => {
+  try {
+    const data = fs.readFileSync(changelogPath, 'utf-8');
+    res.json(JSON.parse(data));
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/changelog', adminMiddleware, async (req, res) => {
+  const { version, changes } = req.body;
+  if (!version || !changes || !changes.length) return res.status(400).json({ error: '버전과 변경사항을 입력하세요' });
+  let log = [];
+  try { log = JSON.parse(fs.readFileSync(changelogPath, 'utf-8')); } catch (e) {}
+  const entry = { version, date: new Date().toISOString().split('T')[0], changes, published: false };
+  log.unshift(entry);
+  fs.writeFileSync(changelogPath, JSON.stringify(log, null, 2));
+  res.json({ ok: true, entry });
+});
+
+app.post('/api/changelog/publish', adminMiddleware, async (req, res) => {
+  let log = [];
+  try { log = JSON.parse(fs.readFileSync(changelogPath, 'utf-8')); } catch (e) {}
+  const unpublished = log.filter(e => !e.published);
+  if (unpublished.length === 0) return res.json({ ok: true, message: '발행할 업데이트가 없습니다' });
+
+  let content = '';
+  unpublished.forEach(entry => {
+    content += `📌 v${entry.version} (${entry.date})\n`;
+    entry.changes.forEach(c => { content += `• ${c}\n`; });
+    content += '\n';
+  });
+
+  const id = uuidv4();
+  await query(
+    `INSERT INTO notices (id, title, content, priority, pinned) VALUES ($1, $2, $3, $4, $5)`,
+    [id, `🔄 앱 업데이트 안내 (${unpublished[0].version})`, content.trim(), 'important', true]
+  );
+
+  log.forEach(e => { if (!e.published) e.published = true; });
+  fs.writeFileSync(changelogPath, JSON.stringify(log, null, 2));
+  res.json({ ok: true, notice_id: id, count: unpublished.length });
 });
 
 // ─── 글로벌 에러 핸들러 ───
