@@ -4544,9 +4544,9 @@ async function saveNote(noteId) {
   const color = document.getElementById('selNoteColor').value;
 
   if (noteId) {
-    await api(`/api/notes/${noteId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, color }) });
+    await api(`/api/notes/${noteId}`, { method: 'PUT', body: { content, color } });
   } else {
-    await api('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, color }) });
+    await api('/api/notes', { method: 'POST', body: { content, color } });
   }
   closeNoteEditor();
   showNotes();
@@ -4560,7 +4560,7 @@ async function deleteNote(noteId) {
 }
 
 async function toggleNotePin(noteId, pinned) {
-  await api(`/api/notes/${noteId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pinned }) });
+  await api(`/api/notes/${noteId}`, { method: 'PUT', body: { pinned } });
   closeNoteEditor();
   showNotes();
 }
@@ -4648,7 +4648,7 @@ async function toggleBookmark(reportId) {
     await api(`/api/bookmarks/${reportId}`, { method: 'DELETE' });
     showToast('즐겨찾기에서 제거했습니다');
   } else {
-    await api('/api/bookmarks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report_id: reportId }) });
+    await api('/api/bookmarks', { method: 'POST', body: { report_id: reportId } });
     showToast('즐겨찾기에 추가했습니다');
   }
   const starBtn = document.getElementById('bookmarkBtn');
@@ -5693,8 +5693,7 @@ async function submitCheckIn() {
   if (overlay) overlay.remove();
   const res = await api('/api/attendance/check-in', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ work_type: workType, work_summary: summary })
+    body: { work_type: workType, work_summary: summary }
   });
   if (res) { toast(`출근 완료! (${workType})`); renderHome(); }
 }
