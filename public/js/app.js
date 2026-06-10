@@ -65,9 +65,21 @@ async function login() {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
     navigate('home');
+    restorePendingVoice();
   } catch (e) {
     toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
   }
+}
+
+function restorePendingVoice() {
+  const pending = localStorage.getItem('voicePending');
+  if (!pending) return;
+  localStorage.removeItem('voicePending');
+  toast('음성 녹음 데이터를 복원합니다');
+  setTimeout(() => {
+    openNewReport();
+    setTimeout(() => { parseVoiceToFields(pending); }, 400);
+  }, 500);
 }
 
 function showLogin() {
@@ -85,6 +97,7 @@ async function checkAuth() {
     setTimeout(checkNotiCount, 2000);
     setInterval(checkNotiCount, 120000);
     setTimeout(checkAttendancePopup, 3000);
+    restorePendingVoice();
   }
 }
 
@@ -6270,9 +6283,11 @@ function previewVoice5W1H(text) {
   return html;
 }
 
-function applyRefinedVoice() {
+async function applyRefinedVoice() {
   const refined = document.getElementById('vrRefinedText').value.trim();
   if (!refined) { toast('텍스트가 없습니다'); return; }
+
+  localStorage.setItem('voicePending', refined);
 
   document.getElementById('voiceRecordScreen').style.display = 'none';
   document.getElementById('vrRefineStep').style.display = 'none';
@@ -6280,7 +6295,9 @@ function applyRefinedVoice() {
   document.getElementById('vrMicIcon').style.animation = 'vrPulse 1.5s infinite';
   document.getElementById('vrMicIcon').style.background = '#7c3aed';
 
-  openNewReport();
+  await openNewReport();
+  if (!currentUser) return;
+  localStorage.removeItem('voicePending');
   setTimeout(() => { parseVoiceToFields(refined); }, 300);
 }
 

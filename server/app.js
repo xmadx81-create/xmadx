@@ -14,7 +14,8 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(session({
   secret: 'petroleum-work-system-2024',
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
 }));
 
 function authMiddleware(req, res, next) {
