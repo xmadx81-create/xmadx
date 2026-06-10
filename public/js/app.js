@@ -107,6 +107,14 @@ async function logout() {
   await api('/api/logout', { method: 'POST' });
   currentUser = null;
   reportViewMode = 'mine';
+  editingReportId = null;
+  _vgActive = false;
+  _vgDidCheckin = false;
+  localStorage.removeItem('voiceCache');
+  localStorage.removeItem('voicePending');
+  localStorage.removeItem('vgDone');
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  document.getElementById('voiceGuideOverlay').style.display = 'none';
   showLogin();
 }
 
@@ -769,7 +777,9 @@ async function editReport(id) {
   openModal('reportModal');
 }
 
+let _submitting = false;
 async function submitReport() {
+  if (_submitting) return;
   const getChipValue = (field) => {
     const sel = document.querySelector(`[data-field="${field}"].selected`);
     return sel ? sel.dataset.value : null;
@@ -805,14 +815,18 @@ async function submitReport() {
   const recipients = Array.from(document.getElementById('reportRecipient').selectedOptions).map(o => o.value);
   body.recipients = recipients;
 
+  _submitting = true;
+  let result;
   if (editingReportId) {
-    await api(`/api/reports/${editingReportId}`, { method: 'PUT', body });
-    toast('업무일지가 수정되었습니다');
+    result = await api(`/api/reports/${editingReportId}`, { method: 'PUT', body });
+    if (result) toast('업무일지가 수정되었습니다');
   } else {
-    await api('/api/reports', { method: 'POST', body });
-    toast('업무일지가 제출되었습니다');
+    result = await api('/api/reports', { method: 'POST', body });
+    if (result) toast('업무일지가 제출되었습니다');
   }
+  _submitting = false;
 
+  if (!result) return;
   closeModal('reportModal');
   navigate(currentPage);
 }
@@ -895,6 +909,7 @@ function addWeeklyItem(dayIndex, dayLabel) {
 }
 
 async function submitWeeklyPlan() {
+  if (_submitting) return;
   const items = [];
   document.querySelectorAll('.weekly-content').forEach(el => {
     const day = parseInt(el.dataset.day);
@@ -907,7 +922,8 @@ async function submitWeeklyPlan() {
     });
   });
 
-  await api('/api/weekly-plans', {
+  _submitting = true;
+  const result = await api('/api/weekly-plans', {
     method: 'POST',
     body: {
       week_start: document.getElementById('weekStart').value,
@@ -915,7 +931,9 @@ async function submitWeeklyPlan() {
       items
     }
   });
+  _submitting = false;
 
+  if (!result) return;
   toast('주간계획이 저장되었습니다');
   closeModal('weeklyModal');
   navigate('weekly');
@@ -2804,7 +2822,7 @@ function backToLogin() {
 }
 
 async function submitRegister() {
-  toast('가입 처리 중...');
+  if (_submitting) return;
   try {
     const name = document.getElementById('regName').value.trim();
     const phoneRest = document.getElementById('regPhone').value.trim().replace(/[^0-9]/g, '');
@@ -2812,6 +2830,12 @@ async function submitRegister() {
     const email = document.getElementById('regEmail').value.trim();
     const password = document.getElementById('regPassword').value;
 
+    if (!name) { toast('이름을 입력해주세요'); return; }
+    if (phoneRest.length < 7) { toast('연락처를 정확히 입력해주세요'); return; }
+    if (password.length < 4) { toast('비밀번호는 4자 이상 입력해주세요'); return; }
+
+    _submitting = true;
+    toast('가입 처리 중...');
     const body = { name, phone, email, password };
 
     if (_regMode === 'join') {
@@ -2837,6 +2861,7 @@ async function submitRegister() {
     });
     const data = await res.json();
 
+    _submitting = false;
     if (!res.ok) { toast(data.error || '가입 실패'); return; }
 
     currentUser = data;
@@ -2852,6 +2877,7 @@ async function submitRegister() {
     toast(`${data.name}님 환영합니다!`);
     navigate('home');
   } catch (e) {
+    _submitting = false;
     toast('가입 오류: ' + e.message);
   }
 }
@@ -6100,6 +6126,7 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 let _vrRecog = null;
 let _vrFinalText = '';
 let _vrInterim = '';
+let _vrProcessed = 0;
 
 function startVoiceReport() {
   if (!SpeechRecognition) { toast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari를 사용해주세요.'); return; }

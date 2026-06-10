@@ -163,7 +163,7 @@ async function initDB() {
       event_type TEXT DEFAULT '회의', color TEXT DEFAULT '#3b82f6',
       created_at TIMESTAMP DEFAULT NOW())`,
     `CREATE TABLE IF NOT EXISTS bookmarks (
-      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, report_id INTEGER NOT NULL,
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, report_id TEXT NOT NULL,
       memo TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(user_id, report_id))`,
     `CREATE TABLE IF NOT EXISTS quick_notes (
@@ -191,6 +191,14 @@ async function initDB() {
   await query(`ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   await query(`ALTER TABLE quick_notes ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   await query(`ALTER TABLE approved_staff ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+
+  await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS issues TEXT DEFAULT ''`).catch(() => {});
+  await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`).catch(() => {});
+
+  try {
+    await query(`ALTER TABLE bookmarks ALTER COLUMN report_id TYPE TEXT USING report_id::TEXT`);
+  } catch(e) {}
+
   console.log('All tables created');
 
   // ═══ SEED DATA ═══

@@ -1527,7 +1527,7 @@ app.get('/api/admin/insights', adminMiddleware, async (req, res) => { try {
   res.json({
     generated_at: new Date().toISOString(),
     notes_analyzed: notes.length + parseInt(repStats.cnt || 0),
-    total_notes: (await query('SELECT COUNT(*) as cnt FROM meeting_notes')).rows[0].cnt,
+    total_notes: ((await query('SELECT COUNT(*) as cnt FROM meeting_notes').catch(() => ({ rows: [{ cnt: 0 }] }))).rows[0] || { cnt: 0 }).cnt,
     total_reports: parseInt(repStats.cnt || 0),
     date_range: { from: dateFrom, to: dateTo },
     report_stats: { categories: topCategories, places: topPlaces, completion_rate: completionRate, recent_count: totalRecent },
@@ -2367,13 +2367,13 @@ app.post('/api/bookmarks', authMiddleware, async (req, res) => {
 
 app.delete('/api/bookmarks/:reportId', authMiddleware, async (req, res) => {
   const userId = req.session.userId;
-  await query('DELETE FROM bookmarks WHERE user_id = $1 AND report_id = $2', [userId, parseInt(req.params.reportId)]);
+  await query('DELETE FROM bookmarks WHERE user_id = $1 AND report_id = $2', [userId, req.params.reportId]);
   res.json({ ok: true });
 });
 
 app.get('/api/bookmarks/check/:reportId', authMiddleware, async (req, res) => {
   const userId = req.session.userId;
-  const result = await query('SELECT id FROM bookmarks WHERE user_id = $1 AND report_id = $2', [userId, parseInt(req.params.reportId)]);
+  const result = await query('SELECT id FROM bookmarks WHERE user_id = $1 AND report_id = $2', [userId, req.params.reportId]);
   res.json({ bookmarked: result.rows.length > 0 });
 });
 
