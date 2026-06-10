@@ -1362,7 +1362,8 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
 });
 
 // ─── 시크릿: 회의록 인사이트 분석 ───
-app.get('/api/admin/insights', adminMiddleware, async (req, res) => {
+app.get('/api/admin/insights', adminMiddleware, async (req, res) => { try {
+  await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS result_status TEXT DEFAULT ''`).catch(() => {});
   const notesResult = await query('SELECT * FROM meeting_notes WHERE summary IS NOT NULL ORDER BY meeting_date DESC');
   const notes = notesResult.rows;
 
@@ -1476,6 +1477,7 @@ app.get('/api/admin/insights', adminMiddleware, async (req, res) => {
       ]
     }
   });
+  } catch (err) { console.error('Insights error:', err.message); res.status(500).json({ error: '서버 오류: ' + err.message }); }
 });
 
 // ─── 회의록 ───
