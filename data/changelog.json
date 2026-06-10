@@ -11,7 +11,7 @@
       "회원가입 개편: 회사 코드 참여 또는 새 회사 등록",
       "보안 안내: 관리자 열람 권한 및 데이터 격리 정책 명시"
     ],
-    "published": false
+    "published": true
   },
   {
     "version": "2.1",
@@ -27,7 +27,7 @@
       "코드 건전성 검사 시스템 추가: 배포 전 자동 점검",
       "업데이트 변경이력 및 공지 발행 시스템 추가"
     ],
-    "published": false
+    "published": true
   },
   {
     "version": "2.0",
@@ -44,6 +44,6 @@
       "인수인계 문서 자동 생성",
       "월간 요약 리포트"
     ],
-    "published": false
+    "published": true
   }
 ]
