@@ -6230,41 +6230,157 @@ function refineVoiceText() {
 
 function polishVoiceText(text) {
   let t = text;
-  t = t.replace(/\s{2,}/g, ' ').trim();
-  t = t.replace(/([.!?])\s*/g, '$1 ').trim();
-  t = t.replace(/(\s)(그래서|그리고|그런데|근데|어|음|아|뭐|저기|있잖아|그니까|그러니까)\s/g, ' ');
-  t = t.replace(/(.)\1{3,}/g, '$1$1');
-  t = t.replace(/\s(요|yo)\s/gi, ' ');
 
-  const sentences = t.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  // 1. 기본 정리
+  t = t.replace(/\s{2,}/g, ' ').trim();
+  t = t.replace(/(.)\1{3,}/g, '$1$1');
+
+  // 2. 구어체 필러/군더더기 제거
+  const fillers = [
+    '그래서', '그리고', '그런데', '근데', '그래가지고', '그래갖고', '그러니까', '그니까',
+    '어', '음', '아', '뭐', '저기', '있잖아', '있잖아요', '말이야', '말이에요',
+    '이제', '인제', '막', '약간', '좀', '한번', '일단', '아무튼', '어쨌든',
+    '진짜', '진짜로', '정말', '정말로', '되게', '엄청', '완전', '너무',
+    '이거', '저거', '그거', '뭐냐면', '뭐냐하면', '어떻게보면',
+    '사실은', '사실', '솔직히', '기본적으로', '원래', '원래는',
+    '그냥', '걍', '뭐랄까', '어떻게', '아니', '아니요', '네',
+    '예', '응', '잠깐', '잠시만', '다시', '다시말하면',
+    '이런식으로', '그런식으로', '어찌됐든', '하여튼', '아무래도',
+    '제가생각하기에', '내생각에는', '생각해보면', '보면은', '하면은',
+    '같은경우에는', '같은경우는', '경우에는'
+  ];
+  const fillerRe = new RegExp('(?:^|\\s)(?:' + fillers.join('|') + ')(?:\\s|$)', 'gi');
+  t = t.replace(fillerRe, ' ');
+  t = t.replace(fillerRe, ' ');
+  t = t.replace(/\s{2,}/g, ' ').trim();
+
+  // 3. 구어체 문장 분리 (어미 기준)
+  const splitEndings = [
+    /([가-힣]+(?:했|됐|었|였|겠)(?:고|구))\s/g,
+    /([가-힣]+(?:하고|되고|나서|해서|돼서|갔는데|왔는데|했는데|인데|은데|는데))\s/g,
+    /([가-힣]+(?:니까|으니까|서요|거든요|잖아요|거든|잖아))\s/g,
+    /([가-힣]+(?:다가|하다가|하면서|되면서|으면서))\s/g
+  ];
+  for (const re of splitEndings) {
+    t = t.replace(re, '$1. ');
+  }
+
+  // 4. 구어체 → 문어체 변환
+  const styleMap = [
+    [/했거든요?/g, '했습니다'],
+    [/했잖아요?/g, '했습니다'],
+    [/인데요/g, '입니다'],
+    [/거든요/g, '습니다'],
+    [/잖아요/g, '습니다'],
+    [/해야\s*돼요?/g, '해야 합니다'],
+    [/해야\s*되요?/g, '해야 합니다'],
+    [/해야\s*해요?/g, '해야 합니다'],
+    [/할\s*거예요/g, '할 예정입니다'],
+    [/할\s*거에요/g, '할 예정입니다'],
+    [/할\s*건데/g, '할 예정이며'],
+    [/하려고요?/g, '하려고 합니다'],
+    [/하려구요?/g, '하려고 합니다'],
+    [/했어요/g, '했습니다'],
+    [/했어/g, '했습니다'],
+    [/됐어요/g, '되었습니다'],
+    [/됐어/g, '되었습니다'],
+    [/갔어요/g, '갔습니다'],
+    [/왔어요/g, '왔습니다'],
+    [/봤어요/g, '보았습니다'],
+    [/해요/g, '합니다'],
+    [/돼요/g, '됩니다'],
+    [/줘요/g, '주세요'],
+    [/같아요/g, '같습니다'],
+    [/있어요/g, '있습니다'],
+    [/없어요/g, '없습니다'],
+    [/모르겠어요/g, '모르겠습니다'],
+    [/갈게요/g, '가겠습니다'],
+    [/할게요/g, '하겠습니다'],
+    [/볼게요/g, '보겠습니다']
+  ];
+  for (const [from, to] of styleMap) {
+    t = t.replace(from, to);
+  }
+
+  // 5. 문장 분리 및 정리
+  t = t.replace(/([.!?])\s*/g, '$1 ').trim();
+  if (!/[.!?]/.test(t)) {
+    t = t.replace(/(합니다|입니다|됩니다|겠습니다|있습니다|없습니다|했습니다|되었습니다|예정입니다)/g, '$1.');
+  }
+  let sentences = t.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 1);
+  if (sentences.length === 0) sentences = [t];
+
   const cleaned = sentences.map(s => {
     s = s.trim();
+    s = s.replace(/^\s*(그리고|그래서|그런데|근데|그래갖고|그래가지고|또)\s*/i, '');
     if (s && !/[.!?]$/.test(s)) s += '.';
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  });
+    if (s.length > 1) s = s.charAt(0).toUpperCase() + s.slice(1);
+    return s;
+  }).filter(s => s.length > 2);
 
   if (cleaned.length === 0) return t;
-
   let result = cleaned.join(' ');
 
-  const whoMatch = result.match(/([가-힣]{2,4})\s*(?:님|씨|과장|대리|차장|부장|팀장|사원|주임|매니저|선임|책임|본부장|이사|담당)/);
-  const whenMatch = result.match(/(\d{1,2}월\s*\d{1,2}일|\d{1,2}시|오전|오후|어제|오늘|내일|월요일|화요일|수요일|목요일|금요일|토요일|일요일)/);
-  const whereMatch = result.match(/(본사|지사|사무실|현장|센터|공장|서울|부산|대구|인천|광주|대전|울산|경기|충청|전라|경상|강원|제주|[가-힣]{1,8}(?:지국|센터|지사|사무소|영업소|지점|매장|현장|회의실))/);
-  const whatMatch = result.match(/(회의|미팅|점검|교육|상담|보고|작성|검토|분석|처리|확인|정리|출장|방문|영업|계약|협의|설치|수리|유지보수|인수인계|세미나|연수|감사|발송|접수|조사|배송|수거)\s*[가-힣]{0,6}/);
-  const howMatch = result.match(/(전화|이메일|대면|온라인|직접|팩스|문자|카톡|시스템|차량|방문하여|출장하여|유선으로|메일로)\s*[가-힣]{0,4}/);
-  const whyMatch = result.match(/[가-힣\s]{2,12}(?:위해서?|위하여|때문에|건으로|관련하여|관련해서|목적으로)/);
+  // 6. 맥락 기반 5W1H 추출
+  const whoPatterns = [
+    /([가-힣]{2,4})\s*(?:님|씨|과장|대리|차장|부장|팀장|사원|주임|매니저|선임|책임|본부장|이사|담당|사장|상무|전무)/,
+    /(?:제가|내가|본인이|저희|우리|우리팀|우리\s*팀이|담당자가)/,
+    /([가-힣]{2,3})(?:이가|이|가)\s+(?:가|와|만나|방문|전화|보고|작성|처리|확인|검토)/
+  ];
+  const whenPatterns = [
+    /(\d{1,2}월\s*\d{1,2}일)\s*(?:(?:오전|오후)\s*)?(?:\d{1,2}시)?/,
+    /(?:오전|오후)\s*\d{1,2}시\s*(?:\d{1,2}분|반)?/,
+    /\d{1,2}시\s*(?:\d{1,2}분|반)?(?:에|까지|부터)?/,
+    /(?:어제|오늘|내일|모레|그저께|아까|방금)/,
+    /(?:이번|지난|다음)\s*(?:주|달|월)\s*(?:월|화|수|목|금|토|일)?요?일?/,
+    /(?:월|화|수|목|금|토|일)요일/,
+    /(?:오전|오후|아침|점심|저녁|낮)(?:에|때|쯤)?/
+  ];
+  const wherePatterns = [
+    /(충청[남북]?도?|경기도?|서울|부산|대구|인천|광주|대전|울산|세종|경[상남북]+도?|전[라남북]+도?|강원도?|제주도?)\s*[가-힣]{0,6}/,
+    /(?:본사|지사|사무실|현장|지국|센터|회의실|연수원|공장|창고|매장|지점|사무소|영업소|출장지|사옥|빌딩|건물|식당|카페|호텔)\s*[가-힣]{0,4}/,
+    /[가-힣]{1,10}(?:지국|센터|지사|사무소|영업소|지점|매장|현장|회의실|사옥|빌딩|호텔|카페)/,
+    /(?:거기|그쪽|이쪽|저쪽|우리\s*회사|그\s*회사|상대\s*회사|고객사|협력사|거래처)\s*[가-힣]{0,4}/
+  ];
+  const whatPatterns = [
+    /(?:인수인계|보고서\s*작성|회의|미팅|점검|교육|상담|접수|처리|확인|검토|작성|발송|정리|분석|세미나|연수|파견|조사|설명회|감사|계약|협의|영업|배송|수거|설치|수리|유지보수|AS|면담|발표|프레젠테이션|제안|견적|입찰|시연|데모|테스트|시험|평가|심사|승인)\s*[가-힣]{0,8}/,
+    /(?:방문|출장|파견|외출|외근|출근|퇴근)\s*[가-힣]{0,6}/,
+    /[가-힣]{2,6}(?:업무|작업|일|프로젝트|과제|태스크)/
+  ];
+  const howPatterns = [
+    /(?:전화|이메일|대면|온라인|직접|팩스|문자|카톡|카카오톡|메신저|줌|화상|비대면|시스템|차량|KTX|비행기|버스|택시|지하철|자차)\s*(?:로|으로|통해|이용|타고)?\s*[가-힣]{0,4}/,
+    /(?:방문하여|출장하여|전화하여|메일로|유선으로|화상으로|대면으로|비대면으로)/
+  ];
+  const whyPatterns = [
+    /[가-힣\s]{2,15}(?:위해서?|위하여|때문에|건으로|관련하여|관련해서|목적으로|차원에서)/,
+    /(?:요청|지시|필요|예정|계획|준비|대비|대응|개선|해결)\s*(?:에\s*의해|으로|이\s*있어|을\s*위해|사항)/,
+    /[가-힣]{2,8}(?:요청|지시|의뢰|문의|클레임|민원|이슈|문제)(?:가|이|로|에)?\s*(?:있어|들어와|접수|발생)/
+  ];
 
-  const parts = [];
-  if (whenMatch) parts.push(whenMatch[0].trim());
-  if (whereMatch) parts.push(whereMatch[0].trim() + '에서');
-  if (whoMatch) parts.push(whoMatch[0].trim() + '이(가)');
-  if (whatMatch) parts.push(whatMatch[0].trim() + '을(를)');
-  if (howMatch) parts.push(howMatch[0].trim() + '(으)로');
-  if (whyMatch) parts.push(whyMatch[0].trim());
-  parts.push('수행함.');
+  let who = '', when = '', where = '', what = '', how = '', why = '';
+  for (const re of whoPatterns) { if (!who) { const m = result.match(re); if (m) who = m[0].replace(/[가이는은]\s*$/, '').trim(); } }
+  for (const re of whenPatterns) { if (!when) { const m = result.match(re); if (m) when = m[0].trim(); } }
+  for (const re of wherePatterns) { if (!where) { const m = result.match(re); if (m) where = m[0].trim(); } }
+  for (const re of whatPatterns) { if (!what) { const m = result.match(re); if (m) what = m[0].trim(); } }
+  for (const re of howPatterns) { if (!how) { const m = result.match(re); if (m) how = m[0].trim(); } }
+  for (const re of whyPatterns) { if (!why) { const m = result.match(re); if (m) why = m[0].trim(); } }
 
-  if (parts.length >= 4) {
-    result = result + '\n\n[요약] ' + parts.join(' ');
+  // 7. 자연어 요약 생성
+  const summaryParts = [];
+  if (when) summaryParts.push(when);
+  if (where) summaryParts.push(where + '에서');
+  if (who) summaryParts.push(who + (who.match(/[님씨]$/) ? '이' : ''));
+  if (what) summaryParts.push(what);
+  if (how) summaryParts.push(how + '으로');
+  if (why) summaryParts.push(why);
+  if (summaryParts.length === 0 && result.length > 10) {
+    summaryParts.push(result.substring(0, 60).replace(/[.!?]\s*[^.!?]*$/, ''));
+  }
+  if (summaryParts.length > 0) {
+    let summary = summaryParts.join(' ');
+    summary = summary.replace(/\s{2,}/g, ' ').trim();
+    if (!/[.!?]$/.test(summary)) summary += ' 진행.';
+    result = result + '\n\n[요약] ' + summary;
   }
 
   return result;
