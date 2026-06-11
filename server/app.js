@@ -3151,6 +3151,115 @@ app.post('/api/changelog/publish', adminMiddleware, async (req, res) => {
   res.json({ ok: true, notice_id: id, count: unpublished.length });
 });
 
+// ─── 가맹점 주문 현황 (call history) ───
+
+app.get('/call/history', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'call-history.html'));
+});
+
+app.get('/api/call/branches', async (req, res) => {
+  try {
+    const result = await query('SELECT id, name FROM branches WHERE exclude_service = 0 ORDER BY seq');
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/call/history', async (req, res) => {
+  try {
+    const { search, sort } = req.query;
+    const now = new Date();
+    const currentMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+
+    const branchResult = await query('SELECT id, name FROM branches WHERE exclude_service = 0 ORDER BY seq');
+    const allBranches = branchResult.rows;
+
+    const orderResult = await query(
+      `SELECT branch_id, branch_name, TO_CHAR(order_date, 'YYYY-MM') as month, SUM(order_count) as cnt
+       FROM call_orders GROUP BY branch_id, branch_name, TO_CHAR(order_date, 'YYYY-MM')`
+    );
+
+    const totalResult = await query(
+      `SELECT branch_id, SUM(order_count) as total FROM call_orders GROUP BY branch_id`
+    );
+    const totalMap = {};
+    totalResult.rows.forEach(r => { totalMap[r.branch_id] = parseInt(r.total); });
+
+    const monthlyMap = {};
+    orderResult.rows.forEach(r => {
+      if (!monthlyMap[r.branch_id]) monthlyMap[r.branch_id] = {};
+      monthlyMap[r.branch_id][r.month] = parseInt(r.cnt);
+    });
+
+    let branches = allBranches.map(b => ({
+      branch_id: b.id,
+      branch_name: b.name,
+      total: totalMap[b.id] || 0,
+      monthly: monthlyMap[b.id] || {}
+    }));
+
+    if (search) {
+      const s = search.toLowerCase();
+      branches = branches.filter(b => b.branch_name.toLowerCase().includes(s));
+    }
+
+    switch (sort) {
+      case 'total_asc': branches.sort((a,b) => a.total - b.total); break;
+      case 'month_desc': branches.sort((a,b) => (b.monthly[currentMonth]||0) - (a.monthly[currentMonth]||0)); break;
+      case 'name_asc': branches.sort((a,b) => a.branch_name.localeCompare(b.branch_name, 'ko')); break;
+      default: branches.sort((a,b) => b.total - a.total);
+    }
+
+    const totalOrders = Object.values(totalMap).reduce((s,v) => s+v, 0);
+    const thisMonthOrders = Object.values(monthlyMap).reduce((s, bm) => s + (bm[currentMonth] || 0), 0);
+    const activeBranches = Object.keys(totalMap).length;
+
+    res.json({
+      summary: { total_orders: totalOrders, this_month_orders: thisMonthOrders, active_branches: activeBranches, total_branches: allBranches.length },
+      branches
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/call/history/:branchId', async (req, res) => {
+  try {
+    const { branchId } = req.params;
+    const result = await query(
+      `SELECT TO_CHAR(order_date, 'YYYY-MM') as month, SUM(order_count) as order_count
+       FROM call_orders WHERE branch_id = $1
+       GROUP BY TO_CHAR(order_date, 'YYYY-MM') ORDER BY month`,
+      [branchId]
+    );
+    const monthly = result.rows.map(r => {
+      const [y, m] = r.month.split('-');
+      return { month: r.month, month_label: y + '년 ' + parseInt(m) + '월', order_count: parseInt(r.order_count) };
+    });
+    res.json({ branch_id: branchId, monthly });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/call/orders', async (req, res) => {
+  try {
+    const { branch_id, order_date, order_count, memo } = req.body;
+    if (!branch_id || !order_date) return res.status(400).json({ error: '가맹점과 주문일을 입력해주세요' });
+    const branchResult = await query('SELECT name FROM branches WHERE id = $1', [branch_id]);
+    if (!branchResult.rows[0]) return res.status(404).json({ error: '가맹점을 찾을 수 없습니다' });
+    const branchName = branchResult.rows[0].name;
+    const id = uuidv4();
+    await query(
+      'INSERT INTO call_orders (id, branch_id, branch_name, order_date, order_count, memo) VALUES ($1,$2,$3,$4,$5,$6)',
+      [id, branch_id, branchName, order_date, order_count || 1, memo || '']
+    );
+    res.json({ ok: true, id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/call/orders/:id', async (req, res) => {
+  try {
+    await query('DELETE FROM call_orders WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);
