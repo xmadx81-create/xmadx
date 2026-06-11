@@ -70,16 +70,6 @@ async function initDB() {
       id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, day_of_week INTEGER NOT NULL,
       work_category TEXT NOT NULL, content TEXT, location TEXT, purpose TEXT,
       FOREIGN KEY (plan_id) REFERENCES weekly_plans(id) ON DELETE CASCADE)`,
-    `CREATE TABLE IF NOT EXISTS franchises (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, region TEXT NOT NULL, address TEXT,
-      owner_name TEXT, owner_phone TEXT, contract_date DATE, status TEXT DEFAULT 'active',
-      franchise_type TEXT, assigned_user_id TEXT, notes TEXT,
-      created_at TIMESTAMP DEFAULT NOW(), FOREIGN KEY (assigned_user_id) REFERENCES users(id))`,
-    `CREATE TABLE IF NOT EXISTS franchise_visits (
-      id TEXT PRIMARY KEY, franchise_id TEXT NOT NULL, visitor_id TEXT NOT NULL,
-      visit_date DATE NOT NULL, purpose TEXT, content TEXT, result TEXT, next_action TEXT,
-      created_at TIMESTAMP DEFAULT NOW(), FOREIGN KEY (franchise_id) REFERENCES franchises(id),
-      FOREIGN KEY (visitor_id) REFERENCES users(id))`,
     `CREATE TABLE IF NOT EXISTS templates (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, category TEXT NOT NULL,
       title TEXT NOT NULL, content_json TEXT NOT NULL, use_count INTEGER DEFAULT 0,
@@ -113,16 +103,8 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT NOW())`,
     `CREATE TABLE IF NOT EXISTS approved_staff (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL,
-      department TEXT DEFAULT '석유사업본부', position TEXT, location TEXT, role TEXT,
+      department TEXT DEFAULT '', position TEXT, location TEXT, role TEXT,
       registered INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`,
-    `CREATE TABLE IF NOT EXISTS franchise_apps (
-      id TEXT PRIMARY KEY, seq INTEGER, receipt_date TEXT, join_date TEXT,
-      manager TEXT, branch TEXT, store_name TEXT, owner_name TEXT, biz_number TEXT,
-      phone_land TEXT, owner_phone TEXT, bank_info TEXT, address TEXT,
-      applicant_name TEXT, applicant_org TEXT, applicant_title TEXT, applicant_phone TEXT,
-      oil_company TEXT, app_type TEXT, paint_date TEXT, actual_date TEXT,
-      status TEXT DEFAULT '정상', memo TEXT DEFAULT '',
-      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`,
     `CREATE TABLE IF NOT EXISTS meeting_notes (
       id TEXT PRIMARY KEY, notion_id TEXT UNIQUE, title TEXT NOT NULL,
       meeting_date DATE NOT NULL, summary TEXT, notion_url TEXT,
@@ -186,7 +168,6 @@ async function initDB() {
   await query(`ALTER TABLE team_events ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   await query(`ALTER TABLE todos ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   await query(`ALTER TABLE templates ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
-  await query(`ALTER TABLE franchises ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   await query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   await query(`ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   await query(`ALTER TABLE quick_notes ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
@@ -208,15 +189,15 @@ async function initDB() {
   if (demoCheck.rows.length === 0) {
     await query(
       `INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      ['demo-user', '김석유', '석유사업본부', '과장', '010-1234-5678', 'demo@petroleum.co.kr', 'demo1234']
+      ['demo-user', '김데모', '', '과장', '010-1234-5678', 'demo@workflow.app', 'demo1234']
     );
     await query(
       `INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      ['demo-manager', '박본부장', '석유사업본부', '본부장', '010-9876-5432', 'manager@petroleum.co.kr', 'demo1234']
+      ['demo-manager', '박매니저', '', '매니저', '010-9876-5432', 'manager@workflow.app', 'demo1234']
     );
     await query(
       `INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      ['demo-team-lead', '이팀장', '석유사업본부', '팀장', '010-5555-1234', 'teamlead@petroleum.co.kr', 'demo1234']
+      ['demo-team-lead', '이팀장', '', '팀장', '010-5555-1234', 'teamlead@workflow.app', 'demo1234']
     );
   }
 
@@ -323,149 +304,10 @@ async function initDB() {
     }
   }
 
-  // ─── 주요업무표 데이터 시드 ───
-  const taskCount = await query(`SELECT COUNT(*) as cnt FROM task_master`);
-  if (parseInt(taskCount.rows[0].cnt) === 0) {
-    const tasks = [
-      ['독도사랑 주유소','석유사업 본부','가맹영업','영업사원 실적관리','영업사원 성과금 관리','백무결',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','영업사원 실적관리','의향서,신청서 접수 및 일간/주간/월간 실적관리','김민관 황영석',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','영업사원 실적관리','업무일지 취합 및 주유소리스트 업데이트','전원',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','영업사원 실적관리','실적이전 및 인계관리','김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹영업 사원관리','신규사원 등록','곽영철 김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹영업 사원관리','영업사원 리스트 관리','김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹영업 사원관리','영업사원 면담 및 실적관리','곽영철',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹영업 사원관리','명함/명찰/유니폼 지급 관련 업무','백무결 민수경 연지운',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹영업 교육관리','정기교육 및 순회교육','곽영철 김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹영업 교육관리','교육 공문 및 교육 자료 작성','백무결 연지운',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹영업 교육관리','순회교육 신청 스케줄 관리','백무결 김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹영업 교육관리','지역별 미방문 또는 방문 가능 주유소 리스트 작성','백무결',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','현판부착 및 신주유천하 ID/비번 생성 및 배부','김민관 황영석',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','가맹주유소 보조금 지급(정기보조금/어플사용실적보조금/도색보조금)','김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','가맹탈퇴 및 환급관리','김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','외관도색 주유소 신청 및 면담','김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','의향서>신청서 전환 관리','김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','현판 발주 및 재고 관리','김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','가맹 후 주유소 해피콜 관리','김민관',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','가맹 신청서 접수 대장 관리','황영석 백무결',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','가맹주유소 관리','가맹점 DB 관리','백무결 연지운',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','신주유천하 어플','어플 개발 관련 업무','백무결 연지운',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','신주유천하 어플','앱 테스트 및 버그, 개선사항 관리','',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','신주유천하 어플','고객센터 문의전화 대응','연지운 민수경',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','시스템 개발','가맹점 봉사활동 통합관리 시스템 개발','백무결 연지운',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','디자인업무','독도사랑주유소연합회 관련 디자인 업무','연지운',''],
-      ['독도사랑 주유소','석유사업 본부','가맹영업','차량관리','홈로리 및 유조차량 관리','황영석',''],
-      ['독도사랑 주유소','석유사업 본부','지사관리','충청지역관리','지역의 지부장 이하 관리담당자 인원관리 및 할당 가맹점 관리/지역 거점 사무실/직영관리 주유소 임대 물건 탐색','백무결 민수경 황영석 연지운',''],
-      ['독도사랑 주유소','석유사업 본부','지사관리','경북지역관리','지역의 지부장 이하 관리담당자 인원관리 및 할당 가맹점 관리','강신흥',''],
-      ['독도사랑 주유소','석유사업 본부','지사관리','경남지역관리','지역의 지부장 이하 관리담당자 인원관리 및 할당 가맹점 관리','김권아',''],
-      ['독도사랑 주유소','석유사업 본부','협업 관리','가맹점 청소 봉사활동 관리','그린카드 공문 작성 - 가맹점 청소 봉사활동에 대한 우수지국 포상제도','백무결',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','임대계약','신규 임대차 계약, 임기 만료시 재계약','유희창',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','근태관리, 담당 부(차)장 지원','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','석유사업 관리본부,영업본부 개인경비 작성 및 관리','정지은',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','석유사업 관리본부 업무일지 출장보고서 정리 및 보완','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','석유사업 영업본부 비품구매 및 지출결의서 작성','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 각종 공과금 및 부가세 납부 및 관리','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 근무자 4대보험 취득 및 상실 신고','민수경',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 유류발주 및 입하','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 근무자 급여자료 관리(서울 회계팀 소통)','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 월간 근무일정 보고 및 공지','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 판매단가 결정서 보고 및 공지','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 근무자 인적사항 데이터 관리','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 배상책임보험 관리','',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','주유소 근무자 급여자료 관리','황영석 민수경',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영','행정업무','직영주유소 판매실적,업무일지','연지운 정지은',''],
-      ['독도사랑 주유소','석유사업 본부','저유고 건립','공사','저유고 건립 공사 진행 전반 업무추진 및 현장 관리','유희창',''],
-      ['독도사랑 주유소','석유사업 본부','직영운영팀','직영주유소 관리(경북-구미,김천)','이비티에스7(김천), 이비티에스8(구미도량), 독도사랑2(구미장천) 독도사랑13(성주), 독도사랑24(문경)','최영관','5개소'],
-      ['독도사랑 주유소','석유사업 본부','직영운영팀','직영주유소 관리(경북-포항,경주)','이비티에스(경주), 이비티에스1(포항), 이비티에스2(울산호계) 독도사랑1(경주감포), 독도사랑12(포항), 독도사랑20(경주휴게소)','박기억','6개소'],
-      ['독도사랑 주유소','석유사업 본부','직영운영팀','직영주유소 관리(대구,경산,경남)','이비티에스6(대구), 독도사랑4(김해), 독도사랑10(창원), 독도사랑21(합천) 독도사랑23(고성), 독도사랑26(거제), 독도사랑27(경산), 독도사랑28(대구)','허성오','8개소'],
-      ['독도사랑 주유소','석유사업 본부','직영운영팀','직영주유소 관리(전북,호남)','독도사랑3(남원), 독도사랑5(군산), 독도사랑7(전주), 독도사랑6(광양) 독도사랑9(정읍), 독도사랑8(태안), 독도사랑11(광주)','이덕성','7개소'],
-      ['독도사랑 주유소','석유사업 본부','직영운영팀','직영주유소 시설관리','직영주유소 시설 및 설비 A/S전담','이재무','26개소'],
-    ];
-
-    for (const t of tasks) {
-      await query(
-        `INSERT INTO task_master (id, department, division, category1, task_group, task_detail, assigned_to, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [uuidv4(), t[0], t[1], t[2], t[3], t[4], t[5], t[6]]
-      );
-    }
-
-    const personalTasks = [
-      ['본사부','석유사업 영업본부','본부장','곽영철','가맹영업 총괄관리','가맹영업과 관련된 모든 업무의 총지시 및 감독/관리',''],
-      ['본사부','석유사업 영업본부','본부장','곽영철','가맹영업 사원관리','영업사원 면담 및 실적관리',''],
-      ['본사부','석유사업 영업본부','본부장','곽영철','가맹영업 교육관리','정기교육 및 순회교육',''],
-      ['본사부','석유사업 영업본부','이사','김민관','가맹주유소 관리','현판부착 및 신주유천하 ID/비번 생성 및 배부',''],
-      ['본사부','석유사업 영업본부','이사','김민관','가맹주유소 관리','가맹주유소 보조금 지급(정기/어플/도색)',''],
-      ['본사부','석유사업 영업본부','이사','김민관','가맹주유소 관리','가맹탈퇴 및 환급관리',''],
-      ['본사부','석유사업 영업본부','이사','김민관','가맹영업 실적관리','의향서,신청서 접수 및 실적관리',''],
-      ['본사부','석유사업 영업본부','이사','김민관','가맹영업 사원관리','신규사원 등록 및 리스트 관리',''],
-      ['본사부','석유사업 영업본부','이사','김권아','경남지역본부 지역장','지역 가맹관리 담당자 관리 및 할당 가맹점 관리',''],
-      ['본사부','석유사업 영업본부','부장','강신흥','경북지역본부 지역장','지역 가맹관리 담당자 관리 및 할당 가맹점 관리',''],
-      ['본사부','석유사업 영업본부','부장','백무결','가맹영업 실적관리','가맹 신청서 접수 대장 관리 및 데이터 정합성 체크',''],
-      ['본사부','석유사업 영업본부','부장','백무결','가맹영업 실적관리','성과금 지급예정 내역 보고서 작성/보고',''],
-      ['본사부','석유사업 영업본부','부장','백무결','가맹점DB관리','가맹점에 관련된 모든 데이터 연동 관리',''],
-      ['본사부','석유사업 영업본부','부장','백무결','가맹영업 교육관리','정기/순회교육 공문 작성 및 일정 관리',''],
-      ['본사부','석유사업 영업본부','부장','백무결','신주유천하 어플','어플 개발 관련 업무',''],
-      ['본사부','석유사업 영업본부','부장','백무결','충청지역장','지역 가맹관리 담당자 관리 및 할당 가맹점 관리',''],
-      ['본사부','석유사업 영업본부','차장','유희창','직영주유소 계약','직영주유소 신규/재계약 전반',''],
-      ['본사부','석유사업 영업본부','차장','유희창','직영주유소 관리','직영주유소 근무자 근태 관리 및 운영 전반 지원',''],
-      ['본사부','석유사업 영업본부','차장','유희창','저유고 건립 준비','토지 매입 등기 이전 및 개발행위 허가',''],
-      ['본사부','석유사업 영업본부','차장','유희창','저유고 건립 공사','저유고 토목 공사 및 탱크 제작 관리',''],
-      ['본사부','석유사업 영업본부','과장','황영석','가맹영업 실적관리','의향서,신청서 접수 및 일간/주간/월간 실적관리',''],
-      ['본사부','석유사업 영업본부','과장','황영석','석유사업 관리본부 지원','직영주유소 근무자 급여관리',''],
-      ['본사부','석유사업 영업본부','과장','황영석','차량관리','홈로리 및 유조차량 관리',''],
-      ['본사부','석유사업 영업본부','과장','민수경','행정업무','직영주유소 근무자 4대보험 취득 및 상실 신고',''],
-      ['본사부','석유사업 영업본부','과장','민수경','행정업무','직영주유소 유류발주 및 입하',''],
-      ['본사부','석유사업 영업본부','과장','민수경','충청지역 지역관리','충청지역 할당 가맹점 우호도 조사 및 관리',''],
-      ['본사부','석유사업 영업본부','대리','연지운','영업사원 실적관리','대전, 충청도권 영업사원 관리',''],
-      ['본사부','석유사업 영업본부','대리','연지운','신주유천하 어플','어플 테스트 및 버그/개선사항 관리',''],
-      ['본사부','석유사업 영업본부','대리','연지운','디자인 업무','독도사랑주유소연합회 관련 디자인 업무',''],
-      ['본사부','석유사업 영업본부','대리','연지운','개발 업무','가맹영업/주유소 관리 통합 플랫폼 개발',''],
-      ['본사부','석유사업 영업본부','사원','정지은','행정업무','석유사업 관리본부,영업본부 개인경비 작성 및 관리',''],
-      ['본사부','석유사업 영업본부','사원','정지은','행정업무','석유사업 관리본부 업무일지 출장보고서 정리 및 보완',''],
-      ['본사부','석유사업 영업본부','사원','정지은','행정업무','석유사업 영업본부 비품구매 및 지출결의서 작성',''],
-    ];
-
-    for (const t of personalTasks) {
-      await query(
-        `INSERT INTO personal_task_table (id, department, division, position, person_name, task_group, task_detail, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [uuidv4(), t[0], t[1], t[2], t[3], t[4], t[5], t[6]]
-      );
-    }
-  }
-
-  // ─── 기존가맹 거래처 신청서 시드 ───
-  const faCount = await query(`SELECT COUNT(*) as cnt FROM franchise_apps`);
-  if (parseInt(faCount.rows[0].cnt) === 0) {
-    const faFile = path.join(__dirname, '..', 'data', 'franchise_applications.json');
-    if (fs.existsSync(faFile)) {
-      const faData = JSON.parse(fs.readFileSync(faFile, 'utf-8'));
-      for (const r of faData) {
-        await query(
-          `INSERT INTO franchise_apps (id, seq, receipt_date, join_date, manager, branch, store_name, owner_name, biz_number, phone_land, owner_phone, bank_info, address, applicant_name, applicant_org, applicant_title, applicant_phone, oil_company, app_type, paint_date, actual_date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
-          [uuidv4(), parseInt(r['번호']) || 0, r['접수일자'], r['가맹일자'], r['담당자'], r['소속'], r['가맹점상호'], r['대표자'], r['사업자번호'], r['유선전화'], r['대표자연락처'], r['계좌정보'], r['사업장주소'], r['신청자이름'], r['신청자소속'], r['직책'], r['연락처'], r['정유사'], r['구분'], r['도색완료일자'], r['실제작성일자']]
-        );
-      }
-    }
-  }
-
   // ─── 사전승인 인원 시드 ───
   const staffCount = await query(`SELECT COUNT(*) as cnt FROM approved_staff`);
   if (parseInt(staffCount.rows[0].cnt) === 0) {
     const staffList = [
-      ['백무결', '28228079', '석유사업본부', '부장', '본사부', '충청지역본부_지역장'],
-      ['곽영철', '64330082', '석유사업본부', '본부장', '본사부', '총괄'],
-      ['김민관', '86149995', '석유사업본부', '이사', '본사부', '가맹영업총괄'],
-      ['유희창', '44871177', '석유사업본부', '차장', '본사부', '직영관리'],
-      ['민수경', '57800511', '석유사업본부', '과장', '본사부', '충청지역본부_관리담당'],
-      ['황영석', '90844373', '석유사업본부', '과장', '본사부', '충청지역본부_관리담당'],
-      ['정지은', '63146093', '석유사업본부', '사원', '본사부', '행정담당'],
-      ['연지운', '46955363', '석유사업본부', '대리', '본사부', '충청지역본부_관리담당'],
-      ['강신흥', '30680019', '석유사업본부', '부장', '본사부', '경북지역본부_지역장'],
-      ['김권아', '51851354', '석유사업본부', '이사', '본사부', '경북지역본부_지역장'],
-      ['박기억', '38179845', '석유사업본부', '부장', '경주', '직영관리'],
-      ['허성오', '35264304', '석유사업본부', '부장', '대구', '직영관리'],
-      ['이재무', '35642317', '석유사업본부', '부장', '경주', '직영관리'],
-      ['이덕성', '35890737', '석유사업본부', '차장', '', '직영관리'],
-      ['최영관', '20660432', '석유사업본부', '부장', '구미', '직영관리'],
     ];
 
     for (const s of staffList) {

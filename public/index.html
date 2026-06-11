@@ -244,10 +244,6 @@
       <span class="nav-icon">&#128197;</span>
       <span>주간계획</span>
     </button>
-    <button class="nav-item" data-page="franchise" onclick="navigate('franchise')">
-      <span class="nav-icon">&#127970;</span>
-      <span>가맹관리</span>
-    </button>
     <button class="nav-item" data-page="more" onclick="navigate('more')">
       <span class="nav-icon">&#9776;</span>
       <span>더보기</span>
@@ -388,61 +384,6 @@
   </div>
 </div>
 
-<!-- ═══ 가맹점 등록 모달 ═══ -->
-<div class="modal-overlay" id="franchiseModal">
-  <div class="modal-content">
-    <div class="modal-handle"></div>
-    <h2 class="modal-title" id="franchiseModalTitle">가맹점 등록</h2>
-    <div class="form-group">
-      <label>구분</label>
-      <div class="chip-group">
-        <button class="chip selected" data-field="franchise_type" data-value="existing" onclick="selectChip(this)">기존 가맹</button>
-        <button class="chip" data-field="franchise_type" data-value="new_prospect" onclick="selectChip(this)">신규 영업</button>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>상호명</label>
-      <input type="text" id="franchiseName" class="form-control" placeholder="가맹점 상호">
-    </div>
-    <div class="form-group">
-      <label>지역</label>
-      <select id="franchiseRegion" class="form-control">
-        <option value="">지역 선택</option>
-        <option>서울</option><option>경기</option><option>인천</option>
-        <option>강원</option><option>충북</option><option>충남</option>
-        <option>대전</option><option>전북</option><option>전남</option>
-        <option>광주</option><option>경북</option><option>경남</option>
-        <option>대구</option><option>울산</option><option>부산</option>
-        <option>제주</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>주소</label>
-      <input type="text" id="franchiseAddress" class="form-control" placeholder="상세 주소">
-    </div>
-    <div class="form-group">
-      <label>대표자명</label>
-      <input type="text" id="franchiseOwner" class="form-control" placeholder="대표자명">
-    </div>
-    <div class="form-group">
-      <label>연락처</label>
-      <input type="tel" id="franchisePhone" class="form-control" placeholder="010-0000-0000">
-    </div>
-    <div class="form-group">
-      <label>계약일</label>
-      <input type="date" id="franchiseContractDate" class="form-control">
-    </div>
-    <div class="form-group">
-      <label>비고</label>
-      <textarea id="franchiseNotes" class="form-control" placeholder="메모"></textarea>
-    </div>
-    <div style="display:flex; gap:8px; margin-top:20px;">
-      <button class="btn btn-outline" style="flex:1" onclick="closeModal('franchiseModal')">취소</button>
-      <button class="btn btn-success" style="flex:1" onclick="submitFranchise()">등록</button>
-    </div>
-  </div>
-</div>
-
 <!-- 음성 안내 어시스턴트 -->
 <div id="voiceGuideOverlay" style="display:none; position:fixed; inset:0; z-index:9998; background:linear-gradient(135deg,#1e3a5f 0%,#2d1b69 100%); color:#fff; flex-direction:column;">
   <div style="padding:12px 16px; display:flex; justify-content:flex-end;">
@@ -505,7 +446,7 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260611a"></script>
+<script src="/js/app.js?v=20260611b"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;

@@ -209,7 +209,7 @@ app.post('/api/admin/login', async (req, res) => {
   let adminUser = adminResult.rows[0];
   if (!adminUser) {
     await query(`INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
-      'admin-user', '시스템관리자', '석유사업본부', '관리자', '', '', '__admin__'
+      'admin-user', '시스템관리자', '', '관리자', '', '', '__admin__'
     ]);
     const newAdminResult = await query('SELECT * FROM users WHERE id = $1', ['admin-user']);
     adminUser = newAdminResult.rows[0];
@@ -234,7 +234,7 @@ app.post('/api/admin/staff', adminMiddleware, async (req, res) => {
   if (!name || !phone) return res.status(400).json({ error: '이름과 연락처를 입력해주세요' });
   const id = uuidv4();
   await query(`INSERT INTO approved_staff (id, name, phone, department, position, location, role) VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
-    id, name, phone, department || '석유사업본부', position || '', location || '', role || ''
+    id, name, phone, department || '', position || '', location || '', role || ''
   ]);
   res.json({ id });
 });
@@ -281,7 +281,7 @@ app.post('/api/admin/register-user', adminMiddleware, async (req, res) => {
     if (existing.rows.length > 0) return res.status(409).json({ error: '이미 가입된 연락처입니다' });
     const id = uuidv4();
     await query('INSERT INTO users (id, name, department, position, phone, email, password_hash) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [id, name, department || '석유사업본부', position || '', phone, '', password]);
+      [id, name, department || '', position || '', phone, '', password]);
     await query('UPDATE approved_staff SET registered = 1 WHERE name = $1', [name]);
     res.json({ ok: true, id, name });
   } catch (err) {
@@ -575,44 +575,6 @@ app.get('/api/weekly-plans/:id', authMiddleware, async (req, res) => {
   if (!plan) return res.status(404).json({ error: '주간계획을 찾을 수 없습니다' });
   const itemsResult = await query('SELECT * FROM weekly_plan_items WHERE plan_id = $1 ORDER BY day_of_week', [req.params.id]);
   res.json({ ...plan, items: itemsResult.rows });
-});
-
-// ─── 가맹점 관리 ───
-app.get('/api/franchises', authMiddleware, async (req, res) => {
-  const { region, status, type } = req.query;
-  let sql = 'SELECT f.*, u.name as assigned_user_name FROM franchises f LEFT JOIN users u ON f.assigned_user_id = u.id WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
-  if (region) { sql += ` AND f.region = $${paramIdx++}`; params.push(region); }
-  if (status) { sql += ` AND f.status = $${paramIdx++}`; params.push(status); }
-  if (type) { sql += ` AND f.franchise_type = $${paramIdx++}`; params.push(type); }
-  sql += ' ORDER BY f.created_at DESC';
-  const result = await query(sql, params);
-  res.json(result.rows);
-});
-
-app.post('/api/franchises', authMiddleware, async (req, res) => {
-  const id = uuidv4();
-  const { name, region, address, owner_name, owner_phone, contract_date, status, franchise_type, notes } = req.body;
-  await query(`INSERT INTO franchises (id, name, region, address, owner_name, owner_phone, contract_date, status, franchise_type, assigned_user_id, notes)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [
-    id, name, region, address, owner_name, owner_phone, contract_date, status || 'active', franchise_type, req.session.userId, notes
-  ]);
-  res.json({ id });
-});
-
-app.get('/api/franchises/:id/visits', authMiddleware, async (req, res) => {
-  const result = await query(`SELECT fv.*, u.name as visitor_name FROM franchise_visits fv
-    JOIN users u ON fv.visitor_id = u.id WHERE fv.franchise_id = $1 ORDER BY fv.visit_date DESC`, [req.params.id]);
-  res.json(result.rows);
-});
-
-app.post('/api/franchises/:id/visits', authMiddleware, async (req, res) => {
-  const id = uuidv4();
-  const { visit_date, purpose, content, result, next_action } = req.body;
-  await query(`INSERT INTO franchise_visits (id, franchise_id, visitor_id, visit_date, purpose, content, result, next_action)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [id, req.params.id, req.session.userId, visit_date, purpose, content, result, next_action]);
-  res.json({ id });
 });
 
 // ─── 템플릿 (반복 업무 자동생성) ───
@@ -930,48 +892,6 @@ app.get('/api/branches/:id', authMiddleware, async (req, res) => {
   res.json(branch);
 });
 
-// ─── 기존가맹 거래처 신청서 ───
-app.get('/api/franchise-apps', authMiddleware, async (req, res) => {
-  const { search, status, oil } = req.query;
-  let sql = 'SELECT * FROM franchise_apps WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
-  if (search) {
-    sql += ` AND (store_name LIKE $${paramIdx++} OR owner_name LIKE $${paramIdx++} OR address LIKE $${paramIdx++} OR biz_number LIKE $${paramIdx++} OR manager LIKE $${paramIdx++})`;
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
-  }
-  if (status) { sql += ` AND status = $${paramIdx++}`; params.push(status); }
-  if (oil) { sql += ` AND oil_company LIKE $${paramIdx++}`; params.push(`%${oil}%`); }
-  sql += ' ORDER BY seq';
-  const result = await query(sql, params);
-  res.json(result.rows);
-});
-
-app.get('/api/franchise-apps/:id', authMiddleware, async (req, res) => {
-  const result = await query('SELECT * FROM franchise_apps WHERE id = $1', [req.params.id]);
-  const appData = result.rows[0];
-  if (!appData) return res.status(404).json({ error: '데이터를 찾을 수 없습니다' });
-  res.json(appData);
-});
-
-app.put('/api/franchise-apps/:id', authMiddleware, async (req, res) => {
-  const { store_name, owner_name, biz_number, phone_land, owner_phone, address, oil_company, status, memo, paint_date, bank_info } = req.body;
-  await query(`UPDATE franchise_apps SET store_name=$1, owner_name=$2, biz_number=$3, phone_land=$4, owner_phone=$5, address=$6, oil_company=$7, status=$8, memo=$9, paint_date=$10, bank_info=$11, updated_at=NOW() WHERE id=$12`, [
-    store_name, owner_name, biz_number, phone_land, owner_phone, address, oil_company, status, memo, paint_date, bank_info, req.params.id
-  ]);
-  res.json({ ok: true });
-});
-
-app.get('/api/franchise-apps/stats/summary', authMiddleware, async (req, res) => {
-  const totalResult = await query('SELECT COUNT(*) as cnt FROM franchise_apps');
-  const total = parseInt(totalResult.rows[0].cnt);
-  const byStatusResult = await query('SELECT status, COUNT(*) as cnt FROM franchise_apps GROUP BY status');
-  const byStatus = byStatusResult.rows;
-  const byOilResult = await query("SELECT oil_company, COUNT(*) as cnt FROM franchise_apps WHERE oil_company != '' AND oil_company IS NOT NULL GROUP BY oil_company ORDER BY cnt DESC");
-  const byOil = byOilResult.rows;
-  res.json({ total, byStatus, byOil });
-});
-
 // ─── 주요업무표 (task master) ───
 app.get('/api/tasks', authMiddleware, async (req, res) => {
   const { category, group, search } = req.query;
@@ -1065,13 +985,13 @@ app.get('/api/export/tasks', authMiddleware, async (req, res) => {
   const tasks = tasksResult.rows;
   const wb = new ExcelJS.Workbook();
   const s = applyExcelStyles(wb);
-  wb.creator = '석유사업본부 업무시스템';
+  wb.creator = 'WorkFlow 업무시스템';
   wb.created = new Date();
   const ws = wb.addWorksheet('주요업무표', { properties: { defaultRowHeight: 22 } });
 
   ws.mergeCells('A1:G1');
   const titleCell = ws.getCell('A1');
-  titleCell.value = '석유사업본부 주요업무표';
+  titleCell.value = '주요업무표';
   titleCell.font = s.titleFont;
   titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
   ws.getRow(1).height = 40;
@@ -1136,7 +1056,7 @@ app.get('/api/export/personal-tasks', authMiddleware, async (req, res) => {
   const { person } = req.query;
   const wb = new ExcelJS.Workbook();
   const s = applyExcelStyles(wb);
-  wb.creator = '석유사업본부 업무시스템';
+  wb.creator = 'WorkFlow 업무시스템';
 
   const buildPersonSheet = (personName, tasks, ws) => {
     const info = tasks[0] || {};
@@ -1255,12 +1175,12 @@ app.get('/api/export/manual-org', authMiddleware, async (req, res) => {
 
   const wb = new ExcelJS.Workbook();
   const s = applyExcelStyles(wb);
-  wb.creator = '석유사업본부 업무시스템';
+  wb.creator = 'WorkFlow 업무시스템';
   const ws = wb.addWorksheet('전체 업무매뉴얼', { properties: { defaultRowHeight: 22 } });
 
   ws.mergeCells('A1:H1');
   const titleCell = ws.getCell('A1');
-  titleCell.value = '석유사업본부 전체 업무매뉴얼';
+  titleCell.value = '전체 업무매뉴얼';
   titleCell.font = s.titleFont;
   titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
   ws.getRow(1).height = 40;
@@ -1356,7 +1276,7 @@ app.get('/api/export/manual-my', authMiddleware, async (req, res) => {
 
   const wb = new ExcelJS.Workbook();
   const s = applyExcelStyles(wb);
-  wb.creator = '석유사업본부 업무시스템';
+  wb.creator = 'WorkFlow 업무시스템';
 
   // 자동생성 매뉴얼 시트
   const ws1 = wb.addWorksheet('내 업무매뉴얼', { properties: { defaultRowHeight: 22 } });
@@ -1536,48 +1456,48 @@ app.get('/api/admin/insights', adminMiddleware, async (req, res) => { try {
     action_items: allActions,
     positive: {
       deductive: {
-        major: '체계적 조직 확장과 서비스 다각화를 동시 추진하는 조직은 시장 지배력을 확보한다',
-        minor: '석유사업본부는 전국주유소연합회 출범, 지역조직 구축, 묶음 관리 서비스 개발, 앱 교육을 동시에 체계적으로 추진하고 있다',
-        conclusion: '현 전략이 완결될 경우, 하반기 내 석유 유통 시장에서 유의미한 영향력을 확보할 가능성이 높다'
+        major: '체계적 업무 관리와 데이터 기반 의사결정을 추진하는 조직은 생산성을 확보한다',
+        minor: '업무일지, 주간계획, 회의록 등 체계적인 업무 기록과 분석이 이루어지고 있다',
+        conclusion: '현 업무 관리 체계가 정착될 경우, 조직 전체의 업무 효율이 크게 향상될 가능성이 높다'
       },
       inductive: {
         observations: [
-          '가맹계약서 1,200개 확보 → 3,000개 목표까지 확장 의지 확인',
-          '회장 직접 가맹점 방문 → 현장 신뢰도 상승 → 재계약률 향상 패턴',
-          '소단위 앱 교육 전환 → 현장 적용률 향상 → 디지털 전환 가속',
-          '러시아 직수입·저유고 건설·SBS 다큐 → 공급망 자립 기반 구축',
-          '워크숍·회식으로 팀 결속 강화 → 실행력 유지'
+          '정기적 업무일지 작성 → 업무 가시성 향상 → 효율적 자원 배분',
+          '주간계획 수립 → 목표 지향적 업무 수행 → 달성률 향상',
+          '회의록 체계화 → 의사결정 추적 가능 → 실행력 강화',
+          '업무 데이터 축적 → 패턴 분석 가능 → 지속적 개선',
+          '팀 내 업무 공유 → 협업 효율 증가 → 중복 업무 감소'
         ],
-        prediction: '2026년 하반기, 가맹점 순증 가속과 묶음 서비스 수익 모델 안착으로 자생적 성장 궤도 진입이 예상된다. 연말까지 가맹 2,000개소 돌파 가능성이 있으며, 제5정유사 제휴가 실현되면 업계 판도가 변화할 것이다.'
+        prediction: '업무 기록과 분석 체계가 안착하면, 조직 전체의 업무 효율이 향상되고 데이터 기반의 의사결정이 가능해질 것이다.'
       }
     },
     negative: {
       deductive: {
-        major: '동시다발적 프로젝트 추진은 핵심 역량의 분산과 실행력 저하를 초래한다',
-        minor: '연합회 출범, 850명 규모 대형 행사, 교육, 지역재편, 선거대응, 저유고 건설, 앱 개발이 동시에 진행되고 있으며, 일부 직영 주유소에서 근무 태도 문제와 비용 커뮤니케이션 공백이 이미 발생하고 있다',
-        conclusion: '우선순위 미설정 시, 핵심 사업 어느 것도 완결되지 못하는 "미완의 확장" 상태에 빠질 위험이 있다'
+        major: '동시다발적 업무 추진은 핵심 역량의 분산과 실행력 저하를 초래할 수 있다',
+        minor: '여러 프로젝트가 동시에 진행되고 있으며, 업무 우선순위 조정이 필요한 상황이다',
+        conclusion: '우선순위 미설정 시, 핵심 업무의 완결도가 낮아질 위험이 있다'
       },
       inductive: {
         observations: [
-          '직영 주유소 고객 응대 미흡 → 현장 관리 공백의 신호',
-          '공과금·유류대금 사전보고 없이 끊김 → 내부 커뮤니케이션 체계의 약화',
-          '예산 미확정 상태의 대규모 행사 기획 → 재정 리스크 노출',
-          '정치적 중립 표방 vs 법 개정 위한 정치인 관계 유지 → 외부 환경 변수의 불확실성',
-          '주유소 사장들의 높은 경계심 → 신뢰 구축 속도가 기대보다 느릴 가능성'
+          '동시 진행 업무 과다 → 집중력 분산의 신호',
+          '업무일지 미작성 인원 존재 → 업무 공유 공백 가능성',
+          '반복 업무의 비효율 → 프로세스 개선 필요',
+          '부서 간 소통 부족 → 협업 효율 저하 가능성',
+          '업무 데이터 활용 부족 → 개선 기회 누락 가능성'
         ],
-        prediction: '관리 인력이 확장 속도를 따라잡지 못할 경우, 하반기 조직 피로도가 급상승하여 핵심 인력 이탈과 가맹점 이탈이 동시에 발생할 수 있다. 특히 정유사의 견제가 본격화되면 계약 전환율이 급격히 하락할 위험이 있다.'
+        prediction: '업무 관리 체계가 정착되지 않으면, 조직 피로도가 상승하고 핵심 인력의 업무 만족도가 저하될 수 있다.'
       }
     },
     recommendation: {
-      worst: '모든 프로젝트를 동시에 밀어붙이다 어느 것도 완결하지 못하고, 현장 관리까지 무너지는 시나리오',
-      best: '모든 프로젝트가 완벽히 실행되어 연말까지 업계 판도 변화를 이끄는 시나리오 (비현실적)',
-      second_best: '핵심 3대 과제에 집중하고, 나머지는 3분기 이후 순차 추진하여 확실한 기반 위에 성장하는 전략',
+      worst: '모든 업무를 동시에 추진하다 어느 것도 완결하지 못하는 시나리오',
+      best: '모든 프로젝트가 완벽히 실행되는 시나리오 (비현실적)',
+      second_best: '핵심 과제에 집중하고, 나머지는 순차 추진하여 확실한 기반 위에 성장하는 전략',
       actions: [
-        { priority: '최우선', task: '가맹점 관리 체계 완성', reason: '1,200개 기존 가맹점의 만족도가 신규 영업보다 중요. 이탈 방지가 곧 성장' },
-        { priority: '최우선', task: '직영 주유소 현장 관리 정상화', reason: '근무 태도·비용 보고 문제는 조직 신뢰의 근간. 즉시 해결 필요' },
-        { priority: '우선', task: '연합회 조직 기반 완성', reason: '500명 추가 가입 확보가 법 개정 추진의 전제조건' },
-        { priority: '보류 가능', task: '대규모 행사·워크숍', reason: '기반이 다져진 후 실시해도 효과는 동일. 예산 확정 후 추진 권장' },
-        { priority: '보류 가능', task: '러시아 직수입·제5정유사 제휴', reason: '중장기 과제로 분류. 현재는 정보 수집 단계 유지' }
+        { priority: '최우선', task: '핵심 업무 우선순위 설정', reason: '가장 중요한 업무에 집중하여 완결도를 높이는 것이 성과의 핵심' },
+        { priority: '최우선', task: '업무일지 작성 습관화', reason: '업무 가시성 확보가 효율적 자원 배분의 전제조건' },
+        { priority: '우선', task: '주간계획 기반 업무 수행', reason: '계획적 업무 수행이 달성률 향상의 핵심' },
+        { priority: '보류 가능', task: '프로세스 자동화', reason: '기반이 다져진 후 자동화를 추진해도 효과는 동일' },
+        { priority: '보류 가능', task: '신규 기능 도입', reason: '기존 기능 활용도를 높인 후 순차 도입 권장' }
       ]
     }
   });
@@ -1669,7 +1589,7 @@ app.get('/api/knowledge-map', authMiddleware, async (req, res) => {
 
   const mSafe = (s) => s.replace(/["\[\](){}|<>#]/g, ' ').trim();
   let mermaid = 'graph TD\n';
-  mermaid += '  ROOT["석유사업본부 업무"]\n';
+  mermaid += '  ROOT["업무 지식맵"]\n';
   const catIds = {};
   Object.keys(byCategory).forEach((cat, i) => {
     const cid = `C${i}`;
@@ -1750,7 +1670,7 @@ app.get('/api/workflow-diagrams', authMiddleware, async (req, res) => {
 
   // 1. 전체 구조도
   let overview = 'graph TD\n';
-  overview += '  ORG["석유사업본부"]\n';
+  overview += '  ORG["조직 업무"]\n';
   Object.entries(byCategory).forEach(([cat, catTasks], ci) => {
     const cid = `C${ci}`;
     overview += `  ORG --> ${cid}["${ms(cat)}<br/>${catTasks.length}개 업무"]\n`;
@@ -1906,7 +1826,6 @@ app.get('/api/onboarding', authMiddleware, async (req, res) => {
   });
 
   const branchCount = await query('SELECT COUNT(*) as cnt FROM branches WHERE exclude_service = 0');
-  const franchiseCount = await query('SELECT COUNT(*) as cnt FROM franchises');
 
   res.json({
     total_reports: totalReports,
@@ -1917,8 +1836,7 @@ app.get('/api/onboarding', authMiddleware, async (req, res) => {
     regular_tasks: regularTasks.slice(0, 10),
     all_tasks_count: allTasks.length,
     person_roles: personRoles,
-    branch_count: parseInt(branchCount.rows[0].cnt),
-    franchise_count: parseInt(franchiseCount.rows[0].cnt)
+    branch_count: parseInt(branchCount.rows[0].cnt)
   });
 });
 
@@ -1983,7 +1901,7 @@ app.get('/api/direction', authMiddleware, async (req, res) => {
     const cats = (p.categories || '').split(',');
     const mainCat = cats[0] || '내근';
     const focus = [];
-    if (mainCat === '외근') focus.push('현장 방문 및 가맹점 관리 집중');
+    if (mainCat === '외근') focus.push('현장 방문 및 외부 업무 집중');
     if (mainCat === '내근') focus.push('내부 행정 및 보고 업무 지원');
     if (mainCat === '출장') focus.push('지역 확장 및 네트워크 강화');
     if (parseInt(p.cnt) < 5) focus.push('업무일지 작성 빈도 높이기');
