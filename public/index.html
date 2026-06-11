@@ -166,7 +166,7 @@
       </div>
       <div style="display:flex; gap:8px; margin-top:16px;">
         <button class="btn btn-outline btn-block" onclick="regPrevStep()">이전</button>
-        <button class="btn btn-success btn-block btn-lg" onclick="submitRegister()">가입 완료</button>
+        <button id="regSubmitBtn" class="btn btn-success btn-block btn-lg" onclick="submitRegister()">가입 완료</button>
       </div>
     </div>
   </div>
@@ -442,7 +442,7 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260611e"></script>
+<script src="/js/app.js?v=20260611f"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;
@@ -451,6 +451,9 @@ window.onerror = function(msg, url, line) {
 if (typeof login !== 'function') {
   document.title = 'app.js 로드 실패';
   document.getElementById('loginScreen').innerHTML = '<div style="padding:40px; text-align:center; color:#fff;"><h2>앱 로드 오류</h2><p>새로고침 해주세요 (캐시 삭제)</p><button onclick="location.reload(true)" style="margin-top:16px; padding:12px 24px; font-size:16px; border:2px solid #fff; background:none; color:#fff; border-radius:8px; cursor:pointer;">새로고침</button></div>';
+} else {
+  var _regBtn = document.getElementById('regSubmitBtn');
+  if (_regBtn) _regBtn.addEventListener('click', function() { submitRegister(); });
 }
 </script>
 </body>

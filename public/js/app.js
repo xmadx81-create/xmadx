@@ -105,7 +105,7 @@ async function login() {
   const phoneRest = document.getElementById('loginPhone').value.trim().replace(/[^0-9]/g, '');
   const phone = '010' + phoneRest;
   const password = document.getElementById('loginPassword').value;
-  if (!phoneRest || !password) { toast('연락처와 비밀번호를 입력해주세요'); return; }
+  if (!phoneRest || !password) { showResultModal('error', '입력 오류', '연락처와 비밀번호를 입력해주세요.', '확인'); return; }
   const btn = document.querySelector('#loginScreen .btn-primary');
   _loginBusy = true;
   if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = '로그인 중...'; btn.style.opacity = '0.7'; }
@@ -116,16 +116,17 @@ async function login() {
       body: JSON.stringify({ phone, password })
     });
     const data = await res.json();
-    if (!res.ok) { toast(data.error || '로그인 실패'); return; }
+    if (!res.ok) { showResultModal('error', '로그인 실패', data.error || '연락처 또는 비밀번호가 올바르지 않습니다.', '확인'); return; }
     currentUser = data;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
     rebuildNav();
     navigate('home');
+    toast(`${data.name}님 환영합니다!`);
     restorePendingVoice();
     setTimeout(() => startVoiceGuide(), 1200);
   } catch (e) {
-    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
+    showResultModal('error', '서버 연결 실패', '서버에 연결할 수 없습니다.\n잠시 후 다시 시도해주세요.', '확인');
   } finally {
     _loginBusy = false;
     if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '로그인'; btn.style.opacity = ''; }
@@ -2453,6 +2454,25 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 2500);
 }
 
+function showResultModal(type, title, message, btnText, btnCallback) {
+  let overlay = document.getElementById('resultModalOverlay');
+  if (overlay) overlay.remove();
+  const icon = type === 'success' ? '&#9989;' : type === 'error' ? '&#10060;' : '&#9888;&#65039;';
+  const btnColor = type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--danger)' : 'var(--primary)';
+  overlay = document.createElement('div');
+  overlay.id = 'resultModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:20px;padding:32px 24px;max-width:340px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.2);animation:slideUp 0.3s ease;">
+      <div style="font-size:48px;margin-bottom:16px;">${icon}</div>
+      <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:#333;">${title}</h3>
+      <p style="font-size:14px;color:#666;line-height:1.6;margin-bottom:24px;word-break:keep-all;">${message}</p>
+      <button onclick="document.getElementById('resultModalOverlay').remove();${btnCallback ? btnCallback + '()' : ''}"
+        style="width:100%;padding:14px;border-radius:12px;border:none;background:${btnColor};color:#fff;font-size:16px;font-weight:600;cursor:pointer;">${btnText || '확인'}</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
 function statusLabel(status) {
   const map = { draft: '임시저장', submitted: '제출완료', approved: '승인', rejected: '반려', pending: '대기' };
   return map[status] || status;
@@ -2642,6 +2662,11 @@ function backToLogin() {
 
 async function submitRegister() {
   if (_submitting) return;
+  const btn = document.querySelector('#regStep2 .btn-success');
+  function resetBtn() {
+    _submitting = false;
+    if (btn) { btn.disabled = false; btn.textContent = '가입 완료'; btn.style.opacity = ''; }
+  }
   try {
     const name = document.getElementById('regName').value.trim();
     const phoneRest = document.getElementById('regPhone').value.trim().replace(/[^0-9]/g, '');
@@ -2649,18 +2674,17 @@ async function submitRegister() {
     const email = document.getElementById('regEmail').value.trim();
     const password = document.getElementById('regPassword').value;
 
-    if (!name) { toast('이름을 입력해주세요'); return; }
-    if (phoneRest.length < 7) { toast('연락처를 정확히 입력해주세요'); return; }
-    if (password.length < 4) { toast('비밀번호는 4자 이상 입력해주세요'); return; }
+    if (!name) { showResultModal('error', '입력 오류', '이름을 입력해주세요.', '확인'); return; }
+    if (phoneRest.length < 7) { showResultModal('error', '입력 오류', '연락처를 정확히 입력해주세요.', '확인'); return; }
+    if (password.length < 4) { showResultModal('error', '입력 오류', '비밀번호는 4자 이상 입력해주세요.', '확인'); return; }
 
     _submitting = true;
-    const btn = document.querySelector('#regStep2 .btn-success');
-    if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = '가입 처리 중...'; btn.style.opacity = '0.7'; }
+    if (btn) { btn.disabled = true; btn.textContent = '가입 처리 중...'; btn.style.opacity = '0.7'; }
     const body = { name, phone, email, password };
 
     if (_regMode === 'join') {
       const code = document.getElementById('regCompanyCode').value.trim().toUpperCase();
-      if (!code) { _submitting = false; if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '가입 완료'; btn.style.opacity = ''; } toast('초대 코드를 입력하세요'); return; }
+      if (!code) { resetBtn(); showResultModal('error', '입력 오류', '초대 코드를 입력하세요.', '확인'); return; }
       body.company_code = code;
       body.position = (document.getElementById('regPosition') || {}).value || '';
       body.department = (document.getElementById('regDepartment') || {}).value || '';
@@ -2668,7 +2692,7 @@ async function submitRegister() {
       if (teamSel && teamSel.value) body.team_id = teamSel.value;
     } else if (_regMode === 'new') {
       const compName = (document.getElementById('regNewCompany') || {}).value || '';
-      if (!compName.trim()) { _submitting = false; if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '가입 완료'; btn.style.opacity = ''; } toast('회사명을 입력하세요'); return; }
+      if (!compName.trim()) { resetBtn(); showResultModal('error', '입력 오류', '회사명을 입력하세요.', '확인'); return; }
       body.company_name = compName.trim();
       body.position = (document.getElementById('regNewPosition') || {}).value || '';
       body.department = (document.getElementById('regNewDepartment') || {}).value || '';
@@ -2680,29 +2704,24 @@ async function submitRegister() {
       body: JSON.stringify(body)
     });
     const data = await res.json();
+    resetBtn();
 
-    _submitting = false;
-    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '가입 완료'; btn.style.opacity = ''; }
-    if (!res.ok) { toast(data.error || '가입 실패'); return; }
+    if (!res.ok) {
+      showResultModal('error', '가입 실패', data.error || '가입 처리 중 오류가 발생했습니다.', '확인');
+      return;
+    }
 
     currentUser = data;
     document.getElementById('registerScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
     rebuildNav();
 
-    if (data.company_code) {
-      setTimeout(() => {
-        alert('회사가 생성되었습니다!\n\n팀원 초대 코드: ' + data.company_code + '\n\n이 코드를 팀원에게 공유하세요.');
-      }, 500);
-    }
-
-    toast(`${data.name}님 환영합니다!`);
+    const codeMsg = data.company_code ? `\n\n팀원 초대 코드: ${data.company_code}\n이 코드를 팀원에게 공유하세요.` : '';
+    showResultModal('success', '가입 완료!', `${data.name}님 환영합니다!${codeMsg}`, '시작하기');
     navigate('home');
   } catch (e) {
-    _submitting = false;
-    const btn = document.querySelector('#regStep2 .btn-success');
-    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '가입 완료'; btn.style.opacity = ''; }
-    toast('가입 오류: ' + e.message);
+    resetBtn();
+    showResultModal('error', '서버 연결 실패', '서버에 연결할 수 없습니다.\n잠시 후 다시 시도해주세요.\n\n(오류: ' + e.message + ')', '확인');
   }
 }
 
