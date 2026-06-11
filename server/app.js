@@ -3157,6 +3157,27 @@ app.get('/call/history', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'call-history.html'));
 });
 
+app.get('/api/call/db-tables', async (req, res) => {
+  try {
+    const tables = await query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name");
+    const result = {};
+    for (const t of tables.rows) {
+      const cols = await query("SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position", [t.table_name]);
+      const cnt = await query(`SELECT COUNT(*) as cnt FROM "${t.table_name}"`);
+      result[t.table_name] = { count: parseInt(cnt.rows[0].cnt), columns: cols.rows.map(c => c.column_name + '(' + c.data_type + ')') };
+    }
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/call/db-sample/:table', async (req, res) => {
+  try {
+    const tableName = req.params.table.replace(/[^a-zA-Z0-9_]/g, '');
+    const rows = await query(`SELECT * FROM "${tableName}" LIMIT 5`);
+    res.json(rows.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/call/branches', async (req, res) => {
   try {
     const result = await query('SELECT id, name FROM branches WHERE exclude_service = 0 ORDER BY seq');
