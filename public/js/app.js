@@ -99,12 +99,16 @@ async function api(url, options = {}) {
 }
 
 // ─── 인증 ───
+let _loginBusy = false;
 async function login() {
-  toast('로그인 중...');
+  if (_loginBusy) return;
   const phoneRest = document.getElementById('loginPhone').value.trim().replace(/[^0-9]/g, '');
   const phone = '010' + phoneRest;
   const password = document.getElementById('loginPassword').value;
   if (!phoneRest || !password) { toast('연락처와 비밀번호를 입력해주세요'); return; }
+  const btn = document.querySelector('#loginScreen .btn-primary');
+  _loginBusy = true;
+  if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = '로그인 중...'; btn.style.opacity = '0.7'; }
   try {
     const res = await fetch('/api/login', {
       method: 'POST',
@@ -122,6 +126,9 @@ async function login() {
     setTimeout(() => startVoiceGuide(), 1200);
   } catch (e) {
     toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
+  } finally {
+    _loginBusy = false;
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '로그인'; btn.style.opacity = ''; }
   }
 }
 
@@ -2510,19 +2517,26 @@ async function verifyReset() {
   const name = document.getElementById('resetName').value.trim();
   const email = document.getElementById('resetEmail').value.trim();
   if (!name || !email) { toast('이름과 이메일을 입력해주세요'); return; }
+  const btn = document.querySelector('#resetStep1 .btn-primary');
+  if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = '확인 중...'; btn.style.opacity = '0.7'; }
+  try {
+    const res = await fetch('/api/reset-password/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email })
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || '확인 실패'); return; }
 
-  const res = await fetch('/api/reset-password/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email })
-  });
-  const data = await res.json();
-  if (!res.ok) { toast(data.error || '확인 실패'); return; }
-
-  resetUserId = data.userId;
-  document.getElementById('resetStep1').style.display = 'none';
-  document.getElementById('resetStep2').style.display = 'block';
-  toast(`${data.name}님 확인되었습니다. 새 비밀번호를 입력하세요.`);
+    resetUserId = data.userId;
+    document.getElementById('resetStep1').style.display = 'none';
+    document.getElementById('resetStep2').style.display = 'block';
+    toast(`${data.name}님 확인되었습니다. 새 비밀번호를 입력하세요.`);
+  } catch (e) {
+    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '본인 확인'; btn.style.opacity = ''; }
+  }
 }
 
 async function submitResetPassword() {
@@ -2530,17 +2544,24 @@ async function submitResetPassword() {
   const pwConfirm = document.getElementById('resetNewPwConfirm').value;
   if (!pw) { toast('새 비밀번호를 입력해주세요'); return; }
   if (pw !== pwConfirm) { toast('비밀번호가 일치하지 않습니다'); return; }
-
-  const res = await fetch('/api/reset-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: resetUserId, password: pw })
-  });
-  if (res.ok) {
-    toast('비밀번호가 변경되었습니다. 로그인해주세요.');
-    backToLogin();
-  } else {
-    toast('변경 실패');
+  const btn = document.querySelector('#resetStep2 .btn-success');
+  if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = '변경 중...'; btn.style.opacity = '0.7'; }
+  try {
+    const res = await fetch('/api/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: resetUserId, password: pw })
+    });
+    if (res.ok) {
+      toast('비밀번호가 변경되었습니다. 로그인해주세요.');
+      backToLogin();
+    } else {
+      toast('변경 실패');
+    }
+  } catch (e) {
+    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '비밀번호 변경'; btn.style.opacity = ''; }
   }
 }
 
@@ -2633,12 +2654,13 @@ async function submitRegister() {
     if (password.length < 4) { toast('비밀번호는 4자 이상 입력해주세요'); return; }
 
     _submitting = true;
-    toast('가입 처리 중...');
+    const btn = document.querySelector('#regStep2 .btn-success');
+    if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = '가입 처리 중...'; btn.style.opacity = '0.7'; }
     const body = { name, phone, email, password };
 
     if (_regMode === 'join') {
       const code = document.getElementById('regCompanyCode').value.trim().toUpperCase();
-      if (!code) { _submitting = false; toast('초대 코드를 입력하세요'); return; }
+      if (!code) { _submitting = false; if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '가입 완료'; btn.style.opacity = ''; } toast('초대 코드를 입력하세요'); return; }
       body.company_code = code;
       body.position = (document.getElementById('regPosition') || {}).value || '';
       body.department = (document.getElementById('regDepartment') || {}).value || '';
@@ -2646,7 +2668,7 @@ async function submitRegister() {
       if (teamSel && teamSel.value) body.team_id = teamSel.value;
     } else if (_regMode === 'new') {
       const compName = (document.getElementById('regNewCompany') || {}).value || '';
-      if (!compName.trim()) { _submitting = false; toast('회사명을 입력하세요'); return; }
+      if (!compName.trim()) { _submitting = false; if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '가입 완료'; btn.style.opacity = ''; } toast('회사명을 입력하세요'); return; }
       body.company_name = compName.trim();
       body.position = (document.getElementById('regNewPosition') || {}).value || '';
       body.department = (document.getElementById('regNewDepartment') || {}).value || '';
@@ -2660,6 +2682,7 @@ async function submitRegister() {
     const data = await res.json();
 
     _submitting = false;
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '가입 완료'; btn.style.opacity = ''; }
     if (!res.ok) { toast(data.error || '가입 실패'); return; }
 
     currentUser = data;
@@ -2669,7 +2692,7 @@ async function submitRegister() {
 
     if (data.company_code) {
       setTimeout(() => {
-        alert('회사가 생성되었습니다!\\n\\n팀원 초대 코드: ' + data.company_code + '\\n\\n이 코드를 팀원에게 공유하세요.');
+        alert('회사가 생성되었습니다!\n\n팀원 초대 코드: ' + data.company_code + '\n\n이 코드를 팀원에게 공유하세요.');
       }, 500);
     }
 
@@ -2677,6 +2700,8 @@ async function submitRegister() {
     navigate('home');
   } catch (e) {
     _submitting = false;
+    const btn = document.querySelector('#regStep2 .btn-success');
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '가입 완료'; btn.style.opacity = ''; }
     toast('가입 오류: ' + e.message);
   }
 }
@@ -2690,21 +2715,30 @@ function showAdminLogin() {
 
 async function adminLogin() {
   const password = document.getElementById('adminPassword').value;
-  const res = await fetch('/api/admin/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password })
-  });
-  const data = await res.json();
+  if (!password) { toast('비밀번호를 입력해주세요'); return; }
+  const btn = document.querySelector('#adminLoginScreen .btn-primary');
+  if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = '로그인 중...'; btn.style.opacity = '0.7'; }
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
 
-  if (!res.ok) { toast(data.error || '로그인 실패'); return; }
+    if (!res.ok) { toast(data.error || '로그인 실패'); return; }
 
-  currentUser = data.user;
-  currentUser.isAdmin = true;
-  document.getElementById('adminLoginScreen').style.display = 'none';
-  document.getElementById('appContainer').classList.add('active');
-  rebuildNav();
-  navigate('home');
+    currentUser = data.user;
+    currentUser.isAdmin = true;
+    document.getElementById('adminLoginScreen').style.display = 'none';
+    document.getElementById('appContainer').classList.add('active');
+    rebuildNav();
+    navigate('home');
+  } catch (e) {
+    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '로그인'; btn.style.opacity = ''; }
+  }
 }
 
 function adminLogout() {
@@ -6722,5 +6756,21 @@ async function checkAttendancePopup() {
 
 setInterval(checkAttendancePopup, 60000);
 
-// 초기화
-checkAuth();
+// 초기화 — 서버 연결 상태 표시
+(async () => {
+  const indicator = document.createElement('div');
+  indicator.id = 'serverStatus';
+  indicator.style.cssText = 'position:fixed; bottom:12px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.75); color:#fff; padding:8px 20px; border-radius:20px; font-size:13px; z-index:99999; display:none;';
+  document.body.appendChild(indicator);
+
+  const loginScreen = document.getElementById('loginScreen');
+  if (loginScreen && loginScreen.style.display !== 'none') {
+    indicator.textContent = '서버 연결 중...';
+    indicator.style.display = 'block';
+  }
+
+  await checkAuth();
+
+  indicator.textContent = '서버 연결 완료';
+  setTimeout(() => { indicator.style.display = 'none'; }, 1500);
+})();
