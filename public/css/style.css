@@ -163,6 +163,50 @@ body {
 .nav-item.active { color: var(--primary); }
 .nav-item .nav-icon { font-size: 22px; margin-bottom: 2px; }
 
+/* 네비 설정 그리드 */
+.nav-set-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.nav-set-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 6px;
+  border-radius: 12px;
+  border: 2px solid var(--gray-200);
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.nav-set-item:active { transform: scale(0.95); }
+.nav-set-selected {
+  border-color: var(--primary);
+  background: #fff7ed;
+  box-shadow: 0 0 0 2px rgba(224,124,58,0.15);
+}
+.nav-set-icon { font-size: 26px; }
+.nav-set-label { font-size: 12px; font-weight: 600; color: var(--gray-700); }
+.nav-set-selected .nav-set-label { color: var(--primary); }
+.nav-set-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ─── 공통 컴포넌트 ─── */
 .card {
   background: white;

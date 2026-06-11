@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#e07c3a">
   <title>WorkFlow - Smart Work Manager</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260610h">
+  <link rel="stylesheet" href="/css/style.css?v=20260611c">
   <link rel="manifest" href="/manifest.json">
 </head>
 <body>
@@ -230,23 +230,19 @@
   </div>
   <div id="fabOverlay" onclick="closeFabMenu()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.3); z-index:998;"></div>
 
-  <!-- 하단 네비게이션 -->
+  <!-- 하단 네비게이션 (JS에서 동적 생성) -->
   <nav class="bottom-nav">
     <button class="nav-item active" data-page="home" onclick="navigate('home')">
-      <span class="nav-icon">&#127968;</span>
-      <span>홈</span>
+      <span class="nav-icon">&#127968;</span><span>홈</span>
     </button>
     <button class="nav-item" data-page="reports" onclick="navigate('reports')">
-      <span class="nav-icon">&#128221;</span>
-      <span>업무일지</span>
+      <span class="nav-icon">&#128221;</span><span>업무일지</span>
     </button>
     <button class="nav-item" data-page="weekly" onclick="navigate('weekly')">
-      <span class="nav-icon">&#128197;</span>
-      <span>주간계획</span>
+      <span class="nav-icon">&#128197;</span><span>주간계획</span>
     </button>
     <button class="nav-item" data-page="more" onclick="navigate('more')">
-      <span class="nav-icon">&#9776;</span>
-      <span>더보기</span>
+      <span class="nav-icon">&#9776;</span><span>더보기</span>
     </button>
   </nav>
 </div>
@@ -446,7 +442,7 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260611b"></script>
+<script src="/js/app.js?v=20260611c"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;

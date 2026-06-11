@@ -3,6 +3,58 @@ let currentPage = 'home';
 let editingReportId = null;
 const PAGE_SIZE = 15;
 
+// ─── 네비게이터 커스텀 설정 ───
+const NAV_ITEMS = [
+  { id: 'home', icon: '&#127968;', label: '홈' },
+  { id: 'reports', icon: '&#128221;', label: '업무일지' },
+  { id: 'weekly', icon: '&#128197;', label: '주간계획' },
+  { id: 'notices', icon: '&#128227;', label: '공지사항', action: 'showNoticesList' },
+  { id: 'board', icon: '&#128172;', label: '게시판', action: 'showBoard' },
+  { id: 'todo', icon: '&#9745;', label: '할 일', action: 'showTodoPage' },
+  { id: 'attendance', icon: '&#128339;', label: '출퇴근', action: 'showAttendancePage' },
+  { id: 'schedule', icon: '&#128197;', label: '팀 일정', action: 'showSchedulePage' },
+  { id: 'bookmarks', icon: '&#11088;', label: '즐겨찾기', action: 'showBookmarks' },
+  { id: 'calendar', icon: '&#128467;', label: '캘린더', action: 'showWorkCalendar' },
+  { id: 'timeline', icon: '&#128337;', label: '타임라인', action: 'showTimeline' },
+  { id: 'notes', icon: '&#128221;', label: '메모', action: 'showNotes' },
+  { id: 'insight', icon: '&#129504;', label: 'AI 분석', action: 'showSmartInsight' },
+  { id: 'monthly', icon: '&#128202;', label: '월간요약', action: 'showMonthlySummary' },
+  { id: 'handover', icon: '&#128196;', label: '인수인계', action: 'showHandover' },
+];
+const DEFAULT_NAV = ['home', 'reports', 'weekly'];
+
+function getNavConfig() {
+  try {
+    const saved = localStorage.getItem('navConfig');
+    if (saved) {
+      const arr = JSON.parse(saved);
+      if (Array.isArray(arr) && arr.length === 3) return arr;
+    }
+  } catch(e) {}
+  return DEFAULT_NAV.slice();
+}
+
+function saveNavConfig(config) {
+  localStorage.setItem('navConfig', JSON.stringify(config));
+}
+
+function rebuildNav() {
+  const config = getNavConfig();
+  const nav = document.querySelector('.bottom-nav');
+  if (!nav) return;
+  let html = '';
+  config.forEach(id => {
+    const item = NAV_ITEMS.find(n => n.id === id);
+    if (!item) return;
+    const isActive = currentPage === id;
+    html += `<button class="nav-item${isActive ? ' active' : ''}" data-page="${id}" onclick="navigate('${id}')">
+      <span class="nav-icon">${item.icon}</span><span>${item.label}</span></button>`;
+  });
+  html += `<button class="nav-item${currentPage === 'more' ? ' active' : ''}" data-page="more" onclick="navigate('more')">
+    <span class="nav-icon">&#9776;</span><span>더보기</span></button>`;
+  nav.innerHTML = html;
+}
+
 // ─── 페이지네이션 유틸 ───
 function paginate(items, page) {
   const total = items.length;
@@ -64,6 +116,7 @@ async function login() {
     currentUser = data;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
+    rebuildNav();
     navigate('home');
     restorePendingVoice();
     setTimeout(() => startVoiceGuide(), 1200);
@@ -94,6 +147,7 @@ async function checkAuth() {
     currentUser = user;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
+    rebuildNav();
     navigate('home');
     setTimeout(checkNotiCount, 2000);
     setInterval(checkNotiCount, 120000);
@@ -125,11 +179,24 @@ function navigate(page) {
   const fab = document.getElementById('fabBtn');
   fab.style.display = ['home', 'reports'].includes(page) ? 'flex' : 'none';
 
-  const titles = { home: 'WorkFlow', reports: '업무일지', weekly: '주간계획', more: '더보기' };
-  document.getElementById('pageTitle').textContent = titles[page] || 'WorkFlow';
+  const coreRenderers = { home: renderHome, reports: renderReports, weekly: renderWeekly, more: renderMore };
 
-  const renderers = { home: renderHome, reports: renderReports, weekly: renderWeekly, more: renderMore };
-  if (renderers[page]) renderers[page]();
+  if (coreRenderers[page]) {
+    const navItem = NAV_ITEMS.find(n => n.id === page);
+    document.getElementById('pageTitle').textContent = (navItem && navItem.label) || 'WorkFlow';
+    coreRenderers[page]();
+  } else if (page === 'more') {
+    document.getElementById('pageTitle').textContent = '더보기';
+    renderMore();
+  } else {
+    const navItem = NAV_ITEMS.find(n => n.id === page);
+    if (navItem && navItem.action && typeof window[navItem.action] === 'function') {
+      document.getElementById('pageTitle').textContent = navItem.label;
+      window[navItem.action]();
+    }
+  }
+
+  rebuildNav();
 }
 
 // ─── 홈 화면 ───
@@ -964,8 +1031,6 @@ async function viewWeeklyPlan(id) {
 }
 
 // ─── 더보기 ───
-
-// ─── 더보기 ───
 async function renderMore() {
   const fab = document.getElementById('fabBtn');
   fab.style.display = 'none';
@@ -1100,12 +1165,123 @@ async function renderMore() {
       </button>` : ''}
     </div>
 
+    <p class="section-title">&#9881; 설정</p>
+    <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showNavSettings()" style="border:2px solid var(--primary); background:#fff7ed;">
+        <span class="qa-icon">&#128295;</span>
+        <span class="qa-label" style="color:var(--primary); font-weight:700;">네비 설정</span>
+      </button>
+    </div>
+
     <div class="card">
       <p class="card-title" style="margin-bottom:8px;">시스템 정보</p>
-      <p style="font-size:14px; color:var(--gray-500);">WorkFlow - Smart Work Manager v2.0</p>
-      <p style="font-size:14px; color:var(--gray-500);">전국 지국/주요업무표 통합 관리</p>
+      <p style="font-size:14px; color:var(--gray-500);">WorkFlow - Smart Work Manager v3.0</p>
     </div>
   `;
+}
+
+// ─── 네비 설정 ───
+function showNavSettings() {
+  const config = getNavConfig();
+  const selected = new Set(config);
+
+  function renderGrid() {
+    return NAV_ITEMS.map(item => {
+      const isSel = selected.has(item.id);
+      const idx = config.indexOf(item.id);
+      return `<button class="nav-set-item${isSel ? ' nav-set-selected' : ''}" onclick="toggleNavItem('${item.id}')">
+        ${isSel ? `<span class="nav-set-badge">${idx + 1}</span>` : ''}
+        <span class="nav-set-icon">${item.icon}</span>
+        <span class="nav-set-label">${item.label}</span>
+      </button>`;
+    }).join('');
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <p class="section-title">&#128295; 하단 네비게이션 설정</p>
+    <div class="card" style="margin-bottom:12px;">
+      <p style="font-size:14px; color:var(--gray-600); margin-bottom:4px;">원하는 메뉴 <strong>3개</strong>를 선택하세요.</p>
+      <p style="font-size:13px; color:var(--gray-400);">더보기는 항상 고정됩니다. 순서대로 번호가 부여됩니다.</p>
+    </div>
+    <div class="nav-set-grid" id="navSetGrid">
+      ${renderGrid()}
+    </div>
+    <div style="margin-top:16px; display:flex; gap:8px;">
+      <button class="btn btn-outline" style="flex:1;" onclick="resetNavConfig()">기본값</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="applyNavConfig()">적용</button>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <p class="card-title" style="margin-bottom:8px;">현재 설정</p>
+      <div id="navPreview" style="display:flex; gap:8px; justify-content:center;">
+        ${config.map((id, i) => {
+          const item = NAV_ITEMS.find(n => n.id === id);
+          return item ? `<div style="text-align:center;"><span style="font-size:22px;">${item.icon}</span><div style="font-size:12px; color:var(--gray-600);">${item.label}</div></div>` : '';
+        }).join('')}
+        <div style="text-align:center;"><span style="font-size:22px;">&#9776;</span><div style="font-size:12px; color:var(--gray-600);">더보기</div></div>
+      </div>
+    </div>
+  `;
+
+  window._navTempConfig = config.slice();
+  window._navTempSelected = selected;
+}
+
+function toggleNavItem(id) {
+  const config = window._navTempConfig;
+  const selected = window._navTempSelected;
+
+  if (selected.has(id)) {
+    selected.delete(id);
+    const idx = config.indexOf(id);
+    if (idx !== -1) config.splice(idx, 1);
+  } else {
+    if (config.length >= 3) {
+      toast('최대 3개까지 선택 가능합니다. 먼저 하나를 해제하세요.');
+      return;
+    }
+    selected.add(id);
+    config.push(id);
+  }
+
+  const grid = document.getElementById('navSetGrid');
+  grid.innerHTML = NAV_ITEMS.map(item => {
+    const isSel = selected.has(item.id);
+    const idx = config.indexOf(item.id);
+    return `<button class="nav-set-item${isSel ? ' nav-set-selected' : ''}" onclick="toggleNavItem('${item.id}')">
+      ${isSel ? `<span class="nav-set-badge">${idx + 1}</span>` : ''}
+      <span class="nav-set-icon">${item.icon}</span>
+      <span class="nav-set-label">${item.label}</span>
+    </button>`;
+  }).join('');
+
+  const preview = document.getElementById('navPreview');
+  preview.innerHTML = config.map(cid => {
+    const item = NAV_ITEMS.find(n => n.id === cid);
+    return item ? `<div style="text-align:center;"><span style="font-size:22px;">${item.icon}</span><div style="font-size:12px; color:var(--gray-600);">${item.label}</div></div>` : '';
+  }).join('') + `<div style="text-align:center;"><span style="font-size:22px;">&#9776;</span><div style="font-size:12px; color:var(--gray-600);">더보기</div></div>`;
+}
+
+function applyNavConfig() {
+  const config = window._navTempConfig;
+  if (config.length !== 3) {
+    toast('메뉴 3개를 선택해주세요.');
+    return;
+  }
+  saveNavConfig(config);
+  rebuildNav();
+  toast('네비게이션이 변경되었습니다!');
+  navigate('more');
+}
+
+function resetNavConfig() {
+  window._navTempConfig = DEFAULT_NAV.slice();
+  window._navTempSelected = new Set(DEFAULT_NAV);
+  saveNavConfig(DEFAULT_NAV.slice());
+  rebuildNav();
+  showNavSettings();
+  toast('기본값으로 복원되었습니다');
 }
 
 // ─── 회의록 열람 ───
@@ -2462,7 +2638,7 @@ async function submitRegister() {
 
     if (_regMode === 'join') {
       const code = document.getElementById('regCompanyCode').value.trim().toUpperCase();
-      if (!code) { toast('초대 코드를 입력하세요'); return; }
+      if (!code) { _submitting = false; toast('초대 코드를 입력하세요'); return; }
       body.company_code = code;
       body.position = (document.getElementById('regPosition') || {}).value || '';
       body.department = (document.getElementById('regDepartment') || {}).value || '';
@@ -2470,7 +2646,7 @@ async function submitRegister() {
       if (teamSel && teamSel.value) body.team_id = teamSel.value;
     } else if (_regMode === 'new') {
       const compName = (document.getElementById('regNewCompany') || {}).value || '';
-      if (!compName.trim()) { toast('회사명을 입력하세요'); return; }
+      if (!compName.trim()) { _submitting = false; toast('회사명을 입력하세요'); return; }
       body.company_name = compName.trim();
       body.position = (document.getElementById('regNewPosition') || {}).value || '';
       body.department = (document.getElementById('regNewDepartment') || {}).value || '';
@@ -2489,6 +2665,7 @@ async function submitRegister() {
     currentUser = data;
     document.getElementById('registerScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
+    rebuildNav();
 
     if (data.company_code) {
       setTimeout(() => {
@@ -2526,6 +2703,7 @@ async function adminLogin() {
   currentUser.isAdmin = true;
   document.getElementById('adminLoginScreen').style.display = 'none';
   document.getElementById('appContainer').classList.add('active');
+  rebuildNav();
   navigate('home');
 }
 
