@@ -47,10 +47,10 @@ function rebuildNav() {
     const item = NAV_ITEMS.find(n => n.id === id);
     if (!item) return;
     const isActive = currentPage === id;
-    html += `<button class="nav-item${isActive ? ' active' : ''}" data-page="${id}" onclick="navigate('${id}')">
+    html += `<button class="nav-item${isActive ? ' active' : ''}" data-page="${id}" onclick="navigate('${id}')" data-help="'${item.label}' 화면으로 이동합니다.">
       <span class="nav-icon">${item.icon}</span><span>${item.label}</span></button>`;
   });
-  html += `<button class="nav-item${currentPage === 'more' ? ' active' : ''}" data-page="more" onclick="navigate('more')">
+  html += `<button class="nav-item${currentPage === 'more' ? ' active' : ''}" data-page="more" onclick="navigate('more')" data-help="공지·게시판·할 일·출퇴근 등 모든 기능을 모아둔 더보기 화면입니다.">
     <span class="nav-icon">&#9776;</span><span>더보기</span></button>`;
   nav.innerHTML = html;
 }
@@ -392,19 +392,19 @@ async function renderHome() {
 
     <p class="section-title">&#9889; 빠른 작성</p>
     <div class="quick-actions">
-      <button class="quick-action-btn" onclick="openNewReport('내근')">
+      <button class="quick-action-btn" onclick="openNewReport('내근')" data-help="근무유형이 '내근'으로 미리 채워진 업무일지 작성 양식을 엽니다.">
         <span class="qa-icon">&#128187;</span>
         <span class="qa-label">내근 업무</span>
       </button>
-      <button class="quick-action-btn" onclick="openNewReport('외근')">
+      <button class="quick-action-btn" onclick="openNewReport('외근')" data-help="근무유형이 '외근'으로 미리 채워진 업무일지 작성 양식을 엽니다.">
         <span class="qa-icon">&#128694;</span>
         <span class="qa-label">외근 업무</span>
       </button>
-      <button class="quick-action-btn" onclick="openNewReport('출장')">
+      <button class="quick-action-btn" onclick="openNewReport('출장')" data-help="근무유형이 '출장'으로 미리 채워진 업무일지 작성 양식을 엽니다.">
         <span class="qa-icon">&#9992;</span>
         <span class="qa-label">출장 보고</span>
       </button>
-      <button class="quick-action-btn" onclick="openWeeklyPlan()">
+      <button class="quick-action-btn" onclick="openWeeklyPlan()" data-help="이번 주 요일별 업무 계획을 작성하는 주간계획 화면을 엽니다.">
         <span class="qa-icon">&#128197;</span>
         <span class="qa-label">주간계획</span>
       </button>
@@ -6793,3 +6793,77 @@ setInterval(checkAttendancePopup, 60000);
   indicator.textContent = '서버 연결 완료';
   setTimeout(() => { indicator.style.display = 'none'; }, 1500);
 })();
+
+// ─── 도움말 모드 (hover 안내 말풍선) ───
+let _helpMode = false;
+
+function toggleHelpMode() {
+  _helpMode = !_helpMode;
+  document.body.classList.toggle('help-mode', _helpMode);
+  const btn = document.getElementById('helpModeBtn');
+  if (btn) btn.classList.toggle('help-active', _helpMode);
+  let banner = document.getElementById('helpModeBanner');
+  if (_helpMode) {
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'helpModeBanner';
+      banner.className = 'help-mode-banner';
+      banner.textContent = '도움말 모드 — 버튼이나 입력칸에 마우스를 올려보세요 (다시 ? 누르면 종료)';
+      document.body.appendChild(banner);
+    }
+  } else {
+    if (banner) banner.remove();
+    hideHelpBubble();
+  }
+}
+
+function hideHelpBubble() {
+  const b = document.getElementById('helpBubble');
+  if (b) b.classList.remove('show');
+}
+
+function showHelpBubble(el) {
+  const text = el.getAttribute('data-help');
+  if (!text) return;
+  let b = document.getElementById('helpBubble');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'helpBubble';
+    document.body.appendChild(b);
+  }
+  b.textContent = text;
+  b.classList.remove('arrow-up', 'arrow-down');
+  // 먼저 보이게 해서 크기 측정
+  b.style.left = '-9999px';
+  b.classList.add('show');
+  const r = el.getBoundingClientRect();
+  const bw = b.offsetWidth, bh = b.offsetHeight;
+  const margin = 8;
+  // 기본은 요소 위쪽, 공간 부족하면 아래쪽
+  let placeAbove = r.top > bh + margin + 4;
+  let top = placeAbove ? r.top - bh - margin : r.bottom + margin;
+  let left = r.left + r.width / 2 - bw / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - bw - 8));
+  // 화살표 위치(요소 중앙을 가리키도록)
+  const arrowLeft = Math.max(12, Math.min(r.left + r.width / 2 - left, bw - 12));
+  b.style.setProperty('--arrow-left', (arrowLeft - 7) + 'px');
+  b.classList.add(placeAbove ? 'arrow-down' : 'arrow-up');
+  b.style.left = left + 'px';
+  b.style.top = top + 'px';
+}
+
+document.addEventListener('mouseover', function(e) {
+  if (!_helpMode) return;
+  const el = e.target.closest('[data-help]');
+  if (el) showHelpBubble(el);
+});
+document.addEventListener('mouseout', function(e) {
+  if (!_helpMode) return;
+  const el = e.target.closest('[data-help]');
+  if (el && !el.contains(e.relatedTarget)) hideHelpBubble();
+});
+document.addEventListener('focusin', function(e) {
+  if (!_helpMode) return;
+  const el = e.target.closest('[data-help]');
+  if (el) showHelpBubble(el);
+});
