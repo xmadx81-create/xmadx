@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { id: 'notices', icon: '&#128227;', label: '공지사항', action: 'showNoticesList' },
   { id: 'board', icon: '&#128172;', label: '게시판', action: 'showBoard' },
   { id: 'todo', icon: '&#9745;', label: '할 일', action: 'showTodoPage' },
+  { id: 'volunteer', icon: '&#129309;', label: '봉사활동', action: 'showVolunteerPage' },
   { id: 'attendance', icon: '&#128339;', label: '출퇴근', action: 'showAttendancePage' },
   { id: 'schedule', icon: '&#128197;', label: '팀 일정', action: 'showSchedulePage' },
   { id: 'bookmarks', icon: '&#11088;', label: '즐겨찾기', action: 'showBookmarks' },
@@ -47,10 +48,10 @@ function rebuildNav() {
     const item = NAV_ITEMS.find(n => n.id === id);
     if (!item) return;
     const isActive = currentPage === id;
-    html += `<button class="nav-item${isActive ? ' active' : ''}" data-page="${id}" onclick="navigate('${id}')">
+    html += `<button class="nav-item${isActive ? ' active' : ''}" data-page="${id}" onclick="navigate('${id}')" data-help="'${item.label}' 화면으로 이동합니다.">
       <span class="nav-icon">${item.icon}</span><span>${item.label}</span></button>`;
   });
-  html += `<button class="nav-item${currentPage === 'more' ? ' active' : ''}" data-page="more" onclick="navigate('more')">
+  html += `<button class="nav-item${currentPage === 'more' ? ' active' : ''}" data-page="more" onclick="navigate('more')" data-help="공지·게시판·할 일·출퇴근 등 모든 기능을 모아둔 더보기 화면입니다.">
     <span class="nav-icon">&#9776;</span><span>더보기</span></button>`;
   nav.innerHTML = html;
 }
@@ -392,19 +393,19 @@ async function renderHome() {
 
     <p class="section-title">&#9889; 빠른 작성</p>
     <div class="quick-actions">
-      <button class="quick-action-btn" onclick="openNewReport('내근')">
+      <button class="quick-action-btn" onclick="openNewReport('내근')" data-help="근무유형이 '내근'으로 미리 채워진 업무일지 작성 양식을 엽니다.">
         <span class="qa-icon">&#128187;</span>
         <span class="qa-label">내근 업무</span>
       </button>
-      <button class="quick-action-btn" onclick="openNewReport('외근')">
+      <button class="quick-action-btn" onclick="openNewReport('외근')" data-help="근무유형이 '외근'으로 미리 채워진 업무일지 작성 양식을 엽니다.">
         <span class="qa-icon">&#128694;</span>
         <span class="qa-label">외근 업무</span>
       </button>
-      <button class="quick-action-btn" onclick="openNewReport('출장')">
+      <button class="quick-action-btn" onclick="openNewReport('출장')" data-help="근무유형이 '출장'으로 미리 채워진 업무일지 작성 양식을 엽니다.">
         <span class="qa-icon">&#9992;</span>
         <span class="qa-label">출장 보고</span>
       </button>
-      <button class="quick-action-btn" onclick="openWeeklyPlan()">
+      <button class="quick-action-btn" onclick="openWeeklyPlan()" data-help="이번 주 요일별 업무 계획을 작성하는 주간계획 화면을 엽니다.">
         <span class="qa-icon">&#128197;</span>
         <span class="qa-label">주간계획</span>
       </button>
@@ -1126,6 +1127,10 @@ async function renderMore() {
         <span class="qa-icon">&#9745;</span>
         <span class="qa-label" style="color:#10b981; font-weight:700;">할 일 관리</span>
       </button>
+      <button class="quick-action-btn" onclick="showVolunteerPage()" style="border:2px solid #db2777;" data-help="참여한 봉사활동을 기록하고 누적 봉사시간을 관리합니다. (본인만 봅니다)">
+        <span class="qa-icon">&#129309;</span>
+        <span class="qa-label" style="color:#db2777; font-weight:700;">봉사활동</span>
+      </button>
       <button class="quick-action-btn" onclick="showAttendancePage()" style="border:2px solid #6366f1;">
         <span class="qa-icon">&#128339;</span>
         <span class="qa-label" style="color:#6366f1; font-weight:700;">출퇴근 기록</span>
@@ -1162,6 +1167,15 @@ async function renderMore() {
         <span class="qa-icon">&#128100;</span>
         <span class="qa-label">내 정보</span>
       </button>
+      ${currentUser && (currentUser.position === '지역장' || currentUser.isAdmin) ? `
+      <button class="quick-action-btn" onclick="showRegionMembers()" style="border:2px solid #0d9488;" data-help="관리담당자의 부서·직책·팀(소속)을 대신 수정합니다. 지역장 전용 기능입니다.">
+        <span class="qa-icon">&#128100;</span>
+        <span class="qa-label" style="color:#0d9488; font-weight:700;">소속 관리</span>
+      </button>
+      <button class="quick-action-btn" onclick="showVolunteerReview()" style="border:2px solid #0284c7;" data-help="지국이 요청한 봉사 계획을 승인하고, 완료건을 감사확인합니다.">
+        <span class="qa-icon">&#9989;</span>
+        <span class="qa-label" style="color:#0284c7; font-weight:700;">봉사 승인·감사</span>
+      </button>` : ''}
       ${currentUser && currentUser.isAdmin ? `
       <button class="quick-action-btn" onclick="showTeamDashboard()" style="border:2px solid #4338ca;">
         <span class="qa-icon">&#128101;</span>
@@ -1172,6 +1186,19 @@ async function renderMore() {
         <span class="qa-label" style="color:var(--danger); font-weight:700;">시스템 관리</span>
       </button>` : ''}
     </div>
+
+    ${currentUser && currentUser.isAdmin ? `
+    <p class="section-title">&#128295; 개발자 도구</p>
+    <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showWorkshopRoster()" style="border:2px solid #c2410c;" data-help="워크숍 참석 명단을 작성합니다. 앱의 관리담당자를 불러오고 추가 인원을 더해 엑셀 양식으로 내려받습니다.">
+        <span class="qa-icon">&#128203;</span>
+        <span class="qa-label" style="color:#c2410c; font-weight:700;">워크샵 명단</span>
+      </button>
+      <button class="quick-action-btn" onclick="showVolunteerReview()" style="border:2px solid #7c3aed;" data-help="완료된 봉사활동을 감사확인 처리합니다. 감사실/개발자 전용.">
+        <span class="qa-icon">&#128270;</span>
+        <span class="qa-label" style="color:#7c3aed; font-weight:700;">봉사 감사확인</span>
+      </button>
+    </div>` : ''}
 
     <p class="section-title">&#9881; 설정</p>
     <div class="quick-actions">
@@ -1404,9 +1431,37 @@ async function viewMeetingNote(id) {
   `;
 }
 
+// ─── 봉사 대상 가맹점 당월 일정상태 ───
+async function loadBranchServiceStatus(force) {
+  if (!force && window._branchSvcStatus) return window._branchSvcStatus;
+  const data = await api('/api/branches/service-status');
+  if (data) {
+    window._branchSvcStatus = data.statuses || {};
+    window._branchSvcTarget = data.target || 2;
+  }
+  return window._branchSvcStatus || {};
+}
+
+// 봉사 대상 가맹점 행에 표시할 상태 배지 (지국 등 비대상은 빈 문자열)
+function branchStatusBadgeHtml(branchId) {
+  const map = window._branchSvcStatus || {};
+  const s = map[branchId];
+  if (!s) return ''; // 봉사 대상 아님(지국·물류·본사 등) → 표시 없음
+  const target = window._branchSvcTarget || 2;
+  if (s.status === 'none' || !s.count) {
+    return '<span class="svc-badge svc-none">미계획</span>';
+  }
+  const label = { approved: '승인', requested: '요청', planned: '계획' }[s.status] || '계획';
+  const cls = { approved: 'svc-approved', requested: 'svc-requested', planned: 'svc-planned' }[s.status] || 'svc-planned';
+  return `<span class="svc-badge ${cls}">${label} · 이번달 ${s.count}/${target}회</span>`;
+}
+
 // ─── 전국 지국 열람 ───
 async function showBranches(pg) {
-  const branches = await api('/api/branches') || [];
+  const [branches] = await Promise.all([
+    api('/api/branches').then(r => r || []),
+    loadBranchServiceStatus(true)
+  ]);
   window._allBranches = branches;
   window._filteredBranches = branches;
   renderBranchPage(pg || 1);
@@ -1453,6 +1508,7 @@ function renderBranchList(branches) {
         </div>
         <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
           ${b.exclude_service ? '<span class="badge badge-draft">봉사제외</span>' : '<span class="badge badge-approved">운영</span>'}
+          ${branchStatusBadgeHtml(b.id)}
           ${b.email ? '<span style="font-size:10px; color:var(--primary);">&#9993;</span>' : ''}
         </div>
       </div>
@@ -3891,6 +3947,8 @@ async function doGlobalSearch() {
   el.innerHTML = '<p style="text-align:center; color:var(--gray-500); padding:20px;">검색 중...</p>';
   const data = await api(`/api/search?q=${encodeURIComponent(q)}`);
   if (!data) return;
+  // 지국 결과가 있으면 당월 봉사 일정상태 맵 준비
+  if (data.results.some(r => r.type === 'branch')) await loadBranchServiceStatus();
 
   if (data.results.length === 0) {
     el.innerHTML = `
@@ -3925,6 +3983,7 @@ async function doGlobalSearch() {
             <div class="list-item-content">
               <div class="list-item-title">${escHtml(r.title)}</div>
               <div class="list-item-sub">${escHtml(r.sub || '')}</div>
+              ${r.type === 'branch' ? `<div style="margin-top:4px;">${branchStatusBadgeHtml(r.id)}</div>` : ''}
             </div>
             ${r.category ? `<span class="badge badge-${r.category}" style="font-size:10px;">${escHtml(r.category)}</span>` : ''}
           </div>
@@ -5161,8 +5220,55 @@ async function showHandover() {
 // ─── 팀 일정 ───
 let scheduleMonth = new Date().toISOString().substring(0, 7);
 
+// ─── 봉사 성장 정원 (등급→식물). 로드맵: 차후 등급별 세부 종류는 여기 매핑만 확장 ───
+const GARDEN_EMOJI = {
+  sprout: { emoji: '🌱', label: '새싹' },
+  leaf:   { emoji: '🌿', label: '잎' },
+  tree:   { emoji: '🌳', label: '나무' },
+  flower: { emoji: '🌸', label: '꽃나무' },
+  forest: { emoji: '🌲', label: '숲' }
+};
+
+function renderGardenPanel(garden) {
+  if (!garden) return '';
+  const counts = garden.counts || { planned: 0, completed: 0 };
+  const plants = garden.plants || [];
+  const plantsHtml = plants.length === 0
+    ? '<div style="font-size:12px; color:var(--gray-500); text-align:center; padding:10px;">아직 정원에 심긴 지국이 없어요. 봉사활동을 <b>완료로 등록</b>하면 싹이 틉니다 🌱</div>'
+    : `<div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${plants.map((p, i) => {
+          const g = GARDEN_EMOJI[p.tier] || GARDEN_EMOJI.sprout;
+          const crown = i < 3 ? '<span style="position:absolute; top:-8px; right:-4px; font-size:12px;">👑</span>' : '';
+          return `<div style="position:relative; min-width:64px; text-align:center; background:var(--gray-50, #f8fafc); border:1px solid var(--gray-100); border-radius:10px; padding:8px 6px;">
+            ${crown}
+            <div style="font-size:26px; line-height:1;">${g.emoji}</div>
+            <div style="font-size:11px; color:var(--gray-700); margin-top:3px; word-break:keep-all;">${escHtml(p.name)}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+  return `
+    <div class="card" style="padding:12px; margin-bottom:16px; border:1px solid var(--primary-light);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span style="font-size:14px; font-weight:700;">🌱 봉사 성장 정원</span>
+        <span style="font-size:11px; color:var(--gray-400);">완료 등록할수록 무성해져요</span>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:12px; font-size:12px; margin-bottom:10px;">
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#f59e0b;"></span>계획 <b>${counts.planned || 0}</b></span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#1d4ed8;"></span>승인 <b>${counts.approved || 0}</b></span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#15803d;"></span>완료 <b>${counts.completed || 0}</b></span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#7c3aed;"></span>감사확인 <b>${counts.audited || 0}</b></span>
+        <span style="font-size:11px; color:var(--gray-400);">(이번 달)</span>
+      </div>
+      ${plantsHtml}
+    </div>`;
+}
+
 async function showSchedulePage() {
-  const events = await api(`/api/events?month=${scheduleMonth}`) || [];
+  const [events, garden] = await Promise.all([
+    api(`/api/events?month=${scheduleMonth}`).then(r => r || []),
+    api('/api/garden')
+  ]);
   const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
   const today = new Date().toISOString().split('T')[0];
 
@@ -5189,6 +5295,8 @@ async function showSchedulePage() {
       <p class="section-title" style="margin:0;">&#128197; 팀 일정</p>
       <button class="btn btn-primary btn-sm" onclick="showEventForm()">일정 추가</button>
     </div>
+
+    ${renderGardenPanel(garden)}
 
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <button class="btn btn-outline btn-sm" onclick="scheduleMonth=prevMonth(scheduleMonth); showSchedulePage();">&lsaquo;</button>
@@ -6793,3 +6901,600 @@ setInterval(checkAttendancePopup, 60000);
   indicator.textContent = '서버 연결 완료';
   setTimeout(() => { indicator.style.display = 'none'; }, 1500);
 })();
+
+// ─── 도움말 모드 (hover 안내 말풍선) ───
+let _helpMode = false;
+
+function toggleHelpMode() {
+  _helpMode = !_helpMode;
+  document.body.classList.toggle('help-mode', _helpMode);
+  const btn = document.getElementById('helpModeBtn');
+  if (btn) btn.classList.toggle('help-active', _helpMode);
+  let banner = document.getElementById('helpModeBanner');
+  if (_helpMode) {
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'helpModeBanner';
+      banner.className = 'help-mode-banner';
+      banner.textContent = '도움말 모드 — 버튼이나 입력칸에 마우스를 올려보세요 (다시 ? 누르면 종료)';
+      document.body.appendChild(banner);
+    }
+  } else {
+    if (banner) banner.remove();
+    hideHelpBubble();
+  }
+}
+
+function hideHelpBubble() {
+  const b = document.getElementById('helpBubble');
+  if (b) b.classList.remove('show');
+}
+
+function showHelpBubble(el) {
+  const text = el.getAttribute('data-help');
+  if (!text) return;
+  let b = document.getElementById('helpBubble');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'helpBubble';
+    document.body.appendChild(b);
+  }
+  b.textContent = text;
+  b.classList.remove('arrow-up', 'arrow-down');
+  // 먼저 보이게 해서 크기 측정
+  b.style.left = '-9999px';
+  b.classList.add('show');
+  const r = el.getBoundingClientRect();
+  const bw = b.offsetWidth, bh = b.offsetHeight;
+  const margin = 8;
+  // 기본은 요소 위쪽, 공간 부족하면 아래쪽
+  let placeAbove = r.top > bh + margin + 4;
+  let top = placeAbove ? r.top - bh - margin : r.bottom + margin;
+  let left = r.left + r.width / 2 - bw / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - bw - 8));
+  // 화살표 위치(요소 중앙을 가리키도록)
+  const arrowLeft = Math.max(12, Math.min(r.left + r.width / 2 - left, bw - 12));
+  b.style.setProperty('--arrow-left', (arrowLeft - 7) + 'px');
+  b.classList.add(placeAbove ? 'arrow-down' : 'arrow-up');
+  b.style.left = left + 'px';
+  b.style.top = top + 'px';
+}
+
+document.addEventListener('mouseover', function(e) {
+  if (!_helpMode) return;
+  const el = e.target.closest('[data-help]');
+  if (el) showHelpBubble(el);
+});
+document.addEventListener('mouseout', function(e) {
+  if (!_helpMode) return;
+  const el = e.target.closest('[data-help]');
+  if (el && !el.contains(e.relatedTarget)) hideHelpBubble();
+});
+document.addEventListener('focusin', function(e) {
+  if (!_helpMode) return;
+  const el = e.target.closest('[data-help]');
+  if (el) showHelpBubble(el);
+});
+// 모바일/터치: 도움말 모드일 때 탭하면 동작 대신 안내만 표시 (capture 단계에서 실제 클릭 차단)
+document.addEventListener('click', function(e) {
+  if (!_helpMode) return;
+  const el = e.target.closest('[data-help]');
+  if (el) {
+    e.preventDefault();
+    e.stopPropagation();
+    showHelpBubble(el);
+  } else {
+    hideHelpBubble();
+  }
+}, true);
+
+// ─── 지역장: 소속 관리 ───
+let _regionMembers = [];
+
+let _rmKeyword = '';
+let _rmCompany = '';
+let _rmSort = 'name';
+
+async function showRegionMembers() {
+  const members = await api('/api/region/members');
+  if (!members) return;
+  _regionMembers = members;
+  _rmKeyword = '';
+  _rmCompany = '';
+  _rmSort = 'name';
+  renderRegionMembers('');
+}
+
+function setRmFilter() {
+  const cSel = document.getElementById('rmCompanyFilter');
+  const sSel = document.getElementById('rmSort');
+  if (cSel) _rmCompany = cSel.value;
+  if (sSel) _rmSort = sSel.value;
+  renderRegionMembers(_rmKeyword);
+}
+
+function renderRegionMembers(keyword) {
+  _rmKeyword = keyword || '';
+  const kw = _rmKeyword.trim().toLowerCase();
+  let list = _regionMembers.filter(m => {
+    if (_rmCompany && (m.company_name || '') !== _rmCompany) return false;
+    if (!kw) return true;
+    return (m.name || '').toLowerCase().includes(kw) ||
+      (m.company_name || '').toLowerCase().includes(kw) ||
+      (m.department || '').toLowerCase().includes(kw) ||
+      (m.position || '').toLowerCase().includes(kw);
+  });
+  list = list.slice().sort((a, b) => {
+    if (_rmSort === 'company') {
+      return (a.company_name || '힣').localeCompare(b.company_name || '힣', 'ko') || (a.name || '').localeCompare(b.name || '', 'ko');
+    }
+    return (a.name || '').localeCompare(b.name || '', 'ko');
+  });
+
+  const companies = [...new Set(_regionMembers.map(m => m.company_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <p class="section-title" style="margin:0;">&#128100; 소속 관리 <span style="font-size:12px; color:var(--gray-500); font-weight:400;">(지역장)</span></p>
+      <span style="font-size:13px; color:var(--gray-500);">${list.length}명</span>
+    </div>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:10px;">관리담당자의 부서·직책·팀을 대신 수정할 수 있습니다.</p>
+    <div class="form-group">
+      <input type="text" class="form-control" placeholder="이름·회사·부서·직책 검색"
+        value="${escAttr(_rmKeyword)}" oninput="renderRegionMembers(this.value)"
+        data-help="찾으려는 관리담당자의 이름이나 소속을 입력하면 목록이 좁혀집니다.">
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <select id="rmCompanyFilter" class="form-control" style="flex:1; font-size:13px;" onchange="setRmFilter()" data-help="특정 회사(조합)의 인원만 추려서 봅니다.">
+        <option value=""${_rmCompany === '' ? ' selected' : ''}>전체 회사</option>
+        ${companies.map(c => `<option value="${escAttr(c)}"${_rmCompany === c ? ' selected' : ''}>${escHtml(c)}</option>`).join('')}
+      </select>
+      <select id="rmSort" class="form-control" style="width:120px; font-size:13px;" onchange="setRmFilter()" data-help="목록 정렬 기준을 바꿉니다.">
+        <option value="name"${_rmSort === 'name' ? ' selected' : ''}>이름순</option>
+        <option value="company"${_rmSort === 'company' ? ' selected' : ''}>회사순</option>
+      </select>
+    </div>
+    ${list.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#128100;</div><div class="empty-text">대상이 없습니다</div></div>' : list.map(m => `
+      <div class="card" style="padding:12px; margin-bottom:8px;" id="rm-${m.id}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:15px; font-weight:600;">${escHtml(m.name)} ${m.position ? `<span style="font-size:12px; color:var(--primary);">${escHtml(m.position)}</span>` : ''}</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">
+              ${escHtml(m.company_name || '회사 미지정')}${m.team_name ? ' · ' + escHtml(m.team_name) : ''}${m.department ? ' · ' + escHtml(m.department) : ''}
+            </div>
+            ${m.phone ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">${escHtml(m.phone)}</div>` : ''}
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="editRegionMember('${m.id}')" data-help="이 사람의 부서·직책·팀을 수정합니다.">수정</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function editRegionMember(id) {
+  const m = _regionMembers.find(x => x.id === id);
+  if (!m) return;
+  let teams = [];
+  if (m.company_id) teams = await api(`/api/companies/${m.company_id}/teams`) || [];
+  const teamOpts = ['<option value="">-- 팀 미지정 --</option>']
+    .concat(teams.map(t => `<option value="${t.id}"${t.id === m.team_id ? ' selected' : ''}>${escHtml(t.name)}</option>`))
+    .join('');
+
+  document.getElementById('rm-' + id).innerHTML = `
+    <div style="font-size:15px; font-weight:600; margin-bottom:8px;">${escHtml(m.name)} <span style="font-size:12px; color:var(--gray-500);">소속 수정</span></div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <label style="font-size:12px;">직책</label>
+      <input type="text" id="rmPos-${id}" class="form-control" value="${escAttr(m.position || '')}" placeholder="예: 과장, 팀장"
+        data-help="이 사람의 직책을 입력하세요. ('지역장' 직책의 지정·변경은 시스템관리자만 가능합니다)">
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <label style="font-size:12px;">부서</label>
+      <input type="text" id="rmDept-${id}" class="form-control" value="${escAttr(m.department || '')}" placeholder="예: 영업부, 전산팀"
+        data-help="이 사람이 속한 부서를 입력하세요.">
+    </div>
+    <div class="form-group" style="margin-bottom:10px;">
+      <label style="font-size:12px;">팀 ${m.company_id ? '' : '(회사 미지정 시 변경 불가)'}</label>
+      <select id="rmTeam-${id}" class="form-control" ${m.company_id ? '' : 'disabled'}
+        data-help="이 사람이 속한 회사의 팀 중에서 선택합니다. 회사가 없으면 변경할 수 없습니다.">
+        ${teamOpts}
+      </select>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-outline btn-sm" style="flex:1;" onclick="renderRegionMembers('')">취소</button>
+      <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveRegionMember('${id}')" data-help="변경한 소속 정보를 저장합니다.">저장</button>
+    </div>
+  `;
+}
+
+async function saveRegionMember(id) {
+  const position = document.getElementById('rmPos-' + id).value.trim();
+  const department = document.getElementById('rmDept-' + id).value.trim();
+  const teamSel = document.getElementById('rmTeam-' + id);
+  const team_id = teamSel && !teamSel.disabled ? (teamSel.value || null) : null;
+  const res = await api(`/api/region/members/${id}`, { method: 'PUT', body: { department, position, team_id } });
+  if (res) {
+    toast('소속이 수정되었습니다');
+    const m = _regionMembers.find(x => x.id === id);
+    if (m) {
+      m.position = position;
+      m.department = department;
+      m.team_id = team_id;
+      m.team_name = team_id && teamSel ? (teamSel.options[teamSel.selectedIndex] || {}).text || '' : '';
+    }
+    renderRegionMembers('');
+  }
+}
+
+// ─── 워크샵 참석 명단 작성 ───
+let _wsRoster = [];
+
+async function showWorkshopRoster() {
+  const members = await api('/api/region/members');
+  if (!members) return;
+  // 관리담당자 → 명단 행으로 변환 (소속 자동값: 회사명 우선, 없으면 부서)
+  _wsRoster = members.map(m => ({
+    name: m.name || '',
+    affiliation: m.company_name || m.department || '',
+    position: m.position || '',
+    age: '',
+    gender: '',
+    note: '',
+    included: true,
+    fromApp: true
+  }));
+  renderWorkshopRoster();
+}
+
+function renderWorkshopRoster() {
+  const includedCount = _wsRoster.filter(r => r.included).length;
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <p class="section-title" style="margin:0;">&#128203; 워크샵 명단</p>
+      <span style="font-size:13px; color:var(--gray-500);">선택 ${includedCount}명</span>
+    </div>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:10px;">관리담당자를 불러왔습니다. 체크 해제로 제외하고, 나이·성별·비고를 채운 뒤 추가 인원을 더해 엑셀로 내려받으세요.</p>
+
+    <div style="overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:13px; min-width:560px;">
+      <thead>
+        <tr style="background:var(--primary-light);">
+          <th style="padding:6px 4px; width:34px;" data-help="체크된 사람만 명단에 포함됩니다.">포함</th>
+          <th style="padding:6px 4px; text-align:left;">이름</th>
+          <th style="padding:6px 4px; text-align:left;">소속</th>
+          <th style="padding:6px 4px; text-align:left;">직함</th>
+          <th style="padding:6px 4px; width:48px;">나이</th>
+          <th style="padding:6px 4px; width:54px;">성별</th>
+          <th style="padding:6px 4px; text-align:left;">비고</th>
+          <th style="padding:6px 4px; width:28px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${_wsRoster.map((r, i) => `
+          <tr style="border-bottom:1px solid var(--gray-100); ${r.included ? '' : 'opacity:0.45;'}">
+            <td style="text-align:center;"><input type="checkbox" ${r.included ? 'checked' : ''} onchange="wsToggle(${i}, this.checked)" style="width:18px; height:18px; accent-color:var(--primary);"></td>
+            <td><input type="text" value="${escAttr(r.name)}" oninput="wsSet(${i},'name',this.value)" style="width:100%; border:none; padding:6px 4px; font-size:13px; background:transparent;"></td>
+            <td><input type="text" value="${escAttr(r.affiliation)}" oninput="wsSet(${i},'affiliation',this.value)" style="width:100%; border:none; padding:6px 4px; font-size:13px; background:transparent;" data-help="소속(조합/지국명)을 적습니다. 회사명이 자동으로 채워졌으며 수정할 수 있습니다."></td>
+            <td><input type="text" value="${escAttr(r.position)}" oninput="wsSet(${i},'position',this.value)" style="width:100%; border:none; padding:6px 4px; font-size:13px; background:transparent;"></td>
+            <td><input type="text" value="${escAttr(r.age)}" oninput="wsSet(${i},'age',this.value)" style="width:100%; border:none; padding:6px 2px; font-size:13px; text-align:center; background:transparent;" data-help="나이는 앱에 없는 정보라 직접 입력합니다. 비워둬도 됩니다."></td>
+            <td><input type="text" value="${escAttr(r.gender)}" oninput="wsSet(${i},'gender',this.value)" placeholder="남/여" style="width:100%; border:none; padding:6px 2px; font-size:13px; text-align:center; background:transparent;" data-help="성별을 직접 입력합니다. 예: 남, 여."></td>
+            <td><input type="text" value="${escAttr(r.note)}" oninput="wsSet(${i},'note',this.value)" style="width:100%; border:none; padding:6px 4px; font-size:13px; background:transparent;"></td>
+            <td style="text-align:center;"><button onclick="wsRemove(${i})" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px;">&times;</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn btn-outline btn-block" onclick="wsAddRow()" data-help="앱에 없는 추가 인원을 빈 행으로 넣습니다.">+ 추가 인원</button>
+      <button class="btn btn-success btn-block" onclick="downloadWorkshopRoster()" data-help="체크된 인원으로 워크숍 참석 명단 엑셀 양식을 내려받습니다.">&#128229; 엑셀 다운로드</button>
+    </div>
+  `;
+}
+
+function wsToggle(i, checked) {
+  if (_wsRoster[i]) _wsRoster[i].included = checked;
+  renderWorkshopRoster();
+}
+
+function wsSet(i, field, value) {
+  if (_wsRoster[i]) _wsRoster[i][field] = value;
+}
+
+function wsRemove(i) {
+  _wsRoster.splice(i, 1);
+  renderWorkshopRoster();
+}
+
+function wsAddRow() {
+  _wsRoster.push({ name: '', affiliation: '', position: '', age: '', gender: '', note: '', included: true, fromApp: false });
+  renderWorkshopRoster();
+}
+
+async function downloadWorkshopRoster() {
+  const rows = _wsRoster
+    .filter(r => r.included && (r.name || '').trim())
+    .map(r => ({ name: r.name, affiliation: r.affiliation, position: r.position, age: r.age, gender: r.gender, note: r.note }));
+  if (rows.length === 0) { toast('명단에 포함할 인원이 없습니다'); return; }
+  try {
+    toast('엑셀 파일 생성 중...');
+    const resp = await fetch('/api/export/workshop-roster', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ rows })
+    });
+    if (!resp.ok) throw new Error('다운로드 실패');
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `워크샵_참석명단_${new Date().toISOString().split('T')[0]}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    toast('다운로드 완료!');
+  } catch (e) {
+    toast('다운로드 실패: ' + e.message);
+  }
+}
+
+// ─── 봉사활동 (개인 전용) ───
+let _volunteerItems = [];
+
+function volBranchOptions(selectedId) {
+  const branches = (window._volBranches || []).filter(b => !b.exclude_service);
+  return ['<option value="">대상 가맹점 선택 (선택)</option>']
+    .concat(branches.map(b => `<option value="${b.id}"${b.id === selectedId ? ' selected' : ''}>${escHtml(b.name)}</option>`))
+    .join('');
+}
+
+async function showVolunteerPage() {
+  const [list, stats, branches] = await Promise.all([
+    api('/api/volunteer'),
+    api('/api/volunteer/stats'),
+    api('/api/branches').then(r => r || [])
+  ]);
+  if (list === null) return;
+  window._volBranches = branches;
+  const items = list || [];
+  _volunteerItems = items;
+  const count = stats ? stats.count : items.length;
+  const totalHours = stats ? Number(stats.total_hours || 0) : 0;
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const yearStr = String(now.getFullYear());
+  const monthStr = today.substring(0, 7);
+  const yearHours = items.filter(v => (v.activity_date || '').split('T')[0].substring(0, 4) === yearStr)
+    .reduce((s, v) => s + Number(v.hours || 0), 0);
+  const monthHours = items.filter(v => (v.activity_date || '').split('T')[0].substring(0, 7) === monthStr)
+    .reduce((s, v) => s + Number(v.hours || 0), 0);
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:0 0 10px;">
+      <p class="section-title" style="margin:0;">&#129309; 봉사활동 <span style="font-size:12px; color:var(--gray-500); font-weight:400;">(본인만 봅니다)</span></p>
+      ${items.length > 0 ? `<button class="btn btn-outline btn-sm" onclick="downloadExcel('/api/export/volunteer','봉사활동내역')" data-help="내 봉사활동 내역을 엑셀 양식으로 내려받습니다.">&#128229; 엑셀</button>` : ''}
+    </div>
+
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="stat-number">${count}</div>
+        <div class="stat-label">총 활동</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${totalHours}</div>
+        <div class="stat-label">누적 시간</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${yearHours}</div>
+        <div class="stat-label">올해 시간</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${monthHours}</div>
+        <div class="stat-label">이번 달</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:12px; margin-bottom:16px;">
+      <p style="font-weight:600; margin-bottom:8px; font-size:14px;">새 봉사활동 기록</p>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <input type="date" id="volDate" class="form-control" value="${today}" style="font-size:13px;" data-help="봉사활동을 한 날짜를 선택하세요.">
+        </div>
+        <div class="form-group" style="width:90px; margin-bottom:0;">
+          <input type="number" id="volHours" class="form-control" placeholder="시간" min="0" step="0.5" style="font-size:13px;" data-help="봉사한 시간을 숫자로 적으세요. 예: 2, 3.5">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <input type="text" id="volTitle" class="form-control" placeholder="활동명 (예: 연탄 나눔 봉사)" data-help="어떤 봉사활동이었는지 제목을 적으세요.">
+      </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <select id="volBranch" class="form-control" style="font-size:13px;" data-help="봉사 대상 가맹점을 고르세요. 여러 가맹점을 다닐수록 정원이 무성해집니다.">
+          ${volBranchOptions('')}
+        </select>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <input type="text" id="volLocation" class="form-control" placeholder="장소" style="font-size:13px;" data-help="봉사활동을 한 장소를 적으세요.">
+        </div>
+        <div class="form-group" style="width:90px; margin-bottom:0;">
+          <input type="number" id="volParticipants" class="form-control" placeholder="인원" min="1" value="1" style="font-size:13px;" data-help="참여 인원 수입니다. 참여자 이름을 적으면 자동으로 인원이 계산됩니다.">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <input type="text" id="volNames" class="form-control" placeholder="참여자 이름 (쉼표로 구분)" style="font-size:13px;" data-help="참여한 사람들의 이름을 쉼표로 구분해 적으세요. 같은 사람이 자주 참여할수록 정원 점수에 도움이 됩니다.">
+      </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <textarea id="volContent" class="form-control" placeholder="활동 내용 (선택)" data-help="활동 내용을 자유롭게 적으세요. 비워둬도 됩니다."></textarea>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; cursor:pointer;" data-help="완료로 등록하면 봉사 성장 정원 집계에 반영됩니다. 미체크 시 '계획' 상태로 저장됩니다.">
+        <input type="checkbox" id="volDone" style="width:18px; height:18px; accent-color:var(--primary);"> 완료로 등록 (정원에 반영)
+      </label>
+      <button class="btn btn-primary btn-block" onclick="addVolunteer()" data-help="입력한 봉사활동을 기록에 추가합니다.">기록 추가</button>
+    </div>
+
+    ${items.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#129309;</div><div class="empty-text">아직 기록한 봉사활동이 없습니다</div></div>' : items.map(v => `
+      <div class="card" style="padding:12px; margin-bottom:8px;" id="vol-${v.id}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:15px; font-weight:600;">
+              ${v.status === '완료' ? '<span class="svc-badge svc-approved" style="margin-right:4px;">완료</span>' : '<span class="svc-badge svc-planned" style="margin-right:4px;">계획</span>'}
+              ${escHtml(v.title)}
+            </div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:3px;">
+              ${(v.activity_date || '').split('T')[0]}${v.location ? ' · ' + escHtml(v.location) : ''}${Number(v.hours) ? ' · ' + Number(v.hours) + '시간' : ''}${Number(v.participants) > 1 ? ' · ' + v.participants + '명' : ''}
+            </div>
+            ${v.participant_names ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">참여자: ${escHtml(v.participant_names)}</div>` : ''}
+            ${v.content ? `<div style="font-size:13px; color:var(--gray-700); margin-top:6px; white-space:pre-wrap;">${escHtml(v.content)}</div>` : ''}
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button onclick="editVolunteer('${v.id}')" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:13px; font-weight:600;" data-help="이 기록의 내용을 수정합니다.">수정</button>
+            <button onclick="deleteVolunteer('${v.id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px;">&times;</button>
+          </div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function editVolunteer(id) {
+  const v = _volunteerItems.find(x => x.id === id);
+  if (!v) return;
+  const date = (v.activity_date || '').split('T')[0];
+  document.getElementById('vol-' + id).innerHTML = `
+    <div style="font-size:14px; font-weight:600; margin-bottom:8px;">봉사활동 수정</div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <div class="form-group" style="flex:1; margin-bottom:0;">
+        <input type="date" id="volEditDate-${id}" class="form-control" value="${date}" style="font-size:13px;" data-help="봉사활동을 한 날짜입니다.">
+      </div>
+      <div class="form-group" style="width:90px; margin-bottom:0;">
+        <input type="number" id="volEditHours-${id}" class="form-control" value="${escAttr(String(Number(v.hours || 0)))}" placeholder="시간" min="0" step="0.5" style="font-size:13px;" data-help="봉사한 시간입니다.">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <input type="text" id="volEditTitle-${id}" class="form-control" value="${escAttr(v.title || '')}" placeholder="활동명" data-help="봉사활동 제목입니다.">
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <select id="volEditBranch-${id}" class="form-control" style="font-size:13px;" data-help="봉사 대상 가맹점입니다.">
+        ${volBranchOptions(v.branch_id || '')}
+      </select>
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <div class="form-group" style="flex:1; margin-bottom:0;">
+        <input type="text" id="volEditLocation-${id}" class="form-control" value="${escAttr(v.location || '')}" placeholder="장소" style="font-size:13px;" data-help="봉사활동 장소입니다.">
+      </div>
+      <div class="form-group" style="width:90px; margin-bottom:0;">
+        <input type="number" id="volEditParticipants-${id}" class="form-control" value="${escAttr(String(v.participants || 1))}" placeholder="인원" min="1" style="font-size:13px;" data-help="참여 인원 수입니다.">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <input type="text" id="volEditNames-${id}" class="form-control" value="${escAttr(v.participant_names || '')}" placeholder="참여자 이름 (쉼표로 구분)" style="font-size:13px;" data-help="참여자 이름을 쉼표로 구분해 적습니다.">
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <textarea id="volEditContent-${id}" class="form-control" placeholder="활동 내용 (선택)" data-help="활동 내용입니다.">${escHtml(v.content || '')}</textarea>
+    </div>
+    <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; cursor:pointer;" data-help="완료로 등록하면 봉사 성장 정원 집계에 반영됩니다.">
+      <input type="checkbox" id="volEditDone-${id}" ${v.status === '완료' ? 'checked' : ''} style="width:18px; height:18px; accent-color:var(--primary);"> 완료로 등록 (정원에 반영)
+    </label>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-outline btn-sm" style="flex:1;" onclick="showVolunteerPage()">취소</button>
+      <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveVolunteer('${id}')" data-help="수정한 내용을 저장합니다.">저장</button>
+    </div>
+  `;
+}
+
+async function saveVolunteer(id) {
+  const activity_date = document.getElementById('volEditDate-' + id).value;
+  const title = document.getElementById('volEditTitle-' + id).value.trim();
+  if (!activity_date || !title) { toast('봉사일자와 활동명을 입력하세요'); return; }
+  const hours = parseFloat(document.getElementById('volEditHours-' + id).value) || 0;
+  const location = document.getElementById('volEditLocation-' + id).value.trim();
+  const participants = parseInt(document.getElementById('volEditParticipants-' + id).value) || 1;
+  const content = document.getElementById('volEditContent-' + id).value.trim();
+  const branch_id = document.getElementById('volEditBranch-' + id).value || null;
+  const participant_names = document.getElementById('volEditNames-' + id).value.trim();
+  const status = document.getElementById('volEditDone-' + id).checked ? '완료' : '계획';
+  const res = await api(`/api/volunteer/${id}`, { method: 'PUT', body: { activity_date, title, location, hours, participants, content, branch_id, participant_names, status } });
+  if (res) { toast('수정되었습니다'); showVolunteerPage(); }
+}
+
+async function addVolunteer() {
+  const activity_date = document.getElementById('volDate').value;
+  const title = document.getElementById('volTitle').value.trim();
+  if (!activity_date || !title) { toast('봉사일자와 활동명을 입력하세요'); return; }
+  const hours = parseFloat(document.getElementById('volHours').value) || 0;
+  const location = document.getElementById('volLocation').value.trim();
+  const participants = parseInt(document.getElementById('volParticipants').value) || 1;
+  const content = document.getElementById('volContent').value.trim();
+  const branch_id = document.getElementById('volBranch').value || null;
+  const participant_names = document.getElementById('volNames').value.trim();
+  const status = document.getElementById('volDone').checked ? '완료' : '계획';
+  const res = await api('/api/volunteer', { method: 'POST', body: { activity_date, title, location, hours, participants, content, branch_id, participant_names, status } });
+  if (res) { toast(status === '완료' ? '완료로 등록되었습니다' : '기록되었습니다'); showVolunteerPage(); }
+}
+
+async function deleteVolunteer(id) {
+  if (!confirm('이 봉사활동 기록을 삭제하시겠습니까?')) return;
+  await api(`/api/volunteer/${id}`, { method: 'DELETE' });
+  showVolunteerPage();
+}
+
+// ─── 봉사 승인·감사 관리 (지역장=승인, 관리자=승인+감사확인) ───
+const VOL_STATUS = {
+  '계획': { cls: 'svc-planned', label: '계획' },
+  '승인': { cls: 'svc-requested', label: '승인' },
+  '완료': { cls: 'svc-approved', label: '완료' },
+  '감사확인': { cls: 'svc-audited', label: '감사확인' }
+};
+
+async function showVolunteerReview() {
+  const data = await api('/api/volunteer/review');
+  if (!data) return;
+  const role = data.role || {};
+  const items = data.items || [];
+  const filter = window._volReviewFilter || 'all';
+  const shown = filter === 'all' ? items : items.filter(i => i.status === filter);
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <p class="section-title" style="margin:0 0 4px;">&#9989; 봉사 승인·감사 관리</p>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:10px;">
+      ${role.admin ? '계획 승인 + 완료건 감사확인이 가능합니다.' : '지국이 요청한 계획을 승인할 수 있습니다.'}
+    </p>
+    <div class="tabs" style="margin-bottom:12px; flex-wrap:wrap; gap:4px;">
+      ${['all','계획','승인','완료','감사확인'].map(f => `<button class="tab${filter===f?' active':''}" onclick="window._volReviewFilter='${f}'; showVolunteerReview();">${f==='all'?'전체':f}</button>`).join('')}
+    </div>
+    ${shown.length === 0 ? '<div class="empty-state"><div class="empty-text">해당 항목이 없습니다</div></div>' : shown.map(it => {
+      const st = VOL_STATUS[it.status] || VOL_STATUS['계획'];
+      const place = it.branch_name || it.location || '';
+      let btns = '';
+      if (it.status === '계획' && (role.admin || role.regionHead)) {
+        btns += `<button class="btn btn-primary btn-sm" onclick="setVolStatus('${it.id}','승인')" data-help="이 계획을 승인합니다.">승인</button>`;
+      }
+      if (it.status === '완료' && role.admin) {
+        btns += `<button class="btn btn-success btn-sm" onclick="setVolStatus('${it.id}','감사확인')" data-help="완료된 봉사활동을 감사확인 처리합니다.">감사확인</button>`;
+      }
+      return `
+      <div class="card" style="padding:12px; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:14px; font-weight:600;"><span class="svc-badge ${st.cls}" style="margin-right:4px;">${st.label}</span>${escHtml(it.title)}</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:3px;">
+              ${(it.activity_date||'').split('T')[0]}${place ? ' · ' + escHtml(place) : ''} · ${escHtml(it.company_name || it.author_name || '')}
+            </div>
+            ${it.participant_names ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">참여자: ${escHtml(it.participant_names)}</div>` : ''}
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">${btns}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+async function setVolStatus(id, status) {
+  const res = await api(`/api/volunteer/${id}/status`, { method: 'PUT', body: { status } });
+  if (res) { toast(status + ' 처리되었습니다'); showVolunteerReview(); }
+}

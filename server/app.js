@@ -290,6 +290,55 @@ app.post('/api/admin/register-user', adminMiddleware, async (req, res) => {
   }
 });
 
+// ─── 지역장 소속 관리 (직책이 '지역장'인 사용자) ───
+async function regionHeadMiddleware(req, res, next) {
+  if (req.session.isAdmin) return next();
+  if (!req.session.userId) return res.status(401).json({ error: '로그인이 필요합니다' });
+  const r = await query('SELECT position FROM users WHERE id = $1', [req.session.userId]);
+  if (r.rows[0] && r.rows[0].position === '지역장') return next();
+  res.status(403).json({ error: '지역장 권한이 필요합니다' });
+}
+
+app.get('/api/region/members', regionHeadMiddleware, async (req, res) => {
+  const result = await query(
+    `SELECT u.id, u.name, u.department, u.position, u.phone, u.company_id, u.team_id,
+            c.name AS company_name, t.name AS team_name
+     FROM users u
+     LEFT JOIN companies c ON c.id = u.company_id
+     LEFT JOIN teams t ON t.id = u.team_id
+     WHERE u.id <> 'admin-user'
+     ORDER BY u.created_at DESC`
+  );
+  res.json(result.rows);
+});
+
+app.put('/api/region/members/:id', regionHeadMiddleware, async (req, res) => {
+  if (req.params.id === 'admin-user') return res.status(403).json({ error: '관리자 계정은 수정할 수 없습니다' });
+  const target = await query('SELECT id, company_id, position FROM users WHERE id = $1', [req.params.id]);
+  if (target.rows.length === 0) return res.status(404).json({ error: '대상을 찾을 수 없습니다' });
+  const { department, position, team_id } = req.body;
+  // '지역장' 직책 지정·변경은 시스템관리자만 가능 (지역장끼리 권한 부여/강등 방지)
+  if (!req.session.isAdmin) {
+    const newPos = (position || '').trim();
+    const curPos = target.rows[0].position || '';
+    if (newPos === '지역장' || curPos === '지역장') {
+      return res.status(403).json({ error: "'지역장' 직책 지정·변경은 시스템관리자만 가능합니다" });
+    }
+  }
+  // 팀은 대상자의 회사에 속한 팀만 허용 (타 회사 팀 지정 방지)
+  let teamVal = null;
+  if (team_id) {
+    const t = await query('SELECT id FROM teams WHERE id = $1 AND company_id = $2', [team_id, target.rows[0].company_id]);
+    if (t.rows.length === 0) return res.status(400).json({ error: '대상자의 회사에 속한 팀이 아닙니다' });
+    teamVal = team_id;
+  }
+  // 부서·직책·팀 3개 컬럼만 화이트리스트 업데이트
+  await query('UPDATE users SET department = $1, position = $2, team_id = $3 WHERE id = $4', [
+    department || '', position || '', teamVal, req.params.id
+  ]);
+  res.json({ ok: true });
+});
+
 app.get('/api/me', authMiddleware, async (req, res) => {
   const result = await query('SELECT id, name, department, position, phone, email, company_id, team_id FROM users WHERE id = $1', [req.session.userId]);
   const user = result.rows[0];
@@ -885,6 +934,55 @@ app.get('/api/branches', authMiddleware, async (req, res) => {
   res.json(result.rows);
 });
 
+// 봉사 대상 가맹점(exclude_service=0)별 당월 봉사 일정상태(계획/요청/승인) + 횟수
+// 주의: '/api/branches/:id' 보다 먼저 등록되어야 함
+app.get('/api/branches/service-status', authMiddleware, async (req, res) => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-base
+  const monthStart = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const nextY = m === 11 ? y + 1 : y;
+  const nextM = m === 11 ? 1 : m + 2;
+  const monthEnd = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
+
+  // 봉사 대상 가맹점만
+  const branchRes = await query(`SELECT id, name FROM branches WHERE exclude_service = 0`);
+  // 당월 업무일지(전체 사용자) + 결재 대기 여부
+  const repRes = await query(
+    `SELECT r.id, r.where_place, r.content, r.what_task, r.status,
+       EXISTS(SELECT 1 FROM approval_lines a WHERE a.report_id = r.id AND a.status = 'pending') AS has_pending
+     FROM work_reports r
+     WHERE r.report_date >= $1 AND r.report_date < $2`,
+    [monthStart, monthEnd]
+  );
+  const reports = repRes.rows.map(r => ({
+    text: `${r.where_place || ''}\n${r.content || ''}\n${r.what_task || ''}`,
+    approved: r.status === 'approved',
+    pending: r.has_pending === true
+  }));
+
+  const statuses = {};
+  for (const b of branchRes.rows) {
+    const name = (b.name || '').trim();
+    if (!name) continue;
+    let count = 0, anyApproved = false, anyPending = false;
+    for (const r of reports) {
+      if (r.text.includes(name)) {
+        count++;
+        if (r.approved) anyApproved = true;
+        else if (r.pending) anyPending = true;
+      }
+    }
+    if (count > 0) {
+      const status = anyApproved ? 'approved' : (anyPending ? 'requested' : 'planned');
+      statuses[b.id] = { status, count };
+    } else {
+      statuses[b.id] = { status: 'none', count: 0 };
+    }
+  }
+  res.json({ month: `${y}-${String(m + 1).padStart(2, '0')}`, target: 2, statuses });
+});
+
 app.get('/api/branches/:id', authMiddleware, async (req, res) => {
   const result = await query('SELECT * FROM branches WHERE id = $1', [req.params.id]);
   const branch = result.rows[0];
@@ -1047,6 +1145,142 @@ app.get('/api/export/tasks', authMiddleware, async (req, res) => {
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename=task_master_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
+// ─── 엑셀 다운로드: 워크샵 참석 명단 ───
+app.post('/api/export/workshop-roster', regionHeadMiddleware, async (req, res) => {
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  const wb = new ExcelJS.Workbook();
+  const s = applyExcelStyles(wb);
+  wb.creator = 'WorkFlow 업무시스템';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('워크숍참석명단', { properties: { defaultRowHeight: 22 } });
+
+  ws.mergeCells('A1:G1');
+  const titleCell = ws.getCell('A1');
+  titleCell.value = '이비티에스 협동조합 워크숍 참석 명단';
+  titleCell.font = s.titleFont;
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(1).height = 40;
+
+  ws.getRow(2).height = 8;
+
+  const headers = ['번호', '이름', '소속', '직함', '나이', '성별', '비고사항'];
+  const headerRow = ws.getRow(3);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.fill = s.headerFill;
+    cell.font = s.headerFont;
+    cell.alignment = s.centerAlign;
+    cell.border = s.borders;
+  });
+  headerRow.height = 28;
+
+  const widths = [6, 14, 24, 14, 8, 8, 26];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  // 입력 행 + 빈 양식 최소 40행 유지
+  const totalRows = Math.max(rows.length, 40);
+  for (let i = 0; i < totalRows; i++) {
+    const r = rows[i] || {};
+    const row = ws.getRow(4 + i);
+    const vals = [
+      i + 1,
+      r.name || '',
+      r.affiliation || '',
+      r.position || '',
+      r.age || '',
+      r.gender || '',
+      r.note || ''
+    ];
+    vals.forEach((v, c) => {
+      const cell = row.getCell(c + 1);
+      cell.value = v;
+      cell.font = s.bodyFont;
+      cell.alignment = c === 6 ? s.leftAlign : s.centerAlign;
+      cell.border = s.borders;
+    });
+    row.height = 24;
+  }
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=workshop_roster_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
+// ─── 엑셀 다운로드: 봉사활동 내역 (개인 전용) ───
+app.get('/api/export/volunteer', authMiddleware, async (req, res) => {
+  const result = await query(
+    'SELECT * FROM volunteer_activities WHERE user_id = $1 ORDER BY activity_date DESC, created_at DESC',
+    [req.session.userId]
+  );
+  const items = result.rows;
+  const totalHours = items.reduce((sum, v) => sum + Number(v.hours || 0), 0);
+
+  const wb = new ExcelJS.Workbook();
+  const s = applyExcelStyles(wb);
+  wb.creator = 'WorkFlow 업무시스템';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('봉사활동내역', { properties: { defaultRowHeight: 22 } });
+
+  ws.mergeCells('A1:G1');
+  const titleCell = ws.getCell('A1');
+  titleCell.value = '봉사활동 내역';
+  titleCell.font = s.titleFont;
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(1).height = 40;
+
+  ws.mergeCells('A2:G2');
+  const subCell = ws.getCell('A2');
+  subCell.value = `작성일: ${new Date().toISOString().split('T')[0]}  |  총 ${items.length}건  |  누적 ${totalHours}시간`;
+  subCell.font = s.subTitleFont;
+  subCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(2).height = 25;
+
+  ws.getRow(3).height = 8;
+
+  const headers = ['번호', '봉사일자', '활동명', '장소', '봉사시간', '참여인원', '활동내용'];
+  const headerRow = ws.getRow(4);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.fill = s.headerFill;
+    cell.font = s.headerFont;
+    cell.alignment = s.centerAlign;
+    cell.border = s.borders;
+  });
+  headerRow.height = 28;
+
+  const widths = [6, 14, 26, 22, 10, 10, 40];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  items.forEach((v, idx) => {
+    const row = ws.getRow(5 + idx);
+    const vals = [
+      idx + 1,
+      (v.activity_date || '').toString().split('T')[0],
+      v.title || '',
+      v.location || '',
+      Number(v.hours || 0),
+      v.participants || '',
+      v.content || ''
+    ];
+    vals.forEach((val, c) => {
+      const cell = row.getCell(c + 1);
+      cell.value = val;
+      cell.font = s.bodyFont;
+      cell.alignment = (c === 2 || c === 3 || c === 6) ? s.leftAlign : s.centerAlign;
+      cell.border = s.borders;
+    });
+    row.height = 24;
+  });
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=volunteer_${new Date().toISOString().split('T')[0]}.xlsx`);
   await wb.xlsx.write(res);
   res.end();
 });
@@ -2931,6 +3165,196 @@ app.put('/api/todos/:id', authMiddleware, async (req, res) => {
 app.delete('/api/todos/:id', authMiddleware, async (req, res) => {
   await query('DELETE FROM todos WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
   res.json({ ok: true });
+});
+
+// ─── 봉사활동 (개인 전용) ───
+function splitParticipantNames(s) {
+  return (s || '').split(/[,，、\n]/).map(x => x.trim()).filter(Boolean);
+}
+
+app.get('/api/volunteer', authMiddleware, async (req, res) => {
+  const result = await query(
+    'SELECT * FROM volunteer_activities WHERE user_id = $1 ORDER BY activity_date DESC, created_at DESC',
+    [req.session.userId]
+  );
+  res.json(result.rows);
+});
+
+app.get('/api/volunteer/stats', authMiddleware, async (req, res) => {
+  const r = await query(
+    'SELECT COUNT(*)::int AS count, COALESCE(SUM(hours), 0) AS total_hours FROM volunteer_activities WHERE user_id = $1',
+    [req.session.userId]
+  );
+  res.json(r.rows[0]);
+});
+
+app.post('/api/volunteer', authMiddleware, async (req, res) => {
+  const { activity_date, title, location, hours, participants, content, branch_id, participant_names, status } = req.body;
+  if (!activity_date || !title) return res.status(400).json({ error: '봉사일자와 활동명을 입력하세요' });
+  let authorName = '';
+  const u = await query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+  if (u.rows[0]) authorName = u.rows[0].name;
+  const names = splitParticipantNames(participant_names);
+  const pcount = names.length > 0 ? names.length : (participants || 1);
+  const id = uuidv4();
+  await query(
+    `INSERT INTO volunteer_activities (id, user_id, author_name, activity_date, title, location, hours, participants, content, company_id, branch_id, participant_names, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [id, req.session.userId, authorName, activity_date, title, location || '', hours || 0, pcount, content || '', req.session.companyId || null,
+     branch_id || null, names.join(', '), status === '완료' ? '완료' : '계획']
+  );
+  res.json({ id });
+});
+
+app.put('/api/volunteer/:id', authMiddleware, async (req, res) => {
+  const { activity_date, title, location, hours, participants, content, branch_id, participant_names, status } = req.body;
+  let pcount = participants;
+  let namesJoined = null;
+  if (participant_names !== undefined) {
+    const names = splitParticipantNames(participant_names);
+    namesJoined = names.join(', ');
+    if (names.length > 0) pcount = names.length;
+  }
+  await query(
+    `UPDATE volunteer_activities SET activity_date = COALESCE($1, activity_date), title = COALESCE($2, title),
+       location = COALESCE($3, location), hours = COALESCE($4, hours), participants = COALESCE($5, participants),
+       content = COALESCE($6, content), branch_id = COALESCE($7, branch_id),
+       participant_names = COALESCE($8, participant_names), status = COALESCE($9, status)
+     WHERE id = $10 AND user_id = $11`,
+    [activity_date || null, title || null, location, hours, pcount, content, branch_id || null, namesJoined,
+     (status === '완료' || status === '계획') ? status : null, req.params.id, req.session.userId]
+  );
+  res.json({ ok: true });
+});
+
+app.delete('/api/volunteer/:id', authMiddleware, async (req, res) => {
+  await query('DELETE FROM volunteer_activities WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+  res.json({ ok: true });
+});
+
+// 현재 사용자의 봉사 권한: 관리자=감사실/개발자, 지역장=관리담당자
+async function getVolunteerRole(req) {
+  if (req.session.isAdmin) return { admin: true, regionHead: true };
+  if (!req.session.userId) return { admin: false, regionHead: false };
+  const r = await query('SELECT position FROM users WHERE id = $1', [req.session.userId]);
+  return { admin: false, regionHead: r.rows[0] && r.rows[0].position === '지역장' };
+}
+
+// 봉사 승인·감사 검토 목록 (지역장/관리자) — 전체 사용자 항목, 소속(지국)·상태 포함
+app.get('/api/volunteer/review', authMiddleware, async (req, res) => {
+  const role = await getVolunteerRole(req);
+  if (!role.admin && !role.regionHead) return res.status(403).json({ error: '관리담당자(지역장) 또는 감사실(관리자) 권한이 필요합니다' });
+  const result = await query(
+    `SELECT va.id, va.activity_date, va.title, va.location, va.status, va.participant_names, va.participants,
+            va.author_name, c.name AS company_name, b.name AS branch_name
+     FROM volunteer_activities va
+     LEFT JOIN users u ON va.user_id = u.id
+     LEFT JOIN companies c ON c.id = u.company_id
+     LEFT JOIN branches b ON b.id = va.branch_id
+     ORDER BY va.activity_date DESC, va.created_at DESC`
+  );
+  res.json({ role, items: result.rows });
+});
+
+// 상태 전환 (버튼): 승인=지역장/관리자, 감사확인=관리자, 완료/계획=작성자 또는 관리
+app.put('/api/volunteer/:id/status', authMiddleware, async (req, res) => {
+  const { status } = req.body;
+  const valid = ['계획', '승인', '완료', '감사확인'];
+  if (!valid.includes(status)) return res.status(400).json({ error: '잘못된 상태입니다' });
+  const role = await getVolunteerRole(req);
+  const act = await query('SELECT user_id FROM volunteer_activities WHERE id = $1', [req.params.id]);
+  if (act.rows.length === 0) return res.status(404).json({ error: '대상을 찾을 수 없습니다' });
+  const isOwner = act.rows[0].user_id === req.session.userId;
+
+  if (status === '감사확인' && !role.admin) {
+    return res.status(403).json({ error: '감사확인은 감사실/개발자(관리자)만 가능합니다' });
+  }
+  if (status === '승인' && !role.admin && !role.regionHead) {
+    return res.status(403).json({ error: '승인은 관리담당자(지역장/관리자)만 가능합니다' });
+  }
+  if ((status === '완료' || status === '계획') && !isOwner && !role.admin && !role.regionHead) {
+    return res.status(403).json({ error: '본인 또는 관리담당자만 변경할 수 있습니다' });
+  }
+  await query('UPDATE volunteer_activities SET status = $1 WHERE id = $2', [status, req.params.id]);
+  res.json({ ok: true });
+});
+
+// ─── 봉사 성장 정원 (숨김 점수 → 등급) ───
+// 점수 공식은 의도적으로 비공개. 사용자에게는 등급(식물)만 노출.
+// 로드맵: 차후 각 등급(새싹/잎 등) 내 세부 종류 추가 → GARDEN_TIERS 임계값/매핑만 확장.
+const GARDEN_W = { small: 10, branch: 5, repeat: 3 };
+const GARDEN_TIERS = [ // [tier, 최소점수] 높은 순
+  ['forest', 100], ['flower', 60], ['tree', 30], ['leaf', 12], ['sprout', 0]
+];
+
+async function recomputeVolunteerScores() {
+  const rows = (await query(
+    `SELECT va.branch_id, va.location, va.participant_names, va.participants,
+            u.id AS uid, u.name AS author_name, u.department, u.company_id, c.name AS company_name
+     FROM volunteer_activities va
+     JOIN users u ON va.user_id = u.id
+     LEFT JOIN companies c ON c.id = u.company_id
+     WHERE va.status IN ('완료', '감사확인')`
+  )).rows;
+
+  const groups = {};
+  for (const r of rows) {
+    const compName = (r.company_name || '').trim();
+    const dept = (r.department || '').trim();
+    const name = compName || dept || r.author_name || '미상';
+    const key = compName ? ('c:' + r.company_id) : (dept ? ('d:' + dept) : ('u:' + r.uid));
+    if (!groups[key]) groups[key] = { name, completed: 0, branches: new Set(), nameCounts: {}, smallSum: 0 };
+    const g = groups[key];
+    g.completed++;
+    const b = r.branch_id || ((r.location || '').trim() ? 'loc:' + r.location.trim() : '');
+    if (b) g.branches.add(b);
+    const names = splitParticipantNames(r.participant_names);
+    const n = names.length || (r.participants || 1);
+    g.smallSum += 1 / Math.max(1, n); // 1회 참여인원 적을수록 ↑
+    for (const nm of names) g.nameCounts[nm] = (g.nameCounts[nm] || 0) + 1;
+  }
+
+  const computed = [];
+  for (const key in groups) {
+    const g = groups[key];
+    const distinct = g.branches.size;
+    let repeat = 0;
+    for (const nm in g.nameCounts) repeat += Math.max(0, g.nameCounts[nm] - 1); // 참여자 중복 ↑
+    const score = GARDEN_W.small * g.smallSum + GARDEN_W.branch * distinct + GARDEN_W.repeat * repeat;
+    let tier = 'sprout';
+    for (const [t, min] of GARDEN_TIERS) { if (score >= min) { tier = t; break; } }
+    computed.push({ key, name: g.name, score, tier, completed: g.completed, distinct, repeat });
+  }
+
+  await query('DELETE FROM volunteer_scores');
+  for (const c of computed) {
+    await query(
+      `INSERT INTO volunteer_scores (subject_key, subject_name, score, tier, completed_count, distinct_branches, repeat_index, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
+      [c.key, c.name, c.score, c.tier, c.completed, c.distinct, c.repeat]
+    );
+  }
+}
+
+// 정원: 지국명 + 등급만 반환 (점수·수치 비노출) + 당월 계획/완료 카운트
+app.get('/api/garden', authMiddleware, async (req, res) => {
+  await recomputeVolunteerScores();
+  const rows = (await query('SELECT subject_name, tier FROM volunteer_scores ORDER BY score DESC, subject_name ASC')).rows;
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const monthStart = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const nextY = m === 11 ? y + 1 : y;
+  const nextM = m === 11 ? 1 : m + 2;
+  const monthEnd = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
+  const cnt = (await query(
+    `SELECT COUNT(*) FILTER (WHERE status = '계획')::int AS planned,
+            COUNT(*) FILTER (WHERE status = '승인')::int AS approved,
+            COUNT(*) FILTER (WHERE status = '완료')::int AS completed,
+            COUNT(*) FILTER (WHERE status = '감사확인')::int AS audited
+     FROM volunteer_activities WHERE activity_date >= $1 AND activity_date < $2`,
+    [monthStart, monthEnd]
+  )).rows[0];
+  res.json({ counts: cnt, plants: rows.map(r => ({ name: r.subject_name, tier: r.tier })) });
 });
 
 // ─── 귀납적 인사이트 분석 ───

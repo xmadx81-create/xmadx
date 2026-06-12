@@ -21,15 +21,15 @@
       <label>연락처</label>
       <div style="display:flex; align-items:center; gap:4px;">
         <span style="font-size:15px; font-weight:600; white-space:nowrap;">010 -</span>
-        <input type="tel" id="loginPhone" class="form-control" placeholder="0000-0000" maxlength="9" style="flex:1;">
+        <input type="tel" id="loginPhone" class="form-control" placeholder="0000-0000" maxlength="9" style="flex:1;" data-help="가입 시 등록한 휴대폰 번호 뒤 8자리를 입력하세요. 앞 010은 자동으로 붙습니다.">
       </div>
     </div>
     <div class="form-group">
       <label>비밀번호</label>
-      <input type="password" id="loginPassword" class="form-control" placeholder="비밀번호 입력">
+      <input type="password" id="loginPassword" class="form-control" placeholder="비밀번호 입력" data-help="가입 시 설정한 비밀번호를 입력하세요. 잊으셨다면 아래 '비밀번호를 잊으셨나요?'를 누르세요.">
     </div>
-    <button class="btn btn-primary btn-block btn-lg" onclick="login()">로그인</button>
-    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="showRegisterForm()">회원가입</button>
+    <button class="btn btn-primary btn-block btn-lg" onclick="login()" data-help="입력한 연락처와 비밀번호로 로그인합니다.">로그인</button>
+    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="showRegisterForm()" data-help="계정이 없으면 이 버튼으로 회원가입 화면으로 이동합니다.">회원가입</button>
     <p style="text-align:center; margin-top:12px;">
       <a href="#" onclick="showResetPassword(); return false;" style="font-size:12px; color:var(--gray-500); text-decoration:none;">비밀번호를 잊으셨나요?</a>
     </p>
@@ -205,6 +205,7 @@
   <header class="app-header">
     <h1 id="pageTitle">WorkFlow</h1>
     <div class="header-actions">
+      <button class="header-btn" id="helpModeBtn" onclick="toggleHelpMode()" title="도움말 모드 (버튼·입력칸에 마우스를 올리면 설명 표시)">&#10067;</button>
       <button class="header-btn" onclick="showGlobalSearch()" title="통합 검색">&#128269;</button>
       <button class="header-btn" onclick="showNotifications()" title="알림" style="position:relative;" id="notiBtn">&#128276;<span id="notiBadge" style="display:none; position:absolute; top:2px; right:2px; width:8px; height:8px; background:#ef4444; border-radius:50%;"></span></button>
       <button class="header-btn" onclick="showUserInfo()" title="내 정보">&#128100;</button>
@@ -216,14 +217,14 @@
   <main class="main-content" id="mainContent"></main>
 
   <!-- FAB 버튼 -->
-  <button class="fab" id="fabBtn" onclick="showFabMenu()">+</button>
+  <button class="fab" id="fabBtn" onclick="showFabMenu()" data-help="새 업무일지를 빠르게 작성합니다. 음성 기록과 직접 입력 중 선택할 수 있습니다.">+</button>
   <!-- FAB 메뉴 -->
   <div id="fabMenu" style="display:none; position:fixed; bottom:80px; right:16px; z-index:999;">
     <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-end;">
-      <button onclick="closeFabMenu(); startVoiceReport();" style="display:flex; align-items:center; gap:8px; padding:12px 18px; border-radius:28px; border:none; background:#7c3aed; color:#fff; font-size:14px; font-weight:600; box-shadow:0 4px 14px rgba(124,58,237,.4); cursor:pointer;">
+      <button onclick="closeFabMenu(); startVoiceReport();" style="display:flex; align-items:center; gap:8px; padding:12px 18px; border-radius:28px; border:none; background:#7c3aed; color:#fff; font-size:14px; font-weight:600; box-shadow:0 4px 14px rgba(124,58,237,.4); cursor:pointer;" data-help="말로 업무 내용을 이야기하면 자동으로 육하원칙에 맞춰 정리해 줍니다.">
         <span style="font-size:20px;">&#127908;</span> 음성으로 기록
       </button>
-      <button onclick="closeFabMenu(); openNewReport();" style="display:flex; align-items:center; gap:8px; padding:12px 18px; border-radius:28px; border:none; background:var(--primary); color:#fff; font-size:14px; font-weight:600; box-shadow:0 4px 14px rgba(26,115,232,.4); cursor:pointer;">
+      <button onclick="closeFabMenu(); openNewReport();" style="display:flex; align-items:center; gap:8px; padding:12px 18px; border-radius:28px; border:none; background:var(--primary); color:#fff; font-size:14px; font-weight:600; box-shadow:0 4px 14px rgba(26,115,232,.4); cursor:pointer;" data-help="작성 양식을 열어 항목을 직접 입력합니다.">
         <span style="font-size:20px;">&#9997;</span> 직접 입력
       </button>
     </div>
@@ -255,7 +256,7 @@
 
     <div class="form-group">
       <label>보고 유형</label>
-      <div class="chip-group">
+      <div class="chip-group" data-help="일일보고는 하루 단위, 주간보고는 한 주 단위 보고입니다. 눌러서 선택하세요.">
         <button class="chip selected" data-field="report_type" data-value="daily" onclick="selectChip(this)">일일보고</button>
         <button class="chip" data-field="report_type" data-value="weekly" onclick="selectChip(this)">주간보고</button>
       </div>
@@ -263,7 +264,7 @@
 
     <div class="form-group">
       <label>근무 유형</label>
-      <div class="chip-group">
+      <div class="chip-group" data-help="내근(사무실), 외근(현장 방문), 출장 중 해당하는 근무 형태를 눌러서 선택하세요.">
         <button class="chip selected" data-field="work_category" data-value="내근" onclick="selectChip(this)">내근</button>
         <button class="chip" data-field="work_category" data-value="외근" onclick="selectChip(this)">외근</button>
         <button class="chip" data-field="work_category" data-value="출장" onclick="selectChip(this)">출장</button>
@@ -272,12 +273,13 @@
 
     <div class="form-group">
       <label>보고일자</label>
-      <input type="date" id="reportDate" class="form-control">
+      <input type="date" id="reportDate" class="form-control" data-help="업무를 수행한 날짜를 선택하세요. 기본값은 오늘입니다.">
     </div>
 
     <div class="form-group form-group-autocomplete">
       <label>목적</label>
       <input type="text" id="reportPurpose" class="form-control" placeholder="업무 목적"
+        data-help="이 업무를 왜 하는지 한 줄로 적으세요. 예: 신규 가맹 영업, 정기 점검."
         onfocus="loadSuggestions('purpose', this)" oninput="filterSuggestions(this)">
       <div class="autocomplete-list" id="suggest-purpose"></div>
     </div>
@@ -286,33 +288,37 @@
     <div class="w5h1-grid">
       <div class="form-group form-group-autocomplete">
         <label>누가 (Who)</label>
-        <input type="text" id="reportWho" class="form-control" placeholder="담당자">
+        <input type="text" id="reportWho" class="form-control" placeholder="담당자" data-help="업무를 수행한 담당자(본인 또는 함께한 사람)를 적으세요.">
       </div>
       <div class="form-group">
         <label>언제 (When)</label>
-        <input type="text" id="reportWhen" class="form-control" placeholder="시간/기간">
+        <input type="text" id="reportWhen" class="form-control" placeholder="시간/기간" data-help="업무를 진행한 시간이나 기간을 적으세요. 예: 오전 10시, 3일간.">
       </div>
       <div class="form-group form-group-autocomplete">
         <label>어디서 (Where)</label>
         <input type="text" id="reportWhere" class="form-control" placeholder="장소"
+          data-help="업무를 수행한 장소를 적으세요. 예: 거제지국, 본사 회의실."
           onfocus="loadSuggestions('where_place', this)" oninput="filterSuggestions(this)">
         <div class="autocomplete-list" id="suggest-where_place"></div>
       </div>
       <div class="form-group form-group-autocomplete">
         <label>무엇을 (What)</label>
         <input type="text" id="reportWhat" class="form-control" placeholder="업무내용"
+          data-help="실제로 한 업무 내용을 적으세요. 보고 목록에 제목처럼 표시됩니다."
           onfocus="loadSuggestions('what_task', this)" oninput="filterSuggestions(this)">
         <div class="autocomplete-list" id="suggest-what_task"></div>
       </div>
       <div class="form-group form-group-autocomplete">
         <label>어떻게 (How)</label>
         <input type="text" id="reportHow" class="form-control" placeholder="수행방법"
+          data-help="업무를 어떤 방법으로 수행했는지 적으세요. 예: 전화 상담, 현장 방문."
           onfocus="loadSuggestions('how_method', this)" oninput="filterSuggestions(this)">
         <div class="autocomplete-list" id="suggest-how_method"></div>
       </div>
       <div class="form-group form-group-autocomplete">
         <label>왜 (Why)</label>
         <input type="text" id="reportWhy" class="form-control" placeholder="사유/목적"
+          data-help="이 업무를 한 이유나 배경을 적으세요. 예: 고객 요청, 정기 일정."
           onfocus="loadSuggestions('why_reason', this)" oninput="filterSuggestions(this)">
         <div class="autocomplete-list" id="suggest-why_reason"></div>
       </div>
@@ -320,38 +326,38 @@
 
     <div class="form-group">
       <label>상세 내용</label>
-      <textarea id="reportContent" class="form-control" placeholder="업무 상세 내용을 입력하세요"></textarea>
+      <textarea id="reportContent" class="form-control" placeholder="업무 상세 내용을 입력하세요" data-help="위 5W1H로 다 담지 못한 자세한 내용을 자유롭게 적으세요. 비워둬도 됩니다."></textarea>
     </div>
 
     <div class="form-group">
       <label>결재라인</label>
-      <select id="reportApprover1" class="form-control">
+      <select id="reportApprover1" class="form-control" data-help="이 보고를 먼저 결재할 1차 결재자를 선택하세요. 보통 직속 상급자입니다.">
         <option value="">1차 결재자 선택</option>
       </select>
     </div>
     <div class="form-group">
-      <select id="reportApprover2" class="form-control">
+      <select id="reportApprover2" class="form-control" data-help="2차 결재가 필요하면 선택하세요. 없으면 비워두면 됩니다.">
         <option value="">2차 결재자 선택 (선택사항)</option>
       </select>
     </div>
 
     <div class="form-group">
       <label>수신</label>
-      <select id="reportRecipient" class="form-control" multiple size="3">
+      <select id="reportRecipient" class="form-control" multiple size="3" data-help="이 보고를 함께 받아볼 사람을 고르세요. Ctrl(또는 Cmd)을 누른 채 클릭하면 여러 명 선택됩니다.">
       </select>
     </div>
 
     <div class="form-group">
       <label>템플릿 불러오기</label>
-      <select id="templateSelect" class="form-control" onchange="loadTemplate()">
+      <select id="templateSelect" class="form-control" onchange="loadTemplate()" data-help="자주 쓰는 업무를 저장해 둔 템플릿을 골라 양식을 한 번에 채웁니다.">
         <option value="">반복 업무 템플릿 선택</option>
       </select>
     </div>
 
     <div style="display:flex; gap:8px; margin-top:20px;">
-      <button class="btn btn-outline" style="flex:1" onclick="closeModal('reportModal')">취소</button>
-      <button class="btn btn-primary" style="flex:1" onclick="saveAsTemplate()">템플릿 저장</button>
-      <button class="btn btn-success" style="flex:1" onclick="submitReport()">제출</button>
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal('reportModal')" data-help="작성을 취소하고 창을 닫습니다. 입력한 내용은 저장되지 않습니다.">취소</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveAsTemplate()" data-help="지금 입력한 내용을 템플릿으로 저장해 다음에 다시 불러올 수 있습니다.">템플릿 저장</button>
+      <button class="btn btn-success" style="flex:1" onclick="submitReport()" data-help="작성한 업무일지를 제출합니다. 결재라인이 있으면 결재 요청이 전송됩니다.">제출</button>
     </div>
   </div>
 </div>
@@ -442,7 +448,7 @@
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
 </style>
-<script src="/js/app.js?v=20260611f"></script>
+<script src="/js/app.js?v=20260612j"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;

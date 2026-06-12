@@ -758,3 +758,35 @@ select.form-control {
 .cal-dots { display: flex; justify-content: center; gap: 3px; margin-top: 3px; flex-wrap: wrap; }
 .cal-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
 .cal-dot-legend { width: 8px; height: 8px; border-radius: 50%; display: inline-block; vertical-align: middle; margin-right: 3px; }
+
+/* ─── 도움말 모드 (hover 안내 말풍선) ─── */
+.header-btn.help-active { background: rgba(255,255,255,0.35); box-shadow: 0 0 0 2px rgba(255,255,255,0.5) inset; }
+body.help-mode [data-help] { cursor: help; outline: 2px dashed var(--primary); outline-offset: 2px; border-radius: 6px; }
+#helpBubble {
+  position: fixed; z-index: 10000; max-width: 260px; padding: 9px 12px;
+  background: #2b2b3a; color: #fff; font-size: 13px; line-height: 1.55;
+  border-radius: 10px; box-shadow: 0 6px 22px rgba(0,0,0,0.28);
+  pointer-events: none; opacity: 0; transform: translateY(4px);
+  transition: opacity .12s ease, transform .12s ease; word-break: keep-all;
+}
+#helpBubble.show { opacity: 1; transform: translateY(0); }
+#helpBubble::after {
+  content: ''; position: absolute; left: var(--arrow-left, 20px);
+  border: 7px solid transparent;
+}
+#helpBubble.arrow-down::after { top: 100%; border-top-color: #2b2b3a; }
+#helpBubble.arrow-up::after { bottom: 100%; border-bottom-color: #2b2b3a; }
+.help-mode-banner {
+  position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
+  z-index: 9999; background: var(--primary); color: #fff; font-size: 12px;
+  font-weight: 600; padding: 7px 16px; border-radius: 20px;
+  box-shadow: 0 3px 12px rgba(224,124,58,0.4); white-space: nowrap;
+}
+
+/* ─── 봉사 대상 가맹점 당월 일정상태 배지 ─── */
+.svc-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+.svc-approved { background: #dcfce7; color: #15803d; }
+.svc-requested { background: #fef9c3; color: #a16207; }
+.svc-planned { background: #dbeafe; color: #1d4ed8; }
+.svc-none { background: var(--gray-100); color: var(--gray-500); }
+.svc-audited { background: #ede9fe; color: #6d28d9; }
