@@ -8,6 +8,8 @@ const { query, uuidv4, initDB } = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.set('trust proxy', 1);
+
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -23,7 +25,7 @@ app.use(session({
   secret: 'petroleum-work-system-2024',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'lax', secure: false }
 }));
 
 function authMiddleware(req, res, next) {
@@ -133,7 +135,7 @@ app.get('/api/companies/check/:code', async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.get('/api/companies/:id/teams', authMiddleware, async (req, res) => {
+app.get('/api/companies/:id/teams', async (req, res) => {
   const result = await query('SELECT * FROM teams WHERE company_id = $1 ORDER BY name', [req.params.id]);
   res.json(result.rows);
 });
