@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>가맹점 주문 현황 - WorkFlow</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; }
+
+.header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.header h1 { font-size: 18px; font-weight: 600; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.header-actions a, .header-actions button {
+  background: rgba(255,255,255,0.15); color: #fff; border: none; padding: 8px 14px;
+  border-radius: 8px; font-size: 13px; cursor: pointer; text-decoration: none; transition: 0.2s;
+}
+.header-actions a:hover, .header-actions button:hover { background: rgba(255,255,255,0.25); }
+
+.container { max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
+
+.summary-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px; margin-bottom: 20px;
+}
+.summary-card {
+  background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  text-align: center;
+}
+.summary-card .label { font-size: 13px; color: #666; margin-bottom: 6px; }
+.summary-card .value { font-size: 28px; font-weight: 700; color: #1a1a2e; }
+.summary-card .sub { font-size: 12px; color: #999; margin-top: 4px; }
+
+.search-bar {
+  background: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08); display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+}
+.search-bar input, .search-bar select {
+  padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;
+  outline: none; transition: 0.2s;
+}
+.search-bar input:focus, .search-bar select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.search-bar input[type="text"] { flex: 1; min-width: 200px; }
+.search-bar button {
+  background: #3b82f6; color: #fff; border: none; padding: 10px 20px;
+  border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s;
+}
+.search-bar button:hover { background: #2563eb; }
+.btn-reset { background: #6b7280 !important; }
+.btn-reset:hover { background: #4b5563 !important; }
+
+.section-title {
+  font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #1a1a2e;
+  display: flex; align-items: center; gap: 8px;
+}
+
+.table-wrap {
+  background: #fff; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px;
+}
+.table-wrap table { width: 100%; border-collapse: collapse; }
+.table-wrap th {
+  background: #f8fafc; padding: 12px 16px; text-align: left; font-size: 13px;
+  font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+}
+.table-wrap td {
+  padding: 12px 16px; border-bottom: 1px solid #f1f5f9; font-size: 14px; white-space: nowrap;
+}
+.table-wrap tr:hover td { background: #f8fafc; }
+.table-wrap tr { cursor: pointer; }
+.num-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.total-row td { font-weight: 700; background: #f0f7ff !important; }
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-up { background: #dcfce7; color: #16a34a; }
+.badge-down { background: #fee2e2; color: #dc2626; }
+.badge-same { background: #f3f4f6; color: #6b7280; }
+
+.detail-panel {
+  background: #fff; border-radius: 12px; padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; display: none;
+}
+.detail-panel.active { display: block; }
+.detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.detail-header h3 { font-size: 18px; }
+.detail-close {
+  background: none; border: 1px solid #ddd; padding: 6px 14px; border-radius: 8px;
+  cursor: pointer; font-size: 13px;
+}
+.detail-close:hover { background: #f3f4f6; }
+.monthly-bars { display: flex; align-items: flex-end; gap: 8px; height: 200px; padding: 0 10px; margin-bottom: 12px; }
+.bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.bar-fill {
+  width: 100%; max-width: 60px; background: linear-gradient(180deg, #3b82f6, #60a5fa);
+  border-radius: 6px 6px 0 0; transition: height 0.5s ease; min-height: 2px; position: relative;
+}
+.bar-fill:hover { opacity: 0.85; }
+.bar-value { font-size: 11px; font-weight: 600; color: #1a1a2e; margin-bottom: 4px; }
+.bar-label { font-size: 11px; color: #666; margin-top: 8px; }
+
+.empty-state {
+  text-align: center; padding: 60px 20px; color: #999;
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+.empty-state p { font-size: 15px; }
+
+.loading { text-align: center; padding: 40px; color: #999; }
+
+.add-section {
+  background: #fff; border-radius: 12px; padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px;
+}
+.add-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 12px; color: #666; font-weight: 500; }
+.form-group input, .form-group select {
+  padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none;
+}
+.form-group input:focus, .form-group select:focus { border-color: #3b82f6; }
+.btn-add {
+  background: #10b981; color: #fff; border: none; padding: 10px 20px;
+  border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.btn-add:hover { background: #059669; }
+
+.pagination { display: flex; justify-content: center; gap: 4px; margin-top: 16px; }
+.pagination button {
+  background: #fff; border: 1px solid #ddd; padding: 6px 12px; border-radius: 6px;
+  cursor: pointer; font-size: 13px;
+}
+.pagination button.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.pagination button:hover:not(.active) { background: #f3f4f6; }
+
+@media (max-width: 768px) {
+  .container { padding: 12px 8px; }
+  .search-bar { flex-direction: column; }
+  .search-bar input[type="text"] { min-width: auto; width: 100%; }
+  .table-wrap { overflow-x: auto; }
+  .monthly-bars { height: 150px; }
+  .add-form { flex-direction: column; }
+  .summary-cards { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>가맹점 주문 현황</h1>
+  <div class="header-actions">
+    <a href="/">메인으로</a>
+  </div>
+</div>
+
+<div class="container">
+  <!-- 요약 카드 -->
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="label">전체 누적 주문</div>
+      <div class="value" id="totalOrders">-</div>
+      <div class="sub">전체 기간</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">이번달 주문</div>
+      <div class="value" id="thisMonthOrders">-</div>
+      <div class="sub" id="thisMonthLabel">-</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">활성 가맹점</div>
+      <div class="value" id="activeBranches">-</div>
+      <div class="sub">주문 1건 이상</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">전체 가맹점</div>
+      <div class="value" id="totalBranches">-</div>
+      <div class="sub">등록 기준</div>
+    </div>
+  </div>
+
+  <!-- 검색 -->
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="가맹점명 검색..." />
+    <select id="sortSelect">
+      <option value="total_desc">누적건수 많은순</option>
+      <option value="total_asc">누적건수 적은순</option>
+      <option value="month_desc">이번달 많은순</option>
+      <option value="name_asc">가맹점명 가나다순</option>
+    </select>
+    <button onclick="loadData()">조회</button>
+    <button class="btn-reset" onclick="resetSearch()">초기화</button>
+  </div>
+
+  <!-- 상세 패널 -->
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-header">
+      <h3 id="detailTitle">-</h3>
+      <button class="detail-close" onclick="closeDetail()">닫기</button>
+    </div>
+    <div class="monthly-bars" id="detailBars"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>월</th><th class="num-cell">주문 건수</th><th class="num-cell">전월 대비</th></tr></thead>
+        <tbody id="detailTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 데이터 입력 -->
+  <div class="add-section">
+    <div class="section-title">주문 데이터 등록</div>
+    <div class="add-form">
+      <div class="form-group">
+        <label>가맹점</label>
+        <select id="addBranch"><option value="">선택</option></select>
+      </div>
+      <div class="form-group">
+        <label>주문일</label>
+        <input type="date" id="addDate" />
+      </div>
+      <div class="form-group">
+        <label>건수</label>
+        <input type="number" id="addCount" min="1" value="1" style="width:80px" />
+      </div>
+      <div class="form-group">
+        <label>메모</label>
+        <input type="text" id="addMemo" placeholder="선택사항" />
+      </div>
+      <button class="btn-add" onclick="addOrder()">등록</button>
+    </div>
+  </div>
+
+  <!-- 메인 테이블 -->
+  <div class="section-title">가맹점별 주문 현황</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>가맹점명</th>
+          <th class="num-cell">누적 건수</th>
+          <th class="num-cell" id="thMonth1">-</th>
+          <th class="num-cell" id="thMonth2">-</th>
+          <th class="num-cell" id="thMonth3">-</th>
+          <th class="num-cell" id="thMonth4">-</th>
+          <th class="num-cell" id="thMonth5">-</th>
+          <th class="num-cell" id="thMonth6">-</th>
+          <th>추이</th>
+        </tr>
+      </thead>
+      <tbody id="mainTable">
+        <tr><td colspan="10" class="loading">데이터를 불러오는 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<script>
+const PER_PAGE = 30;
+let currentPage = 1;
+let allData = [];
+let branchList = [];
+
+const now = new Date();
+const months = [];
+for (let i = 5; i >= 0; i--) {
+  const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+  months.push({ key: d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'), label: (d.getMonth()+1) + '월' });
+}
+
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+  return res.json();
+}
+
+function initMonthHeaders() {
+  months.forEach((m, i) => {
+    const th = document.getElementById('thMonth' + (i+1));
+    if (th) th.textContent = m.label;
+  });
+}
+
+async function loadBranches() {
+  try {
+    branchList = await apiFetch('/api/call/branches');
+    const sel = document.getElementById('addBranch');
+    sel.innerHTML = '<option value="">선택</option>';
+    branchList.forEach(b => {
+      sel.innerHTML += `<option value="${b.id}">${b.name}</option>`;
+    });
+  } catch(e) { console.error('branches load error', e); }
+}
+
+async function loadData() {
+  const search = document.getElementById('searchInput').value.trim();
+  const sort = document.getElementById('sortSelect').value;
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  params.set('sort', sort);
+
+  try {
+    const data = await apiFetch('/api/call/history?' + params.toString());
+    allData = data.branches || [];
+    updateSummary(data.summary || {});
+    currentPage = 1;
+    renderTable();
+  } catch(e) {
+    console.error('load error', e);
+    document.getElementById('mainTable').innerHTML =
+      '<tr><td colspan="10" class="empty-state"><div class="icon">&#128202;</div><p>데이터를 불러올 수 없습니다</p></td></tr>';
+  }
+}
+
+function updateSummary(s) {
+  document.getElementById('totalOrders').textContent = (s.total_orders || 0).toLocaleString();
+  document.getElementById('thisMonthOrders').textContent = (s.this_month_orders || 0).toLocaleString();
+  document.getElementById('thisMonthLabel').textContent = months[5].label;
+  document.getElementById('activeBranches').textContent = (s.active_branches || 0).toLocaleString();
+  document.getElementById('totalBranches').textContent = (s.total_branches || 0).toLocaleString();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('mainTable');
+  if (!allData.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><div class="icon">&#128202;</div><p>등록된 주문 데이터가 없습니다</p></td></tr>';
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+  const start = (currentPage - 1) * PER_PAGE;
+  const page = allData.slice(start, start + PER_PAGE);
+
+  tbody.innerHTML = page.map((b, i) => {
+    const monthCells = months.map(m => {
+      const v = b.monthly[m.key] || 0;
+      return `<td class="num-cell">${v ? v.toLocaleString() : '-'}</td>`;
+    }).join('');
+    const vals = months.map(m => b.monthly[m.key] || 0);
+    const last = vals[vals.length - 1];
+    const prev = vals[vals.length - 2];
+    let trend = '<span class="badge badge-same">-</span>';
+    if (last > prev) trend = `<span class="badge badge-up">+${last - prev}</span>`;
+    else if (last < prev && prev > 0) trend = `<span class="badge badge-down">${last - prev}</span>`;
+    return `<tr onclick="showDetail('${b.branch_id}','${b.branch_name}')">
+      <td>${start + i + 1}</td>
+      <td><strong>${b.branch_name}</strong></td>
+      <td class="num-cell"><strong>${(b.total || 0).toLocaleString()}</strong></td>
+      ${monthCells}
+      <td>${trend}</td>
+    </tr>`;
+  }).join('');
+
+  renderPagination();
+}
+
+function renderPagination() {
+  const total = Math.ceil(allData.length / PER_PAGE);
+  if (total <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
+  let html = '';
+  for (let i = 1; i <= total; i++) {
+    html += `<button class="${i===currentPage?'active':''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  document.getElementById('pagination').innerHTML = html;
+}
+
+function goPage(p) { currentPage = p; renderTable(); window.scrollTo({top: 300, behavior: 'smooth'}); }
+
+function resetSearch() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('sortSelect').value = 'total_desc';
+  loadData();
+}
+
+async function showDetail(branchId, branchName) {
+  const panel = document.getElementById('detailPanel');
+  document.getElementById('detailTitle').textContent = branchName + ' - 월별 주문 추이';
+  panel.classList.add('active');
+
+  try {
+    const data = await apiFetch('/api/call/history/' + branchId);
+    const monthlyData = data.monthly || [];
+    const maxVal = Math.max(...monthlyData.map(m => m.order_count), 1);
+
+    document.getElementById('detailBars').innerHTML = monthlyData.map(m => {
+      const h = Math.max((m.order_count / maxVal) * 100, 2);
+      return `<div class="bar-item">
+        <div class="bar-value">${m.order_count}</div>
+        <div class="bar-fill" style="height:${h}%"></div>
+        <div class="bar-label">${m.month_label}</div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('detailTable').innerHTML = monthlyData.map((m, i) => {
+      const prev = i > 0 ? monthlyData[i-1].order_count : 0;
+      const diff = m.order_count - prev;
+      let badge = '<span class="badge badge-same">-</span>';
+      if (i > 0 && diff > 0) badge = `<span class="badge badge-up">+${diff}</span>`;
+      else if (i > 0 && diff < 0) badge = `<span class="badge badge-down">${diff}</span>`;
+      return `<tr><td>${m.month_label}</td><td class="num-cell">${m.order_count.toLocaleString()}</td><td class="num-cell">${badge}</td></tr>`;
+    }).join('');
+
+    panel.scrollIntoView({ behavior: 'smooth' });
+  } catch(e) {
+    console.error('detail error', e);
+  }
+}
+
+function closeDetail() { document.getElementById('detailPanel').classList.remove('active'); }
+
+async function addOrder() {
+  const branchId = document.getElementById('addBranch').value;
+  const date = document.getElementById('addDate').value;
+  const count = parseInt(document.getElementById('addCount').value) || 1;
+  const memo = document.getElementById('addMemo').value.trim();
+
+  if (!branchId) return alert('가맹점을 선택해주세요');
+  if (!date) return alert('주문일을 선택해주세요');
+
+  try {
+    await apiFetch('/api/call/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch_id: branchId, order_date: date, order_count: count, memo })
+    });
+    alert('등록 완료');
+    document.getElementById('addCount').value = 1;
+    document.getElementById('addMemo').value = '';
+    loadData();
+  } catch(e) {
+    alert('등록 실패: ' + e.message);
+  }
+}
+
+document.getElementById('addDate').value = new Date().toISOString().split('T')[0];
+initMonthHeaders();
+loadBranches();
+loadData();
+</script>
+</body>
+</html>
