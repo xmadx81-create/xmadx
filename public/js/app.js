@@ -1162,6 +1162,11 @@ async function renderMore() {
         <span class="qa-icon">&#128100;</span>
         <span class="qa-label">내 정보</span>
       </button>
+      ${currentUser && (currentUser.position === '지역장' || currentUser.isAdmin) ? `
+      <button class="quick-action-btn" onclick="showRegionMembers()" style="border:2px solid #0d9488;" data-help="관리담당자의 부서·직책·팀(소속)을 대신 수정합니다. 지역장 전용 기능입니다.">
+        <span class="qa-icon">&#128100;</span>
+        <span class="qa-label" style="color:#0d9488; font-weight:700;">소속 관리</span>
+      </button>` : ''}
       ${currentUser && currentUser.isAdmin ? `
       <button class="quick-action-btn" onclick="showTeamDashboard()" style="border:2px solid #4338ca;">
         <span class="qa-icon">&#128101;</span>
@@ -6867,3 +6872,106 @@ document.addEventListener('focusin', function(e) {
   const el = e.target.closest('[data-help]');
   if (el) showHelpBubble(el);
 });
+
+// ─── 지역장: 소속 관리 ───
+let _regionMembers = [];
+
+async function showRegionMembers() {
+  const members = await api('/api/region/members');
+  if (!members) return;
+  _regionMembers = members;
+  renderRegionMembers('');
+}
+
+function renderRegionMembers(keyword) {
+  const kw = (keyword || '').trim().toLowerCase();
+  const list = kw
+    ? _regionMembers.filter(m =>
+        (m.name || '').toLowerCase().includes(kw) ||
+        (m.company_name || '').toLowerCase().includes(kw) ||
+        (m.department || '').toLowerCase().includes(kw) ||
+        (m.position || '').toLowerCase().includes(kw))
+    : _regionMembers;
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <p class="section-title" style="margin:0;">&#128100; 소속 관리 <span style="font-size:12px; color:var(--gray-500); font-weight:400;">(지역장)</span></p>
+      <span style="font-size:13px; color:var(--gray-500);">${list.length}명</span>
+    </div>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:10px;">관리담당자의 부서·직책·팀을 대신 수정할 수 있습니다.</p>
+    <div class="form-group">
+      <input type="text" class="form-control" placeholder="이름·회사·부서·직책 검색"
+        value="${escAttr(keyword || '')}" oninput="renderRegionMembers(this.value)"
+        data-help="찾으려는 관리담당자의 이름이나 소속을 입력하면 목록이 좁혀집니다.">
+    </div>
+    ${list.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#128100;</div><div class="empty-text">대상이 없습니다</div></div>' : list.map(m => `
+      <div class="card" style="padding:12px; margin-bottom:8px;" id="rm-${m.id}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:15px; font-weight:600;">${escHtml(m.name)} ${m.position ? `<span style="font-size:12px; color:var(--primary);">${escHtml(m.position)}</span>` : ''}</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">
+              ${escHtml(m.company_name || '회사 미지정')}${m.team_name ? ' · ' + escHtml(m.team_name) : ''}${m.department ? ' · ' + escHtml(m.department) : ''}
+            </div>
+            ${m.phone ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">${escHtml(m.phone)}</div>` : ''}
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="editRegionMember('${m.id}')" data-help="이 사람의 부서·직책·팀을 수정합니다.">수정</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function editRegionMember(id) {
+  const m = _regionMembers.find(x => x.id === id);
+  if (!m) return;
+  let teams = [];
+  if (m.company_id) teams = await api(`/api/companies/${m.company_id}/teams`) || [];
+  const teamOpts = ['<option value="">-- 팀 미지정 --</option>']
+    .concat(teams.map(t => `<option value="${t.id}"${t.id === m.team_id ? ' selected' : ''}>${escHtml(t.name)}</option>`))
+    .join('');
+
+  document.getElementById('rm-' + id).innerHTML = `
+    <div style="font-size:15px; font-weight:600; margin-bottom:8px;">${escHtml(m.name)} <span style="font-size:12px; color:var(--gray-500);">소속 수정</span></div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <label style="font-size:12px;">직책</label>
+      <input type="text" id="rmPos-${id}" class="form-control" value="${escAttr(m.position || '')}" placeholder="예: 과장, 팀장, 지역장"
+        data-help="이 사람의 직책을 입력하세요. '지역장'으로 지정하면 그 사람도 소속 관리 권한을 갖게 됩니다.">
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <label style="font-size:12px;">부서</label>
+      <input type="text" id="rmDept-${id}" class="form-control" value="${escAttr(m.department || '')}" placeholder="예: 영업부, 전산팀"
+        data-help="이 사람이 속한 부서를 입력하세요.">
+    </div>
+    <div class="form-group" style="margin-bottom:10px;">
+      <label style="font-size:12px;">팀 ${m.company_id ? '' : '(회사 미지정 시 변경 불가)'}</label>
+      <select id="rmTeam-${id}" class="form-control" ${m.company_id ? '' : 'disabled'}
+        data-help="이 사람이 속한 회사의 팀 중에서 선택합니다. 회사가 없으면 변경할 수 없습니다.">
+        ${teamOpts}
+      </select>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-outline btn-sm" style="flex:1;" onclick="renderRegionMembers('')">취소</button>
+      <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveRegionMember('${id}')" data-help="변경한 소속 정보를 저장합니다.">저장</button>
+    </div>
+  `;
+}
+
+async function saveRegionMember(id) {
+  const position = document.getElementById('rmPos-' + id).value.trim();
+  const department = document.getElementById('rmDept-' + id).value.trim();
+  const teamSel = document.getElementById('rmTeam-' + id);
+  const team_id = teamSel && !teamSel.disabled ? (teamSel.value || null) : null;
+  const res = await api(`/api/region/members/${id}`, { method: 'PUT', body: { department, position, team_id } });
+  if (res) {
+    toast('소속이 수정되었습니다');
+    const m = _regionMembers.find(x => x.id === id);
+    if (m) {
+      m.position = position;
+      m.department = department;
+      m.team_id = team_id;
+      m.team_name = team_id && teamSel ? (teamSel.options[teamSel.selectedIndex] || {}).text || '' : '';
+    }
+    renderRegionMembers('');
+  }
+}

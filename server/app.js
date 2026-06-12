@@ -290,6 +290,47 @@ app.post('/api/admin/register-user', adminMiddleware, async (req, res) => {
   }
 });
 
+// ─── 지역장 소속 관리 (직책이 '지역장'인 사용자) ───
+async function regionHeadMiddleware(req, res, next) {
+  if (req.session.isAdmin) return next();
+  if (!req.session.userId) return res.status(401).json({ error: '로그인이 필요합니다' });
+  const r = await query('SELECT position FROM users WHERE id = $1', [req.session.userId]);
+  if (r.rows[0] && r.rows[0].position === '지역장') return next();
+  res.status(403).json({ error: '지역장 권한이 필요합니다' });
+}
+
+app.get('/api/region/members', regionHeadMiddleware, async (req, res) => {
+  const result = await query(
+    `SELECT u.id, u.name, u.department, u.position, u.phone, u.company_id, u.team_id,
+            c.name AS company_name, t.name AS team_name
+     FROM users u
+     LEFT JOIN companies c ON c.id = u.company_id
+     LEFT JOIN teams t ON t.id = u.team_id
+     WHERE u.id <> 'admin-user'
+     ORDER BY u.created_at DESC`
+  );
+  res.json(result.rows);
+});
+
+app.put('/api/region/members/:id', regionHeadMiddleware, async (req, res) => {
+  if (req.params.id === 'admin-user') return res.status(403).json({ error: '관리자 계정은 수정할 수 없습니다' });
+  const target = await query('SELECT id, company_id FROM users WHERE id = $1', [req.params.id]);
+  if (target.rows.length === 0) return res.status(404).json({ error: '대상을 찾을 수 없습니다' });
+  const { department, position, team_id } = req.body;
+  // 팀은 대상자의 회사에 속한 팀만 허용 (타 회사 팀 지정 방지)
+  let teamVal = null;
+  if (team_id) {
+    const t = await query('SELECT id FROM teams WHERE id = $1 AND company_id = $2', [team_id, target.rows[0].company_id]);
+    if (t.rows.length === 0) return res.status(400).json({ error: '대상자의 회사에 속한 팀이 아닙니다' });
+    teamVal = team_id;
+  }
+  // 부서·직책·팀 3개 컬럼만 화이트리스트 업데이트
+  await query('UPDATE users SET department = $1, position = $2, team_id = $3 WHERE id = $4', [
+    department || '', position || '', teamVal, req.params.id
+  ]);
+  res.json({ ok: true });
+});
+
 app.get('/api/me', authMiddleware, async (req, res) => {
   const result = await query('SELECT id, name, department, position, phone, email, company_id, team_id FROM users WHERE id = $1', [req.session.userId]);
   const user = result.rows[0];
