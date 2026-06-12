@@ -1418,9 +1418,37 @@ async function viewMeetingNote(id) {
   `;
 }
 
+// ─── 봉사 대상 가맹점 당월 일정상태 ───
+async function loadBranchServiceStatus(force) {
+  if (!force && window._branchSvcStatus) return window._branchSvcStatus;
+  const data = await api('/api/branches/service-status');
+  if (data) {
+    window._branchSvcStatus = data.statuses || {};
+    window._branchSvcTarget = data.target || 2;
+  }
+  return window._branchSvcStatus || {};
+}
+
+// 봉사 대상 가맹점 행에 표시할 상태 배지 (지국 등 비대상은 빈 문자열)
+function branchStatusBadgeHtml(branchId) {
+  const map = window._branchSvcStatus || {};
+  const s = map[branchId];
+  if (!s) return ''; // 봉사 대상 아님(지국·물류·본사 등) → 표시 없음
+  const target = window._branchSvcTarget || 2;
+  if (s.status === 'none' || !s.count) {
+    return '<span class="svc-badge svc-none">미계획</span>';
+  }
+  const label = { approved: '승인', requested: '요청', planned: '계획' }[s.status] || '계획';
+  const cls = { approved: 'svc-approved', requested: 'svc-requested', planned: 'svc-planned' }[s.status] || 'svc-planned';
+  return `<span class="svc-badge ${cls}">${label} · 이번달 ${s.count}/${target}회</span>`;
+}
+
 // ─── 전국 지국 열람 ───
 async function showBranches(pg) {
-  const branches = await api('/api/branches') || [];
+  const [branches] = await Promise.all([
+    api('/api/branches').then(r => r || []),
+    loadBranchServiceStatus(true)
+  ]);
   window._allBranches = branches;
   window._filteredBranches = branches;
   renderBranchPage(pg || 1);
@@ -1467,6 +1495,7 @@ function renderBranchList(branches) {
         </div>
         <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
           ${b.exclude_service ? '<span class="badge badge-draft">봉사제외</span>' : '<span class="badge badge-approved">운영</span>'}
+          ${branchStatusBadgeHtml(b.id)}
           ${b.email ? '<span style="font-size:10px; color:var(--primary);">&#9993;</span>' : ''}
         </div>
       </div>
@@ -3905,6 +3934,8 @@ async function doGlobalSearch() {
   el.innerHTML = '<p style="text-align:center; color:var(--gray-500); padding:20px;">검색 중...</p>';
   const data = await api(`/api/search?q=${encodeURIComponent(q)}`);
   if (!data) return;
+  // 지국 결과가 있으면 당월 봉사 일정상태 맵 준비
+  if (data.results.some(r => r.type === 'branch')) await loadBranchServiceStatus();
 
   if (data.results.length === 0) {
     el.innerHTML = `
@@ -3939,6 +3970,7 @@ async function doGlobalSearch() {
             <div class="list-item-content">
               <div class="list-item-title">${escHtml(r.title)}</div>
               <div class="list-item-sub">${escHtml(r.sub || '')}</div>
+              ${r.type === 'branch' ? `<div style="margin-top:4px;">${branchStatusBadgeHtml(r.id)}</div>` : ''}
             </div>
             ${r.category ? `<span class="badge badge-${r.category}" style="font-size:10px;">${escHtml(r.category)}</span>` : ''}
           </div>

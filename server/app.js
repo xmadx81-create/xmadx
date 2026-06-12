@@ -934,6 +934,55 @@ app.get('/api/branches', authMiddleware, async (req, res) => {
   res.json(result.rows);
 });
 
+// 봉사 대상 가맹점(exclude_service=0)별 당월 봉사 일정상태(계획/요청/승인) + 횟수
+// 주의: '/api/branches/:id' 보다 먼저 등록되어야 함
+app.get('/api/branches/service-status', authMiddleware, async (req, res) => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-base
+  const monthStart = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const nextY = m === 11 ? y + 1 : y;
+  const nextM = m === 11 ? 1 : m + 2;
+  const monthEnd = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
+
+  // 봉사 대상 가맹점만
+  const branchRes = await query(`SELECT id, name FROM branches WHERE exclude_service = 0`);
+  // 당월 업무일지(전체 사용자) + 결재 대기 여부
+  const repRes = await query(
+    `SELECT r.id, r.where_place, r.content, r.what_task, r.status,
+       EXISTS(SELECT 1 FROM approval_lines a WHERE a.report_id = r.id AND a.status = 'pending') AS has_pending
+     FROM work_reports r
+     WHERE r.report_date >= $1 AND r.report_date < $2`,
+    [monthStart, monthEnd]
+  );
+  const reports = repRes.rows.map(r => ({
+    text: `${r.where_place || ''}\n${r.content || ''}\n${r.what_task || ''}`,
+    approved: r.status === 'approved',
+    pending: r.has_pending === true
+  }));
+
+  const statuses = {};
+  for (const b of branchRes.rows) {
+    const name = (b.name || '').trim();
+    if (!name) continue;
+    let count = 0, anyApproved = false, anyPending = false;
+    for (const r of reports) {
+      if (r.text.includes(name)) {
+        count++;
+        if (r.approved) anyApproved = true;
+        else if (r.pending) anyPending = true;
+      }
+    }
+    if (count > 0) {
+      const status = anyApproved ? 'approved' : (anyPending ? 'requested' : 'planned');
+      statuses[b.id] = { status, count };
+    } else {
+      statuses[b.id] = { status: 'none', count: 0 };
+    }
+  }
+  res.json({ month: `${y}-${String(m + 1).padStart(2, '0')}`, target: 2, statuses });
+});
+
 app.get('/api/branches/:id', authMiddleware, async (req, res) => {
   const result = await query('SELECT * FROM branches WHERE id = $1', [req.params.id]);
   const branch = result.rows[0];

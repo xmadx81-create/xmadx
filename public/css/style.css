@@ -782,3 +782,10 @@ body.help-mode [data-help] { cursor: help; outline: 2px dashed var(--primary); o
   font-weight: 600; padding: 7px 16px; border-radius: 20px;
   box-shadow: 0 3px 12px rgba(224,124,58,0.4); white-space: nowrap;
 }
+
+/* ─── 봉사 대상 가맹점 당월 일정상태 배지 ─── */
+.svc-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+.svc-approved { background: #dcfce7; color: #15803d; }
+.svc-requested { background: #fef9c3; color: #a16207; }
+.svc-planned { background: #dbeafe; color: #1d4ed8; }
+.svc-none { background: var(--gray-100); color: var(--gray-500); }
