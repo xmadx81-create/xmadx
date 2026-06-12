@@ -1,0 +1,39 @@
+name: Deploy to Cloud Run
+
+# main에 푸시(머지)되면 자동으로 Cloud Run에 배포합니다.
+# 사전 1회 설정 필요(아래 README 또는 채팅 안내 참고):
+#   GitHub 저장소 Settings > Secrets and variables > Actions 에 등록
+#     - GCP_PROJECT_ID : GCP 프로젝트 ID
+#     - GCP_SA_KEY     : 배포용 서비스 계정 키(JSON) 전체 내용
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+env:
+  SERVICE: ebts-volunteer
+  REGION: asia-northeast3
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run (source build)
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --quiet
