@@ -1166,6 +1166,10 @@ async function renderMore() {
       <button class="quick-action-btn" onclick="showRegionMembers()" style="border:2px solid #0d9488;" data-help="관리담당자의 부서·직책·팀(소속)을 대신 수정합니다. 지역장 전용 기능입니다.">
         <span class="qa-icon">&#128100;</span>
         <span class="qa-label" style="color:#0d9488; font-weight:700;">소속 관리</span>
+      </button>
+      <button class="quick-action-btn" onclick="showWorkshopRoster()" style="border:2px solid #c2410c;" data-help="워크숍 참석 명단을 작성합니다. 앱의 관리담당자를 불러오고 추가 인원을 더해 엑셀 양식으로 내려받습니다.">
+        <span class="qa-icon">&#128203;</span>
+        <span class="qa-label" style="color:#c2410c; font-weight:700;">워크샵 명단</span>
       </button>` : ''}
       ${currentUser && currentUser.isAdmin ? `
       <button class="quick-action-btn" onclick="showTeamDashboard()" style="border:2px solid #4338ca;">
@@ -6973,5 +6977,120 @@ async function saveRegionMember(id) {
       m.team_name = team_id && teamSel ? (teamSel.options[teamSel.selectedIndex] || {}).text || '' : '';
     }
     renderRegionMembers('');
+  }
+}
+
+// ─── 워크샵 참석 명단 작성 ───
+let _wsRoster = [];
+
+async function showWorkshopRoster() {
+  const members = await api('/api/region/members');
+  if (!members) return;
+  // 관리담당자 → 명단 행으로 변환 (소속 자동값: 회사명 우선, 없으면 부서)
+  _wsRoster = members.map(m => ({
+    name: m.name || '',
+    affiliation: m.company_name || m.department || '',
+    position: m.position || '',
+    age: '',
+    gender: '',
+    note: '',
+    included: true,
+    fromApp: true
+  }));
+  renderWorkshopRoster();
+}
+
+function renderWorkshopRoster() {
+  const includedCount = _wsRoster.filter(r => r.included).length;
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <p class="section-title" style="margin:0;">&#128203; 워크샵 명단</p>
+      <span style="font-size:13px; color:var(--gray-500);">선택 ${includedCount}명</span>
+    </div>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:10px;">관리담당자를 불러왔습니다. 체크 해제로 제외하고, 나이·성별·비고를 채운 뒤 추가 인원을 더해 엑셀로 내려받으세요.</p>
+
+    <div style="overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:13px; min-width:560px;">
+      <thead>
+        <tr style="background:var(--primary-light);">
+          <th style="padding:6px 4px; width:34px;" data-help="체크된 사람만 명단에 포함됩니다.">포함</th>
+          <th style="padding:6px 4px; text-align:left;">이름</th>
+          <th style="padding:6px 4px; text-align:left;">소속</th>
+          <th style="padding:6px 4px; text-align:left;">직함</th>
+          <th style="padding:6px 4px; width:48px;">나이</th>
+          <th style="padding:6px 4px; width:54px;">성별</th>
+          <th style="padding:6px 4px; text-align:left;">비고</th>
+          <th style="padding:6px 4px; width:28px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${_wsRoster.map((r, i) => `
+          <tr style="border-bottom:1px solid var(--gray-100); ${r.included ? '' : 'opacity:0.45;'}">
+            <td style="text-align:center;"><input type="checkbox" ${r.included ? 'checked' : ''} onchange="wsToggle(${i}, this.checked)" style="width:18px; height:18px; accent-color:var(--primary);"></td>
+            <td><input type="text" value="${escAttr(r.name)}" oninput="wsSet(${i},'name',this.value)" style="width:100%; border:none; padding:6px 4px; font-size:13px; background:transparent;"></td>
+            <td><input type="text" value="${escAttr(r.affiliation)}" oninput="wsSet(${i},'affiliation',this.value)" style="width:100%; border:none; padding:6px 4px; font-size:13px; background:transparent;" data-help="소속(조합/지국명)을 적습니다. 회사명이 자동으로 채워졌으며 수정할 수 있습니다."></td>
+            <td><input type="text" value="${escAttr(r.position)}" oninput="wsSet(${i},'position',this.value)" style="width:100%; border:none; padding:6px 4px; font-size:13px; background:transparent;"></td>
+            <td><input type="text" value="${escAttr(r.age)}" oninput="wsSet(${i},'age',this.value)" style="width:100%; border:none; padding:6px 2px; font-size:13px; text-align:center; background:transparent;" data-help="나이는 앱에 없는 정보라 직접 입력합니다. 비워둬도 됩니다."></td>
+            <td><input type="text" value="${escAttr(r.gender)}" oninput="wsSet(${i},'gender',this.value)" placeholder="남/여" style="width:100%; border:none; padding:6px 2px; font-size:13px; text-align:center; background:transparent;" data-help="성별을 직접 입력합니다. 예: 남, 여."></td>
+            <td><input type="text" value="${escAttr(r.note)}" oninput="wsSet(${i},'note',this.value)" style="width:100%; border:none; padding:6px 4px; font-size:13px; background:transparent;"></td>
+            <td style="text-align:center;"><button onclick="wsRemove(${i})" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px;">&times;</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn btn-outline btn-block" onclick="wsAddRow()" data-help="앱에 없는 추가 인원을 빈 행으로 넣습니다.">+ 추가 인원</button>
+      <button class="btn btn-success btn-block" onclick="downloadWorkshopRoster()" data-help="체크된 인원으로 워크숍 참석 명단 엑셀 양식을 내려받습니다.">&#128229; 엑셀 다운로드</button>
+    </div>
+  `;
+}
+
+function wsToggle(i, checked) {
+  if (_wsRoster[i]) _wsRoster[i].included = checked;
+  renderWorkshopRoster();
+}
+
+function wsSet(i, field, value) {
+  if (_wsRoster[i]) _wsRoster[i][field] = value;
+}
+
+function wsRemove(i) {
+  _wsRoster.splice(i, 1);
+  renderWorkshopRoster();
+}
+
+function wsAddRow() {
+  _wsRoster.push({ name: '', affiliation: '', position: '', age: '', gender: '', note: '', included: true, fromApp: false });
+  renderWorkshopRoster();
+}
+
+async function downloadWorkshopRoster() {
+  const rows = _wsRoster
+    .filter(r => r.included && (r.name || '').trim())
+    .map(r => ({ name: r.name, affiliation: r.affiliation, position: r.position, age: r.age, gender: r.gender, note: r.note }));
+  if (rows.length === 0) { toast('명단에 포함할 인원이 없습니다'); return; }
+  try {
+    toast('엑셀 파일 생성 중...');
+    const resp = await fetch('/api/export/workshop-roster', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ rows })
+    });
+    if (!resp.ok) throw new Error('다운로드 실패');
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `워크샵_참석명단_${new Date().toISOString().split('T')[0]}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    toast('다운로드 완료!');
+  } catch (e) {
+    toast('다운로드 실패: ' + e.message);
   }
 }

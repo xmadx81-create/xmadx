@@ -1092,6 +1092,69 @@ app.get('/api/export/tasks', authMiddleware, async (req, res) => {
   res.end();
 });
 
+// ─── 엑셀 다운로드: 워크샵 참석 명단 ───
+app.post('/api/export/workshop-roster', regionHeadMiddleware, async (req, res) => {
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  const wb = new ExcelJS.Workbook();
+  const s = applyExcelStyles(wb);
+  wb.creator = 'WorkFlow 업무시스템';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('워크숍참석명단', { properties: { defaultRowHeight: 22 } });
+
+  ws.mergeCells('A1:G1');
+  const titleCell = ws.getCell('A1');
+  titleCell.value = '이비티에스 협동조합 워크숍 참석 명단';
+  titleCell.font = s.titleFont;
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(1).height = 40;
+
+  ws.getRow(2).height = 8;
+
+  const headers = ['번호', '이름', '소속', '직함', '나이', '성별', '비고사항'];
+  const headerRow = ws.getRow(3);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.fill = s.headerFill;
+    cell.font = s.headerFont;
+    cell.alignment = s.centerAlign;
+    cell.border = s.borders;
+  });
+  headerRow.height = 28;
+
+  const widths = [6, 14, 24, 14, 8, 8, 26];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  // 입력 행 + 빈 양식 최소 40행 유지
+  const totalRows = Math.max(rows.length, 40);
+  for (let i = 0; i < totalRows; i++) {
+    const r = rows[i] || {};
+    const row = ws.getRow(4 + i);
+    const vals = [
+      i + 1,
+      r.name || '',
+      r.affiliation || '',
+      r.position || '',
+      r.age || '',
+      r.gender || '',
+      r.note || ''
+    ];
+    vals.forEach((v, c) => {
+      const cell = row.getCell(c + 1);
+      cell.value = v;
+      cell.font = s.bodyFont;
+      cell.alignment = c === 6 ? s.leftAlign : s.centerAlign;
+      cell.border = s.borders;
+    });
+    row.height = 24;
+  }
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=workshop_roster_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
 // ─── 엑셀 다운로드: 개인업무표 ───
 app.get('/api/export/personal-tasks', authMiddleware, async (req, res) => {
   const { person } = req.query;
