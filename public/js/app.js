@@ -1172,9 +1172,9 @@ async function renderMore() {
         <span class="qa-icon">&#128100;</span>
         <span class="qa-label" style="color:#0d9488; font-weight:700;">소속 관리</span>
       </button>
-      <button class="quick-action-btn" onclick="showWorkshopRoster()" style="border:2px solid #c2410c;" data-help="워크숍 참석 명단을 작성합니다. 앱의 관리담당자를 불러오고 추가 인원을 더해 엑셀 양식으로 내려받습니다.">
-        <span class="qa-icon">&#128203;</span>
-        <span class="qa-label" style="color:#c2410c; font-weight:700;">워크샵 명단</span>
+      <button class="quick-action-btn" onclick="showVolunteerReview()" style="border:2px solid #0284c7;" data-help="지국이 요청한 봉사 계획을 승인하고, 완료건을 감사확인합니다.">
+        <span class="qa-icon">&#9989;</span>
+        <span class="qa-label" style="color:#0284c7; font-weight:700;">봉사 승인·감사</span>
       </button>` : ''}
       ${currentUser && currentUser.isAdmin ? `
       <button class="quick-action-btn" onclick="showTeamDashboard()" style="border:2px solid #4338ca;">
@@ -1186,6 +1186,19 @@ async function renderMore() {
         <span class="qa-label" style="color:var(--danger); font-weight:700;">시스템 관리</span>
       </button>` : ''}
     </div>
+
+    ${currentUser && currentUser.isAdmin ? `
+    <p class="section-title">&#128295; 개발자 도구</p>
+    <div class="quick-actions">
+      <button class="quick-action-btn" onclick="showWorkshopRoster()" style="border:2px solid #c2410c;" data-help="워크숍 참석 명단을 작성합니다. 앱의 관리담당자를 불러오고 추가 인원을 더해 엑셀 양식으로 내려받습니다.">
+        <span class="qa-icon">&#128203;</span>
+        <span class="qa-label" style="color:#c2410c; font-weight:700;">워크샵 명단</span>
+      </button>
+      <button class="quick-action-btn" onclick="showVolunteerReview()" style="border:2px solid #7c3aed;" data-help="완료된 봉사활동을 감사확인 처리합니다. 감사실/개발자 전용.">
+        <span class="qa-icon">&#128270;</span>
+        <span class="qa-label" style="color:#7c3aed; font-weight:700;">봉사 감사확인</span>
+      </button>
+    </div>` : ''}
 
     <p class="section-title">&#9881; 설정</p>
     <div class="quick-actions">
@@ -5240,9 +5253,12 @@ function renderGardenPanel(garden) {
         <span style="font-size:14px; font-weight:700;">🌱 봉사 성장 정원</span>
         <span style="font-size:11px; color:var(--gray-400);">완료 등록할수록 무성해져요</span>
       </div>
-      <div style="display:flex; gap:14px; font-size:12px; margin-bottom:10px;">
-        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#1d4ed8;"></span>이번 달 계획 <b>${counts.planned || 0}</b></span>
-        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#15803d;"></span>이번 달 완료 <b>${counts.completed || 0}</b></span>
+      <div style="display:flex; flex-wrap:wrap; gap:12px; font-size:12px; margin-bottom:10px;">
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#f59e0b;"></span>계획 <b>${counts.planned || 0}</b></span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#1d4ed8;"></span>승인 <b>${counts.approved || 0}</b></span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#15803d;"></span>완료 <b>${counts.completed || 0}</b></span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#7c3aed;"></span>감사확인 <b>${counts.audited || 0}</b></span>
+        <span style="font-size:11px; color:var(--gray-400);">(이번 달)</span>
       </div>
       ${plantsHtml}
     </div>`;
@@ -7424,4 +7440,61 @@ async function deleteVolunteer(id) {
   if (!confirm('이 봉사활동 기록을 삭제하시겠습니까?')) return;
   await api(`/api/volunteer/${id}`, { method: 'DELETE' });
   showVolunteerPage();
+}
+
+// ─── 봉사 승인·감사 관리 (지역장=승인, 관리자=승인+감사확인) ───
+const VOL_STATUS = {
+  '계획': { cls: 'svc-planned', label: '계획' },
+  '승인': { cls: 'svc-requested', label: '승인' },
+  '완료': { cls: 'svc-approved', label: '완료' },
+  '감사확인': { cls: 'svc-audited', label: '감사확인' }
+};
+
+async function showVolunteerReview() {
+  const data = await api('/api/volunteer/review');
+  if (!data) return;
+  const role = data.role || {};
+  const items = data.items || [];
+  const filter = window._volReviewFilter || 'all';
+  const shown = filter === 'all' ? items : items.filter(i => i.status === filter);
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <p class="section-title" style="margin:0 0 4px;">&#9989; 봉사 승인·감사 관리</p>
+    <p style="font-size:12px; color:var(--gray-500); margin-bottom:10px;">
+      ${role.admin ? '계획 승인 + 완료건 감사확인이 가능합니다.' : '지국이 요청한 계획을 승인할 수 있습니다.'}
+    </p>
+    <div class="tabs" style="margin-bottom:12px; flex-wrap:wrap; gap:4px;">
+      ${['all','계획','승인','완료','감사확인'].map(f => `<button class="tab${filter===f?' active':''}" onclick="window._volReviewFilter='${f}'; showVolunteerReview();">${f==='all'?'전체':f}</button>`).join('')}
+    </div>
+    ${shown.length === 0 ? '<div class="empty-state"><div class="empty-text">해당 항목이 없습니다</div></div>' : shown.map(it => {
+      const st = VOL_STATUS[it.status] || VOL_STATUS['계획'];
+      const place = it.branch_name || it.location || '';
+      let btns = '';
+      if (it.status === '계획' && (role.admin || role.regionHead)) {
+        btns += `<button class="btn btn-primary btn-sm" onclick="setVolStatus('${it.id}','승인')" data-help="이 계획을 승인합니다.">승인</button>`;
+      }
+      if (it.status === '완료' && role.admin) {
+        btns += `<button class="btn btn-success btn-sm" onclick="setVolStatus('${it.id}','감사확인')" data-help="완료된 봉사활동을 감사확인 처리합니다.">감사확인</button>`;
+      }
+      return `
+      <div class="card" style="padding:12px; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:14px; font-weight:600;"><span class="svc-badge ${st.cls}" style="margin-right:4px;">${st.label}</span>${escHtml(it.title)}</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:3px;">
+              ${(it.activity_date||'').split('T')[0]}${place ? ' · ' + escHtml(place) : ''} · ${escHtml(it.company_name || it.author_name || '')}
+            </div>
+            ${it.participant_names ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">참여자: ${escHtml(it.participant_names)}</div>` : ''}
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">${btns}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+async function setVolStatus(id, status) {
+  const res = await api(`/api/volunteer/${id}/status`, { method: 'PUT', body: { status } });
+  if (res) { toast(status + ' 처리되었습니다'); showVolunteerReview(); }
 }

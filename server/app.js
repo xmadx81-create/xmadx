@@ -3232,6 +3232,53 @@ app.delete('/api/volunteer/:id', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// 현재 사용자의 봉사 권한: 관리자=감사실/개발자, 지역장=관리담당자
+async function getVolunteerRole(req) {
+  if (req.session.isAdmin) return { admin: true, regionHead: true };
+  if (!req.session.userId) return { admin: false, regionHead: false };
+  const r = await query('SELECT position FROM users WHERE id = $1', [req.session.userId]);
+  return { admin: false, regionHead: r.rows[0] && r.rows[0].position === '지역장' };
+}
+
+// 봉사 승인·감사 검토 목록 (지역장/관리자) — 전체 사용자 항목, 소속(지국)·상태 포함
+app.get('/api/volunteer/review', authMiddleware, async (req, res) => {
+  const role = await getVolunteerRole(req);
+  if (!role.admin && !role.regionHead) return res.status(403).json({ error: '관리담당자(지역장) 또는 감사실(관리자) 권한이 필요합니다' });
+  const result = await query(
+    `SELECT va.id, va.activity_date, va.title, va.location, va.status, va.participant_names, va.participants,
+            va.author_name, c.name AS company_name, b.name AS branch_name
+     FROM volunteer_activities va
+     LEFT JOIN users u ON va.user_id = u.id
+     LEFT JOIN companies c ON c.id = u.company_id
+     LEFT JOIN branches b ON b.id = va.branch_id
+     ORDER BY va.activity_date DESC, va.created_at DESC`
+  );
+  res.json({ role, items: result.rows });
+});
+
+// 상태 전환 (버튼): 승인=지역장/관리자, 감사확인=관리자, 완료/계획=작성자 또는 관리
+app.put('/api/volunteer/:id/status', authMiddleware, async (req, res) => {
+  const { status } = req.body;
+  const valid = ['계획', '승인', '완료', '감사확인'];
+  if (!valid.includes(status)) return res.status(400).json({ error: '잘못된 상태입니다' });
+  const role = await getVolunteerRole(req);
+  const act = await query('SELECT user_id FROM volunteer_activities WHERE id = $1', [req.params.id]);
+  if (act.rows.length === 0) return res.status(404).json({ error: '대상을 찾을 수 없습니다' });
+  const isOwner = act.rows[0].user_id === req.session.userId;
+
+  if (status === '감사확인' && !role.admin) {
+    return res.status(403).json({ error: '감사확인은 감사실/개발자(관리자)만 가능합니다' });
+  }
+  if (status === '승인' && !role.admin && !role.regionHead) {
+    return res.status(403).json({ error: '승인은 관리담당자(지역장/관리자)만 가능합니다' });
+  }
+  if ((status === '완료' || status === '계획') && !isOwner && !role.admin && !role.regionHead) {
+    return res.status(403).json({ error: '본인 또는 관리담당자만 변경할 수 있습니다' });
+  }
+  await query('UPDATE volunteer_activities SET status = $1 WHERE id = $2', [status, req.params.id]);
+  res.json({ ok: true });
+});
+
 // ─── 봉사 성장 정원 (숨김 점수 → 등급) ───
 // 점수 공식은 의도적으로 비공개. 사용자에게는 등급(식물)만 노출.
 // 로드맵: 차후 각 등급(새싹/잎 등) 내 세부 종류 추가 → GARDEN_TIERS 임계값/매핑만 확장.
@@ -3247,7 +3294,7 @@ async function recomputeVolunteerScores() {
      FROM volunteer_activities va
      JOIN users u ON va.user_id = u.id
      LEFT JOIN companies c ON c.id = u.company_id
-     WHERE va.status = '완료'`
+     WHERE va.status IN ('완료', '감사확인')`
   )).rows;
 
   const groups = {};
@@ -3301,7 +3348,9 @@ app.get('/api/garden', authMiddleware, async (req, res) => {
   const monthEnd = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
   const cnt = (await query(
     `SELECT COUNT(*) FILTER (WHERE status = '계획')::int AS planned,
-            COUNT(*) FILTER (WHERE status = '완료')::int AS completed
+            COUNT(*) FILTER (WHERE status = '승인')::int AS approved,
+            COUNT(*) FILTER (WHERE status = '완료')::int AS completed,
+            COUNT(*) FILTER (WHERE status = '감사확인')::int AS audited
      FROM volunteer_activities WHERE activity_date >= $1 AND activity_date < $2`,
     [monthStart, monthEnd]
   )).rows[0];

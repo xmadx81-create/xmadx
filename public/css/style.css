@@ -789,3 +789,4 @@ body.help-mode [data-help] { cursor: help; outline: 2px dashed var(--primary); o
 .svc-requested { background: #fef9c3; color: #a16207; }
 .svc-planned { background: #dbeafe; color: #1d4ed8; }
 .svc-none { background: var(--gray-100); color: var(--gray-500); }
+.svc-audited { background: #ede9fe; color: #6d28d9; }
