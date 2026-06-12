@@ -1155,6 +1155,79 @@ app.post('/api/export/workshop-roster', regionHeadMiddleware, async (req, res) =
   res.end();
 });
 
+// ─── 엑셀 다운로드: 봉사활동 내역 (개인 전용) ───
+app.get('/api/export/volunteer', authMiddleware, async (req, res) => {
+  const result = await query(
+    'SELECT * FROM volunteer_activities WHERE user_id = $1 ORDER BY activity_date DESC, created_at DESC',
+    [req.session.userId]
+  );
+  const items = result.rows;
+  const totalHours = items.reduce((sum, v) => sum + Number(v.hours || 0), 0);
+
+  const wb = new ExcelJS.Workbook();
+  const s = applyExcelStyles(wb);
+  wb.creator = 'WorkFlow 업무시스템';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('봉사활동내역', { properties: { defaultRowHeight: 22 } });
+
+  ws.mergeCells('A1:G1');
+  const titleCell = ws.getCell('A1');
+  titleCell.value = '봉사활동 내역';
+  titleCell.font = s.titleFont;
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(1).height = 40;
+
+  ws.mergeCells('A2:G2');
+  const subCell = ws.getCell('A2');
+  subCell.value = `작성일: ${new Date().toISOString().split('T')[0]}  |  총 ${items.length}건  |  누적 ${totalHours}시간`;
+  subCell.font = s.subTitleFont;
+  subCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(2).height = 25;
+
+  ws.getRow(3).height = 8;
+
+  const headers = ['번호', '봉사일자', '활동명', '장소', '봉사시간', '참여인원', '활동내용'];
+  const headerRow = ws.getRow(4);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.fill = s.headerFill;
+    cell.font = s.headerFont;
+    cell.alignment = s.centerAlign;
+    cell.border = s.borders;
+  });
+  headerRow.height = 28;
+
+  const widths = [6, 14, 26, 22, 10, 10, 40];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  items.forEach((v, idx) => {
+    const row = ws.getRow(5 + idx);
+    const vals = [
+      idx + 1,
+      (v.activity_date || '').toString().split('T')[0],
+      v.title || '',
+      v.location || '',
+      Number(v.hours || 0),
+      v.participants || '',
+      v.content || ''
+    ];
+    vals.forEach((val, c) => {
+      const cell = row.getCell(c + 1);
+      cell.value = val;
+      cell.font = s.bodyFont;
+      cell.alignment = (c === 2 || c === 3 || c === 6) ? s.leftAlign : s.centerAlign;
+      cell.border = s.borders;
+    });
+    row.height = 24;
+  });
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=volunteer_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
 // ─── 엑셀 다운로드: 개인업무표 ───
 app.get('/api/export/personal-tasks', authMiddleware, async (req, res) => {
   const { person } = req.query;

@@ -7114,7 +7114,10 @@ async function showVolunteerPage() {
 
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
-    <p class="section-title" style="margin:0 0 10px;">&#129309; 봉사활동 <span style="font-size:12px; color:var(--gray-500); font-weight:400;">(본인만 봅니다)</span></p>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:0 0 10px;">
+      <p class="section-title" style="margin:0;">&#129309; 봉사활동 <span style="font-size:12px; color:var(--gray-500); font-weight:400;">(본인만 봅니다)</span></p>
+      ${items.length > 0 ? `<button class="btn btn-outline btn-sm" onclick="downloadExcel('/api/export/volunteer','봉사활동내역')" data-help="내 봉사활동 내역을 엑셀 양식으로 내려받습니다.">&#128229; 엑셀</button>` : ''}
+    </div>
 
     <div class="stats-row" style="margin-bottom:16px;">
       <div class="stat-card">
