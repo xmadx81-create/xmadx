@@ -19,24 +19,27 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const ROOT = process.cwd();
-const PUB = path.join(ROOT, 'public');
-const GAME_SRC = path.join(ROOT, 'customer-rush-3d.html');
-const GAME_DST = path.join(PUB, 'customer-rush-3d.html');
-const INDEX = path.join(PUB, 'index.html');
 const MARKER = 'MJY-3D-INJECT';
 const noDeploy = process.argv.includes('--no-deploy');
 
 function die(msg){ console.error('\n❌ ' + msg + '\n'); process.exit(1); }
 function ok(msg){ console.log('✅ ' + msg); }
 
-// 0) 사전 점검
-if (!fs.existsSync(PUB)) die('public/ 폴더가 없습니다. 무지출용팔이 클라우드판 코드 폴더에서 실행하세요.');
-if (!fs.existsSync(INDEX)) die('public/index.html 이 없습니다.');
+// 0) 사전 점검 — 클라이언트 폴더 자동 탐지(public/static/www/dist/client)
+const GAME_SRC = path.join(ROOT, 'customer-rush-3d.html');
 if (!fs.existsSync(GAME_SRC)) die('customer-rush-3d.html 이 이 폴더에 없습니다. 같이 복사했는지 확인하세요.');
+const CANDIDATES = ['public', 'static', 'www', 'dist', 'client', '.'];
+let PUB = null;
+for (const c of CANDIDATES){ if (fs.existsSync(path.join(ROOT, c, 'index.html'))){ PUB = path.join(ROOT, c); break; } }
+if (!PUB) die('index.html 이 있는 클라이언트 폴더를 못 찾았습니다(public/static/www/dist/client). 무지출용팔이 클라우드판 코드 폴더에서 실행하세요.');
+const GAME_DST = path.join(PUB, 'customer-rush-3d.html');
+const INDEX = path.join(PUB, 'index.html');
+ok('클라이언트 폴더 탐지: ' + path.relative(ROOT, PUB) + '/');
 
 // 1) 게임 파일 복사
+const REL = path.relative(ROOT, PUB) || '.';
 fs.copyFileSync(GAME_SRC, GAME_DST);
-ok('public/customer-rush-3d.html 복사 완료');
+ok(REL + '/customer-rush-3d.html 복사 완료');
 
 // 2) 주입 스니펫 (구조 독립적: 플로팅 버튼 + 풀스크린 오버레이 iframe)
 const SNIPPET = `
@@ -83,7 +86,7 @@ if (html.indexOf(MARKER) !== -1){
   if (idx === -1){ html = html + SNIPPET; }
   else { html = html.slice(0, idx) + SNIPPET + '\n' + html.slice(idx); }
   fs.writeFileSync(INDEX, html);
-  ok('public/index.html 에 런처 주입 완료 (백업: public/index.html.bak)');
+  ok(REL + '/index.html 에 런처 주입 완료 (백업: ' + REL + '/index.html.bak)');
 }
 
 // 4) 정적 서빙 점검(경고만)
