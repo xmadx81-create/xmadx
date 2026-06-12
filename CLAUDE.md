@@ -1,5 +1,24 @@
 # CLAUDE.md
 
+## ⚠️ 최우선 경고 — 작업 시작 전 반드시 확인 (재발 방지 게이트)
+
+**이 저장소(`xmadx`)는 운영 중인 EBTS 봉사앱이 아니다. (PostgreSQL 기반 POC)**
+
+- 운영 봉사앱(실서비스):
+  - Cloud Run 서비스 `ebts-volunteer` · region `asia-northeast3` · project `stone-history-482100-g2`
+  - 실제 코드: PC `C:\AI_WORK\EBTS_업무자동화\03_클라우드이전\poc` (데이터=**Google Sheets**, `DATA_MODE=sheets`)
+  - 배포=2단계 gcr.io 빌드(`gcloud builds submit … :vNNN` → `gcloud run deploy --image …`)
+- 이 `xmadx`는 데이터가 **PostgreSQL/Neon**이라 운영 앱과 **완전히 다른 코드**다.
+
+### 게이트 규칙 (반드시 지킬 것)
+1. **이 `xmadx` 저장소에서 개발/배포를 시작하려면, 사용자가 정확히 `xmadx`를 입력해야 한다.**
+   입력(확인) 전에는 어떤 코드 수정·커밋·배포도 하지 말 것. (비밀번호처럼 명시적 동의로 사용)
+2. **실제 EBTS '봉사활동관리' 개발 트리거 = 사용자가 `봉사개발 시작`이라고 말할 때.**
+   그 작업은 운영 앱(`poc`, Sheets 기반)에서 수행하며, **`xmadx`에서 하지 않는다.**
+3. `xmadx` 코드를 `ebts-volunteer`에 배포하면 운영 앱이 덮여 망가지므로 **절대 금지**.
+
+---
+
 ## 코딩 규칙
 
 ### 수정 작업 원칙
