@@ -681,6 +681,7 @@
     <button class="game-btn" data-game-action="quarter-end" style="background:#dc2626;"><span class="btn-icon">⏭</span><span class="btn-label">분기종료</span></button>
     <button class="game-btn" data-game-action="system" style="background:#3a3a5a;"><span class="btn-icon">⚙</span><span class="btn-label">시스템</span></button>
     <button class="game-btn" data-game-action="stock" style="background:#065f46;" id="btn-stock"><span class="btn-icon">📈</span><span class="btn-label">주식</span></button>
+    <button class="game-btn" data-game-action="rush" style="background:#ea580c;"><span class="btn-icon">🍗</span><span class="btn-label">손님러시</span></button>
   </div>
 </div>
 
@@ -10145,6 +10146,17 @@ scenes.game = {
         else if (action === 'quest') sceneManager.switch('questMenu');
         else if (action === 'system') sceneManager.switch('systemMenu');
         else if (action === 'stock') sceneManager.switch('stockMarket');
+        else if (action === 'rush') {
+          // 🍗 손님 러시 미니게임 — 검증된 3D PoC(poc-3d-shop.html)를 모달 iframe으로 임베드.
+          // 기존 로직 무손상(격리). 진입 시 게임 일시정지, 닫으면 재개.
+          s.isPaused = true; try { self.renderHUD(); } catch(e) {}
+          const _rushBody = '<iframe src="poc-3d-shop.html" title="손님 러시" style="display:block;width:100%;height:72vh;border:0;border-radius:8px;background:#0a0a14;"></iframe>'
+            + '<div style="font-size:11px;color:#64748b;padding:8px 2px;text-align:center;">3D 손님 러시 미니게임 · 드래그로 카메라 회전</div>';
+          modal.open('🍗 손님 러시', _rushBody, '<button class="btn" data-action="rush-back">◀ 게임으로 돌아가기</button>', function() {
+            s.isPaused = false; try { self.renderHUD(); } catch(e) {}
+          });
+          document.querySelectorAll('[data-action="rush-back"]').forEach(el => bindClick(el, () => modal.close()));
+        }
       });
     });
     // HUD 탭 클릭 → 재무 대시보드 진입
