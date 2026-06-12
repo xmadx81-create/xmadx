@@ -156,11 +156,21 @@ async function initDB() {
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, author_name TEXT DEFAULT '',
       activity_date DATE NOT NULL, title TEXT NOT NULL, location TEXT DEFAULT '',
       hours NUMERIC DEFAULT 0, participants INTEGER DEFAULT 1,
-      content TEXT DEFAULT '', company_id TEXT, created_at TIMESTAMP DEFAULT NOW())`
+      content TEXT DEFAULT '', company_id TEXT, created_at TIMESTAMP DEFAULT NOW())`,
+    // 봉사 성장 정원 숨김 백데이터 (사용자에게 점수·수치 비노출, 등급 산출용)
+    `CREATE TABLE IF NOT EXISTS volunteer_scores (
+      subject_key TEXT PRIMARY KEY, subject_name TEXT NOT NULL,
+      score NUMERIC DEFAULT 0, tier TEXT DEFAULT 'sprout',
+      completed_count INTEGER DEFAULT 0, distinct_branches INTEGER DEFAULT 0,
+      repeat_index INTEGER DEFAULT 0, updated_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
     await query(sql);
   }
+  // 봉사활동 완료등록 확장: 대상 가맹점 · 참여자 명단 · 상태(계획/완료)
+  await query(`ALTER TABLE volunteer_activities ADD COLUMN IF NOT EXISTS branch_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE volunteer_activities ADD COLUMN IF NOT EXISTS participant_names TEXT DEFAULT ''`).catch(() => {});
+  await query(`ALTER TABLE volunteer_activities ADD COLUMN IF NOT EXISTS status TEXT DEFAULT '계획'`).catch(() => {});
   await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS work_type TEXT DEFAULT '내근'`).catch(() => {});
   await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS work_summary TEXT DEFAULT ''`).catch(() => {});
   await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS result_status TEXT DEFAULT ''`).catch(() => {});

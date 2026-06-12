@@ -3168,6 +3168,10 @@ app.delete('/api/todos/:id', authMiddleware, async (req, res) => {
 });
 
 // ─── 봉사활동 (개인 전용) ───
+function splitParticipantNames(s) {
+  return (s || '').split(/[,，、\n]/).map(x => x.trim()).filter(Boolean);
+}
+
 app.get('/api/volunteer', authMiddleware, async (req, res) => {
   const result = await query(
     'SELECT * FROM volunteer_activities WHERE user_id = $1 ORDER BY activity_date DESC, created_at DESC',
@@ -3185,26 +3189,40 @@ app.get('/api/volunteer/stats', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/volunteer', authMiddleware, async (req, res) => {
-  const { activity_date, title, location, hours, participants, content } = req.body;
+  const { activity_date, title, location, hours, participants, content, branch_id, participant_names, status } = req.body;
   if (!activity_date || !title) return res.status(400).json({ error: '봉사일자와 활동명을 입력하세요' });
   let authorName = '';
   const u = await query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
   if (u.rows[0]) authorName = u.rows[0].name;
+  const names = splitParticipantNames(participant_names);
+  const pcount = names.length > 0 ? names.length : (participants || 1);
   const id = uuidv4();
   await query(
-    'INSERT INTO volunteer_activities (id, user_id, author_name, activity_date, title, location, hours, participants, content, company_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-    [id, req.session.userId, authorName, activity_date, title, location || '', hours || 0, participants || 1, content || '', req.session.companyId || null]
+    `INSERT INTO volunteer_activities (id, user_id, author_name, activity_date, title, location, hours, participants, content, company_id, branch_id, participant_names, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [id, req.session.userId, authorName, activity_date, title, location || '', hours || 0, pcount, content || '', req.session.companyId || null,
+     branch_id || null, names.join(', '), status === '완료' ? '완료' : '계획']
   );
   res.json({ id });
 });
 
 app.put('/api/volunteer/:id', authMiddleware, async (req, res) => {
-  const { activity_date, title, location, hours, participants, content } = req.body;
+  const { activity_date, title, location, hours, participants, content, branch_id, participant_names, status } = req.body;
+  let pcount = participants;
+  let namesJoined = null;
+  if (participant_names !== undefined) {
+    const names = splitParticipantNames(participant_names);
+    namesJoined = names.join(', ');
+    if (names.length > 0) pcount = names.length;
+  }
   await query(
     `UPDATE volunteer_activities SET activity_date = COALESCE($1, activity_date), title = COALESCE($2, title),
        location = COALESCE($3, location), hours = COALESCE($4, hours), participants = COALESCE($5, participants),
-       content = COALESCE($6, content) WHERE id = $7 AND user_id = $8`,
-    [activity_date || null, title || null, location, hours, participants, content, req.params.id, req.session.userId]
+       content = COALESCE($6, content), branch_id = COALESCE($7, branch_id),
+       participant_names = COALESCE($8, participant_names), status = COALESCE($9, status)
+     WHERE id = $10 AND user_id = $11`,
+    [activity_date || null, title || null, location, hours, pcount, content, branch_id || null, namesJoined,
+     (status === '완료' || status === '계획') ? status : null, req.params.id, req.session.userId]
   );
   res.json({ ok: true });
 });
@@ -3212,6 +3230,82 @@ app.put('/api/volunteer/:id', authMiddleware, async (req, res) => {
 app.delete('/api/volunteer/:id', authMiddleware, async (req, res) => {
   await query('DELETE FROM volunteer_activities WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
   res.json({ ok: true });
+});
+
+// ─── 봉사 성장 정원 (숨김 점수 → 등급) ───
+// 점수 공식은 의도적으로 비공개. 사용자에게는 등급(식물)만 노출.
+// 로드맵: 차후 각 등급(새싹/잎 등) 내 세부 종류 추가 → GARDEN_TIERS 임계값/매핑만 확장.
+const GARDEN_W = { small: 10, branch: 5, repeat: 3 };
+const GARDEN_TIERS = [ // [tier, 최소점수] 높은 순
+  ['forest', 100], ['flower', 60], ['tree', 30], ['leaf', 12], ['sprout', 0]
+];
+
+async function recomputeVolunteerScores() {
+  const rows = (await query(
+    `SELECT va.branch_id, va.location, va.participant_names, va.participants,
+            u.id AS uid, u.name AS author_name, u.department, u.company_id, c.name AS company_name
+     FROM volunteer_activities va
+     JOIN users u ON va.user_id = u.id
+     LEFT JOIN companies c ON c.id = u.company_id
+     WHERE va.status = '완료'`
+  )).rows;
+
+  const groups = {};
+  for (const r of rows) {
+    const compName = (r.company_name || '').trim();
+    const dept = (r.department || '').trim();
+    const name = compName || dept || r.author_name || '미상';
+    const key = compName ? ('c:' + r.company_id) : (dept ? ('d:' + dept) : ('u:' + r.uid));
+    if (!groups[key]) groups[key] = { name, completed: 0, branches: new Set(), nameCounts: {}, smallSum: 0 };
+    const g = groups[key];
+    g.completed++;
+    const b = r.branch_id || ((r.location || '').trim() ? 'loc:' + r.location.trim() : '');
+    if (b) g.branches.add(b);
+    const names = splitParticipantNames(r.participant_names);
+    const n = names.length || (r.participants || 1);
+    g.smallSum += 1 / Math.max(1, n); // 1회 참여인원 적을수록 ↑
+    for (const nm of names) g.nameCounts[nm] = (g.nameCounts[nm] || 0) + 1;
+  }
+
+  const computed = [];
+  for (const key in groups) {
+    const g = groups[key];
+    const distinct = g.branches.size;
+    let repeat = 0;
+    for (const nm in g.nameCounts) repeat += Math.max(0, g.nameCounts[nm] - 1); // 참여자 중복 ↑
+    const score = GARDEN_W.small * g.smallSum + GARDEN_W.branch * distinct + GARDEN_W.repeat * repeat;
+    let tier = 'sprout';
+    for (const [t, min] of GARDEN_TIERS) { if (score >= min) { tier = t; break; } }
+    computed.push({ key, name: g.name, score, tier, completed: g.completed, distinct, repeat });
+  }
+
+  await query('DELETE FROM volunteer_scores');
+  for (const c of computed) {
+    await query(
+      `INSERT INTO volunteer_scores (subject_key, subject_name, score, tier, completed_count, distinct_branches, repeat_index, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
+      [c.key, c.name, c.score, c.tier, c.completed, c.distinct, c.repeat]
+    );
+  }
+}
+
+// 정원: 지국명 + 등급만 반환 (점수·수치 비노출) + 당월 계획/완료 카운트
+app.get('/api/garden', authMiddleware, async (req, res) => {
+  await recomputeVolunteerScores();
+  const rows = (await query('SELECT subject_name, tier FROM volunteer_scores ORDER BY score DESC, subject_name ASC')).rows;
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const monthStart = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const nextY = m === 11 ? y + 1 : y;
+  const nextM = m === 11 ? 1 : m + 2;
+  const monthEnd = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
+  const cnt = (await query(
+    `SELECT COUNT(*) FILTER (WHERE status = '계획')::int AS planned,
+            COUNT(*) FILTER (WHERE status = '완료')::int AS completed
+     FROM volunteer_activities WHERE activity_date >= $1 AND activity_date < $2`,
+    [monthStart, monthEnd]
+  )).rows[0];
+  res.json({ counts: cnt, plants: rows.map(r => ({ name: r.subject_name, tier: r.tier })) });
 });
 
 // ─── 귀납적 인사이트 분석 ───

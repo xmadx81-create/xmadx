@@ -5207,8 +5207,52 @@ async function showHandover() {
 // ─── 팀 일정 ───
 let scheduleMonth = new Date().toISOString().substring(0, 7);
 
+// ─── 봉사 성장 정원 (등급→식물). 로드맵: 차후 등급별 세부 종류는 여기 매핑만 확장 ───
+const GARDEN_EMOJI = {
+  sprout: { emoji: '🌱', label: '새싹' },
+  leaf:   { emoji: '🌿', label: '잎' },
+  tree:   { emoji: '🌳', label: '나무' },
+  flower: { emoji: '🌸', label: '꽃나무' },
+  forest: { emoji: '🌲', label: '숲' }
+};
+
+function renderGardenPanel(garden) {
+  if (!garden) return '';
+  const counts = garden.counts || { planned: 0, completed: 0 };
+  const plants = garden.plants || [];
+  const plantsHtml = plants.length === 0
+    ? '<div style="font-size:12px; color:var(--gray-500); text-align:center; padding:10px;">아직 정원에 심긴 지국이 없어요. 봉사활동을 <b>완료로 등록</b>하면 싹이 틉니다 🌱</div>'
+    : `<div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${plants.map((p, i) => {
+          const g = GARDEN_EMOJI[p.tier] || GARDEN_EMOJI.sprout;
+          const crown = i < 3 ? '<span style="position:absolute; top:-8px; right:-4px; font-size:12px;">👑</span>' : '';
+          return `<div style="position:relative; min-width:64px; text-align:center; background:var(--gray-50, #f8fafc); border:1px solid var(--gray-100); border-radius:10px; padding:8px 6px;">
+            ${crown}
+            <div style="font-size:26px; line-height:1;">${g.emoji}</div>
+            <div style="font-size:11px; color:var(--gray-700); margin-top:3px; word-break:keep-all;">${escHtml(p.name)}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+  return `
+    <div class="card" style="padding:12px; margin-bottom:16px; border:1px solid var(--primary-light);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span style="font-size:14px; font-weight:700;">🌱 봉사 성장 정원</span>
+        <span style="font-size:11px; color:var(--gray-400);">완료 등록할수록 무성해져요</span>
+      </div>
+      <div style="display:flex; gap:14px; font-size:12px; margin-bottom:10px;">
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#1d4ed8;"></span>이번 달 계획 <b>${counts.planned || 0}</b></span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:#15803d;"></span>이번 달 완료 <b>${counts.completed || 0}</b></span>
+      </div>
+      ${plantsHtml}
+    </div>`;
+}
+
 async function showSchedulePage() {
-  const events = await api(`/api/events?month=${scheduleMonth}`) || [];
+  const [events, garden] = await Promise.all([
+    api(`/api/events?month=${scheduleMonth}`).then(r => r || []),
+    api('/api/garden')
+  ]);
   const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
   const today = new Date().toISOString().split('T')[0];
 
@@ -5235,6 +5279,8 @@ async function showSchedulePage() {
       <p class="section-title" style="margin:0;">&#128197; 팀 일정</p>
       <button class="btn btn-primary btn-sm" onclick="showEventForm()">일정 추가</button>
     </div>
+
+    ${renderGardenPanel(garden)}
 
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <button class="btn btn-outline btn-sm" onclick="scheduleMonth=prevMonth(scheduleMonth); showSchedulePage();">&lsaquo;</button>
@@ -7182,12 +7228,21 @@ async function downloadWorkshopRoster() {
 // ─── 봉사활동 (개인 전용) ───
 let _volunteerItems = [];
 
+function volBranchOptions(selectedId) {
+  const branches = (window._volBranches || []).filter(b => !b.exclude_service);
+  return ['<option value="">대상 가맹점 선택 (선택)</option>']
+    .concat(branches.map(b => `<option value="${b.id}"${b.id === selectedId ? ' selected' : ''}>${escHtml(b.name)}</option>`))
+    .join('');
+}
+
 async function showVolunteerPage() {
-  const [list, stats] = await Promise.all([
+  const [list, stats, branches] = await Promise.all([
     api('/api/volunteer'),
-    api('/api/volunteer/stats')
+    api('/api/volunteer/stats'),
+    api('/api/branches').then(r => r || [])
   ]);
   if (list === null) return;
+  window._volBranches = branches;
   const items = list || [];
   _volunteerItems = items;
   const count = stats ? stats.count : items.length;
@@ -7240,17 +7295,28 @@ async function showVolunteerPage() {
       <div class="form-group" style="margin-bottom:8px;">
         <input type="text" id="volTitle" class="form-control" placeholder="활동명 (예: 연탄 나눔 봉사)" data-help="어떤 봉사활동이었는지 제목을 적으세요.">
       </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <select id="volBranch" class="form-control" style="font-size:13px;" data-help="봉사 대상 가맹점을 고르세요. 여러 가맹점을 다닐수록 정원이 무성해집니다.">
+          ${volBranchOptions('')}
+        </select>
+      </div>
       <div style="display:flex; gap:8px; margin-bottom:8px;">
         <div class="form-group" style="flex:1; margin-bottom:0;">
           <input type="text" id="volLocation" class="form-control" placeholder="장소" style="font-size:13px;" data-help="봉사활동을 한 장소를 적으세요.">
         </div>
         <div class="form-group" style="width:90px; margin-bottom:0;">
-          <input type="number" id="volParticipants" class="form-control" placeholder="인원" min="1" value="1" style="font-size:13px;" data-help="함께 참여한 인원 수를 적으세요.">
+          <input type="number" id="volParticipants" class="form-control" placeholder="인원" min="1" value="1" style="font-size:13px;" data-help="참여 인원 수입니다. 참여자 이름을 적으면 자동으로 인원이 계산됩니다.">
         </div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <input type="text" id="volNames" class="form-control" placeholder="참여자 이름 (쉼표로 구분)" style="font-size:13px;" data-help="참여한 사람들의 이름을 쉼표로 구분해 적으세요. 같은 사람이 자주 참여할수록 정원 점수에 도움이 됩니다.">
       </div>
       <div class="form-group" style="margin-bottom:8px;">
         <textarea id="volContent" class="form-control" placeholder="활동 내용 (선택)" data-help="활동 내용을 자유롭게 적으세요. 비워둬도 됩니다."></textarea>
       </div>
+      <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; cursor:pointer;" data-help="완료로 등록하면 봉사 성장 정원 집계에 반영됩니다. 미체크 시 '계획' 상태로 저장됩니다.">
+        <input type="checkbox" id="volDone" style="width:18px; height:18px; accent-color:var(--primary);"> 완료로 등록 (정원에 반영)
+      </label>
       <button class="btn btn-primary btn-block" onclick="addVolunteer()" data-help="입력한 봉사활동을 기록에 추가합니다.">기록 추가</button>
     </div>
 
@@ -7258,10 +7324,14 @@ async function showVolunteerPage() {
       <div class="card" style="padding:12px; margin-bottom:8px;" id="vol-${v.id}">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
           <div style="min-width:0;">
-            <div style="font-size:15px; font-weight:600;">${escHtml(v.title)}</div>
+            <div style="font-size:15px; font-weight:600;">
+              ${v.status === '완료' ? '<span class="svc-badge svc-approved" style="margin-right:4px;">완료</span>' : '<span class="svc-badge svc-planned" style="margin-right:4px;">계획</span>'}
+              ${escHtml(v.title)}
+            </div>
             <div style="font-size:12px; color:var(--gray-500); margin-top:3px;">
               ${(v.activity_date || '').split('T')[0]}${v.location ? ' · ' + escHtml(v.location) : ''}${Number(v.hours) ? ' · ' + Number(v.hours) + '시간' : ''}${Number(v.participants) > 1 ? ' · ' + v.participants + '명' : ''}
             </div>
+            ${v.participant_names ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">참여자: ${escHtml(v.participant_names)}</div>` : ''}
             ${v.content ? `<div style="font-size:13px; color:var(--gray-700); margin-top:6px; white-space:pre-wrap;">${escHtml(v.content)}</div>` : ''}
           </div>
           <div style="display:flex; gap:6px; flex-shrink:0;">
@@ -7291,6 +7361,11 @@ function editVolunteer(id) {
     <div class="form-group" style="margin-bottom:8px;">
       <input type="text" id="volEditTitle-${id}" class="form-control" value="${escAttr(v.title || '')}" placeholder="활동명" data-help="봉사활동 제목입니다.">
     </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <select id="volEditBranch-${id}" class="form-control" style="font-size:13px;" data-help="봉사 대상 가맹점입니다.">
+        ${volBranchOptions(v.branch_id || '')}
+      </select>
+    </div>
     <div style="display:flex; gap:8px; margin-bottom:8px;">
       <div class="form-group" style="flex:1; margin-bottom:0;">
         <input type="text" id="volEditLocation-${id}" class="form-control" value="${escAttr(v.location || '')}" placeholder="장소" style="font-size:13px;" data-help="봉사활동 장소입니다.">
@@ -7300,8 +7375,14 @@ function editVolunteer(id) {
       </div>
     </div>
     <div class="form-group" style="margin-bottom:8px;">
+      <input type="text" id="volEditNames-${id}" class="form-control" value="${escAttr(v.participant_names || '')}" placeholder="참여자 이름 (쉼표로 구분)" style="font-size:13px;" data-help="참여자 이름을 쉼표로 구분해 적습니다.">
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
       <textarea id="volEditContent-${id}" class="form-control" placeholder="활동 내용 (선택)" data-help="활동 내용입니다.">${escHtml(v.content || '')}</textarea>
     </div>
+    <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; cursor:pointer;" data-help="완료로 등록하면 봉사 성장 정원 집계에 반영됩니다.">
+      <input type="checkbox" id="volEditDone-${id}" ${v.status === '완료' ? 'checked' : ''} style="width:18px; height:18px; accent-color:var(--primary);"> 완료로 등록 (정원에 반영)
+    </label>
     <div style="display:flex; gap:8px;">
       <button class="btn btn-outline btn-sm" style="flex:1;" onclick="showVolunteerPage()">취소</button>
       <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveVolunteer('${id}')" data-help="수정한 내용을 저장합니다.">저장</button>
@@ -7317,7 +7398,10 @@ async function saveVolunteer(id) {
   const location = document.getElementById('volEditLocation-' + id).value.trim();
   const participants = parseInt(document.getElementById('volEditParticipants-' + id).value) || 1;
   const content = document.getElementById('volEditContent-' + id).value.trim();
-  const res = await api(`/api/volunteer/${id}`, { method: 'PUT', body: { activity_date, title, location, hours, participants, content } });
+  const branch_id = document.getElementById('volEditBranch-' + id).value || null;
+  const participant_names = document.getElementById('volEditNames-' + id).value.trim();
+  const status = document.getElementById('volEditDone-' + id).checked ? '완료' : '계획';
+  const res = await api(`/api/volunteer/${id}`, { method: 'PUT', body: { activity_date, title, location, hours, participants, content, branch_id, participant_names, status } });
   if (res) { toast('수정되었습니다'); showVolunteerPage(); }
 }
 
@@ -7329,8 +7413,11 @@ async function addVolunteer() {
   const location = document.getElementById('volLocation').value.trim();
   const participants = parseInt(document.getElementById('volParticipants').value) || 1;
   const content = document.getElementById('volContent').value.trim();
-  const res = await api('/api/volunteer', { method: 'POST', body: { activity_date, title, location, hours, participants, content } });
-  if (res) { toast('기록되었습니다'); showVolunteerPage(); }
+  const branch_id = document.getElementById('volBranch').value || null;
+  const participant_names = document.getElementById('volNames').value.trim();
+  const status = document.getElementById('volDone').checked ? '완료' : '계획';
+  const res = await api('/api/volunteer', { method: 'POST', body: { activity_date, title, location, hours, participants, content, branch_id, participant_names, status } });
+  if (res) { toast(status === '완료' ? '완료로 등록되었습니다' : '기록되었습니다'); showVolunteerPage(); }
 }
 
 async function deleteVolunteer(id) {
