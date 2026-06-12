@@ -152,6 +152,10 @@ async function initDB() {
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL,
       color TEXT DEFAULT '#fef3c7', pinned BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS call_orders (
+      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, branch_name TEXT NOT NULL,
+      order_date DATE NOT NULL, order_count INTEGER DEFAULT 1, memo TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT NOW())`,
     `CREATE TABLE IF NOT EXISTS volunteer_activities (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, author_name TEXT DEFAULT '',
       activity_date DATE NOT NULL, title TEXT NOT NULL, location TEXT DEFAULT '',
