@@ -314,9 +314,17 @@ app.get('/api/region/members', regionHeadMiddleware, async (req, res) => {
 
 app.put('/api/region/members/:id', regionHeadMiddleware, async (req, res) => {
   if (req.params.id === 'admin-user') return res.status(403).json({ error: '관리자 계정은 수정할 수 없습니다' });
-  const target = await query('SELECT id, company_id FROM users WHERE id = $1', [req.params.id]);
+  const target = await query('SELECT id, company_id, position FROM users WHERE id = $1', [req.params.id]);
   if (target.rows.length === 0) return res.status(404).json({ error: '대상을 찾을 수 없습니다' });
   const { department, position, team_id } = req.body;
+  // '지역장' 직책 지정·변경은 시스템관리자만 가능 (지역장끼리 권한 부여/강등 방지)
+  if (!req.session.isAdmin) {
+    const newPos = (position || '').trim();
+    const curPos = target.rows[0].position || '';
+    if (newPos === '지역장' || curPos === '지역장') {
+      return res.status(403).json({ error: "'지역장' 직책 지정·변경은 시스템관리자만 가능합니다" });
+    }
+  }
   // 팀은 대상자의 회사에 속한 팀만 허용 (타 회사 팀 지정 방지)
   let teamVal = null;
   if (team_id) {

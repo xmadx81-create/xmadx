@@ -6881,6 +6881,18 @@ document.addEventListener('focusin', function(e) {
   const el = e.target.closest('[data-help]');
   if (el) showHelpBubble(el);
 });
+// 모바일/터치: 도움말 모드일 때 탭하면 동작 대신 안내만 표시 (capture 단계에서 실제 클릭 차단)
+document.addEventListener('click', function(e) {
+  if (!_helpMode) return;
+  const el = e.target.closest('[data-help]');
+  if (el) {
+    e.preventDefault();
+    e.stopPropagation();
+    showHelpBubble(el);
+  } else {
+    hideHelpBubble();
+  }
+}, true);
 
 // ─── 지역장: 소속 관리 ───
 let _regionMembers = [];
@@ -6979,8 +6991,8 @@ async function editRegionMember(id) {
     <div style="font-size:15px; font-weight:600; margin-bottom:8px;">${escHtml(m.name)} <span style="font-size:12px; color:var(--gray-500);">소속 수정</span></div>
     <div class="form-group" style="margin-bottom:8px;">
       <label style="font-size:12px;">직책</label>
-      <input type="text" id="rmPos-${id}" class="form-control" value="${escAttr(m.position || '')}" placeholder="예: 과장, 팀장, 지역장"
-        data-help="이 사람의 직책을 입력하세요. '지역장'으로 지정하면 그 사람도 소속 관리 권한을 갖게 됩니다.">
+      <input type="text" id="rmPos-${id}" class="form-control" value="${escAttr(m.position || '')}" placeholder="예: 과장, 팀장"
+        data-help="이 사람의 직책을 입력하세요. ('지역장' 직책의 지정·변경은 시스템관리자만 가능합니다)">
     </div>
     <div class="form-group" style="margin-bottom:8px;">
       <label style="font-size:12px;">부서</label>
