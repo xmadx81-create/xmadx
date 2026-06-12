@@ -2717,9 +2717,11 @@ function backToLogin() {
 }
 
 async function submitRegister() {
-  if (_submitting) return;
-  const btn = document.querySelector('#regStep2 .btn-success');
+  if (_submitting) { showResultModal('warn', '처리 중', '이미 가입 처리가 진행 중입니다.\n잠시 기다려주세요.', '확인'); return; }
+  const btn = document.getElementById('regSubmitBtn') || document.querySelector('#regStep2 .btn-success');
+  let safetyTimer;
   function resetBtn() {
+    clearTimeout(safetyTimer);
     _submitting = false;
     if (btn) { btn.disabled = false; btn.textContent = '가입 완료'; btn.style.opacity = ''; }
   }
@@ -2735,6 +2737,7 @@ async function submitRegister() {
     if (password.length < 4) { showResultModal('error', '입력 오류', '비밀번호는 4자 이상 입력해주세요.', '확인'); return; }
 
     _submitting = true;
+    safetyTimer = setTimeout(() => { resetBtn(); showResultModal('error', '서버 응답 없음', '서버가 응답하지 않습니다.\n잠시 후 다시 시도해주세요.', '확인'); }, 30000);
     if (btn) { btn.disabled = true; btn.textContent = '가입 처리 중...'; btn.style.opacity = '0.7'; }
     const body = { name, phone, email, password };
 
