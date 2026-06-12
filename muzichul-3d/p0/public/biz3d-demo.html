@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Biz3D P0 데모 — 사업체 3D 뷰</title>
+<!--
+  P0 통합 골격 데모 (인터넷 필요: Three.js CDN 지연 로드).
+  실제 통합 시엔 게임의 사업체 카드 버튼이 Biz3D.open(bizId, snapshot) 을 호출.
+-->
+<style>
+  *{margin:0;box-sizing:border-box;} body{font-family:Pretendard,-apple-system,sans-serif;background:#0a0a14;color:#e8e8e8;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;}
+  .badge{background:#241d33;color:#67e8f9;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;}
+  h1{font-size:20px;} p{color:#9a90b0;font-size:13px;line-height:1.6;max-width:320px;}
+  .card{background:#16111f;border:1px solid #3a3050;border-radius:14px;padding:18px;width:100%;max-width:320px;}
+  .card .name{font-weight:800;font-size:16px;margin-bottom:4px;}
+  .card .meta{color:#9a90b0;font-size:12px;margin-bottom:12px;}
+  .btn{width:100%;min-height:46px;border:none;border-radius:12px;background:linear-gradient(135deg,#0ea5e9,#6366f1);
+    color:#fff;font-size:15px;font-weight:800;cursor:pointer;}
+  .row{display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;}
+  input{width:64px;padding:6px;border-radius:8px;border:1px solid #3a3050;background:#0a0a14;color:#fff;text-align:center;}
+</style>
+</head>
+<body>
+  <span class="badge">P0 통합 골격 · Three.js</span>
+  <h1>🏢 사업체 3D 뷰 데모</h1>
+  <p>게임의 사업체 카드에서 이 버튼이 <code>Biz3D.open()</code>을 호출합니다. 직원 수에 따라 책상·직원이 늘어납니다(state 연동).</p>
+  <div class="card">
+    <div class="name">IT개발사</div>
+    <div class="meta">8개월차 · 대가족 사장</div>
+    <div class="row" style="margin-bottom:12px;">직원 수 <input id="staff" type="number" value="6" min="1" max="8"></div>
+    <button class="btn" id="open3d">🏢 3D로 보기</button>
+  </div>
+  <p style="font-size:11px;color:#64748b;">P0는 플레이스홀더 박스 씬. P1에서 포토리얼 GLB로 교체됩니다.</p>
+
+  <script src="3d/biz3d.js"></script>
+  <script>
+    document.getElementById('open3d').addEventListener('click', function(){
+      var n = parseInt(document.getElementById('staff').value, 10) || 4;
+      // 실제 통합 시 snapshot 은 게임 state 에서 생성
+      Biz3D.open('biz_office', { name:'IT개발사', staffCount:n, level:3, reputation:72 });
+    });
+  </script>
+</body>
+</html>
