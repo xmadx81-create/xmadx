@@ -6885,22 +6885,47 @@ document.addEventListener('focusin', function(e) {
 // ─── 지역장: 소속 관리 ───
 let _regionMembers = [];
 
+let _rmKeyword = '';
+let _rmCompany = '';
+let _rmSort = 'name';
+
 async function showRegionMembers() {
   const members = await api('/api/region/members');
   if (!members) return;
   _regionMembers = members;
+  _rmKeyword = '';
+  _rmCompany = '';
+  _rmSort = 'name';
   renderRegionMembers('');
 }
 
+function setRmFilter() {
+  const cSel = document.getElementById('rmCompanyFilter');
+  const sSel = document.getElementById('rmSort');
+  if (cSel) _rmCompany = cSel.value;
+  if (sSel) _rmSort = sSel.value;
+  renderRegionMembers(_rmKeyword);
+}
+
 function renderRegionMembers(keyword) {
-  const kw = (keyword || '').trim().toLowerCase();
-  const list = kw
-    ? _regionMembers.filter(m =>
-        (m.name || '').toLowerCase().includes(kw) ||
-        (m.company_name || '').toLowerCase().includes(kw) ||
-        (m.department || '').toLowerCase().includes(kw) ||
-        (m.position || '').toLowerCase().includes(kw))
-    : _regionMembers;
+  _rmKeyword = keyword || '';
+  const kw = _rmKeyword.trim().toLowerCase();
+  let list = _regionMembers.filter(m => {
+    if (_rmCompany && (m.company_name || '') !== _rmCompany) return false;
+    if (!kw) return true;
+    return (m.name || '').toLowerCase().includes(kw) ||
+      (m.company_name || '').toLowerCase().includes(kw) ||
+      (m.department || '').toLowerCase().includes(kw) ||
+      (m.position || '').toLowerCase().includes(kw);
+  });
+  list = list.slice().sort((a, b) => {
+    if (_rmSort === 'company') {
+      return (a.company_name || '힣').localeCompare(b.company_name || '힣', 'ko') || (a.name || '').localeCompare(b.name || '', 'ko');
+    }
+    return (a.name || '').localeCompare(b.name || '', 'ko');
+  });
+
+  const companies = [...new Set(_regionMembers.map(m => m.company_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
 
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
@@ -6911,8 +6936,18 @@ function renderRegionMembers(keyword) {
     <p style="font-size:12px; color:var(--gray-500); margin-bottom:10px;">관리담당자의 부서·직책·팀을 대신 수정할 수 있습니다.</p>
     <div class="form-group">
       <input type="text" class="form-control" placeholder="이름·회사·부서·직책 검색"
-        value="${escAttr(keyword || '')}" oninput="renderRegionMembers(this.value)"
+        value="${escAttr(_rmKeyword)}" oninput="renderRegionMembers(this.value)"
         data-help="찾으려는 관리담당자의 이름이나 소속을 입력하면 목록이 좁혀집니다.">
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <select id="rmCompanyFilter" class="form-control" style="flex:1; font-size:13px;" onchange="setRmFilter()" data-help="특정 회사(조합)의 인원만 추려서 봅니다.">
+        <option value=""${_rmCompany === '' ? ' selected' : ''}>전체 회사</option>
+        ${companies.map(c => `<option value="${escAttr(c)}"${_rmCompany === c ? ' selected' : ''}>${escHtml(c)}</option>`).join('')}
+      </select>
+      <select id="rmSort" class="form-control" style="width:120px; font-size:13px;" onchange="setRmFilter()" data-help="목록 정렬 기준을 바꿉니다.">
+        <option value="name"${_rmSort === 'name' ? ' selected' : ''}>이름순</option>
+        <option value="company"${_rmSort === 'company' ? ' selected' : ''}>회사순</option>
+      </select>
     </div>
     ${list.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#128100;</div><div class="empty-text">대상이 없습니다</div></div>' : list.map(m => `
       <div class="card" style="padding:12px; margin-bottom:8px;" id="rm-${m.id}">
@@ -7101,6 +7136,8 @@ async function downloadWorkshopRoster() {
 }
 
 // ─── 봉사활동 (개인 전용) ───
+let _volunteerItems = [];
+
 async function showVolunteerPage() {
   const [list, stats] = await Promise.all([
     api('/api/volunteer'),
@@ -7108,9 +7145,17 @@ async function showVolunteerPage() {
   ]);
   if (list === null) return;
   const items = list || [];
+  _volunteerItems = items;
   const count = stats ? stats.count : items.length;
   const totalHours = stats ? Number(stats.total_hours || 0) : 0;
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const yearStr = String(now.getFullYear());
+  const monthStr = today.substring(0, 7);
+  const yearHours = items.filter(v => (v.activity_date || '').split('T')[0].substring(0, 4) === yearStr)
+    .reduce((s, v) => s + Number(v.hours || 0), 0);
+  const monthHours = items.filter(v => (v.activity_date || '').split('T')[0].substring(0, 7) === monthStr)
+    .reduce((s, v) => s + Number(v.hours || 0), 0);
 
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
@@ -7127,6 +7172,14 @@ async function showVolunteerPage() {
       <div class="stat-card">
         <div class="stat-number">${totalHours}</div>
         <div class="stat-label">누적 시간</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${yearHours}</div>
+        <div class="stat-label">올해 시간</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${monthHours}</div>
+        <div class="stat-label">이번 달</div>
       </div>
     </div>
 
@@ -7158,7 +7211,7 @@ async function showVolunteerPage() {
     </div>
 
     ${items.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#129309;</div><div class="empty-text">아직 기록한 봉사활동이 없습니다</div></div>' : items.map(v => `
-      <div class="card" style="padding:12px; margin-bottom:8px;">
+      <div class="card" style="padding:12px; margin-bottom:8px;" id="vol-${v.id}">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
           <div style="min-width:0;">
             <div style="font-size:15px; font-weight:600;">${escHtml(v.title)}</div>
@@ -7167,11 +7220,61 @@ async function showVolunteerPage() {
             </div>
             ${v.content ? `<div style="font-size:13px; color:var(--gray-700); margin-top:6px; white-space:pre-wrap;">${escHtml(v.content)}</div>` : ''}
           </div>
-          <button onclick="deleteVolunteer('${v.id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px; flex-shrink:0;">&times;</button>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button onclick="editVolunteer('${v.id}')" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:13px; font-weight:600;" data-help="이 기록의 내용을 수정합니다.">수정</button>
+            <button onclick="deleteVolunteer('${v.id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px;">&times;</button>
+          </div>
         </div>
       </div>
     `).join('')}
   `;
+}
+
+function editVolunteer(id) {
+  const v = _volunteerItems.find(x => x.id === id);
+  if (!v) return;
+  const date = (v.activity_date || '').split('T')[0];
+  document.getElementById('vol-' + id).innerHTML = `
+    <div style="font-size:14px; font-weight:600; margin-bottom:8px;">봉사활동 수정</div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <div class="form-group" style="flex:1; margin-bottom:0;">
+        <input type="date" id="volEditDate-${id}" class="form-control" value="${date}" style="font-size:13px;" data-help="봉사활동을 한 날짜입니다.">
+      </div>
+      <div class="form-group" style="width:90px; margin-bottom:0;">
+        <input type="number" id="volEditHours-${id}" class="form-control" value="${escAttr(String(Number(v.hours || 0)))}" placeholder="시간" min="0" step="0.5" style="font-size:13px;" data-help="봉사한 시간입니다.">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <input type="text" id="volEditTitle-${id}" class="form-control" value="${escAttr(v.title || '')}" placeholder="활동명" data-help="봉사활동 제목입니다.">
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <div class="form-group" style="flex:1; margin-bottom:0;">
+        <input type="text" id="volEditLocation-${id}" class="form-control" value="${escAttr(v.location || '')}" placeholder="장소" style="font-size:13px;" data-help="봉사활동 장소입니다.">
+      </div>
+      <div class="form-group" style="width:90px; margin-bottom:0;">
+        <input type="number" id="volEditParticipants-${id}" class="form-control" value="${escAttr(String(v.participants || 1))}" placeholder="인원" min="1" style="font-size:13px;" data-help="참여 인원 수입니다.">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <textarea id="volEditContent-${id}" class="form-control" placeholder="활동 내용 (선택)" data-help="활동 내용입니다.">${escHtml(v.content || '')}</textarea>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-outline btn-sm" style="flex:1;" onclick="showVolunteerPage()">취소</button>
+      <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveVolunteer('${id}')" data-help="수정한 내용을 저장합니다.">저장</button>
+    </div>
+  `;
+}
+
+async function saveVolunteer(id) {
+  const activity_date = document.getElementById('volEditDate-' + id).value;
+  const title = document.getElementById('volEditTitle-' + id).value.trim();
+  if (!activity_date || !title) { toast('봉사일자와 활동명을 입력하세요'); return; }
+  const hours = parseFloat(document.getElementById('volEditHours-' + id).value) || 0;
+  const location = document.getElementById('volEditLocation-' + id).value.trim();
+  const participants = parseInt(document.getElementById('volEditParticipants-' + id).value) || 1;
+  const content = document.getElementById('volEditContent-' + id).value.trim();
+  const res = await api(`/api/volunteer/${id}`, { method: 'PUT', body: { activity_date, title, location, hours, participants, content } });
+  if (res) { toast('수정되었습니다'); showVolunteerPage(); }
 }
 
 async function addVolunteer() {
