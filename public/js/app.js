@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { id: 'notices', icon: '&#128227;', label: '공지사항', action: 'showNoticesList' },
   { id: 'board', icon: '&#128172;', label: '게시판', action: 'showBoard' },
   { id: 'todo', icon: '&#9745;', label: '할 일', action: 'showTodoPage' },
+  { id: 'volunteer', icon: '&#129309;', label: '봉사활동', action: 'showVolunteerPage' },
   { id: 'attendance', icon: '&#128339;', label: '출퇴근', action: 'showAttendancePage' },
   { id: 'schedule', icon: '&#128197;', label: '팀 일정', action: 'showSchedulePage' },
   { id: 'bookmarks', icon: '&#11088;', label: '즐겨찾기', action: 'showBookmarks' },
@@ -1125,6 +1126,10 @@ async function renderMore() {
       <button class="quick-action-btn" onclick="showTodoPage()" style="border:2px solid #10b981;">
         <span class="qa-icon">&#9745;</span>
         <span class="qa-label" style="color:#10b981; font-weight:700;">할 일 관리</span>
+      </button>
+      <button class="quick-action-btn" onclick="showVolunteerPage()" style="border:2px solid #db2777;" data-help="참여한 봉사활동을 기록하고 누적 봉사시간을 관리합니다. (본인만 봅니다)">
+        <span class="qa-icon">&#129309;</span>
+        <span class="qa-label" style="color:#db2777; font-weight:700;">봉사활동</span>
       </button>
       <button class="quick-action-btn" onclick="showAttendancePage()" style="border:2px solid #6366f1;">
         <span class="qa-icon">&#128339;</span>
@@ -7093,4 +7098,93 @@ async function downloadWorkshopRoster() {
   } catch (e) {
     toast('다운로드 실패: ' + e.message);
   }
+}
+
+// ─── 봉사활동 (개인 전용) ───
+async function showVolunteerPage() {
+  const [list, stats] = await Promise.all([
+    api('/api/volunteer'),
+    api('/api/volunteer/stats')
+  ]);
+  if (list === null) return;
+  const items = list || [];
+  const count = stats ? stats.count : items.length;
+  const totalHours = stats ? Number(stats.total_hours || 0) : 0;
+  const today = new Date().toISOString().split('T')[0];
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <p class="section-title" style="margin:0 0 10px;">&#129309; 봉사활동 <span style="font-size:12px; color:var(--gray-500); font-weight:400;">(본인만 봅니다)</span></p>
+
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="stat-number">${count}</div>
+        <div class="stat-label">총 활동</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${totalHours}</div>
+        <div class="stat-label">누적 시간</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:12px; margin-bottom:16px;">
+      <p style="font-weight:600; margin-bottom:8px; font-size:14px;">새 봉사활동 기록</p>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <input type="date" id="volDate" class="form-control" value="${today}" style="font-size:13px;" data-help="봉사활동을 한 날짜를 선택하세요.">
+        </div>
+        <div class="form-group" style="width:90px; margin-bottom:0;">
+          <input type="number" id="volHours" class="form-control" placeholder="시간" min="0" step="0.5" style="font-size:13px;" data-help="봉사한 시간을 숫자로 적으세요. 예: 2, 3.5">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <input type="text" id="volTitle" class="form-control" placeholder="활동명 (예: 연탄 나눔 봉사)" data-help="어떤 봉사활동이었는지 제목을 적으세요.">
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <input type="text" id="volLocation" class="form-control" placeholder="장소" style="font-size:13px;" data-help="봉사활동을 한 장소를 적으세요.">
+        </div>
+        <div class="form-group" style="width:90px; margin-bottom:0;">
+          <input type="number" id="volParticipants" class="form-control" placeholder="인원" min="1" value="1" style="font-size:13px;" data-help="함께 참여한 인원 수를 적으세요.">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <textarea id="volContent" class="form-control" placeholder="활동 내용 (선택)" data-help="활동 내용을 자유롭게 적으세요. 비워둬도 됩니다."></textarea>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="addVolunteer()" data-help="입력한 봉사활동을 기록에 추가합니다.">기록 추가</button>
+    </div>
+
+    ${items.length === 0 ? '<div class="empty-state"><div class="empty-icon">&#129309;</div><div class="empty-text">아직 기록한 봉사활동이 없습니다</div></div>' : items.map(v => `
+      <div class="card" style="padding:12px; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:15px; font-weight:600;">${escHtml(v.title)}</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:3px;">
+              ${(v.activity_date || '').split('T')[0]}${v.location ? ' · ' + escHtml(v.location) : ''}${Number(v.hours) ? ' · ' + Number(v.hours) + '시간' : ''}${Number(v.participants) > 1 ? ' · ' + v.participants + '명' : ''}
+            </div>
+            ${v.content ? `<div style="font-size:13px; color:var(--gray-700); margin-top:6px; white-space:pre-wrap;">${escHtml(v.content)}</div>` : ''}
+          </div>
+          <button onclick="deleteVolunteer('${v.id}')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px; flex-shrink:0;">&times;</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function addVolunteer() {
+  const activity_date = document.getElementById('volDate').value;
+  const title = document.getElementById('volTitle').value.trim();
+  if (!activity_date || !title) { toast('봉사일자와 활동명을 입력하세요'); return; }
+  const hours = parseFloat(document.getElementById('volHours').value) || 0;
+  const location = document.getElementById('volLocation').value.trim();
+  const participants = parseInt(document.getElementById('volParticipants').value) || 1;
+  const content = document.getElementById('volContent').value.trim();
+  const res = await api('/api/volunteer', { method: 'POST', body: { activity_date, title, location, hours, participants, content } });
+  if (res) { toast('기록되었습니다'); showVolunteerPage(); }
+}
+
+async function deleteVolunteer(id) {
+  if (!confirm('이 봉사활동 기록을 삭제하시겠습니까?')) return;
+  await api(`/api/volunteer/${id}`, { method: 'DELETE' });
+  showVolunteerPage();
 }

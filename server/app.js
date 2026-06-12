@@ -3037,6 +3037,53 @@ app.delete('/api/todos/:id', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── 봉사활동 (개인 전용) ───
+app.get('/api/volunteer', authMiddleware, async (req, res) => {
+  const result = await query(
+    'SELECT * FROM volunteer_activities WHERE user_id = $1 ORDER BY activity_date DESC, created_at DESC',
+    [req.session.userId]
+  );
+  res.json(result.rows);
+});
+
+app.get('/api/volunteer/stats', authMiddleware, async (req, res) => {
+  const r = await query(
+    'SELECT COUNT(*)::int AS count, COALESCE(SUM(hours), 0) AS total_hours FROM volunteer_activities WHERE user_id = $1',
+    [req.session.userId]
+  );
+  res.json(r.rows[0]);
+});
+
+app.post('/api/volunteer', authMiddleware, async (req, res) => {
+  const { activity_date, title, location, hours, participants, content } = req.body;
+  if (!activity_date || !title) return res.status(400).json({ error: '봉사일자와 활동명을 입력하세요' });
+  let authorName = '';
+  const u = await query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+  if (u.rows[0]) authorName = u.rows[0].name;
+  const id = uuidv4();
+  await query(
+    'INSERT INTO volunteer_activities (id, user_id, author_name, activity_date, title, location, hours, participants, content, company_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+    [id, req.session.userId, authorName, activity_date, title, location || '', hours || 0, participants || 1, content || '', req.session.companyId || null]
+  );
+  res.json({ id });
+});
+
+app.put('/api/volunteer/:id', authMiddleware, async (req, res) => {
+  const { activity_date, title, location, hours, participants, content } = req.body;
+  await query(
+    `UPDATE volunteer_activities SET activity_date = COALESCE($1, activity_date), title = COALESCE($2, title),
+       location = COALESCE($3, location), hours = COALESCE($4, hours), participants = COALESCE($5, participants),
+       content = COALESCE($6, content) WHERE id = $7 AND user_id = $8`,
+    [activity_date || null, title || null, location, hours, participants, content, req.params.id, req.session.userId]
+  );
+  res.json({ ok: true });
+});
+
+app.delete('/api/volunteer/:id', authMiddleware, async (req, res) => {
+  await query('DELETE FROM volunteer_activities WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+  res.json({ ok: true });
+});
+
 // ─── 귀납적 인사이트 분석 ───
 app.get('/api/insights/smart', authMiddleware, async (req, res) => {
   try {

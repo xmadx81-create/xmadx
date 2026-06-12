@@ -151,7 +151,12 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS quick_notes (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL,
       color TEXT DEFAULT '#fef3c7', pinned BOOLEAN DEFAULT false,
-      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS volunteer_activities (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, author_name TEXT DEFAULT '',
+      activity_date DATE NOT NULL, title TEXT NOT NULL, location TEXT DEFAULT '',
+      hours NUMERIC DEFAULT 0, participants INTEGER DEFAULT 1,
+      content TEXT DEFAULT '', company_id TEXT, created_at TIMESTAMP DEFAULT NOW())`
   ];
   for (const sql of tables) {
     await query(sql);
