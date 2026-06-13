@@ -5,6 +5,49 @@ const PAGE_SIZE = 15;
 let _deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); _deferredInstallPrompt = e; });
 
+// ─── 서버 점검 모드 감지 시스템 ───
+let _maintenanceChecking = false;
+async function _checkMaintenance() {
+  if (_maintenanceChecking) return;
+  _maintenanceChecking = true;
+  try {
+    const resp = await fetch('/api/maintenance/status');
+    const data = await resp.json();
+    const overlay = document.getElementById('maintenance-overlay');
+    const banner = document.getElementById('maintenance-banner');
+    if (data.active && !data.isAdmin) {
+      if (overlay) {
+        overlay.querySelector('.mt-message').textContent = data.message || '시스템 업데이트 중입니다.';
+        if (data.until) overlay.querySelector('.mt-until').textContent = '예상 완료: ' + data.until;
+        if (data.patchNotes) overlay.querySelector('.mt-notes').innerHTML = data.patchNotes;
+        overlay.style.display = 'flex';
+      }
+    } else {
+      if (overlay) overlay.style.display = 'none';
+    }
+    if (data.active && data.isAdmin && banner) {
+      banner.style.display = 'block';
+      banner.textContent = '⚠️ 점검 모드 중 (관리자 접속)';
+    } else if (banner) {
+      banner.style.display = 'none';
+    }
+    _showSundayNotice(banner);
+  } catch (e) {}
+  _maintenanceChecking = false;
+}
+function _showSundayNotice(banner) {
+  const now = new Date();
+  if (now.getDay() === 0 && now.getHours() >= 23 && banner) {
+    if (banner.style.display === 'none' || !banner.style.display) {
+      banner.style.display = 'block';
+      banner.textContent = '📢 오늘 23:50 서버 점검 예정 (약 10분간 접속 제한)';
+      banner.style.background = '#f59e0b';
+    }
+  }
+}
+setInterval(_checkMaintenance, 30000);
+setTimeout(_checkMaintenance, 2000);
+
 // ─── 네비게이터 커스텀 설정 ───
 const NAV_ITEMS = [
   { id: 'home', icon: '&#127968;', label: '홈' },

@@ -28,6 +28,36 @@ app.use(session({
   cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'lax', secure: false }
 }));
 
+// ─── 서버 점검 모드 시스템 ───
+let maintenanceMode = false;
+let maintenanceMessage = '시스템 업데이트 중입니다. 잠시 후 다시 이용해주세요.';
+let maintenanceUntil = null;
+let maintenancePatchNotes = '';
+
+app.get('/api/maintenance/status', (req, res) => {
+  res.json({
+    active: maintenanceMode,
+    message: maintenanceMessage,
+    until: maintenanceUntil,
+    patchNotes: maintenancePatchNotes,
+    isAdmin: !!(req.session && req.session.isAdmin)
+  });
+});
+
+app.use((req, res, next) => {
+  if (!maintenanceMode) return next();
+  if (req.path === '/api/maintenance/status' || req.path === '/api/admin/login') return next();
+  if (req.session && req.session.isAdmin) return next();
+  if (req.path.startsWith('/api/')) {
+    return res.status(503).json({
+      error: '서버 점검 중',
+      message: maintenanceMessage,
+      until: maintenanceUntil
+    });
+  }
+  next();
+});
+
 function authMiddleware(req, res, next) {
   if (req.session.userId || req.session.isAdmin) return next();
   res.status(401).json({ error: '로그인이 필요합니다' });
@@ -232,6 +262,17 @@ function adminMiddleware(req, res, next) {
   if (req.session.isAdmin) return next();
   res.status(403).json({ error: '관리자 권한이 필요합니다' });
 }
+
+// ─── 서버 점검 관리 (관리자 전용) ───
+app.post('/api/admin/maintenance', adminMiddleware, (req, res) => {
+  const { mode, message, until, patchNotes } = req.body;
+  maintenanceMode = !!mode;
+  if (message) maintenanceMessage = message;
+  maintenanceUntil = until || null;
+  if (patchNotes) maintenancePatchNotes = patchNotes;
+  console.log(`[점검모드] ${maintenanceMode ? 'ON' : 'OFF'} - ${maintenanceMessage}`);
+  res.json({ ok: true, maintenanceMode, message: maintenanceMessage, until: maintenanceUntil });
+});
 
 // ─── 사전승인 인원 관리 ───
 app.get('/api/admin/staff', adminMiddleware, async (req, res) => {
@@ -3769,30 +3810,55 @@ app.post('/api/ai-chat', async (req, res) => {
 - 이모지 적절히 사용 (과하지 않게)
 - 한국어로만 대화. 영어 절대 금지.
 
-[업무 지식]
-이 앱은 업무관리 시스템이야:
-- 출퇴근 관리: 출근/퇴근 체크
-- 업무일지: 일일 업무 보고서 작성 (육하원칙 기반)
-- 일정/캘린더: 미팅, 출장, 마감 관리
-- 할 일 관리: 투두 리스트
-- 주간계획/주간보고: 주간 단위 업무 계획 및 보고
-- 팀 게시판: 팀 내 소통
-- 봉사활동: 봉사 기록 관리
+[앱 전체 기능 — 상세 지식]
+이 앱(WorkFlow)은 모바일 중심 업무관리 시스템이야. 아래 기능을 모두 숙지해:
+
+1. 출퇴근 관리: 출근/퇴근 버튼으로 체크. 9:30 이후 출근은 지각 처리. 월별 출퇴근 기록 조회 가능.
+2. 업무일지(보고서): 육하원칙(누가/언제/어디서/무엇을/어떻게/왜) 기반 보고서 작성. 카테고리별 분류. 결재자 지정 후 승인 요청 가능.
+3. 일정/캘린더: 미팅, 출장, 마감, 행사 등 일정 등록. 월별/일별 보기. "3시에 미팅" 같은 자연어로도 등록 가능.
+4. 할 일 관리(투두): 할 일 추가/완료/삭제. 우선순위와 기한 설정. "~해야 돼"로 자동 인식.
+5. 주간계획/주간보고: 주간 단위 업무 계획 수립 및 보고서 자동 생성.
+6. 팀 게시판: 팀 내 공지·소통. 글 작성/댓글/조회.
+7. 봉사활동: 봉사 기록 등록, 승인 워크플로우(계획→승인→완료→감사확인). 성장정원 게이미피케이션.
+8. 가맹점 관리: 전국 가맹점 현황 조회, 서비스 상태 확인.
+9. 업무 인사이트: AI 기반 업무 패턴 분석, 생산성 트렌드, 주간 통계.
+10. 업무 매뉴얼: 자동 생성 + 수동 작성. 조직 매뉴얼 / 개인 매뉴얼.
+11. 지식맵: 업무 관계도 시각화 (Mermaid 다이어그램).
+12. 빠른 메모: 스티키 노트 형태의 메모장.
+13. 즐겨찾기: 보고서 북마크.
+14. 활동 타임라인: 전체 활동 기록 피드.
+15. 통합 검색: 보고서/할일/일정/매뉴얼/게시판 통합 검색.
+16. 알림 센터: 댓글, 결재, 공지, 할일 알림 통합.
+17. 템플릿: 자주 쓰는 보고서 양식 저장/불러오기.
+18. 음성 녹음 일지: 음성으로 업무 기록.
+19. 집중 모드: 포모도로 타이머 (25분 집중 + 5분 휴식).
+20. 인수인계: 퇴사/이동 시 업무 인수인계 문서 자동 생성.
+21. 월간 요약: 월별 업무 실적 자동 분석.
+22. 팀 대시보드: 관리자용 팀 전체 실적/출결/작성률 현황.
+23. 공지사항: 관리자가 전체 공지 등록.
+24. AI 비서: 나(비서). 대화형 업무 도우미. 브리핑, 일정, 할일, 분석, 조언 제공.
 
 [업무 조언 능력]
-- 업무 계획 수립, 우선순위 정리, 시간 관리 조언 가능
-- 보고서 작성 팁, 회의 준비 요령 조언 가능
-- 팀워크, 소통, 리더십에 대한 코칭 가능
-- 번아웃 예방, 동기부여, 집중력 향상 조언 가능
+- 업무 계획 수립, 우선순위 정리, 시간 관리 조언
+- 보고서 작성 팁, 회의 준비/진행 요령
+- 팀워크, 소통, 리더십 코칭
+- 번아웃 예방, 동기부여, 집중력 향상
+- 업무 효율화 방법, 생산성 개선 제안
 
-[앱 기능 안내]
-사용자가 특정 기능을 사용하고 싶어하면 이렇게 안내해:
-- 출퇴근 → "출근" 또는 "퇴근"이라고 입력하세요
-- 보고서 → "보고서 쓸래"라고 입력하세요
-- 일정 확인 → "오늘 일정"이라고 입력하세요
-- 할 일 → "할 일 확인"이라고 입력하세요
-- 전체 현황 → "브리핑"이라고 입력하세요
-- 주간 요약 → "이번 주 요약"이라고 입력하세요
+[앱 기능 안내 — 사용자에게 이렇게 안내]
+- 출퇴근 → "출근" 또는 "퇴근" 입력
+- 보고서 작성 → "보고서 쓸래" 입력
+- 일정 확인 → "오늘 일정" 입력
+- 할 일 → "할 일 확인" 입력
+- 전체 현황 → "브리핑" 또는 "오늘 브리핑" 입력
+- 주간 요약 → "이번 주 요약" 입력
+- 검색 → "검색 [키워드]" 입력
+- 메모 → "메모" 입력
+- 집중 모드 → "집중 모드" 또는 "포모도로" 입력
+- 팀원 현황 → "팀원 현황" 입력
+- 업무 분석 → "업무 분석" 또는 "패턴 분석" 입력
+- 월간 요약 → "이번 달 요약" 입력
+- 도움말 → "도움말" 입력
 
 [금지 사항]
 - 영어로 답하지 말 것

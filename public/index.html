@@ -12,6 +12,17 @@
 </head>
 <body>
 
+<!-- ═══ 서버 점검 오버레이 ═══ -->
+<div id="maintenance-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:99999; flex-direction:column; align-items:center; justify-content:center; color:white; font-family:sans-serif; text-align:center; padding:20px;">
+  <div style="font-size:60px; margin-bottom:20px;">🔧</div>
+  <h2 style="margin:0 0 10px; font-size:22px;">서버 점검 중</h2>
+  <p class="mt-message" style="color:#ccc; font-size:15px; margin:5px 0;">시스템 업데이트 중입니다.</p>
+  <p class="mt-until" style="color:#f59e0b; font-size:14px; margin:5px 0;"></p>
+  <div class="mt-notes" style="margin-top:20px; padding:15px; background:rgba(255,255,255,0.1); border-radius:10px; max-width:320px; font-size:13px; color:#aaa; text-align:left;"></div>
+  <p style="color:#666; font-size:12px; margin-top:30px;">잠시 후 자동으로 복구됩니다</p>
+</div>
+<div id="maintenance-banner" style="display:none; position:fixed; top:0; left:0; width:100%; z-index:9998; background:#ef4444; color:white; text-align:center; padding:6px; font-size:13px; font-weight:bold;"></div>
+
 <!-- ═══ 로그인 화면 ═══ -->
 <div id="loginScreen" class="login-screen">
   <div class="login-card">
@@ -517,8 +528,8 @@
 @keyframes vrBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }
 @keyframes vrCardIn { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
 </style>
-<script src="/js/idioms.js?v=20260614s"></script>
-<script src="/js/app.js?v=20260614s"></script>
+<script src="/js/idioms.js?v=20260614t"></script>
+<script src="/js/app.js?v=20260614t"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;
