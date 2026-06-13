@@ -9519,14 +9519,25 @@ async function _aiProcessChat(input, _detections) {
     return { reply: _geminiResult, suggests: _gSugg };
   }
 
-  // ─── 최종 fallback ───
+  // ─── 최종 fallback (Gemini 실패 시) — 자연스러운 공감 ───
   const h3 = new Date().getHours();
-  const fallbacks = h3 < 12
-    ? ['좋은 아침이에요! 무엇을 도와드릴까요? ☀️', '오늘도 파이팅! 뭘 도와줄까?']
-    : h3 < 18
-    ? ['네, 말씀하세요! 뭘 도와드릴까요? 😊', '응응, 뭘 해줄까?']
-    : ['수고하셨어요! 뭘 도와드릴까요? 🌙', '오늘 하루도 고생~ 뭘 해줄까?'];
-  return { reply: _say(fallbacks[0], fallbacks[1]), suggests: ['도움말', '오늘 브리핑', '오늘 일정'] };
+  const casual = /으휴|에휴|하[.…]+|ㅠ|힘들|지친|짜증|피곤/.test(t);
+  const fun = /ㅋ|ㅎ|ㅎㅎ|ㅋㅋ|웃|재밌/.test(t);
+  let fb;
+  if (casual) {
+    fb = h3 < 18
+      ? ['그런 날도 있죠... 오늘 하루 잘 버티고 있는 거예요 💪', '에이 그래도 여기까지 온 거 대단한 거야~']
+      : ['오늘 하루 고생 많았어요. 내일은 분명 더 나을 거예요 🌙', '수고했어~ 오늘 하루 충분히 잘했어!'];
+  } else if (fun) {
+    fb = ['ㅋㅋ 좋은 에너지네요! 😄', 'ㅎㅎ 기분 좋아 보이는데~'];
+  } else {
+    fb = h3 < 12
+      ? ['오늘 하루도 응원해요! 천천히 시작해봐요 ☀️', '좋은 아침~ 오늘도 한 걸음씩!']
+      : h3 < 18
+      ? ['오후도 힘내봐요! 벌써 반이나 왔잖아요 😊', '반 넘었다~ 조금만 더 파이팅!']
+      : ['오늘도 수고 많았어요. 푹 쉬세요 🌙', '하루 마무리 잘 하고 있네~ 수고했어!'];
+  }
+  return { reply: _say(fb[0], fb[1]), suggests: ['오늘 브리핑', '오늘 일정', '도움말'] };
 }
 
 async function _aiExecuteActions(actions) {

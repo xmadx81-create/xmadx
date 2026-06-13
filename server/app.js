@@ -4096,7 +4096,7 @@ ${hour < 9 ? '→ 아침 시간대: 하루 시작 응원' : hour < 12 ? '→ 오
     res.json({ reply, actions });
   } catch (err) {
     console.error('Gemini API error:', err.message);
-    res.status(500).json({ error: 'AI 호출 실패: ' + err.message });
+    res.status(500).json({ error: 'AI 호출 실패' });
   }
 });
 
