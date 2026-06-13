@@ -4062,35 +4062,28 @@ ${hour < 9 ? '→ 아침 시간대: 하루 시작 응원' : hour < 12 ? '→ 오
     }
     contents.push({ role: 'user', parts: [{ text: message }] });
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`;
     const geminiBody = JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents,
       generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
     });
 
-    let data;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 15000);
-        const resp = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: ac.signal,
-          body: geminiBody
-        });
-        clearTimeout(timer);
-        data = await resp.json();
-        if (!data.error && data.candidates?.[0]?.content?.parts?.[0]?.text) break;
-        if (attempt === 0) { await new Promise(r => setTimeout(r, 2000)); continue; }
-      } catch (e) {
-        if (attempt === 0) { await new Promise(r => setTimeout(r, 2000)); continue; }
-        throw e;
-      }
-    }
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 15000);
+    const resp = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ac.signal,
+      body: geminiBody
+    });
+    clearTimeout(timer);
+    const data = await resp.json();
 
-    if (data?.error) return res.status(500).json({ error: data.error.message });
+    if (data?.error) {
+      console.error('Gemini error:', JSON.stringify(data.error).substring(0, 200));
+      return res.status(500).json({ error: data.error.message });
+    }
     const rawReply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!rawReply) return res.status(500).json({ error: 'AI 응답 없음' });
 
@@ -4132,7 +4125,7 @@ app.post('/api/ai-parse-report', authMiddleware, async (req, res) => {
 
   try {
     const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4202,7 +4195,7 @@ app.post('/api/ai-parse-intent', authMiddleware, async (req, res) => {
 
   try {
     const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4245,7 +4238,7 @@ app.use((err, req, res, next) => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`WorkFlow 서버 실행: http://localhost:${PORT}`);
     const GK = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GK}`, {
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GK}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ text: '안녕' }] }], generationConfig: { maxOutputTokens: 10 } })
     }).then(() => console.log('Gemini 워밍업 완료')).catch(() => console.log('Gemini 워밍업 실패 (무시)'));
