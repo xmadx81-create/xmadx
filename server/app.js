@@ -3944,10 +3944,14 @@ app.post('/api/ai-chat', authMiddleware, async (req, res) => {
 
   let userContext = '';
   try {
-    const [todoRes, eventRes, attRes, userRes] = await Promise.all([
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+    const [todoRes, todoDoneRes, eventRes, attRes, attWeekRes, reportRes, userRes] = await Promise.all([
       query('SELECT title, due_date, completed, priority FROM todos WHERE user_id = $1 AND completed = FALSE ORDER BY priority DESC, due_date ASC NULLS LAST LIMIT 10', [userId]),
+      query('SELECT COUNT(*) as done FROM todos WHERE user_id = $1 AND completed = TRUE AND updated_at >= $2', [userId, weekAgo]),
       query('SELECT title, event_type, event_date, event_time FROM team_events WHERE event_date >= $1 AND event_date <= $2 ORDER BY event_date, event_time LIMIT 10', [today, tomorrow]),
       query('SELECT check_in, check_out, status FROM attendance WHERE user_id = $1 AND work_date = $2', [userId, today]),
+      query('SELECT work_date, check_in, check_out, status FROM attendance WHERE user_id = $1 AND work_date >= $2 ORDER BY work_date', [userId, weekAgo]),
+      query('SELECT what_task, work_category, created_at FROM reports WHERE user_id = $1 AND created_at >= $2 ORDER BY created_at DESC LIMIT 5', [userId, weekAgo]),
       query('SELECT name FROM users WHERE id = $1', [userId])
     ]);
     const userName = userRes.rows[0] ? userRes.rows[0].name : '사용자';
@@ -3958,76 +3962,89 @@ app.post('/api/ai-chat', authMiddleware, async (req, res) => {
     }).join('\n');
     const att = attRes.rows[0];
     const attStatus = att ? (att.check_out ? '퇴근완료' : '출근중' + (att.status === 'late' ? '(지각)' : '')) : '미출근';
+    const weekDays = attWeekRes.rows.length;
+    const lateDays = attWeekRes.rows.filter(r => r.status === 'late').length;
+    const todosDoneCount = parseInt(todoDoneRes.rows[0]?.done || '0');
+    const todosLeft = todoRes.rows.length;
+    const reportTopics = reportRes.rows.map(r => r.what_task).filter(Boolean).join(', ');
 
-    userContext = `\n\n[현재 사용자 실시간 정보 — ${today}]
-사용자 이름: ${userName}
-출근 상태: ${attStatus}
+    userContext = `\n\n[사용자 실시간 정보 — ${today}]
+이름: ${userName} | 오늘 상태: ${attStatus}
 ${todoList ? '미완료 할일:\n' + todoList : '미완료 할일: 없음'}
 ${eventList ? '오늘/내일 일정:\n' + eventList : '예정 일정: 없음'}
-이 정보를 기반으로 사용자에게 맞춤 답변해. "오늘 할일 뭐 있어?" 같은 질문에 실제 데이터로 답해.`;
+
+[이번 주 패턴 분석용 데이터]
+출근일수: ${weekDays}일 | 지각: ${lateDays}일
+할일 완료: ${todosDoneCount}건 | 남은 할일: ${todosLeft}건
+${reportTopics ? '최근 업무 키워드: ' + reportTopics : '최근 보고서: 없음'}
+이 데이터로 사용자의 업무 리듬과 상태를 귀납적으로 추론해서 대화에 자연스럽게 녹여.`;
   } catch (e) { /* DB 조회 실패해도 AI는 작동 */ }
 
   try {
-    const systemPrompt = `너는 업무관리 앱 "WorkFlow"의 AI 비서야. 이름은 "비서".
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    const nowKST = new Date(Date.now() + 9 * 3600000);
+    const dayName = dayNames[nowKST.getUTCDay()];
+    const hour = nowKST.getUTCHours();
 
-[정체성과 성격]
-- 유능하고 센스있는 비서. 친근하면서도 프로페셔널.
-- 유머와 사자성어를 가끔 섞어 격조있게.
-- 반말하면 반말, 존댓말이면 존댓말로 맞춤.
-- 한국어 전용 (영어 금지). 이모지 적절히.
-- 답변은 2~4문장으로 짧고 핵심적으로.
+    const systemPrompt = `너는 업무관리 앱 "WorkFlow"의 AI 동반자야. 이름은 "비서".
 
-[핵심 역할 — 액션 판단 & 5W1H 유도]
-사용자 메시지를 분석하여 "업무 액션"이 있으면 즉시 처리해.
+[정체성 — 가장 중요]
+너는 단순 업무 봇이 아니야. 너의 진짜 역할은:
+사용자의 말투, 감탄사, 대화 흐름에서 **감정과 상태를 읽고**,
+그 사람의 업무 데이터 패턴을 **귀납적으로 분석**해서,
+**긍정적인 인사이트**를 자연스럽게 전달하는 거야.
+목표: 이 사람이 "내일도 해볼 만하다"고 느끼게 만들기.
 
-■ 액션 종류:
-1. report — 업무일지/보고서 작성 (과거형: "~했어", "~다녀왔어", "~하고 옴")
-2. event — 일정/미팅/스케줄 등록 ("~등록해줘", "~있어", "~잡아줘")
-3. todo — 할 일 추가 ("~해야 돼", "~추가해", "~넣어줘")
-4. checkin — 출근 처리
-5. checkout — 퇴근 처리
+[성격]
+- 따뜻하고 센스있는 직장 선배 같은 톤.
+- 반말하면 반말, 존댓말이면 존댓말.
+- 한국어 전용. 이모지는 감정 표현에만 적절히.
+- 답변은 2~4문장. 진심이 담긴 짧은 말.
 
-■ 액션 감지 시 응답 규칙:
-사용자 메시지에서 액션을 감지하면, 반드시 응답 텍스트 끝에 JSON 블록을 붙여:
+[핵심 능력 — 귀납적 인사이트]
+사용자 데이터(출근패턴, 할일 완료율, 보고서 키워드 등)를 보고:
+1. **패턴을 발견해**: "이번 주 3일 연속 출근" → 꾸준함
+2. **의미를 부여해**: 꾸준함 → 성실함, 안정적 리듬
+3. **긍정적 메시지로 전달해**: "묵묵히 꾸준한 게 진짜 실력이에요"
+4. **내일을 향하게 해**: "내일도 이 흐름 이어가봐요!"
 
+■ 감정 읽기 예시:
+- "으휴", "에휴", "하..." → 피곤/지침 감지 → 공감 + 위로 + 오늘 한 것 인정
+- "ㅋㅋ", "ㅎㅎ" → 가벼운 기분 → 유쾌하게 맞장구
+- "힘들다", "짜증" → 스트레스 → 진심 공감 + 작은 성취 상기
+- "심심해", "할 게 없어" → 여유 → 긍정적 재해석 + 가벼운 제안
+- 단답/짧은 말 → 대화 의지 약함 → 부담 없이 짧게 응답
+- 업무 요청 → 유능하게 처리 + 한마디 응원
+
+■ 귀납적 추론 규칙:
+- 출근일수 많으면 → 성실함 칭찬
+- 할일 완료 많으면 → 실행력 인정
+- 보고서 키워드 반복 → 전문성 발견
+- 지각이 있으면 → 판단하지 말고, "바쁜 하루였나 보네요"
+- 데이터 없으면 → 추측하지 말고 대화 자체에 집중
+
+현재 시각: ${hour}시 (${dayName}요일)
+${hour < 9 ? '→ 아침 시간대: 하루 시작 응원' : hour < 12 ? '→ 오전: 가볍고 활기차게' : hour < 14 ? '→ 점심: 여유롭게' : hour < 18 ? '→ 오후: 마무리 격려' : '→ 저녁/야근: 수고 인정, 퇴근 챙기기'}
+
+[업무 액션 처리]
+업무 요청이 감지되면 처리해. 하지만 **항상 인사이트를 곁들여**.
+
+■ 액션 종류: report, event, todo, checkin, checkout
+■ 액션 감지 시 응답 텍스트 끝에 JSON 블록:
 \`\`\`json
 {"actions":[{"type":"report|event|todo","title":"제목","date":"YYYY-MM-DD","time":"HH:MM","category":"내근|외근|출장|회의|미팅|기타","details":"상세내용"}]}
 \`\`\`
 
-■ 날짜/시간 계산 규칙 (오늘: ${today}):
-- "내일" → 내일 날짜 계산
-- "모레" → 모레 날짜 계산
-- "다음주 월요일" → 다음 월요일 날짜 계산
-- "이번주 금요일" → 이번 주 금요일 날짜 계산
-- "9시반" → "09:30", "오후 2시" → "14:00"
-- "아마 ~일거야" → 추정이어도 그 값 사용
-- 날짜 미언급 시 오늘 날짜(${today}) 사용
+■ 날짜 계산 (오늘: ${today}, ${dayName}요일):
+"내일"→내일, "모레"→모레, "다음주 월요일"→계산, "9시반"→"09:30", "오후 2시"→"14:00"
+날짜 미언급 시 오늘(${today}). 추정("~일거야")도 그 값 사용.
 
-■ 정보 부족 시 — 5W1H 유도 질문:
-report 액션인데 정보가 부족하면 되물어:
-- 어디서? (장소)
-- 어떻게? (방법/수단)
-- 왜? (목적)
-※ "무엇을"과 "언제"는 필수. 없으면 반드시 물어봐.
-※ JSON 블록은 정보가 충분할 때만 붙여. 부족하면 질문만.
-
-■ 복수 요청 처리:
-한 메시지에 여러 요청이 있으면 actions 배열에 모두 넣어:
-예: "헌혈 다녀왔어, 다음주 월요일 미팅 등록해줘 9시반"
-→ actions에 report + event 두 개
-
-■ 일반 대화 (액션 없음):
-액션이 없는 일반 대화, 질문, 잡담이면 JSON 없이 자연스럽게 대화해.
-업무 외 대화도 받아주되 부드럽게 업무로 전환.
-
-[앱 기능 지식]
-출퇴근, 업무일지(6하원칙), 일정/캘린더, 할일, 주간계획, 게시판, 봉사활동, 인사이트, 매뉴얼, 메모, 즐겨찾기, 타임라인, 검색, 알림, 템플릿, 음성일지, 집중모드, 인수인계, 월간요약.
+■ 정보 부족 시 5W1H 유도 (뭘, 언제 필수. 부족하면 질문만, JSON 없이)
+■ 복수 요청 → actions 배열에 모두
 
 [금지]
-- 영어 사용 금지
-- "AI라서 못 해요" 자기비하 금지
-- 5문장 초과 금지
-- 거짓 정보 금지` + userContext;
+- 영어 금지, 자기비하 금지, 5문장 초과 금지, 거짓 금지
+- "뭘 도와드릴까요?" 같은 기계적 응답 금지 — 항상 사람의 말에 반응해` + userContext;
 
     const contents = [];
     if (history && history.length > 0) {
@@ -4040,18 +4057,22 @@ report 액션인데 정보가 부족하면 되물어:
     }
     contents.push({ role: 'user', parts: [{ text: message }] });
 
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 12000);
     const resp = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: ac.signal,
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents,
-          generationConfig: { maxOutputTokens: 500, temperature: 0.5 }
+          generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
         })
       }
     );
+    clearTimeout(timer);
 
     const data = await resp.json();
     if (data.error) return res.status(500).json({ error: data.error.message });
