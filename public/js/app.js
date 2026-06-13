@@ -7529,10 +7529,40 @@ async function vgConversation() {
       }
     } catch(_) {}
     const h = new Date().getHours();
-    const closing = h >= 18 ? '오늘도 수고 많으셨어요. 푹 쉬세요! 🌙' : '필요하면 언제든 불러주세요. 오늘도 화이팅! 💪';
-    vgAddBubble(closing, 'bot');
-    await vgSpeak(closing);
-    setTimeout(() => closeVoiceGuide(), 2500);
+    const closing = h >= 18 ? '오늘도 수고 많으셨어요.' : '오늘도 화이팅!';
+    vgAddBubble(closing + ' 더 할 말 있으시면 말씀하세요! 🎤', 'bot');
+    await vgSpeak(closing + ' 더 할 말 있으시면 말씀하세요.');
+    if (!_vgActive) return;
+
+    // 자유 대화 모드: AI 채팅 엔진 연결
+    for (let round = 0; round < 5; round++) {
+      if (!_vgActive) return;
+      document.getElementById('vgStatusText').textContent = '🎤 듣고 있습니다...';
+      const freeResp = await vgListen(8000);
+      document.getElementById('vgStatusText').textContent = '';
+      if (!_vgActive || !freeResp) break;
+      const ft = freeResp.toLowerCase().trim();
+      if (/^(됐어|없어|끝|아니|괜찮|ㄴㄴ|바이|잘\s*가)/.test(ft)) {
+        vgAddBubble(freeResp, 'user');
+        vgAddBubble('네! 필요하면 언제든 불러주세요! 👋', 'bot');
+        await vgSpeak('필요하면 언제든 불러주세요!');
+        break;
+      }
+      vgAddBubble(freeResp, 'user');
+      vgShowThinking();
+      try {
+        const aiResp = await _aiProcessChat(freeResp);
+        await new Promise(r => setTimeout(r, 600));
+        vgAddBubble(aiResp.reply, 'bot');
+        await vgSpeak(aiResp.reply.replace(/[🎬📅✅📝📊📋⏰🔥💪✨👏🌙💡⚠️🍅🎯😊😢😤😩🤔👍🗑️🔍👥📢🕐📜🔢💬━─#●]/g, '').replace(/\n+/g, '. '));
+        if (aiResp.learn) { for (const [k, v] of Object.entries(aiResp.learn)) _aiLearn(k, v); }
+        if (aiResp.action) { aiResp.action(); break; }
+      } catch(_) {
+        vgAddBubble('처리 중 오류가 생겼어요.', 'bot');
+        await vgSpeak('처리 중 오류가 생겼어요.');
+      }
+    }
+    if (_vgActive) setTimeout(() => closeVoiceGuide(), 2500);
   }
 }
 
@@ -8363,7 +8393,7 @@ async function _aiProcessChat(input) {
 
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
-    return { reply: '저는 이런 것들을 도와드릴 수 있어요!\n\n📅 일정 — "오늘 일정", "일정 추가 3시 회의"\n✅ 할 일 — "할 일 추가 OOO", "할 일 완료"\n📝 보고서 — "보고서 쓸래", "음성 기록"\n⏰ 출퇴근 — "출근 체크", "퇴근 처리"\n📊 브리핑 — "오늘 브리핑", "이번 주 요약", "오늘 마무리"\n🎯 생산성 — "목표 설정", "집중 모드", "업무 분석"\n😊 감정 — "기분 좋아/나빠", "기분 통계"\n🔍 검색 — "OOO 검색", "팀원 현황"\n🍜 재미 — "점심 추천", "농담", "명언", "드라마 명대사"\n🔢 계산 — "123 + 456"\n💬 기억 — "OOO 기억해", "말투 바꿔"\n\n무엇이든 편하게 물어보세요! 😊', suggests: ['오늘 브리핑', '집중 모드', '목표 확인'] };
+    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘", "게시판 가자"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 정리해야 돼", "회의록 추가해"\n📝 보고서 — "기록해", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어", "나 간다"\n📊 브리핑 — "바빠?", "뭐부터?", "칼퇴 가능?"\n🎯 생산성 — "집중 모드", "목표 설정", "쉬고 싶어"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🔍 기타 — "검색", "팀원 현황", "이번 달 실적"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 말이 곧 힘입니다! 👑', suggests: ['오늘 브리핑', '열려라 참깨', '드라마 명대사'] };
   }
 
   // --- 감사/칭찬 ---
@@ -9102,6 +9132,116 @@ async function _aiProcessChat(input) {
     localStorage.removeItem('aiMemory');
     localStorage.removeItem('aiGoals');
     return { reply: '모든 기억과 목표를 초기화했어요. 새로 시작합니다! 🔄', suggests: ['도움말', '오늘 일정'] };
+  }
+
+  // ═══════════════════════════════════════════
+  // 말이 곧 법이다! 유니버설 명령 실행 엔진
+  // "열려라 참깨!" → 문이 열린다
+  // ═══════════════════════════════════════════
+
+  // --- 페이지 이동: "열어", "보여줘", "가자", "켜" ---
+  if (/(열어|열기|보여줘|이동|가자|가줘|페이지|화면|켜줘?|실행|이동해|가볼까|들어가)/.test(t)) {
+    const navMap = [
+      { pat: /보고서|일지|리포트/, pg: 'reports', nm: '업무일지' },
+      { pat: /캘린더|달력/, pg: 'calendar', nm: '캘린더' },
+      { pat: /할\s*일|투두|todo/i, pg: 'todos', nm: '할 일 관리' },
+      { pat: /홈|메인|처음|시작/, pg: 'home', nm: '홈' },
+      { pat: /설정|세팅|환경/, pg: 'settings', nm: '설정' },
+      { pat: /게시판|커뮤니티|글/, fn: () => showBoard(), nm: '게시판' },
+      { pat: /공지|알림판/, fn: () => showNoticesList(), nm: '공지사항' },
+      { pat: /검색|찾기/, fn: () => showGlobalSearch(), nm: '통합 검색' },
+      { pat: /출퇴근|근태/, fn: () => showAttendancePage(), nm: '출퇴근 기록' },
+      { pat: /음성\s*가이드|음성\s*비서/, fn: () => startVoiceGuide(), nm: '음성 가이드' },
+    ];
+    for (const n of navMap) {
+      if (n.pat.test(t)) {
+        return { reply: _say('📱 ' + n.nm + ' 열게요!', '📱 ' + n.nm + ' 열게~!'), action: () => { closeAiChat(); n.fn ? n.fn() : navigate(n.pg); } };
+      }
+    }
+  }
+
+  // --- 즉시 실행 명령: "출근해", "퇴근해", "기록해", "작성해" ---
+  if (/^(출근해|출근\s*찍어|출근\s*해줘|출근\s*시작)$/.test(t)) {
+    return { reply: _say('출근 체크할게요! 근무 유형을 선택해주세요.', '출근! 뭘로 할래?'), suggests: ['내근', '외근', '출장'] };
+  }
+  if (/^(퇴근해|퇴근\s*찍어|퇴근\s*해줘|나갈게|간다|집에\s*간다)$/.test(t)) {
+    return { reply: _say('퇴근 처리할게요! 오늘도 수고하셨어요! 🌙', '퇴근! 수고했어! 🌙'), action: () => { closeAiChat(); doCheckOut(); } };
+  }
+  if (/^(기록해|작성해|일지\s*써|보고서\s*써|일지\s*작성|보고서\s*작성|쓸래|쓸거야|작성할래)$/.test(t)) {
+    return { reply: '어떤 방식으로 작성할까요?', suggests: ['음성으로 기록', '직접 작성'] };
+  }
+  if (/^(음성\s*기록|음성으로|말로\s*기록|말로\s*써|음성\s*시작)$/.test(t)) {
+    return { reply: _say('음성 기록을 시작할게요! 🎤', '음성 기록 시작! 🎤'), action: () => { closeAiChat(); startVoiceReport(); } };
+  }
+  if (/^(직접\s*쓸래|직접\s*작성|타이핑|키보드로)$/.test(t)) {
+    return { reply: _say('작성 화면을 열게요! ✏️', '작성 화면 열게! ✏️'), action: () => { closeAiChat(); openNewReport(); } };
+  }
+
+  // --- 즉시 추가 명령: "~추가해", "~등록해", "~만들어" (내용 직접) ---
+  const directAdd = input.match(/^["""]?(.{2,30}?)["""]?\s*(?:추가해|등록해|만들어|넣어|추가해줘|등록해줘|만들어줘|넣어줘)$/);
+  if (directAdd) {
+    const item = directAdd[1].replace(/를|을|좀|이거|저거/g, '').trim();
+    if (item.length >= 2) {
+      try {
+        await api('/api/todos', { method: 'POST', body: { title: item } });
+        return { reply: _say('✅ "' + item + '" 할 일에 추가 완료! 말 한마디로 끝! ⚡', '✅ "' + item + '" 추가! 말이 곧 법! ⚡'), suggests: ['할 일 확인', '하나 더 추가'] };
+      } catch(_) { return { reply: '추가 중 오류가 생겼어요.' }; }
+    }
+  }
+
+  // --- 즉시 완료: "1번 해", "첫번째 끝" ---
+  const quickDone = t.match(/^(\d)번?\s*(해|끝|했어|완료|처리|체크)/);
+  if (quickDone) {
+    try {
+      const todos = await api('/api/todos');
+      const pend = (todos || []).filter(td => !td.completed);
+      const idx = parseInt(quickDone[1]) - 1;
+      if (pend[idx]) {
+        await api('/api/todos/' + pend[idx].id, { method: 'PUT', body: { completed: true } });
+        return { reply: _say('✅ "' + pend[idx].title + '" 완료! ⚡', '✅ "' + pend[idx].title + '" 끝! ⚡'), suggests: ['할 일 확인'] };
+      }
+    } catch(_) {}
+  }
+
+  // --- 마법 주문: 이스터에그 ---
+  if (/열려라\s*참깨/.test(t)) {
+    return { reply: '✨ 열려라 참깨! ✨\n\n문이 열렸습니다! 모든 기능이 당신의 말 한마디에 움직입니다.\n\n' + _say(name + '님, 무엇이든 말씀하세요. 말이 곧 법입니다! 👑', name + ', 뭐든 말해! 말이 곧 법이야! 👑'), suggests: ['오늘 브리핑', '할 일 확인', '드라마 명대사', '도움말'], action: () => { document.body.style.transition = 'filter 0.5s'; document.body.style.filter = 'brightness(1.3)'; setTimeout(() => { document.body.style.filter = ''; }, 1500); } };
+  }
+  if (/수리수리\s*마수리/.test(t)) {
+    return _aiProcessChat('오늘 브리핑');
+  }
+  if (/아브라\s*카다브라/.test(t)) {
+    return _aiProcessChat('우선순위 보기');
+  }
+  if (/제발|살려줘|도와줘|SOS/i.test(t)) {
+    return { reply: _say('🆘 긴급 지원 모드!\n\n지금 바로 도와드릴게요. 뭐가 급한가요?', '🆘 긴급! 뭐가 급해? 바로 도와줄게!'), suggests: ['우선순위 보기', '급한 거 확인', '오늘 브리핑', '도움말'] };
+  }
+
+  // --- 만능 동사 처리: "~해줘" "~할래" "~하자" ---
+  const verbCmd = input.match(/(.{2,15}?)\s*(?:해줘|해주|할래|하자|시작해|시작|실행|고|가자|보자|하고\s*싶)$/);
+  if (verbCmd) {
+    const cmd = verbCmd[1].replace(/를|을|좀|이거|나|내/g, '').trim();
+    const cmdMap = [
+      { kw: /브리핑|요약|현황|상황/, fwd: '오늘 브리핑' },
+      { kw: /일정|스케줄|캘린더/, fwd: '오늘 일정' },
+      { kw: /할\s*일|투두|todo/i, fwd: '할 일 확인' },
+      { kw: /보고서|일지|기록/, fwd: '보고서 쓸래' },
+      { kw: /출근/, fwd: '출근 체크' },
+      { kw: /퇴근/, fwd: '퇴근 처리' },
+      { kw: /집중|포모도로|타이머/, fwd: '집중 모드' },
+      { kw: /검색|찾/, fwd: '도움말' },
+      { kw: /목표/, fwd: '목표 확인' },
+      { kw: /분석|패턴|통계/, fwd: '업무 분석' },
+      { kw: /명언|명대사/, fwd: '드라마 명대사' },
+      { kw: /농담|웃긴|재밌/, fwd: '농담 해줘' },
+      { kw: /점심|밥|식사|먹/, fwd: '점심 추천' },
+      { kw: /응원|격려|힘/, fwd: '응원해줘' },
+      { kw: /마무리|정리/, fwd: '오늘 마무리' },
+      { kw: /팀|팀원/, fwd: '팀원 현황' },
+    ];
+    for (const c of cmdMap) {
+      if (c.kw.test(cmd)) return _aiProcessChat(c.fwd);
+    }
   }
 
   // --- 스마트 폴백: 키워드 기반 의도 추측 ---
