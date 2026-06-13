@@ -139,7 +139,7 @@ async function api(url, options = {}) {
     return data;
   } catch (e) {
     console.error('API error:', e);
-    toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
+    if (currentUser && currentUser.isAdmin) toast('서버 연결 실패. 잠시 후 다시 시도해주세요.');
     return null;
   }
 }
@@ -187,24 +187,15 @@ async function login() {
       try {
         res = await _fetchLogin(phone, password);
       } catch (e2) {
-        let diagMsg = '서버에 연결할 수 없습니다.';
-        try {
-          const h = await fetch('/api/health');
-          const hd = await h.json();
-          diagMsg += `\n\n[진단] 서버: ${hd.status}, DB: ${hd.db}`;
-        } catch (_) {
-          diagMsg += '\n\n[진단] 서버 완전 미응답 — Render 서버가 슬립 상태일 수 있습니다.\n30초 후 다시 시도해주세요.';
-        }
-        showResultModal('error', '서버 연결 실패', diagMsg, '확인');
+        showResultModal('error', '서버 연결 실패', '서버에 연결할 수 없습니다.\n잠시 후 다시 시도해주세요.', '확인');
         return;
       }
     }
     const data = await res.json();
     if (!res.ok) {
-      let errMsg = data.error || '연락처 또는 비밀번호가 올바르지 않습니다.';
-      if (res.status === 500) {
-        errMsg += '\n\n[진단] 서버 내부 오류가 발생했습니다.\n관리자에게 문의해주세요.';
-      }
+      const errMsg = res.status === 500
+        ? '서버가 준비 중입니다. 잠시 후 다시 시도해주세요.'
+        : (data.error || '연락처 또는 비밀번호가 올바르지 않습니다.');
       showResultModal('error', '로그인 실패', errMsg, '확인');
       return;
     }
@@ -3181,7 +3172,7 @@ async function submitRegister() {
     navigate('home');
   } catch (e) {
     resetBtn();
-    showResultModal('error', '서버 연결 실패', '서버에 연결할 수 없습니다.\n잠시 후 다시 시도해주세요.\n\n(오류: ' + e.message + ')', '확인');
+    showResultModal('error', '서버 연결 실패', '서버에 연결할 수 없습니다.\n잠시 후 다시 시도해주세요.', '확인');
   }
 }
 
