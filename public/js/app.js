@@ -8634,7 +8634,6 @@ async function _aiProcessChat(input, _detections) {
   const prof = _aiPersonalProfile();
   const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
   _aiRecordTopic(_aiDetectTopic(t));
-  _aiUnmatchedCount = 0;
   const _style = (mem.facts && mem.facts.chatStyle) || 'formal';
 
   // --- 은어 즉시 응답 ---
@@ -9235,7 +9234,7 @@ async function _aiProcessChat(input, _detections) {
   }
 
   // --- 불만/항의 감지 (30종) ---
-  if (/이게\s*(뭐|뭔|일지|보고서|답|전부)|뭐야\s*이게|싸가지|짜증나|짜증|별로야|별로|쓰레기|이상해|엉뚱|다시\s*해|왜\s*이래|제대로|이거\s*맞아|이게\s*맞아|이게\s*다야|말도\s*안\s*돼|잘못|엉망|개판|못\s*알아|이해\s*못|답답|느려|바보|멍청|한심|황당|어이없|말이\s*돼\??|실망|뭐하는\s*거|쓸모|소용\s*없/.test(t)) {
+  if (/이게\s*(뭐|뭔|일지|보고서|답|전부)|뭐야\s*이게|싸가지|짜증나|짜증|별로야|별로|쓰레기|이상해|엉뚱|다시\s*해|왜\s*이래|제대로|이거\s*맞아|이게\s*맞아|이게\s*다야|말도\s*안\s*돼|잘못|엉망|개판|못\s*알아|이해\s*못|답답|느려|바보|멍청|한심|황당|어이없|말이\s*돼\??|실망|뭐하는\s*거|쓸모|소용\s*없|안\s*돼|안\s*되네|안\s*됨|안\s*되잖|왜\s*안\s*돼|작동.*안|대화.*안/.test(t)) {
     return { reply: '앗, 제가 잘못 이해한 것 같아요 😅\n\n어떤 부분이 잘못됐는지 알려주시면 바로 고쳐볼게요!\n다시 해드릴까요?', suggests: ['다시 해줘', '취소', '도움말'] };
   }
 
@@ -10443,7 +10442,7 @@ async function _aiProcessChat(input, _detections) {
   const _umSimilarity = _aiSimpleSimilarity(t, _aiLastUnmatched);
   _aiLastUnmatched = t;
 
-  if (_aiUnmatchedCount >= 2 && (_umSimilarity > 0.3 || /짜증|답답|아씨|에잇|ㅡㅡ|미치|돌겠|왜\s*이래|아\s*몰라|몰라/.test(t))) {
+  if (_aiUnmatchedCount >= 2 && (_umSimilarity > 0.3 || /짜증|답답|아씨|에잇|ㅡㅡ|미치|돌겠|왜\s*이래|아\s*몰라|몰라|안\s*돼|안\s*되|안되|왜\s*안/.test(t))) {
     _aiUnmatchedCount = 0;
     const rec = await _aiNextAction();
     rec.reply = '😥 죄송해요, 제가 잘 못 알아들었네요.\n바로 현황을 보여드릴게요!\n\n' + rec.reply;
