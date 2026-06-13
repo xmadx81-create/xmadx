@@ -7810,6 +7810,7 @@ function _topicToCmd(topic) {
 }
 
 function closeAiChat() {
+  if (_aiChatVoiceMode) aiChatVoiceToggle();
   document.getElementById('aiChatOverlay').style.display = 'none';
   _aiChatHistory = [];
 }
@@ -7873,26 +7874,139 @@ function _aiChatRemoveThinking() {
   if (el) el.remove();
 }
 
+let _aiChatVoiceMode = false;
+let _aiChatRecog = null;
+
 async function sendAiChat() {
   const input = document.getElementById('aiChatInput');
   const text = input.value.trim();
   if (!text) return;
+  const wasVoice = _aiChatVoiceMode;
   input.value = '';
   _aiChatHideSuggest();
   _aiChatAddUser(text);
   _aiChatThinking();
-  document.getElementById('aiChatStatus').textContent = '입력 중...';
+  document.getElementById('aiChatStatus').textContent = '생각 중...';
 
   const response = await _aiProcessChat(text);
 
   _aiChatRemoveThinking();
-  document.getElementById('aiChatStatus').textContent = '온라인';
+  document.getElementById('aiChatStatus').textContent = _aiChatVoiceMode ? '🎤 음성 대화 중' : '온라인';
   _aiChatAddBot(response.reply);
   if (response.suggests) _aiChatShowSuggest(response.suggests);
   if (response.learn) {
     for (const [k, v] of Object.entries(response.learn)) _aiLearn(k, v);
   }
   if (response.action) response.action();
+
+  if (wasVoice) _aiChatSpeak(response.reply);
+}
+
+function _aiChatSpeak(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const clean = text.replace(/[🎬📅✅📝📊📋⏰🔥💪✨👏🌙💡⚠️🍅🎯😊😢😤😩🤔👍🗑️🔍👥📢🕐📜🔢💬🐱🐛🌊💀😂😆🤣😅😴💧😌🎉💙❌🌟🌱━─#●]/g, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, '. ')
+    .replace(/—/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!clean) return;
+  const chunks = clean.match(/.{1,150}[.!?,\s]|.{1,150}$/g) || [clean];
+  chunks.forEach((chunk, i) => {
+    const utter = new SpeechSynthesisUtterance(chunk.trim());
+    utter.lang = 'ko-KR';
+    utter.rate = 1.05;
+    utter.pitch = 1.0;
+    if (i === chunks.length - 1 && _aiChatVoiceMode) {
+      utter.onend = () => {
+        setTimeout(() => { if (_aiChatVoiceMode && _aiChatRecog) try { _aiChatRecog.start(); } catch(_) {} }, 500);
+      };
+    }
+    window.speechSynthesis.speak(utter);
+  });
+}
+
+function aiChatVoiceToggle() {
+  if (!SpeechRecognition) { toast('이 브라우저는 음성 인식을 지원하지 않습니다.'); return; }
+  const btn = document.getElementById('aiChatMicBtn');
+  const statusEl = document.getElementById('aiChatStatus');
+  const inputEl = document.getElementById('aiChatInput');
+
+  if (_aiChatVoiceMode) {
+    _aiChatVoiceMode = false;
+    if (_aiChatRecog) { try { _aiChatRecog.stop(); } catch(_) {} _aiChatRecog = null; }
+    window.speechSynthesis.cancel();
+    btn.style.background = 'rgba(255,255,255,.12)';
+    btn.innerHTML = '&#127908;';
+    statusEl.textContent = '온라인';
+    inputEl.placeholder = '메시지를 입력하세요...';
+    return;
+  }
+
+  _aiChatVoiceMode = true;
+  btn.style.background = 'linear-gradient(135deg,#ef4444,#f97316)';
+  btn.innerHTML = '⏹';
+  statusEl.textContent = '🎤 음성 대화 중';
+  inputEl.placeholder = '말씀하세요... (음성 인식 중)';
+
+  const recog = new SpeechRecognition();
+  recog.lang = 'ko-KR';
+  recog.interimResults = true;
+  recog.continuous = false;
+  recog.maxAlternatives = 1;
+  _aiChatRecog = recog;
+
+  let finalText = '';
+  let silenceTimer = null;
+
+  recog.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        finalText += e.results[i][0].transcript;
+      } else {
+        interim += e.results[i][0].transcript;
+      }
+    }
+    inputEl.value = finalText + interim;
+    if (silenceTimer) clearTimeout(silenceTimer);
+    if (finalText) {
+      silenceTimer = setTimeout(() => {
+        if (finalText.trim()) {
+          inputEl.value = finalText.trim();
+          try { recog.stop(); } catch(_) {}
+          sendAiChat();
+          finalText = '';
+        }
+      }, 1500);
+    }
+  };
+
+  recog.onend = () => {
+    if (_aiChatVoiceMode && !window.speechSynthesis.speaking) {
+      if (finalText.trim()) {
+        inputEl.value = finalText.trim();
+        sendAiChat();
+        finalText = '';
+      } else {
+        setTimeout(() => { if (_aiChatVoiceMode) try { recog.start(); } catch(_) {} }, 300);
+      }
+    }
+  };
+
+  recog.onerror = (e) => {
+    if (e.error === 'not-allowed') {
+      toast('마이크 권한을 허용해주세요');
+      aiChatVoiceToggle();
+    } else if (e.error === 'no-speech') {
+      if (_aiChatVoiceMode) setTimeout(() => { try { recog.start(); } catch(_) {} }, 300);
+    }
+  };
+
+  recog.start();
+  _aiChatAddBot('🎤 음성 대화 모드가 시작됐어요!\n말씀하시면 듣고 답변해드릴게요.\n\n마이크 버튼을 다시 누르면 종료됩니다.');
+  _aiChatShowSuggest(['오늘 브리핑', '할 일 확인', '오늘 일정']);
 }
 
 async function _aiProcessChat(input) {
