@@ -421,7 +421,7 @@ app.get('/api/search', authMiddleware, async (req, res) => {
   if (!q || q.trim().length < 2) return res.json({ results: [] });
   const kw = `%${q.trim()}%`;
 
-  const [reports, tasks, branches, manuals, meetings] = await Promise.all([
+  const [reports, tasks, branches, manuals, meetings, events, todos, notes, boards] = await Promise.all([
     query(`SELECT r.id, r.what_task, r.content, r.work_category, r.report_date, u.name as author_name
       FROM work_reports r JOIN users u ON r.author_id = u.id
       WHERE r.what_task ILIKE $1 OR r.content ILIKE $1 OR r.where_place ILIKE $1 OR r.how_method ILIKE $1
@@ -437,7 +437,18 @@ app.get('/api/search', authMiddleware, async (req, res) => {
       ORDER BY created_at DESC LIMIT 10`, [kw]),
     query(`SELECT id, title, meeting_date
       FROM meeting_notes WHERE title ILIKE $1 OR summary ILIKE $1
-      ORDER BY meeting_date DESC LIMIT 10`, [kw])
+      ORDER BY meeting_date DESC LIMIT 10`, [kw]),
+    query(`SELECT id, title, event_type, event_date, description
+      FROM team_events WHERE title ILIKE $1 OR description ILIKE $1
+      ORDER BY event_date DESC LIMIT 10`, [kw]),
+    query(`SELECT id, title, due_date, completed FROM todos
+      WHERE user_id = $1 AND (title ILIKE $2)
+      ORDER BY created_at DESC LIMIT 10`, [req.session.userId, kw]),
+    query(`SELECT id, content, color, created_at FROM quick_notes
+      WHERE user_id = $1 AND content ILIKE $2
+      ORDER BY created_at DESC LIMIT 10`, [req.session.userId, kw]),
+    query(`SELECT id, title, created_at FROM board_posts
+      WHERE title ILIKE $1 ORDER BY created_at DESC LIMIT 10`, [kw])
   ]);
 
   const results = [];
@@ -451,6 +462,14 @@ app.get('/api/search', authMiddleware, async (req, res) => {
     sub: r.task_group || '', category: '매뉴얼' }));
   meetings.rows.forEach(r => results.push({ type: 'meeting', id: r.id, title: r.title,
     sub: (r.meeting_date||'').toString().split('T')[0], category: '회의록' }));
+  events.rows.forEach(r => results.push({ type: 'event', id: r.id, title: r.title,
+    sub: `${r.event_type || ''} · ${(r.event_date||'').toString().split('T')[0]}`, category: '일정' }));
+  todos.rows.forEach(r => results.push({ type: 'todo', id: r.id, title: r.title,
+    sub: `${r.completed ? '완료' : '미완료'} · ${r.due_date ? (r.due_date+'').split('T')[0] : '기한없음'}`, category: '할일' }));
+  notes.rows.forEach(r => results.push({ type: 'note', id: r.id, title: (r.content||'').substring(0, 40),
+    sub: (r.created_at||'').toString().split('T')[0], category: '메모' }));
+  boards.rows.forEach(r => results.push({ type: 'board', id: r.id, title: r.title,
+    sub: (r.created_at||'').toString().split('T')[0], category: '게시판' }));
 
   res.json({ query: q, total: results.length, results });
 });
@@ -532,13 +551,31 @@ app.get('/api/dashboard', authMiddleware, async (req, res) => {
     GROUP BY what_task, work_category ORDER BY cnt DESC LIMIT 5
   `, [userId]);
 
+  const todoCountResult = await query(`
+    SELECT COUNT(*) FILTER (WHERE completed = FALSE) as pending,
+           COUNT(*) FILTER (WHERE completed = TRUE AND updated_at >= $2) as done_today
+    FROM todos WHERE user_id = $1
+  `, [userId, today]);
+  const todoStats = todoCountResult.rows[0] || { pending: 0, done_today: 0 };
+
+  const attWeekResult = await query(`
+    SELECT COUNT(*) FILTER (WHERE check_in IS NOT NULL) as attended,
+           COUNT(*) FILTER (WHERE status = 'late') as late_count
+    FROM attendance WHERE user_id = $1 AND work_date >= $2
+  `, [userId, weekDays[0]]);
+  const attStats = attWeekResult.rows[0] || { attended: 0, late_count: 0 };
+
   res.json({
     week_activity: weekActivity,
     my_week_activity: myWeekActivity,
     my_categories: catResult.rows.map(r => ({ name: r.work_category, count: parseInt(r.cnt) })),
     month_count: parseInt(monthResult.rows[0].cnt),
     pending_approvals: parseInt(pendingResult.rows[0].cnt),
-    my_top_tasks: recentTaskResult.rows.map(r => ({ task: r.what_task, category: r.work_category, count: parseInt(r.cnt) }))
+    my_top_tasks: recentTaskResult.rows.map(r => ({ task: r.what_task, category: r.work_category, count: parseInt(r.cnt) })),
+    todos_pending: parseInt(todoStats.pending || 0),
+    todos_done_today: parseInt(todoStats.done_today || 0),
+    att_week_count: parseInt(attStats.attended || 0),
+    att_late_count: parseInt(attStats.late_count || 0)
   });
 });
 
@@ -2544,6 +2581,28 @@ app.get('/api/timeline', authMiddleware, async (req, res) => {
     date: p.created_at, link_id: p.id
   }));
 
+  const tlEvents = await query(`
+    SELECT id, title, event_type, event_date, created_at FROM team_events
+    ORDER BY created_at DESC LIMIT $1 OFFSET $2
+  `, [limit, offset]);
+  tlEvents.rows.forEach(e => items.push({
+    type: 'event', icon: '&#128197;', color: '#ec4899',
+    title: `일정 등록: ${e.event_type}`,
+    sub: `${e.title} (${(e.event_date||'').toString().split('T')[0]})`,
+    date: e.created_at, link_id: e.id
+  }));
+
+  const tlNotes = await query(`
+    SELECT id, content, created_at FROM quick_notes
+    WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+  `, [userId, limit, offset]);
+  tlNotes.rows.forEach(n => items.push({
+    type: 'note', icon: '&#128206;', color: '#f59e0b',
+    title: '메모 작성',
+    sub: (n.content||'').substring(0, 40),
+    date: n.created_at
+  }));
+
   items.sort((a, b) => new Date(b.date) - new Date(a.date));
 
   res.json({ items: items.slice(0, limit), page });
@@ -2947,6 +3006,7 @@ app.get('/api/notifications', authMiddleware, async (req, res) => {
   });
 
   const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
   const todoResult = await query(`
     SELECT id, title, due_date FROM todos
     WHERE user_id = $1 AND completed = FALSE AND due_date IS NOT NULL AND due_date <= $2
@@ -2954,6 +3014,27 @@ app.get('/api/notifications', authMiddleware, async (req, res) => {
   `, [userId, today]);
   todoResult.rows.forEach(t => {
     items.push({ type: 'todo', todo_id: t.id, title: `할 일 마감: ${t.title}`, detail: '', sub: `마감일: ${(t.due_date||'').split('T')[0]}`, time: t.due_date });
+  });
+
+  const eventResult = await query(`
+    SELECT id, title, event_type, event_date, event_time FROM team_events
+    WHERE event_date >= $1 AND event_date <= $2
+    ORDER BY event_date ASC, event_time ASC LIMIT 10
+  `, [today, tomorrow]);
+  eventResult.rows.forEach(e => {
+    const eDate = (e.event_date||'').toString().split('T')[0];
+    const label = eDate === today ? '오늘' : '내일';
+    items.push({ type: 'event', title: `📅 ${label} ${e.event_type}: ${e.title}`, detail: e.event_time || '', sub: label + ' 일정', time: e.event_date });
+  });
+
+  const boardCommentResult = await query(`
+    SELECT bc.id, bc.content, bc.created_at, bc.author_name, bp.title as post_title
+    FROM board_comments bc JOIN board_posts bp ON bc.post_id = bp.id
+    WHERE bp.author_id = $1 AND bc.user_id != $1
+    ORDER BY bc.created_at DESC LIMIT 10
+  `, [userId]);
+  boardCommentResult.rows.forEach(c => {
+    items.push({ type: 'board_comment', title: `${c.author_name}님이 게시글에 댓글`, detail: (c.content||'').substring(0, 40), sub: c.post_title, time: c.created_at });
   });
 
   items.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));

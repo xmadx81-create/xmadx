@@ -510,14 +510,18 @@ async function renderHome() {
         <div class="stat-number">${d.month_count || 0}</div>
         <div class="stat-label">이번 달</div>
       </div>
+      <div class="stat-card" onclick="navigate('more')">
+        <div class="stat-number">${d.todos_pending || 0}</div>
+        <div class="stat-label">할일 남음</div>
+      </div>
       ${d.pending_approvals > 0 ? `
       <div class="stat-card" style="border:2px solid var(--danger); cursor:pointer;" onclick="navigate('reports')">
         <div class="stat-number" style="color:var(--danger);">${d.pending_approvals}</div>
         <div class="stat-label">결재대기</div>
       </div>` : `
       <div class="stat-card">
-        <div class="stat-number">${myReports.filter(r => r.status === 'approved').length}</div>
-        <div class="stat-label">결재완료</div>
+        <div class="stat-number">${d.att_week_count || 0}일</div>
+        <div class="stat-label">이번주 출근</div>
       </div>`}
     </div>
 
