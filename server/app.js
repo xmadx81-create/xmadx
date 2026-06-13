@@ -239,7 +239,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 // ─── 관리자 로그인 ───
-const ADMIN_PASSWORD = '2024!';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '2024!';
 
 app.post('/api/admin/login', async (req, res) => {
   const { password } = req.body;
@@ -565,6 +565,12 @@ app.get('/api/dashboard', authMiddleware, async (req, res) => {
   `, [userId, weekDays[0]]);
   const attStats = attWeekResult.rows[0] || { attended: 0, late_count: 0 };
 
+  const eventWeekResult = await query(`
+    SELECT COUNT(*) as cnt FROM team_events
+    WHERE event_date >= $1 AND event_date <= $2
+  `, [weekDays[0], today]);
+  const eventWeekCount = parseInt((eventWeekResult.rows[0] || {}).cnt || 0);
+
   res.json({
     week_activity: weekActivity,
     my_week_activity: myWeekActivity,
@@ -575,7 +581,8 @@ app.get('/api/dashboard', authMiddleware, async (req, res) => {
     todos_pending: parseInt(todoStats.pending || 0),
     todos_done_today: parseInt(todoStats.done_today || 0),
     att_week_count: parseInt(attStats.attended || 0),
-    att_late_count: parseInt(attStats.late_count || 0)
+    att_late_count: parseInt(attStats.late_count || 0),
+    event_week_count: eventWeekCount
   });
 });
 
@@ -1115,6 +1122,14 @@ app.put('/api/tasks/:id', authMiddleware, async (req, res) => {
   await query(`UPDATE task_master SET task_detail=$1, assigned_to=$2, note=$3, updated_at=NOW() WHERE id=$4`, [
     task_detail, assigned_to, note, req.params.id
   ]);
+  res.json({ ok: true });
+});
+
+app.delete('/api/tasks/:id', authMiddleware, async (req, res) => {
+  const task = await query('SELECT * FROM task_master WHERE id = $1', [req.params.id]);
+  if (task.rows.length === 0) return res.status(404).json({ error: '업무를 찾을 수 없습니다' });
+  await query('DELETE FROM task_notes WHERE task_id = $1', [req.params.id]);
+  await query('DELETE FROM task_master WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
@@ -2560,14 +2575,14 @@ app.get('/api/timeline', authMiddleware, async (req, res) => {
   }));
 
   const todos = await query(`
-    SELECT title, done, updated_at, created_at FROM todos WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3
+    SELECT title, completed, completed_at, created_at FROM todos WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
   `, [userId, limit, offset]);
   todos.rows.forEach(t => {
-    if (t.done) items.push({
+    if (t.completed) items.push({
       type: 'todo_done', icon: '&#9989;', color: '#10b981',
       title: '할 일 완료',
       sub: t.title,
-      date: t.updated_at || t.created_at
+      date: t.completed_at || t.created_at
     });
   });
 
@@ -2782,7 +2797,7 @@ app.get('/api/weekly-report', authMiddleware, async (req, res) => {
   }));
 
   const todoResult = await query(`
-    SELECT title, done, due_date FROM todos
+    SELECT title, completed, due_date FROM todos
     WHERE user_id = $1 AND due_date >= $2 AND due_date <= $3
     ORDER BY due_date ASC
   `, [userId, weekStart, weekEnd]);
@@ -2812,7 +2827,7 @@ app.get('/api/weekly-report', authMiddleware, async (req, res) => {
     result_summary: { completed: completedCount, ongoing: ongoingCount, issue: issueCount },
     issues, notes,
     attendance,
-    todos: todoResult.rows.map(t => ({ title: t.title, done: t.done, due_date: (t.due_date || '').toString().split('T')[0] }))
+    todos: todoResult.rows.map(t => ({ title: t.title, done: t.completed, due_date: (t.due_date || '').toString().split('T')[0] }))
   });
 });
 
@@ -2833,7 +2848,7 @@ app.get('/api/calendar', authMiddleware, async (req, res) => {
   `, [userId, month]);
 
   const todoResult = await query(`
-    SELECT due_date, title, done
+    SELECT due_date, title, completed
     FROM todos WHERE user_id = $1 AND TO_CHAR(due_date, 'YYYY-MM') = $2
   `, [userId, month]);
 
@@ -2859,7 +2874,7 @@ app.get('/api/calendar', authMiddleware, async (req, res) => {
   todoResult.rows.forEach(t => {
     const d = (t.due_date || '').toString().split('T')[0];
     if (!days[d]) days[d] = { reports: [], attendance: null, todos: [], events: [] };
-    days[d].todos.push({ title: t.title, done: t.done });
+    days[d].todos.push({ title: t.title, done: t.completed });
   });
 
   eventResult.rows.forEach(e => {
@@ -3177,6 +3192,21 @@ app.post('/api/events', authMiddleware, async (req, res) => {
   res.json({ id });
 });
 
+app.put('/api/events/:id', authMiddleware, async (req, res) => {
+  const ev = await query('SELECT * FROM team_events WHERE id = $1', [req.params.id]);
+  if (ev.rows.length === 0) return res.status(404).json({ error: '일정을 찾을 수 없습니다' });
+  if (ev.rows[0].author_id !== req.session.userId && !req.session.isAdmin) {
+    return res.status(403).json({ error: '본인의 일정만 수정할 수 있습니다' });
+  }
+  const { title, description, event_date, event_time, event_type } = req.body;
+  const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
+  await query(
+    'UPDATE team_events SET title=COALESCE($1,title), description=COALESCE($2,description), event_date=COALESCE($3,event_date), event_time=COALESCE($4,event_time), event_type=COALESCE($5,event_type), color=$6 WHERE id=$7',
+    [title, description, event_date, event_time, event_type, typeColors[event_type] || ev.rows[0].color, req.params.id]
+  );
+  res.json({ ok: true });
+});
+
 app.delete('/api/events/:id', authMiddleware, async (req, res) => {
   const ev = await query('SELECT * FROM team_events WHERE id = $1', [req.params.id]);
   if (ev.rows.length === 0) return res.status(404).json({ error: '일정을 찾을 수 없습니다' });
@@ -3218,6 +3248,19 @@ app.post('/api/board', authMiddleware, async (req, res) => {
   await query('INSERT INTO board_posts (id, author_id, author_name, category, title, content) VALUES ($1,$2,$3,$4,$5,$6)',
     [id, req.session.userId, authorName, category || '자유', title, content]);
   res.json({ id });
+});
+
+app.put('/api/board/:id', authMiddleware, async (req, res) => {
+  const post = await query('SELECT * FROM board_posts WHERE id = $1', [req.params.id]);
+  if (post.rows.length === 0) return res.status(404).json({ error: '게시글을 찾을 수 없습니다' });
+  if (post.rows[0].author_id !== req.session.userId && !req.session.isAdmin) {
+    return res.status(403).json({ error: '본인의 글만 수정할 수 있습니다' });
+  }
+  const { category, title, content } = req.body;
+  if (!title || !content) return res.status(400).json({ error: '제목과 내용을 입력하세요' });
+  await query('UPDATE board_posts SET category=COALESCE($1,category), title=$2, content=$3 WHERE id=$4',
+    [category, title, content, req.params.id]);
+  res.json({ ok: true });
 });
 
 app.delete('/api/board/:id', authMiddleware, async (req, res) => {
@@ -3714,7 +3757,7 @@ app.get('/call/history', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'call-history.html'));
 });
 
-app.get('/api/call/db-tables', async (req, res) => {
+app.get('/api/call/db-tables', authMiddleware, async (req, res) => {
   try {
     const tables = await query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name");
     const result = {};
@@ -3727,7 +3770,7 @@ app.get('/api/call/db-tables', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/call/db-sample/:table', async (req, res) => {
+app.get('/api/call/db-sample/:table', authMiddleware, async (req, res) => {
   try {
     const tableName = req.params.table.replace(/[^a-zA-Z0-9_]/g, '');
     const rows = await query(`SELECT * FROM "${tableName}" LIMIT 5`);
@@ -3735,14 +3778,14 @@ app.get('/api/call/db-sample/:table', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/call/branches', async (req, res) => {
+app.get('/api/call/branches', authMiddleware, async (req, res) => {
   try {
     const result = await query('SELECT id, name FROM branches WHERE exclude_service = 0 ORDER BY seq');
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/call/history', async (req, res) => {
+app.get('/api/call/history', authMiddleware, async (req, res) => {
   try {
     const { search, sort } = req.query;
     const now = new Date();
@@ -3798,7 +3841,7 @@ app.get('/api/call/history', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/call/history/:branchId', async (req, res) => {
+app.get('/api/call/history/:branchId', authMiddleware, async (req, res) => {
   try {
     const { branchId } = req.params;
     const result = await query(
@@ -3815,7 +3858,7 @@ app.get('/api/call/history/:branchId', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/call/orders', async (req, res) => {
+app.post('/api/call/orders', authMiddleware, async (req, res) => {
   try {
     const { branch_id, order_date, order_count, memo } = req.body;
     if (!branch_id || !order_date) return res.status(400).json({ error: '가맹점과 주문일을 입력해주세요' });
@@ -3831,7 +3874,7 @@ app.post('/api/call/orders', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/call/orders/:id', async (req, res) => {
+app.delete('/api/call/orders/:id', authMiddleware, async (req, res) => {
   try {
     await query('DELETE FROM call_orders WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
@@ -3866,11 +3909,39 @@ app.get('/api/search', async (req, res) => {
 });
 
 // ─── AI 비서 Gemini 프록시 ───
-app.post('/api/ai-chat', async (req, res) => {
+app.post('/api/ai-chat', authMiddleware, async (req, res) => {
   const { message, history } = req.body;
   if (!message) return res.status(400).json({ error: '메시지가 필요합니다' });
 
   const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
+  const userId = req.session.userId;
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+  let userContext = '';
+  try {
+    const [todoRes, eventRes, attRes, userRes] = await Promise.all([
+      query('SELECT title, due_date, completed, priority FROM todos WHERE user_id = $1 AND completed = FALSE ORDER BY priority DESC, due_date ASC NULLS LAST LIMIT 10', [userId]),
+      query('SELECT title, event_type, event_date, event_time FROM team_events WHERE event_date >= $1 AND event_date <= $2 ORDER BY event_date, event_time LIMIT 10', [today, tomorrow]),
+      query('SELECT check_in, check_out, status FROM attendance WHERE user_id = $1 AND work_date = $2', [userId, today]),
+      query('SELECT name FROM users WHERE id = $1', [userId])
+    ]);
+    const userName = userRes.rows[0] ? userRes.rows[0].name : '사용자';
+    const todoList = todoRes.rows.map(t => `- ${t.title}${t.due_date ? ' (마감:' + (t.due_date+'').split('T')[0] + ')' : ''}${t.priority === 'high' ? ' ⚡긴급' : ''}`).join('\n');
+    const eventList = eventRes.rows.map(e => {
+      const d = (e.event_date+'').split('T')[0];
+      return `- ${d === today ? '오늘' : '내일'} ${e.event_type}: ${e.title}${e.event_time ? ' ' + e.event_time : ''}`;
+    }).join('\n');
+    const att = attRes.rows[0];
+    const attStatus = att ? (att.check_out ? '퇴근완료' : '출근중' + (att.status === 'late' ? '(지각)' : '')) : '미출근';
+
+    userContext = `\n\n[현재 사용자 실시간 정보 — ${today}]
+사용자 이름: ${userName}
+출근 상태: ${attStatus}
+${todoList ? '미완료 할일:\n' + todoList : '미완료 할일: 없음'}
+${eventList ? '오늘/내일 일정:\n' + eventList : '예정 일정: 없음'}
+이 정보를 기반으로 사용자에게 맞춤 답변해. "오늘 할일 뭐 있어?" 같은 질문에 실제 데이터로 답해.`;
+  } catch (e) { /* DB 조회 실패해도 AI는 작동 */ }
 
   try {
     const systemPrompt = `너는 업무관리 앱의 AI 비서야. 이름은 "비서".
@@ -3944,7 +4015,7 @@ app.post('/api/ai-chat', async (req, res) => {
 - 영어로 답하지 말 것
 - "저는 AI라서 못 해요" 같은 자기비하 금지
 - 너무 길게 답하지 말 것 (최대 5문장)
-- 거짓 정보 만들어내지 말 것`;
+- 거짓 정보 만들어내지 말 것` + userContext;
 
     const contents = [];
     if (history && history.length > 0) {
