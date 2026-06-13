@@ -7999,7 +7999,6 @@ function _aiAutoDetectPersonal(input) {
     }
   }
 
-  const activityVerbs = /(?:하고\s*왔|하러\s*갔|하고왔|하러갔|했어|했는데|했다|해봤|받았|받고\s*왔|받으러)/;
   const activityMatch = input.match(/(.{2,15}?)\s*(?:하고\s*왔|하러\s*갔|하고왔|하러갔|받고\s*왔|받으러\s*갔)/);
   if (activityMatch) {
     const act = activityMatch[1].replace(/^(오늘|어제|아까|아침에|나|내가|거기서|가서)\s*/g, '').replace(/를|을|에서|에/g, '').trim();
@@ -11182,14 +11181,14 @@ async function _aiSmartRecommend() {
     }
 
     if (pending.length === 0 && myRps.length > 0) {
-      recs.push({ icon: '🎉', text: '할 일 다 끝! 보고서도 썼고! 완벽한 하루예요!', priority: 2 });
+      recs.push({ icon: '🎉', text: '할 일 다 끝! 보고서도 썼고! 완벽한 하루예요!', reason: '할 일 완료 + 보고서 작성 완료', priority: 2 });
     }
 
     const patterns = _aiAnalyzePatterns();
     if (patterns) {
       const stat = patterns.dayStats[now.getDay()];
       if (stat && stat.count >= 2) {
-        recs.push({ icon: '🔮', text: dayName + '요일 평균 생산성 ' + stat.avgScore + '점 — ' + (stat.avgScore >= 70 ? '오늘도 화이팅!' : stat.avgScore >= 40 ? '꾸준히 가요!' : '가볍게 시작해봐요!'), priority: 1 });
+        recs.push({ icon: '🔮', text: dayName + '요일 평균 생산성 ' + stat.avgScore + '점 — ' + (stat.avgScore >= 70 ? '오늘도 화이팅!' : stat.avgScore >= 40 ? '꾸준히 가요!' : '가볍게 시작해봐요!'), reason: dayName + '요일 ' + stat.count + '회 데이터 기반', priority: 1 });
       }
     }
 
