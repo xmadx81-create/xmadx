@@ -7785,6 +7785,15 @@ function _aiCalcIQ() {
   if (mem.facts && mem.facts.chatStyle) iq += 2;
   if (mem.facts && Object.keys(mem.facts).some(k => k.startsWith('pref_'))) iq += 3;
   if (mem.facts && Object.keys(mem.facts).some(k => k.startsWith('mood_'))) iq += 2;
+  try {
+    const prof = _aiPersonalProfile();
+    if (prof.mbti) iq += 2;
+    if (prof.birthday) iq += 2;
+    iq += Math.min((prof.likes || []).length, 10) * 0.5;
+    iq += Math.min((prof.dislikes || []).length, 10) * 0.5;
+    iq += Math.min((prof.hobbies || []).length, 5) * 1;
+    iq += Math.min(_aiLifeLog().length, 50) * 0.2;
+  } catch(_) {}
   return Math.round(Math.min(iq, 200));
 }
 
@@ -7842,6 +7851,148 @@ function _aiRecordFeedback(type) {
   _aiMemorySave(mem);
 }
 
+// ─── AI 비서 영구 기억 시스템 (친구처럼 기억하는 AI) ───
+function _aiPersonalProfile() {
+  const uid = currentUser ? currentUser.id : 'guest';
+  try { return JSON.parse(localStorage.getItem('aiProfile_' + uid) || '{}'); } catch(_) { return {}; }
+}
+function _aiProfileSave(p) {
+  const uid = currentUser ? currentUser.id : 'guest';
+  localStorage.setItem('aiProfile_' + uid, JSON.stringify(p));
+}
+function _aiProfileSet(key, value) {
+  const p = _aiPersonalProfile();
+  p[key] = value;
+  p.lastUpdated = new Date().toISOString();
+  _aiProfileSave(p);
+}
+function _aiProfileAddToList(key, value) {
+  const p = _aiPersonalProfile();
+  if (!p[key]) p[key] = [];
+  const v = value.trim();
+  if (v && !p[key].includes(v)) { p[key].push(v); _aiProfileSave(p); }
+}
+
+function _aiLifeLog() {
+  const uid = currentUser ? currentUser.id : 'guest';
+  try { return JSON.parse(localStorage.getItem('aiLifeLog_' + uid) || '[]'); } catch(_) { return []; }
+}
+function _aiLifeLogSave(log) {
+  const uid = currentUser ? currentUser.id : 'guest';
+  if (log.length > 500) log = log.slice(-500);
+  localStorage.setItem('aiLifeLog_' + uid, JSON.stringify(log));
+}
+function _aiLifeLogAdd(entry) {
+  const log = _aiLifeLog();
+  entry.date = new Date().toISOString().split('T')[0];
+  entry.timestamp = new Date().toISOString();
+  log.push(entry);
+  _aiLifeLogSave(log);
+}
+
+function _aiSessionFacts() {
+  try {
+    const f = JSON.parse(sessionStorage.getItem('aiSessionFacts') || '{}');
+    if (f._expires && f._expires !== new Date().toISOString().split('T')[0]) return {};
+    return f;
+  } catch(_) { return {}; }
+}
+function _aiSessionLearn(key, value) {
+  const f = _aiSessionFacts();
+  f[key] = value;
+  f._expires = new Date().toISOString().split('T')[0];
+  sessionStorage.setItem('aiSessionFacts', JSON.stringify(f));
+}
+
+function _aiGetAnniversaries() {
+  const log = _aiLifeLog();
+  const now = new Date();
+  const todayMD = String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  const todayFull = now.toISOString().split('T')[0];
+  const results = [];
+  log.forEach(entry => {
+    if (!entry.date) return;
+    const entryMD = entry.date.substring(5);
+    if (entryMD === todayMD && entry.date !== todayFull) {
+      const yearDiff = now.getFullYear() - parseInt(entry.date.substring(0, 4));
+      if (yearDiff > 0) results.push({ ...entry, yearsAgo: yearDiff });
+    }
+  });
+  return results;
+}
+
+function _aiGetLifeLogByDate(dateStr) {
+  return _aiLifeLog().filter(e => e.date === dateStr);
+}
+
+function _aiGetLifeLogByType(type, limit) {
+  return _aiLifeLog().filter(e => e.type === type).slice(-(limit || 10));
+}
+
+function _aiAutoDetectPersonal(input) {
+  const t = input.toLowerCase().trim();
+  const detections = [];
+
+  const mbtiMatch = input.match(/(?:나|내|제)\s*(?:MBTI|엠비티아이)(?:는|은)?\s*([A-Za-z]{4})/i) || input.match(/(?:나\s+|내\s+)?([EI][NS][TF][JP])(?:야|이야|인데|거든|임|입니다|이에요|예요)/i);
+  if (mbtiMatch && /^[EI][NS][TF][JP]$/i.test(mbtiMatch[1])) {
+    _aiProfileSet('mbti', mbtiMatch[1].toUpperCase());
+    detections.push({ type: 'mbti', value: mbtiMatch[1].toUpperCase() });
+  }
+
+  const foodMatch = input.match(/(.{2,20}?)\s*(?:먹었|먹음|먹었다|먹고\s*왔|시켰|시켜서|주문했|배달시|배달했)/);
+  if (foodMatch) {
+    const food = foodMatch[1].replace(/^(오늘|어제|아까|방금|점심에|저녁에|아침에|나|내가|우리가?)\s*/g, '').replace(/를|을|에서/g, '').trim();
+    if (food.length >= 2 && food.length <= 20) {
+      _aiLifeLogAdd({ type: 'food', what: food });
+      detections.push({ type: 'food', value: food });
+    }
+  }
+
+  const placeMatch = input.match(/(.{2,20}?)\s*(?:갔어|다녀왔|다녀옴|갔다|가봤|놀러\s*갔|여행했|방문했|갔다왔)/);
+  if (placeMatch) {
+    const place = placeMatch[1].replace(/^(오늘|어제|아까|주말에|나|내가|우리가?)\s*/g, '').replace(/에$|을$|를$|에서$/g, '').trim();
+    if (place.length >= 2 && place.length <= 15) {
+      _aiLifeLogAdd({ type: 'place', where: place });
+      detections.push({ type: 'place', value: place });
+    }
+  }
+
+  const hobbyMatch = input.match(/(?:취미|좋아하는\s*것|관심사|즐기는\s*것)(?:는|은|이)?\s*(.{2,15})/);
+  if (hobbyMatch) {
+    const hobby = hobbyMatch[1].replace(/야$|이야$|인데$|거든$|이에요$|요$|입니다$|임$/g, '').trim();
+    if (hobby.length >= 2 && hobby.length <= 15) {
+      _aiProfileAddToList('hobbies', hobby);
+      detections.push({ type: 'hobby', value: hobby });
+    }
+  }
+
+  const likeMatch = input.match(/(?:나는?|내가|저는?)\s*(.{2,15}?)\s*(?:좋아해|좋아함|사랑해|최애|완전\s*좋아)/);
+  if (likeMatch && !/싫|별로|안/.test(likeMatch[1])) {
+    const like = likeMatch[1].replace(/를|을|이|가|은|는/g, '').trim();
+    if (like.length >= 2) { _aiProfileAddToList('likes', like); detections.push({ type: 'like', value: like }); }
+  }
+
+  const dislikeMatch = input.match(/(?:나는?|내가|저는?)\s*(.{2,15}?)\s*(?:싫어|싫어해|못\s*먹|질색|별로|극혐|안\s*좋아|못\s*먹어)/);
+  if (dislikeMatch) {
+    const dislike = dislikeMatch[1].replace(/를|을|이|가|은|는/g, '').trim();
+    if (dislike.length >= 2) { _aiProfileAddToList('dislikes', dislike); detections.push({ type: 'dislike', value: dislike }); }
+  }
+
+  const bdayMatch = input.match(/(?:내|나)\s*생일.*?(\d{1,2})월\s*(\d{1,2})일/);
+  if (bdayMatch) {
+    _aiProfileSet('birthday', parseInt(bdayMatch[1]) + '월 ' + parseInt(bdayMatch[2]) + '일');
+    detections.push({ type: 'birthday', value: parseInt(bdayMatch[1]) + '월 ' + parseInt(bdayMatch[2]) + '일' });
+  }
+
+  const nickMatch = input.match(/(?:나를?|날|저를?)\s*(.{1,8}?)(?:라고|이라고)\s*(?:불러|해줘|불러줘)/);
+  if (nickMatch) {
+    _aiProfileSet('nickname', nickMatch[1].trim());
+    detections.push({ type: 'nickname', value: nickMatch[1].trim() });
+  }
+
+  return detections;
+}
+
 function openAiChat() {
   const overlay = document.getElementById('aiChatOverlay');
   overlay.style.display = 'flex';
@@ -7889,6 +8040,29 @@ function openAiChat() {
   mem.prevIQ = iq;
   mem.prevLv = lvl.lv;
   _aiMemorySave(mem);
+
+  // 영구 기억: 기념일/추억 알림
+  const anniversaries = _aiGetAnniversaries();
+  if (anniversaries.length > 0) {
+    setTimeout(() => {
+      const ann = anniversaries[0];
+      let annMsg = '💜 추억 알림! ';
+      if (ann.type === 'food') annMsg += ann.yearsAgo + '년 전 오늘 "' + ann.what + '" 먹었었는데 기억나요? 😋';
+      else if (ann.type === 'place') annMsg += ann.yearsAgo + '년 전 오늘 "' + ann.where + '"에 갔었었잖아요! 기억나요? 🗺️';
+      else if (ann.type === 'activity') annMsg += ann.yearsAgo + '년 전 오늘 ' + (ann.with ? ann.with + '이랑 ' : '') + '"' + ann.what + '" 했었죠! 😊';
+      else annMsg += ann.yearsAgo + '년 전 오늘의 추억이 있어요! 📔';
+      if (anniversaries.length > 1) annMsg += '\n(+' + (anniversaries.length - 1) + '개 더 있어요. "추억 보여줘"라고 해보세요!)';
+      _aiChatAddBot(annMsg);
+    }, 3000);
+  }
+  // 생일 체크
+  const prof = _aiPersonalProfile();
+  if (prof.birthday) {
+    const todayMD = (new Date().getMonth() + 1) + '월 ' + new Date().getDate() + '일';
+    if (prof.birthday === todayMD) {
+      setTimeout(() => { _aiChatAddBot('🎂🎉 ' + name + '님! 오늘 생일이잖아요!! 생일 축하드려요!!! 🥳🎈\n올해도 건강하고 행복한 한 해 되세요! 💕'); }, 3500);
+    }
+  }
 
   // 프로액티브 팁 — 상황에 맞는 안내 자동 표시
   setTimeout(async () => {
@@ -8023,10 +8197,11 @@ async function sendAiChat() {
     if (/^(응|어|네|좋아|맞아|고마워|ㅇ|ㅇㅇ|ok|좋아|감사)/i.test(ft)) _aiRecordFeedback('positive');
     else if (/^(아니|됐어|ㄴㄴ|싫|별로)/i.test(ft)) _aiRecordFeedback('negative');
   }
+  const _detections = _aiAutoDetectPersonal(text);
   _aiChatThinking();
   document.getElementById('aiChatStatus').textContent = '생각 중...';
 
-  const response = await _aiProcessChat(text);
+  const response = await _aiProcessChat(text, _detections);
 
   _aiChatRemoveThinking();
   document.getElementById('aiChatStatus').textContent = _aiChatVoiceMode ? '🎤 음성 대화 중' : '온라인';
@@ -8147,11 +8322,12 @@ function aiChatVoiceToggle() {
   _aiChatShowSuggest(['오늘 브리핑', '할 일 확인', '오늘 일정']);
 }
 
-async function _aiProcessChat(input) {
+async function _aiProcessChat(input, _detections) {
   const t = input.toLowerCase().trim();
   const today = new Date().toISOString().split('T')[0];
   const mem = _aiMemory();
-  const name = currentUser ? currentUser.name : '사용자';
+  const prof = _aiPersonalProfile();
+  const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
   _aiRecordTopic(_aiDetectTopic(t));
   const _style = (mem.facts && mem.facts.chatStyle) || 'formal';
 
@@ -8194,12 +8370,134 @@ async function _aiProcessChat(input) {
     return { reply, suggests: ['할 일 확인', '오늘 일정'] };
   }
 
-  // --- 선호 학습 ---
-  const prefMatch = t.match(/(?:나는|저는|내가)\s*(.+?)\s*(?:좋아해|좋아|선호해|원해|싫어)/);
-  if (prefMatch) {
-    const pref = prefMatch[1].trim();
-    const like = t.includes('싫어') ? '싫어하시는' : '좋아하시는';
-    return { reply: name + '님이 ' + pref + '을(를) ' + like + ' 거 기억할게요!', learn: { ['pref_' + pref]: like === '싫어하시는' ? 'dislike' : 'like' } };
+  // --- 선호 학습 (영구 기억) ---
+  const prefMatch = t.match(/(?:나는|저는|내가)\s*(.+?)\s*(?:좋아해|좋아함|선호해|원해|사랑해|최애)/);
+  if (prefMatch && !t.includes('싫')) {
+    const pref = prefMatch[1].replace(/를|을|이|가|은|는/g, '').trim();
+    _aiProfileAddToList('likes', pref);
+    return { reply: _say('💜 ' + name + '님이 ' + pref + '을(를) 좋아하시는 거 영구 기억할게요! 절대 안 까먹어요!', '💜 ' + pref + ' 좋아하는 거 기억! 절대 안 까먹을게!'), learn: { ['pref_' + pref]: 'like' } };
+  }
+  const dislikeMatch2 = t.match(/(?:나는|저는|내가)\s*(.+?)\s*(?:싫어|싫어해|못\s*먹|질색|별로|극혐|안\s*좋아)/);
+  if (dislikeMatch2) {
+    const pref = dislikeMatch2[1].replace(/를|을|이|가|은|는/g, '').trim();
+    _aiProfileAddToList('dislikes', pref);
+    return { reply: _say('💜 ' + name + '님이 ' + pref + '을(를) 싫어하시는 거 기억할게요! 다시는 안 추천해요!', '💜 ' + pref + ' 싫어하는 거 기억! 안 추천할게!'), learn: { ['pref_' + pref]: 'dislike' } };
+  }
+
+  // --- 자동 감지 피드백 (음식, 장소, MBTI 등) ---
+  if (_detections && _detections.length > 0) {
+    const d = _detections[0];
+    if (d.type === 'food') {
+      return { reply: _say('😋 ' + d.value + ' 먹었군요! 맛있었어요? 기억해둘게요! 📔', '😋 ' + d.value + '! 맛있었어? 기억해둘게~ 📔'), suggests: ['맛있었어', '별로였어', '오늘 일정'] };
+    }
+    if (d.type === 'place') {
+      return { reply: _say('🗺️ ' + d.value + '에 다녀오셨군요! 어땠어요? 기억해둘게요!', '🗺️ ' + d.value + ' 다녀왔어? 어땠어? 기억해둘게~'), suggests: ['좋았어', '별로였어'] };
+    }
+    if (d.type === 'mbti') {
+      return { reply: _say('💜 MBTI가 ' + d.value + '이시군요! 영원히 기억할게요! 😊\n' + d.value + ' 유형에 맞는 업무 스타일도 참고할게요!', '💜 ' + d.value + '! 기억했어~ 앞으로 너한테 맞는 스타일로 도와줄게!'), suggests: ['내 프로필', '오늘 일정'] };
+    }
+    if (d.type === 'hobby') {
+      return { reply: _say('💜 취미가 ' + d.value + '이시군요! 기억해둘게요! 🎯', '💜 ' + d.value + ' 취미! 기억! 🎯'), suggests: ['내 프로필', '오늘 일정'] };
+    }
+    if (d.type === 'birthday') {
+      return { reply: _say('🎂 생일이 ' + d.value + '이시군요! 절대 안 까먹을게요! 그날 축하해드릴게요!', '🎂 ' + d.value + '이 생일! 절대 안 까먹어! 축하할게!'), suggests: ['내 프로필'] };
+    }
+    if (d.type === 'nickname') {
+      return { reply: _say('😊 앞으로 ' + d.value + '(이)라고 부를게요!', '😊 오케이 ' + d.value + '! 앞으로 그렇게 부를게~'), suggests: ['내 프로필'] };
+    }
+  }
+
+  // --- 내 프로필 / 내 취향 / 나에 대해 뭐 알아 ---
+  if (/내\s*프로필|내\s*취향|나에?\s*대해\s*뭐|뭐\s*기억.*나|나를?\s*얼마나\s*알|내\s*정보\s*기억/.test(t)) {
+    let reply = '💜 ' + name + '님에 대한 기억\n━━━━━━━━━━━━━━\n\n';
+    let hasInfo = false;
+    if (prof.nickname) { reply += '📛 별명: ' + prof.nickname + '\n'; hasInfo = true; }
+    if (prof.mbti) { reply += '🧬 MBTI: ' + prof.mbti + '\n'; hasInfo = true; }
+    if (prof.birthday) { reply += '🎂 생일: ' + prof.birthday + '\n'; hasInfo = true; }
+    if (prof.hobbies && prof.hobbies.length > 0) { reply += '🎯 취미: ' + prof.hobbies.join(', ') + '\n'; hasInfo = true; }
+    if (prof.likes && prof.likes.length > 0) { reply += '❤️ 좋아하는 것: ' + prof.likes.join(', ') + '\n'; hasInfo = true; }
+    if (prof.dislikes && prof.dislikes.length > 0) { reply += '💔 싫어하는 것: ' + prof.dislikes.join(', ') + '\n'; hasInfo = true; }
+    const recentFoods = _aiGetLifeLogByType('food', 5);
+    if (recentFoods.length > 0) { reply += '\n🍽️ 최근 먹은 것:\n' + recentFoods.map(f => '• ' + f.date + ' ' + f.what).join('\n') + '\n'; hasInfo = true; }
+    const recentPlaces = _aiGetLifeLogByType('place', 5);
+    if (recentPlaces.length > 0) { reply += '\n🗺️ 최근 다녀온 곳:\n' + recentPlaces.map(p => '• ' + p.date + ' ' + p.where).join('\n') + '\n'; hasInfo = true; }
+    const logCount = _aiLifeLog().length;
+    if (logCount > 0) reply += '\n📔 총 생활 기록: ' + logCount + '건';
+    if (!hasInfo) reply += '아직 기억한 게 없어요!\n\n"나는 ENFP야", "취미는 등산이야", "삼겹살 먹었어" 처럼\n자연스럽게 말해주시면 기억할게요! 💜';
+    else reply += '\n\n💡 더 많이 얘기할수록 더 잘 기억해요!';
+    return { reply, suggests: ['추억 보여줘', '뭐 먹었지', 'IQ 확인'] };
+  }
+
+  // --- 뭐 먹었지 / 어제 뭐 먹었 / 음식 기록 ---
+  if (/뭐\s*먹었|먹은\s*거|음식\s*기록|식사\s*기록|밥\s*기록/.test(t)) {
+    const foods = _aiGetLifeLogByType('food', 10);
+    if (foods.length === 0) return { reply: _say('아직 음식 기록이 없어요!\n"삼겹살 먹었어" 처럼 말해주시면 기록할게요! 🍽️', '음식 기록 없어~ "치킨 먹었어" 이렇게 말해줘!'), suggests: ['내 프로필'] };
+    let reply = '🍽️ 음식 기록\n━━━━━━━━━━━━━━\n\n';
+    const byDate = {};
+    foods.forEach(f => { if (!byDate[f.date]) byDate[f.date] = []; byDate[f.date].push(f.what); });
+    Object.keys(byDate).sort().reverse().forEach(d => {
+      reply += '📅 ' + d + ': ' + byDate[d].join(', ') + '\n';
+    });
+    return { reply, suggests: ['내 프로필', '오늘 일정'] };
+  }
+
+  // --- 추억 / 기념일 / N년전 오늘 ---
+  if (/추억|기념일|n년\s*전|예전에\s*뭐|옛날|지난\s*기록/.test(t)) {
+    const anns = _aiGetAnniversaries();
+    const allLogs = _aiLifeLog();
+    if (allLogs.length === 0) return { reply: _say('아직 기록된 추억이 없어요!\n매일 "뭐 먹었어", "어디 다녀왔어" 말해주시면\n나중에 기념일에 추억을 알려드릴게요! 💜', '추억이 아직 없어~ 매일 말해주면 기억해둘게!'), suggests: ['내 프로필'] };
+    let reply = '📔 ' + name + '님과의 추억\n━━━━━━━━━━━━━━\n\n';
+    if (anns.length > 0) {
+      reply += '🎉 오늘의 기념일:\n';
+      anns.forEach(a => {
+        if (a.type === 'food') reply += '• ' + a.yearsAgo + '년 전 오늘 "' + a.what + '" 먹었어요!\n';
+        else if (a.type === 'place') reply += '• ' + a.yearsAgo + '년 전 오늘 "' + a.where + '"에 갔었어요!\n';
+        else if (a.type === 'activity') reply += '• ' + a.yearsAgo + '년 전 오늘 "' + a.what + '" 했어요!\n';
+      });
+      reply += '\n';
+    }
+    reply += '📊 기록 통계:\n';
+    reply += '• 총 기록: ' + allLogs.length + '건\n';
+    reply += '• 음식: ' + allLogs.filter(l => l.type === 'food').length + '건\n';
+    reply += '• 장소: ' + allLogs.filter(l => l.type === 'place').length + '건\n';
+    const firstDate = allLogs[0] ? allLogs[0].date : '-';
+    reply += '• 첫 기록: ' + firstDate;
+    return { reply, suggests: ['뭐 먹었지', '내 프로필'] };
+  }
+
+  // --- 웹 검색 (구글/인터넷) ---
+  if (/(?:웹\s*검색|인터넷\s*검색|구글|구글링|인터넷에서|웹에서)\s*(.+)/i.test(input) || /(.+?)\s*(?:웹\s*검색|구글\s*검색|인터넷\s*검색)/.test(input)) {
+    const wsMatch = input.match(/(?:웹\s*검색|인터넷\s*검색|구글|구글링|인터넷에서|웹에서)\s*(.+)/i) || input.match(/(.+?)\s*(?:웹\s*검색|구글\s*검색|인터넷\s*검색)/);
+    if (wsMatch) {
+      const query = wsMatch[1].replace(/해줘|해주|해봐|알려줘|찾아줘|해$/g, '').trim();
+      if (query.length < 2) return { reply: '뭘 검색할까요? "구글 서울 날씨" 처럼 말해주세요!', suggests: [] };
+      try {
+        const data = await api('/api/search?q=' + encodeURIComponent(query));
+        _aiSessionLearn('search_' + query, data);
+        if (data.abstract) {
+          let reply = '🔍 "' + query + '" 검색 결과\n━━━━━━━━━━━━━━\n\n';
+          reply += '📖 ' + data.abstract + '\n';
+          if (data.results && data.results.length > 1) {
+            reply += '\n📋 관련 정보:\n';
+            data.results.slice(1, 4).forEach(r => { reply += '• ' + r.title + '\n'; });
+          }
+          reply += '\n💡 이 정보는 순간 기억이에요 (내일이면 까먹어요!)';
+          return { reply, suggests: ['더 검색', '오늘 일정'] };
+        }
+        if (data.results && data.results.length > 0) {
+          let reply = '🔍 "' + query + '" 검색 결과\n━━━━━━━━━━━━━━\n\n';
+          data.results.slice(0, 5).forEach(r => { reply += '• ' + r.title + '\n'; });
+          reply += '\n💡 순간 기억! (오늘만 기억해요)';
+          return { reply, suggests: ['더 검색', '오늘 일정'] };
+        }
+        return { reply: '🔍 "' + query + '"에 대한 검색 결과가 없어요.\n다른 키워드로 시도해보세요!', suggests: ['더 검색'] };
+      } catch(e) {
+        return { reply: '🔍 검색 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.', suggests: ['더 검색'] };
+      }
+    }
+  }
+  if (/^더\s*검색$/.test(t)) {
+    return { reply: _say('무엇을 검색할까요?\n\n예: "구글 오늘 뉴스"\n예: "웹검색 React 18 새기능"', '뭘 검색할까? "구글 OOO" 이렇게 말해!'), suggests: [] };
   }
 
   // --- 업무 상황 판단: 바빠? 한가해? ---
@@ -8501,7 +8799,7 @@ async function _aiProcessChat(input) {
 
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
-    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘", "게시판 가자"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 정리해야 돼", "회의록 추가해"\n📝 보고서 — "기록해", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어", "나 간다"\n📊 브리핑 — "바빠?", "뭐부터?", "칼퇴 가능?"\n🎯 생산성 — "집중 모드", "목표 설정", "쉬고 싶어"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🔍 기타 — "검색", "팀원 현황", "이번 달 실적"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 말이 곧 힘입니다! 👑', suggests: ['오늘 브리핑', '열려라 참깨', '드라마 명대사'] };
+    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘", "게시판 가자"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 정리해야 돼", "회의록 추가해"\n📝 보고서 — "기록해", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어", "나 간다"\n📊 브리핑 — "바빠?", "뭐부터?", "칼퇴 가능?"\n🎯 생산성 — "집중 모드", "목표 설정", "쉬고 싶어"\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지", "기념일"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 친구처럼 기억해요! 💜', suggests: ['오늘 브리핑', '내 프로필', '구글 검색'] };
   }
 
   // --- 감사/칭찬 ---
@@ -8693,16 +8991,19 @@ async function _aiProcessChat(input) {
     return _aiProcessChat('재밌는 거');
   }
 
-  // --- 점심/간식 추천 ---
+  // --- 점심/간식 추천 (싫어하는 음식 제외) ---
   if (/점심|뭐\s*먹|식사|간식|커피|음식|메뉴/.test(t)) {
-    const foods = [
-      ['🍜 칼국수', '🍖 삼겹살', '🍛 카레', '🥗 샐러드', '🍕 피자'],
-      ['🍱 도시락', '🍲 김치찌개', '🥟 만두', '🍝 파스타', '🌯 브리또'],
-      ['🍜 쌀국수', '🥘 순두부찌개', '🍔 햄버거', '🥩 스테이크', '🍣 초밥']
-    ];
-    const picks = foods[Math.floor(Math.random() * foods.length)];
-    const chosen = picks[Math.floor(Math.random() * picks.length)];
-    return { reply: '오늘은 ' + chosen + ' 어떠세요? 😋\n\n다른 추천: ' + picks.filter(f => f !== chosen).join(', '), suggests: ['다른 추천', '오늘 일정'] };
+    const allFoods = ['🍜 칼국수', '🍖 삼겹살', '🍛 카레', '🥗 샐러드', '🍕 피자', '🍱 도시락', '🍲 김치찌개', '🥟 만두', '🍝 파스타', '🌯 브리또', '🍜 쌀국수', '🥘 순두부찌개', '🍔 햄버거', '🥩 스테이크', '🍣 초밥'];
+    const dislikes = (prof.dislikes || []).map(d => d.toLowerCase());
+    const filtered = allFoods.filter(f => !dislikes.some(d => f.toLowerCase().includes(d)));
+    const picks = filtered.length > 0 ? filtered : allFoods;
+    const shuffled = picks.sort(() => Math.random() - 0.5).slice(0, 5);
+    const chosen = shuffled[0];
+    let reply = '오늘은 ' + chosen + ' 어떠세요? 😋\n\n다른 추천: ' + shuffled.slice(1).join(', ');
+    if (dislikes.length > 0) reply += '\n\n💜 (' + dislikes.join(', ') + ' 제외했어요!)';
+    const recentFoods = _aiGetLifeLogByType('food', 3);
+    if (recentFoods.length > 0) reply += '\n📔 최근: ' + recentFoods.map(f => f.what).join(', ');
+    return { reply, suggests: ['다른 추천', '오늘 일정'] };
   }
   if (/다른\s*추천/.test(t)) {
     return _aiProcessChat('뭐 먹을까');
@@ -8907,7 +9208,7 @@ async function _aiProcessChat(input) {
       (rps || []).filter(r => (r.what_task || r.content || '').includes(keyword)).slice(0, 3).forEach(r => results.push('📝 ' + (r.what_task || r.content || '').substring(0, 30) + ' (' + (r.report_date||'').split('T')[0] + ')'));
       (todos || []).filter(td => td.title.includes(keyword)).slice(0, 3).forEach(td => results.push((td.completed ? '✅ ' : '⬜ ') + td.title));
       (evts || []).filter(e => (e.title||'').includes(keyword)).slice(0, 3).forEach(e => results.push('📅 ' + e.title + ' (' + (e.event_date||'').split('T')[0] + ')'));
-      if (results.length === 0) return { reply: '"' + keyword + '"에 대한 검색 결과가 없어요.', suggests: ['다른 검색', '도움말'] };
+      if (results.length === 0) return { reply: '"' + keyword + '"에 대한 내부 검색 결과가 없어요.\n웹에서 검색해볼까요?', suggests: ['구글 ' + keyword, '다른 검색', '도움말'] };
       return { reply: '🔍 "' + keyword + '" 검색 결과 ' + results.length + '건:\n\n' + results.join('\n'), suggests: ['통합 검색 열기'] };
     } catch(_) { return { reply: '검색 중 오류가 생겼어요.' }; }
   }
@@ -9402,9 +9703,10 @@ async function _aiProcessChat(input) {
   }
 
   _aiLearn('unmatched_' + Date.now(), input);
+  smartSuggests.push('구글 ' + input.substring(0, 10));
   const fallbacks = [
-    _say('이해하기 어려웠어요. 좀 더 구체적으로 말씀해주시면 도와드릴게요!', '잘 모르겠어~ 좀 더 자세히 말해줄래?'),
-    _say('아직 그건 어렵지만, 매일 배우고 있어요! 아래 버튼을 눌러보세요.', '그건 아직 어려워~ 아래 버튼 눌러봐!'),
+    _say('이해하기 어려웠어요. 웹에서 검색해볼까요? 아니면 구체적으로 말씀해주세요!', '잘 모르겠어~ 웹에서 검색해볼까? 자세히 말해줘!'),
+    _say('아직 그건 어렵지만, 매일 배우고 있어요! 웹 검색이나 아래 버튼을 눌러보세요.', '그건 아직 어려워~ 구글에서 찾아볼까?'),
     _say('"도움말"이라고 하시면 제가 할 수 있는 것들을 알려드릴게요!', '"도움말"이라고 하면 뭐 할 수 있는지 알려줄게!'),
   ];
   return { reply: fallbacks[Math.floor(Math.random() * fallbacks.length)], suggests: smartSuggests };
@@ -9419,7 +9721,10 @@ function _aiDetectTopic(t) {
   if (/도움|기능|사용/.test(t)) return '도움말';
   if (/목표|집중|포모도로|우선순위|급한/.test(t)) return '생산성';
   if (/기분|감정|컨디션|힘들|피곤|쉬고/.test(t)) return '감정';
+  if (/구글|웹검색|인터넷/.test(t)) return '웹검색';
   if (/검색|찾/.test(t)) return '검색';
+  if (/프로필|취향|mbti|취미|좋아하|싫어하/.test(t)) return '개인정보';
+  if (/먹었|먹은|추억|기념일/.test(t)) return '생활기록';
   if (/팀|팀원/.test(t)) return '팀';
   if (/야근|칼퇴|바빠|한가/.test(t)) return '업무상황';
   return '기타';

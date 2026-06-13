@@ -3715,6 +3715,33 @@ app.delete('/api/call/orders/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── 웹 검색 프록시 (DuckDuckGo) ───
+app.get('/api/search', async (req, res) => {
+  const q = req.query.q;
+  if (!q) return res.status(400).json({ error: '검색어가 필요합니다' });
+  try {
+    const https = require('https');
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`;
+    const data = await new Promise((resolve, reject) => {
+      https.get(url, (response) => {
+        let body = '';
+        response.on('data', chunk => body += chunk);
+        response.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
+      }).on('error', reject);
+    });
+    const results = [];
+    if (data.AbstractText) results.push({ title: data.Heading || q, text: data.AbstractText, source: data.AbstractSource || '' });
+    if (data.RelatedTopics) {
+      data.RelatedTopics.slice(0, 5).forEach(t => {
+        if (t.Text) results.push({ title: (t.Text || '').substring(0, 60), text: t.Text });
+      });
+    }
+    res.json({ query: q, results, answer: data.Answer || null, abstract: data.AbstractText || null });
+  } catch (err) {
+    res.status(500).json({ error: '검색 중 오류: ' + err.message });
+  }
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);
