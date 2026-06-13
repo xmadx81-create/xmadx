@@ -192,7 +192,7 @@
     <h1>시스템 관리</h1>
     <div class="header-actions">
       <button class="header-btn" onclick="backToApp()" title="앱으로" style="font-size:13px; width:auto; padding:0 10px; border-radius:6px;">앱</button>
-      <button class="header-btn" onclick="adminLogout()" title="로그아웃">&#9654;</button>
+      <button class="header-btn" onclick="adminLogout()" title="로그아웃" style="color:#ef4444; font-size:18px;">&#9211;</button>
     </div>
   </header>
   <main class="main-content" id="adminContent"></main>
@@ -209,7 +209,7 @@
       <button class="header-btn" onclick="showGlobalSearch()" title="통합 검색">&#128269;</button>
       <button class="header-btn" onclick="showNotifications()" title="알림" style="position:relative;" id="notiBtn">&#128276;<span id="notiBadge" style="display:none; position:absolute; top:2px; right:2px; width:8px; height:8px; background:#ef4444; border-radius:50%;"></span></button>
       <button class="header-btn" onclick="showUserInfo()" title="내 정보">&#128100;</button>
-      <button class="header-btn" onclick="logout()" title="로그아웃">&#9654;</button>
+      <button class="header-btn" onclick="logout()" title="로그아웃" style="color:#ef4444; font-size:18px;">&#9211;</button>
     </div>
   </header>
 
@@ -489,7 +489,7 @@
 @keyframes vrBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }
 @keyframes vrCardIn { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
 </style>
-<script src="/js/app.js?v=20260613f"></script>
+<script src="/js/app.js?v=20260613g"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;

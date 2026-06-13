@@ -2,6 +2,8 @@ let currentUser = null;
 let currentPage = 'home';
 let editingReportId = null;
 const PAGE_SIZE = 15;
+let _deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); _deferredInstallPrompt = e; });
 
 // ─── 네비게이터 커스텀 설정 ───
 const NAV_ITEMS = [
@@ -1329,6 +1331,10 @@ async function renderMore() {
         <span class="qa-icon">&#128295;</span>
         <span class="qa-label" style="color:var(--primary); font-weight:700;">네비 설정</span>
       </button>
+      <button class="quick-action-btn" onclick="installApp()" style="border:2px solid #10b981; background:#ecfdf5;">
+        <span class="qa-icon">&#128241;</span>
+        <span class="qa-label" style="color:#10b981; font-weight:700;">홈 화면에 추가</span>
+      </button>
     </div>
 
     <div class="card">
@@ -1336,6 +1342,44 @@ async function renderMore() {
       <p style="font-size:14px; color:var(--gray-500);">WorkFlow - Smart Work Manager v3.0</p>
     </div>
   `;
+}
+
+// ─── 홈 화면 추가 ───
+function installApp() {
+  if (_deferredInstallPrompt) {
+    _deferredInstallPrompt.prompt();
+    _deferredInstallPrompt.userChoice.then(r => {
+      if (r.outcome === 'accepted') showResultModal('success', '설치 완료', '홈 화면에 앱이 추가되었습니다!', '확인');
+      _deferredInstallPrompt = null;
+    });
+    return;
+  }
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
+  const isSamsung = /SamsungBrowser/.test(ua);
+  let guide = '';
+  if (isIOS) {
+    guide = `<div style="text-align:left; line-height:1.8;">
+      <p><strong>Safari에서 추가하는 방법:</strong></p>
+      <p>1. 하단의 <strong>공유 버튼</strong> &#9757; 을 탭하세요</p>
+      <p>2. <strong>"홈 화면에 추가"</strong>를 선택하세요</p>
+      <p>3. 오른쪽 상단 <strong>"추가"</strong>를 탭하세요</p>
+    </div>`;
+  } else if (isSamsung) {
+    guide = `<div style="text-align:left; line-height:1.8;">
+      <p><strong>삼성 인터넷에서 추가하는 방법:</strong></p>
+      <p>1. 우측 하단의 <strong>&#9776; 메뉴</strong>를 탭하세요</p>
+      <p>2. <strong>"현재 페이지 추가"</strong>를 선택하세요</p>
+      <p>3. <strong>"홈 화면"</strong>을 선택하세요</p>
+    </div>`;
+  } else {
+    guide = `<div style="text-align:left; line-height:1.8;">
+      <p><strong>Chrome에서 추가하는 방법:</strong></p>
+      <p>1. 우측 상단의 <strong>&#8942; 메뉴</strong>를 탭하세요</p>
+      <p>2. <strong>"홈 화면에 추가"</strong> 또는<br>&nbsp;&nbsp;&nbsp;<strong>"앱 설치"</strong>를 선택하세요</p>
+    </div>`;
+  }
+  showResultModal('info', '📱 홈 화면에 추가', guide, '확인');
 }
 
 // ─── 네비 설정 ───
