@@ -5251,7 +5251,10 @@ async function showWorkCalendar() {
   const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
   document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">캘린더 로딩 중...</p>';
 
-  const d = await api(`/api/calendar?month=${workCalMonth}`);
+  const [d, monthEvents] = await Promise.all([
+    api(`/api/calendar?month=${workCalMonth}`),
+    api(`/api/events?month=${workCalMonth}`).then(r => r || [])
+  ]);
   if (!d) return;
 
   const [year, mon] = workCalMonth.split('-').map(Number);
@@ -5308,6 +5311,31 @@ async function showWorkCalendar() {
     </div>
 
     <div id="calDayDetail"></div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; margin-bottom:10px;">
+      <p class="section-title" style="margin:0;">&#128197; 이번 달 일정 (${monthEvents.length}건)</p>
+      <button class="btn btn-primary btn-sm" onclick="showEventForm()">+ 일정 추가</button>
+    </div>
+    ${monthEvents.length === 0 ? '<p style="font-size:13px; color:var(--gray-500); text-align:center; padding:16px;">등록된 일정이 없습니다</p>' :
+      monthEvents.map(e => {
+        const eDate = (e.event_date||'').split('T')[0];
+        const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
+        const color = typeColors[e.event_type] || '#6366f1';
+        const isAuthor = currentUser && (e.author_id === currentUser.id || currentUser.isAdmin);
+        return '<div class="card" style="padding:10px; margin-bottom:6px; border-left:3px solid ' + color + ';">' +
+          '<div style="display:flex; justify-content:space-between; align-items:flex-start;">' +
+            '<div style="flex:1;">' +
+              '<div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">' +
+                '<span style="font-size:10px; padding:1px 6px; border-radius:3px; background:' + color + '22; color:' + color + '; font-weight:600;">' + escHtml(e.event_type) + '</span>' +
+                '<span style="font-size:12px; color:' + (eDate === today ? 'var(--primary)' : 'var(--gray-500)') + '; font-weight:' + (eDate === today ? '700' : '400') + ';">' + eDate + (e.event_time ? ' ' + e.event_time : '') + '</span>' +
+              '</div>' +
+              '<div style="font-size:14px; font-weight:600;">' + escHtml(e.title) + '</div>' +
+              (e.description ? '<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">' + escHtml(e.description) + '</div>' : '') +
+            '</div>' +
+            (isAuthor ? '<button onclick="deleteEvent(\'' + e.id + '\')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px; padding:2px;">&times;</button>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('')}
   `;
 }
 
@@ -5746,13 +5774,13 @@ async function submitEvent() {
   const description = document.getElementById('evDesc').value.trim();
   if (!title || !event_date) { toast('제목과 날짜를 입력하세요'); return; }
   const res = await api('/api/events', { method: 'POST', body: { title, event_date, event_time, event_type, description } });
-  if (res) { toast('일정이 등록되었습니다'); showSchedulePage(); }
+  if (res) { toast('일정이 등록되었습니다'); if (currentPage === 'calendar') showWorkCalendar(); else showSchedulePage(); }
 }
 
 async function deleteEvent(id) {
   if (!confirm('이 일정을 삭제하시겠습니까?')) return;
   const res = await api(`/api/events/${id}`, { method: 'DELETE' });
-  if (res) { toast('삭제되었습니다'); showSchedulePage(); }
+  if (res) { toast('삭제되었습니다'); if (currentPage === 'calendar') showWorkCalendar(); else showSchedulePage(); }
 }
 
 // ─── 팀 게시판 ───
