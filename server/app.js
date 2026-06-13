@@ -80,7 +80,7 @@ app.post('/api/login', async (req, res) => {
           const tRes = await query('SELECT name FROM teams WHERE id = $1', [u.team_id]);
           if (tRes.rows[0]) teamName = tRes.rows[0].name;
         }
-        return res.json({ id: u.id, name: u.name, department: u.department, position: u.position, company_id: u.company_id, company_name: companyName, team_id: u.team_id, team_name: teamName });
+        return res.json({ id: u.id, name: u.name, department: u.department, position: u.position, company_id: u.company_id, company_name: companyName, team_id: u.team_id, team_name: teamName, sessionActive: true });
       }
     }
     return res.status(401).json({ error: '연락처 또는 비밀번호가 올바르지 않습니다' });

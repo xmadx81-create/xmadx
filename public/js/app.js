@@ -101,6 +101,28 @@ async function api(url, options = {}) {
 
 // ─── 인증 ───
 let _loginBusy = false;
+let _keepAliveTimer = null;
+
+async function _fetchLogin(phone, password) {
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, password })
+  });
+  return res;
+}
+
+function _startKeepAlive() {
+  if (_keepAliveTimer) clearInterval(_keepAliveTimer);
+  _keepAliveTimer = setInterval(() => {
+    fetch('/api/health').catch(() => {});
+  }, 10 * 60 * 1000);
+}
+
+function _stopKeepAlive() {
+  if (_keepAliveTimer) { clearInterval(_keepAliveTimer); _keepAliveTimer = null; }
+}
+
 async function login() {
   if (_loginBusy) return;
   const phoneRest = document.getElementById('loginPhone').value.trim().replace(/[^0-9]/g, '');
@@ -111,13 +133,48 @@ async function login() {
   _loginBusy = true;
   if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = '로그인 중...'; btn.style.opacity = '0.7'; }
   try {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, password })
-    });
+    let res;
+    try {
+      res = await _fetchLogin(phone, password);
+    } catch (e1) {
+      if (btn) btn.textContent = '재시도 중...';
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        res = await _fetchLogin(phone, password);
+      } catch (e2) {
+        let diagMsg = '서버에 연결할 수 없습니다.';
+        try {
+          const h = await fetch('/api/health');
+          const hd = await h.json();
+          diagMsg += `\n\n[진단] 서버: ${hd.status}, DB: ${hd.db}`;
+        } catch (_) {
+          diagMsg += '\n\n[진단] 서버 완전 미응답 — Render 서버가 슬립 상태일 수 있습니다.\n30초 후 다시 시도해주세요.';
+        }
+        showResultModal('error', '서버 연결 실패', diagMsg, '확인');
+        return;
+      }
+    }
     const data = await res.json();
-    if (!res.ok) { showResultModal('error', '로그인 실패', data.error || '연락처 또는 비밀번호가 올바르지 않습니다.', '확인'); return; }
+    if (!res.ok) {
+      let errMsg = data.error || '연락처 또는 비밀번호가 올바르지 않습니다.';
+      if (res.status === 500) {
+        errMsg += '\n\n[진단] 서버 내부 오류가 발생했습니다.\n관리자에게 문의해주세요.';
+      }
+      showResultModal('error', '로그인 실패', errMsg, '확인');
+      return;
+    }
+    // 세션 검증: 로그인 API 성공 후 실제 세션 쿠키가 저장됐는지 확인
+    try {
+      const verifyRes = await fetch('/api/me');
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || verifyData.error) {
+        showResultModal('warning', '세션 저장 실패', '로그인은 성공했지만 세션이 유지되지 않습니다.\n\n가능한 원인:\n• 브라우저 쿠키가 차단됨\n• 시크릿/사생활 모드 사용 중\n\n브라우저 설정에서 쿠키를 허용해주세요.', '확인');
+        return;
+      }
+    } catch (_) {
+      showResultModal('warning', '세션 확인 실패', '로그인 처리 중 세션 확인에 실패했습니다.\n페이지를 새로고침 후 다시 시도해주세요.', '확인');
+      return;
+    }
     currentUser = data;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
@@ -126,8 +183,7 @@ async function login() {
     toast(`${data.name}님 환영합니다!`);
     restorePendingVoice();
     setTimeout(() => startVoiceGuide(), 1200);
-  } catch (e) {
-    showResultModal('error', '서버 연결 실패', '서버에 연결할 수 없습니다.\n잠시 후 다시 시도해주세요.', '확인');
+    _startKeepAlive();
   } finally {
     _loginBusy = false;
     if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '로그인'; btn.style.opacity = ''; }
@@ -163,10 +219,12 @@ async function checkAuth() {
     setTimeout(checkAttendancePopup, 4000);
     restorePendingVoice();
     setTimeout(() => startVoiceGuide(), 1500);
+    _startKeepAlive();
   }
 }
 
 async function logout() {
+  _stopKeepAlive();
   await api('/api/logout', { method: 'POST' });
   currentUser = null;
   reportViewMode = 'mine';
@@ -6886,7 +6944,7 @@ async function checkAttendancePopup() {
 
 setInterval(checkAttendancePopup, 60000);
 
-// 초기화 — 서버 연결 상태 표시
+// 초기화 — 서버 연결 상태 표시 + 서버 준비 확인
 (async () => {
   const indicator = document.createElement('div');
   indicator.id = 'serverStatus';
@@ -6894,10 +6952,37 @@ setInterval(checkAttendancePopup, 60000);
   document.body.appendChild(indicator);
 
   const loginScreen = document.getElementById('loginScreen');
-  if (loginScreen && loginScreen.style.display !== 'none') {
+  const loginBtn = document.querySelector('#loginScreen .btn-primary');
+  const isLoginVisible = loginScreen && loginScreen.style.display !== 'none';
+
+  if (isLoginVisible) {
     indicator.textContent = '서버 연결 중...';
     indicator.style.display = 'block';
+    if (loginBtn) { loginBtn.disabled = true; loginBtn.style.opacity = '0.5'; }
   }
+
+  // 서버 health 체크 (최대 3회 재시도, cold start 대비)
+  let serverReady = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const hRes = await fetch('/api/health');
+      const hData = await hRes.json();
+      if (hData.status === 'OK') { serverReady = true; break; }
+    } catch (_) {}
+    if (attempt < 2) {
+      indicator.textContent = `서버 깨우는 중... (${attempt + 1}/3)`;
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+
+  if (!serverReady && isLoginVisible) {
+    indicator.textContent = '서버 응답 없음 — 새로고침 해주세요';
+    indicator.style.background = 'rgba(220,38,38,0.85)';
+    if (loginBtn) loginBtn.disabled = true;
+    return;
+  }
+
+  if (isLoginVisible && loginBtn) { loginBtn.disabled = false; loginBtn.style.opacity = ''; }
 
   await checkAuth();
 
