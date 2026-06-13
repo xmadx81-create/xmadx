@@ -7990,6 +7990,18 @@ function _aiAutoDetectPersonal(input) {
     detections.push({ type: 'nickname', value: nickMatch[1].trim() });
   }
 
+  const stressMatch = input.match(/스트레스.*?(?:받으면|날때|때)\s*(.{2,20}?)(?:해|하|함|합니다|해요|하는|야)/);
+  if (stressMatch) {
+    _aiProfileSet('stressRelief', stressMatch[1].trim());
+    detections.push({ type: 'stressRelief', value: stressMatch[1].trim() });
+  }
+
+  const goalMatch = input.match(/(?:목표|꿈|이루고\s*싶)(?:는|은|이)?\s*(.{2,30}?)(?:야|이야|인데|거든|이에요|요|입니다|임|이다|!|$)/);
+  if (goalMatch && goalMatch[1].trim().length >= 2) {
+    _aiProfileSet('goal', goalMatch[1].trim());
+    detections.push({ type: 'goal', value: goalMatch[1].trim() });
+  }
+
   return detections;
 }
 
@@ -8088,6 +8100,16 @@ function openAiChat() {
       if (tips.length > 0) _aiChatAddBot('💡 ' + tips.join(' | '));
     } catch(_) {}
   }, 1500);
+
+  // 심연의 눈: 선제 대화
+  setTimeout(() => {
+    try {
+      const proactiveMsgs = _aiProactiveChat();
+      proactiveMsgs.forEach((msg, i) => {
+        setTimeout(() => _aiChatAddBot(msg), (i + 1) * 2500 + 3500);
+      });
+    } catch(_) {}
+  }, 500);
 
   // 스마트 추천: 학습 기반 + 시간대별
   let suggests = [];
@@ -8327,9 +8349,19 @@ async function sendAiChat() {
   _aiChatThinking();
   document.getElementById('aiChatStatus').textContent = '생각 중... ' + _aiMoodEmoji();
 
-  // [5] 마법사 진행 중이면 마법사 처리
+  // [10] 유도 질문 응답 처리
   let response;
-  if (_aiWizardState) {
+  const mem0 = _aiMemory();
+  if (mem0._pendingGuided) {
+    const gKey = mem0._pendingGuided;
+    delete mem0._pendingGuided;
+    _aiMemorySave(mem0);
+    const gResult = _aiHandleGuidedAnswer(gKey, text);
+    if (gResult) response = { reply: gResult, suggests: ['도움말', '오늘 브리핑'] };
+  }
+
+  // [5] 마법사 진행 중이면 마법사 처리
+  if (!response && _aiWizardState) {
     response = await _aiProcessWizard(text);
   }
   if (!response) {
@@ -9004,7 +9036,7 @@ async function _aiProcessChat(input, _detections) {
 
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
-    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n🧠 추천 — "추천해줘", "우선순위", "보고서 뭐 쓸까", "다음에 뭐 할까"\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
+    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n🧠 추천 — "추천해줘", "우선순위", "보고서 뭐 쓸까", "다음에 뭐 할까"\n👁️ 심연 — "나를 분석해", "번아웃 체크", 말투·감정·패턴 자동 분석\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
   }
 
   // --- 감사/칭찬 ---
@@ -9397,6 +9429,42 @@ async function _aiProcessChat(input, _detections) {
   // --- 다음에 뭐 할까 / 다음 행동 ---
   if (/다음에?\s*뭐|다음\s*행동|지금\s*이거|뭐\s*해야\s*[해하]/.test(t)) {
     return await _aiNextAction();
+  }
+  // --- 번아웃 체크 ---
+  if (/번아웃|번\s*아웃|지침\s*체크|컨디션\s*체크|에너지\s*체크/.test(t)) {
+    const bo = _aiBurnoutCheck();
+    if (!bo) return { reply: '아직 데이터가 부족해서 번아웃 분석을 할 수 없어요. 며칠 더 사용해주세요!', suggests: ['오늘 일지'] };
+    let r = '🔋 번아웃 체크\n━━━━━━━━━━━━━━\n\n';
+    r += bo.icon + ' 위험도: ' + bo.risk + '% (' + bo.level + ')\n\n';
+    r += '📊 최근 2주 평균 생산성: ' + bo.avgScore + '점\n';
+    r += '📉 저조한 날: ' + bo.lowDays + '일\n';
+    r += '추세: ' + (bo.declining ? '📉 하락 중' : '➡️ 유지') + '\n';
+    r += '기분 점수: ' + _aiMoodScore + '점\n\n';
+    r += '💡 ' + bo.msg;
+    return { reply: r, suggests: ['오늘 일지', '추천해줘', '패턴 분석'] };
+  }
+  // --- 심층 프로필 ---
+  if (/심층\s*프로필|나를?\s*분석|내\s*분석|나에?\s*대해|AI가?\s*본\s*나|나를?\s*어떻게\s*봐/.test(t)) {
+    const dp = _aiDeepProfile();
+    const prof = _aiPersonalProfile();
+    const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
+    let r = '🔮 ' + name + '님의 심층 프로필\n━━━━━━━━━━━━━━\n\n';
+    r += '💼 업무 스타일: ' + dp.workStyle + '\n';
+    r += '💬 대화 성향: ' + dp.personality + '\n';
+    if (dp.mbti) r += '🧬 MBTI: ' + dp.mbti + '\n';
+    r += '⚡ 에너지 최고: ' + dp.energyPeak + '\n';
+    r += '☕ 에너지 최저: ' + dp.energyLow + '\n';
+    r += '📊 최근 평균 생산성: ' + dp.avgScore + '점\n';
+    r += '📅 기록 일수: ' + dp.totalDays + '일\n';
+    if (dp.hobbies.length > 0) r += '🎯 취미: ' + dp.hobbies.join(', ') + '\n';
+    if (dp.likes.length > 0) r += '❤️ 좋아하는 것: ' + dp.likes.join(', ') + '\n';
+    if (dp.dislikes.length > 0) r += '💔 싫어하는 것: ' + dp.dislikes.join(', ') + '\n';
+    if (dp.stressPatterns.length > 0) { r += '\n⚠️ 주의 신호:\n'; dp.stressPatterns.forEach(p => { r += '  • ' + p + '\n'; }); }
+    const bo = _aiBurnoutCheck();
+    if (bo) r += '\n🔋 번아웃 위험도: ' + bo.icon + ' ' + bo.risk + '% (' + bo.level + ')';
+    if (dp.missingInfo.length > 0) r += '\n\n💬 아직 모르는 것 ' + dp.missingInfo.length + '가지 — 대화하면서 더 알아갈게요!';
+    r += '\n\n🧠 매일 대화할수록 당신을 더 깊이 이해해요!';
+    return { reply: r, suggests: ['번아웃 체크', '패턴 분석', '오늘 예측'] };
   }
 
   // --- 할 일 삭제 ---
@@ -9971,6 +10039,13 @@ async function _aiProcessChat(input, _detections) {
     }
   }
 
+  // [10] 심연의 눈: 의도 추론 시도
+  const _inferResult = _aiInferIntent(input, _detections && _detections._emotion);
+  if (_inferResult) {
+    _aiLearn('inferred_' + Date.now(), input);
+    return _inferResult;
+  }
+
   _aiLearn('unmatched_' + Date.now(), input);
   smartSuggests.push('구글 ' + input.substring(0, 10));
   const fallbacks = [
@@ -9994,6 +10069,7 @@ function _aiDetectTopic(t) {
   if (/일지|뭐했|트렌드|생산성/.test(t)) return '일지';
   if (/예측|전망|마감|패턴|데드라인/.test(t)) return '예측';
   if (/추천|우선순위|뭐부터|뭐할까/.test(t)) return '추천';
+  if (/번아웃|심층|분석해|나를|나에대해/.test(t)) return '심연';
   if (/검색|찾/.test(t)) return '검색';
   if (/프로필|취향|mbti|취미|좋아하|싫어하/.test(t)) return '개인정보';
   if (/먹었|먹은|추억|기념일/.test(t)) return '생활기록';
@@ -11003,6 +11079,308 @@ async function _aiNextAction() {
 
     return { reply: '👉 지금 이거 하세요!\n━━━━━━━━━━━━━━\n\n' + icon + ' ' + action, suggests };
   } catch(_) { return { reply: '추천을 생성하지 못했어요.', suggests: [] }; }
+}
+
+// ─── [10] 심연의 눈 — Deep Insight Engine ───
+
+function _aiDeepProfile() {
+  const prof = _aiPersonalProfile();
+  const logs = _aiJournalHistory();
+  const mem = _aiMemory();
+  const patterns = _aiAnalyzePatterns();
+
+  const moodHistory = [];
+  const chatLog = mem.chatLog || [];
+  const recent30 = logs.slice(-30);
+
+  let energyPeak = 'unknown', energyLow = 'unknown';
+  if (patterns && patterns.dayStats) {
+    const workDays = patterns.dayStats.filter((d, i) => i >= 1 && i <= 5 && d.count > 0);
+    if (workDays.length > 0) {
+      energyPeak = ['일','월','화','수','목','금','토'][workDays.reduce((a, b) => a.avgScore > b.avgScore ? a : b).day] + '요일';
+      energyLow = ['일','월','화','수','목','금','토'][workDays.reduce((a, b) => a.avgScore < b.avgScore ? a : b).day] + '요일';
+    }
+  }
+
+  let workStyle = '분석 중';
+  if (recent30.length >= 5) {
+    const avgReports = recent30.reduce((s, j) => s + j.reports, 0) / recent30.length;
+    const avgDone = recent30.reduce((s, j) => s + j.todoDone, 0) / recent30.length;
+    const scoreVariance = recent30.reduce((s, j) => s + Math.pow(j.score - recent30.reduce((a, b) => a + b.score, 0) / recent30.length, 2), 0) / recent30.length;
+
+    if (avgReports >= 1.5 && avgDone >= 3) workStyle = '🦁 완벽주의자';
+    else if (avgDone >= 3 && avgReports < 1) workStyle = '⚡ 속전속결형';
+    else if (avgReports >= 1 && scoreVariance < 200) workStyle = '📐 계획형';
+    else if (scoreVariance >= 400) workStyle = '🎲 즉흥형';
+    else if (avgReports >= 1) workStyle = '📝 꼼꼼형';
+    else workStyle = '🌊 마이페이스형';
+  }
+
+  const chatFreq = chatLog.length > 0 ? Math.round(chatLog.length / Math.max(1, logs.length)) : 0;
+  let personality = '탐색 중';
+  if (chatFreq >= 5) personality = '수다쟁이 🗣️';
+  else if (chatFreq >= 2) personality = '적극적 💬';
+  else if (chatFreq >= 1) personality = '효율적 🎯';
+  else personality = '조용한 관찰자 🔍';
+
+  const stressPatterns = [];
+  const moodFacts = Object.entries(mem.facts || {}).filter(([k]) => k.startsWith('mood_'));
+  const badDays = moodFacts.filter(([, v]) => v === 'bad');
+  if (badDays.length > 3) stressPatterns.push('최근 힘든 날이 잦아요');
+  if (recent30.length >= 5) {
+    const lowDays = recent30.filter(j => j.score < 30);
+    if (lowDays.length >= 3) stressPatterns.push('생산성 저하 구간이 감지됐어요');
+  }
+
+  const missingInfo = [];
+  if (!prof.mbti) missingInfo.push('mbti');
+  if (!prof.birthday) missingInfo.push('birthday');
+  if (!(prof.hobbies || []).length) missingInfo.push('hobbies');
+  if (!(prof.likes || []).length) missingInfo.push('likes');
+  if (!prof.stressRelief) missingInfo.push('stressRelief');
+  if (!prof.goal) missingInfo.push('goal');
+  if (!prof.lunchPrefer) missingInfo.push('lunchPrefer');
+  if (!prof.workHours) missingInfo.push('workHours');
+
+  return {
+    workStyle,
+    personality,
+    energyPeak,
+    energyLow,
+    stressPatterns,
+    missingInfo,
+    chatFreq,
+    mbti: prof.mbti,
+    nickname: prof.nickname,
+    hobbies: prof.hobbies || [],
+    likes: prof.likes || [],
+    dislikes: prof.dislikes || [],
+    totalDays: logs.length,
+    avgScore: recent30.length > 0 ? Math.round(recent30.reduce((s, j) => s + j.score, 0) / recent30.length) : 0
+  };
+}
+
+function _aiReadBetweenLines(input, emotion) {
+  const t = input.toLowerCase().trim();
+  const h = new Date().getHours();
+  const dp = _aiDeepProfile();
+
+  const intents = [];
+
+  if (/힘들|지치|피곤|스트레스|죽겠|미치겠|돌겠/.test(t)) {
+    if (h >= 17) intents.push({ type: 'wantGoHome', conf: 0.8, msg: '퇴근하고 싶은 마음이 느껴져요' });
+    if (dp.avgScore < 40) intents.push({ type: 'burnoutRisk', conf: 0.7, msg: '최근 번아웃 위험 신호가 있어요' });
+    intents.push({ type: 'needComfort', conf: 0.9, msg: '위로가 필요해 보여요' });
+  }
+
+  if (/심심|뭐해|할거없|재미없/.test(t)) {
+    if (h >= 11 && h < 14) intents.push({ type: 'lunchBored', conf: 0.6, msg: '점심시간에 할 거 없나 보네요' });
+    intents.push({ type: 'wantFun', conf: 0.7, msg: '재미있는 걸 찾고 있어요' });
+  }
+
+  if (/어떡하|어떻게|모르겠|막막|답\s*없/.test(t)) {
+    intents.push({ type: 'needGuidance', conf: 0.85, msg: '방향을 찾고 있어요' });
+  }
+
+  if (/잘했|괜찮|나\s*잘\s*하고|잘\s*하고\s*있/.test(t)) {
+    intents.push({ type: 'needValidation', conf: 0.8, msg: '인정받고 싶은 마음이 있어요' });
+  }
+
+  if (/바빠|시간\s*없|급해/.test(t) && emotion && emotion.delta < 0) {
+    intents.push({ type: 'overwhelmed', conf: 0.75, msg: '업무가 과부하 상태일 수 있어요' });
+  }
+
+  if (/ㅋ{3,}|ㅎ{3,}|😂|🤣/.test(t) && emotion && emotion.delta > 0) {
+    intents.push({ type: 'goodMood', conf: 0.7, msg: '기분이 좋아 보여요' });
+  }
+
+  if (/뭐\s*먹|배고|밥/.test(t) && !/추천|검색/.test(t)) {
+    intents.push({ type: 'hungry', conf: 0.6, msg: '배고프신가 봐요' });
+  }
+
+  if (/퇴근|집\s*가|끝|마무리/.test(t)) {
+    intents.push({ type: 'wrapUp', conf: 0.8, msg: '하루를 마무리하려 해요' });
+  }
+
+  return intents.sort((a, b) => b.conf - a.conf);
+}
+
+function _aiInferIntent(input, emotion) {
+  const intents = _aiReadBetweenLines(input, emotion);
+  if (intents.length === 0) return null;
+
+  const top = intents[0];
+  const prof = _aiPersonalProfile();
+  const name = prof.nickname || (currentUser ? currentUser.name : '');
+  const dp = _aiDeepProfile();
+  const _style = (_aiMemory().facts && _aiMemory().facts.chatStyle) || 'formal';
+
+  const responses = {
+    needComfort: () => {
+      let r = '💙 ' + name + '님, 많이 힘드시죠?\n\n';
+      r += '당신의 감정을 읽었어요. 지금 기분 점수는 ' + _aiMoodScore + '점이에요.\n';
+      if (dp.stressPatterns.length > 0) r += '📊 ' + dp.stressPatterns[0] + '\n';
+      if (prof.stressRelief) r += '\n💡 "' + prof.stressRelief + '" 어때요? 전에 이게 좋다고 하셨잖아요!\n';
+      else r += '\n💡 스트레스 해소법을 알려주시면 힘들 때 추천해드릴게요!\n';
+      r += '\n잠깐 쉬어가도 괜찮아요. 제가 항상 곁에 있을게요 🤗';
+      return { reply: r, suggests: ['오늘 일지', '농담 해줘', '추천해줘'] };
+    },
+    burnoutRisk: () => {
+      let r = '⚠️ 번아웃 주의보!\n━━━━━━━━━━━━━━\n\n';
+      r += name + '님, 최근 패턴을 분석해봤어요.\n\n';
+      r += '📊 최근 평균 생산성: ' + dp.avgScore + '점\n';
+      r += '💬 대화 빈도: ' + (dp.chatFreq >= 3 ? '높음' : '보통') + '\n';
+      if (dp.stressPatterns.length > 0) dp.stressPatterns.forEach(p => { r += '⚡ ' + p + '\n'; });
+      r += '\n💡 추천:\n• 오늘은 급한 것만 처리하고 일찍 퇴근하세요\n• 할 일 우선순위를 다시 정리해볼까요?\n• 내일은 여유로운 하루를 계획해보세요';
+      return { reply: r, suggests: ['우선순위', '오늘 일지', '퇴근해'] };
+    },
+    wantGoHome: () => ({
+      reply: '🌙 퇴근하고 싶으시죠? 다 알아요!\n\n' + (dp.avgScore >= 50 ? '오늘 생산성 ' + dp.avgScore + '점이면 충분히 잘하셨어요!\n' : '') + '남은 일만 빠르게 정리하고 퇴근하세요!\n\n마무리할 것들을 확인해드릴까요?',
+      suggests: ['오늘 일지', '퇴근해', '남은 할 일']
+    }),
+    needGuidance: () => ({
+      reply: '🧭 길을 찾고 계시는군요.\n\n제가 도와드릴게요! 지금 상황을 정리해볼까요?\n\n• 업무 관련이면 → "추천해줘" 또는 "우선순위"\n• 기분이 복잡하면 → 편하게 얘기해주세요\n• 뭔가 결정해야 하면 → 구체적으로 말씀해주세요\n\n어떤 것이든 함께 풀어나가요!',
+      suggests: ['추천해줘', '우선순위', '오늘 브리핑']
+    }),
+    needValidation: () => {
+      let r = '👏 ' + name + '님, 당연히 잘하고 있죠!\n\n';
+      if (dp.totalDays > 0) r += '📊 지금까지 ' + dp.totalDays + '일간의 기록이 증명해요!\n';
+      r += '업무 스타일: ' + dp.workStyle + '\n';
+      if (dp.avgScore >= 50) r += '최근 평균 생산성 ' + dp.avgScore + '점이면 대단한 거예요!\n';
+      r += '\n자신감 가지세요. 저는 늘 당신 편이에요! 💪';
+      return { reply: r, suggests: ['패턴 분석', '오늘 일지', '이번주 전망'] };
+    },
+    overwhelmed: () => ({
+      reply: '😮‍💨 많이 바쁘시죠?\n\n일이 겹칠 때는 정리가 먼저예요!\n\n1. 급한 것부터 정렬해드릴까요?\n2. 오늘 할 것만 추려드릴까요?\n3. 미룰 수 있는 건 내일로 넘겨요\n\n한 번에 하나씩, 차근차근 가요!',
+      suggests: ['우선순위', '마감 위험', '추천해줘']
+    }),
+    wantFun: () => {
+      const funs = ['농담 해줘', '드라마 명대사', '명언', '오늘 운세'];
+      return { reply: '😄 심심하시구나! 제가 재미있게 해드릴게요~\n\n뭐가 좋을까요?', suggests: funs.sort(() => Math.random() - 0.5).slice(0, 3) };
+    },
+    lunchBored: () => ({
+      reply: '🍜 점심시간이네요! ' + (prof.likes && prof.likes.length > 0 ? prof.likes[0] + ' 좋아하시잖아요! 오늘 그거 어때요?' : '뭐 먹을지 추천해드릴까요?'),
+      suggests: ['점심 추천', '농담 해줘', '오늘 일정']
+    }),
+    goodMood: () => ({
+      reply: '😊 기분 좋아 보여서 저도 기분이 좋아요!\n이 에너지로 오늘 남은 일도 쭉쭉 해치우세요! 🚀',
+      suggests: ['할 일 확인', '추천해줘', '오늘 일정']
+    }),
+    wrapUp: () => ({
+      reply: '🌆 하루를 마무리하시는군요!\n\n오늘 일지를 정리해드릴까요? 남은 할 일이 있는지도 확인해볼게요.',
+      suggests: ['오늘 일지', '남은 할 일', '퇴근해']
+    }),
+    hungry: () => ({
+      reply: '🍽️ 배고프신 거 다 알아요~\n' + (prof.likes && prof.likes.length > 0 ? '혹시 오늘도 ' + prof.likes[Math.floor(Math.random() * prof.likes.length)] + ' 어때요? 😋' : '점심 메뉴 추천해드릴까요?'),
+      suggests: ['점심 추천', '오늘 일정']
+    })
+  };
+
+  const handler = responses[top.type];
+  if (handler) return handler();
+  return null;
+}
+
+const _aiGuidedQuestions = [
+  { key: 'mbti', q: '혹시 MBTI 알아요? 알면 더 맞춤 대화를 할 수 있어요!', check: p => !p.mbti },
+  { key: 'stressRelief', q: '스트레스 받을 때 보통 뭐 하면서 풀어요?', check: p => !p.stressRelief },
+  { key: 'goal', q: '요즘 목표나 이루고 싶은 게 있어요?', check: p => !p.goal },
+  { key: 'hobbies', q: '취미가 뭐예요? 알면 쉬는 시간에 추천해드릴 수 있어요!', check: p => !(p.hobbies || []).length },
+  { key: 'lunchPrefer', q: '점심은 보통 뭐 먹어요? 한식? 양식? 뭐든?', check: p => !p.lunchPrefer },
+  { key: 'workHours', q: '보통 몇 시에 출근하고 몇 시에 퇴근해요?', check: p => !p.workHours },
+  { key: 'birthday', q: '생일은 언제예요? 축하해드리고 싶어서! 🎂', check: p => !p.birthday },
+  { key: 'likes', q: '요즘 빠져있는 거 있어요? 뭐든 좋아요!', check: p => !(p.likes || []).length },
+];
+
+let _aiGuidedCooldown = 0;
+
+function _aiShouldAsk() {
+  const prof = _aiPersonalProfile();
+  const mem = _aiMemory();
+  const chatCount = mem.chatCount || 0;
+
+  if (chatCount < 5) return null;
+  if (_aiGuidedCooldown > 0) { _aiGuidedCooldown--; return null; }
+
+  const pending = _aiGuidedQuestions.filter(q => q.check(prof));
+  if (pending.length === 0) return null;
+
+  if (chatCount % 8 !== 0) return null;
+
+  _aiGuidedCooldown = 5;
+  const pick = pending[Math.floor(Math.random() * pending.length)];
+  return pick;
+}
+
+function _aiHandleGuidedAnswer(key, input) {
+  const prof = _aiPersonalProfile();
+  const t = input.trim();
+
+  if (key === 'stressRelief') { _aiProfileSet('stressRelief', t); return '좋아요! 힘들 때 "' + t + '" 추천해드릴게요! 기억해둘게요 💙'; }
+  if (key === 'goal') { _aiProfileSet('goal', t); return '멋진 목표네요! "' + t + '" — 응원할게요! 🎯'; }
+  if (key === 'lunchPrefer') { _aiProfileSet('lunchPrefer', t); return t + ' 좋아하시는구나! 점심 추천할 때 참고할게요 🍽️'; }
+  if (key === 'workHours') { _aiProfileSet('workHours', t); return '출퇴근 시간 기억해둘게요! 맞춤 알림 드릴게요 ⏰'; }
+  return null;
+}
+
+function _aiBurnoutCheck() {
+  const logs = _aiJournalHistory().slice(-14);
+  if (logs.length < 5) return null;
+
+  const avgScore = Math.round(logs.reduce((s, j) => s + j.score, 0) / logs.length);
+  const lowDays = logs.filter(j => j.score < 25).length;
+  const trend = logs.slice(-7);
+  const trendAvg = trend.length > 0 ? Math.round(trend.reduce((s, j) => s + j.score, 0) / trend.length) : 50;
+  const declining = trendAvg < avgScore - 15;
+
+  let risk = 0;
+  if (avgScore < 30) risk += 40;
+  else if (avgScore < 50) risk += 20;
+  if (lowDays >= 4) risk += 30;
+  else if (lowDays >= 2) risk += 15;
+  if (declining) risk += 20;
+  if (_aiMoodScore < 30) risk += 20;
+
+  risk = Math.min(100, risk);
+
+  if (risk < 30) return null;
+
+  let level, icon, msg;
+  if (risk >= 70) { level = '위험'; icon = '🔴'; msg = '번아웃 위험이 높아요. 꼭 쉬어가세요!'; }
+  else if (risk >= 50) { level = '주의'; icon = '🟡'; msg = '피로가 쌓이고 있어요. 페이스 조절이 필요해요.'; }
+  else { level = '관찰'; icon = '🟢'; msg = '약간의 피로감이 있어요. 컨디션 관리해주세요.'; }
+
+  return { risk, level, icon, msg, avgScore, lowDays, declining };
+}
+
+function _aiProactiveChat() {
+  const h = new Date().getHours();
+  const dp = _aiDeepProfile();
+  const prof = _aiPersonalProfile();
+  const name = prof.nickname || (currentUser ? currentUser.name : '');
+  const burnout = _aiBurnoutCheck();
+
+  const msgs = [];
+
+  if (burnout && burnout.risk >= 50) {
+    msgs.push(burnout.icon + ' ' + name + '님, 최근 좀 지쳐 보여요. ' + burnout.msg);
+  }
+
+  const guided = _aiShouldAsk();
+  if (guided) {
+    msgs.push('💬 궁금한 게 있어요! ' + guided.q);
+    _aiMemory()._pendingGuided = guided.key;
+    _aiMemorySave(_aiMemory());
+  }
+
+  if (dp.workStyle !== '분석 중' && dp.totalDays >= 7 && !_aiMemory()._shownWorkStyle) {
+    msgs.push('🧠 ' + name + '님의 업무 스타일을 파악했어요: ' + dp.workStyle);
+    const mem = _aiMemory();
+    mem._shownWorkStyle = true;
+    _aiMemorySave(mem);
+  }
+
+  return msgs;
 }
 
 async function aiSecretaryCheck() {
