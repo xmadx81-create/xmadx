@@ -3747,8 +3747,7 @@ app.post('/api/ai-chat', async (req, res) => {
   const { message, history } = req.body;
   if (!message) return res.status(400).json({ error: '메시지가 필요합니다' });
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_KEY) return res.status(500).json({ error: 'AI 키 미설정' });
+  const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
 
   try {
     const systemPrompt = `너는 '석유관리앱'의 AI 업무비서야. 이름은 '비서'.
