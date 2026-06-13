@@ -7751,6 +7751,25 @@ let _aiChatHistory = [];
 let _aiUnmatchedCount = 0;
 let _aiLastUnmatched = '';
 let _aiLastWasFallback = false;
+
+async function _aiCallGemini(message) {
+  try {
+    const history = _aiChatHistory.slice(-6).map(h => ({
+      who: h.who, text: (h.text || '').substring(0, 200)
+    }));
+    const resp = await fetch('/api/ai-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history })
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.reply || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function _aiSimpleSimilarity(a, b) {
   if (!a || !b) return 0;
   const setA = new Set(a.split(''));
@@ -10870,6 +10889,15 @@ async function _aiProcessChat(input, _detections) {
     return rec;
   }
 
+  // ─── Gemini AI 호출 (진짜 AI 응답) ───
+  const _geminiReply = await _aiCallGemini(input);
+  if (_geminiReply) {
+    _aiUnmatchedCount = 0;
+    _aiLastWasFallback = false;
+    return { reply: _geminiReply, suggests: ['오늘 브리핑', '할일 목록', '사자성어 더'] };
+  }
+
+  // ─── Gemini 실패 시 기존 fallback ───
   _aiLastWasFallback = true;
   smartSuggests.push('사자성어 더');
   const _fbIdiom = _aiPickIdiom(_aiDetectIdiomCat(t));

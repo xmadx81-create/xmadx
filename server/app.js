@@ -3742,6 +3742,67 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// ─── AI 비서 Gemini 프록시 ───
+app.post('/api/ai-chat', async (req, res) => {
+  const { message, history } = req.body;
+  if (!message) return res.status(400).json({ error: '메시지가 필요합니다' });
+
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_KEY) return res.status(500).json({ error: 'AI 키 미설정' });
+
+  try {
+    const systemPrompt = `너는 '석유관리앱'의 AI 업무비서야. 이름은 '비서'.
+규칙:
+- 한국어로만 대화해
+- 업무 관련 질문에 친절하고 핵심적으로 답변
+- 사자성어를 가끔 적절히 섞어서 사용
+- 업무 외 대화는 부드럽게 업무 쪽으로 전환 ("그건 그렇고, 오늘 업무는 어떠세요?" 식으로)
+- 상대방 말투에 맞춰 반말/존댓말 전환
+- 답변은 짧고 핵심적으로 (3문장 이내)
+- 이모지 적절히 사용
+- 출근/퇴근/보고서/일정 등 앱 기능 관련 질문은 해당 버튼이나 메뉴 사용을 안내
+- 절대 영어로 답하지 말 것
+- 너는 진짜 AI 비서이고, 사용자의 업무를 돕는 것이 목표야`;
+
+    const contents = [];
+    if (history && history.length > 0) {
+      history.slice(-6).forEach(h => {
+        contents.push({
+          role: h.who === 'user' ? 'user' : 'model',
+          parts: [{ text: h.text }]
+        });
+      });
+    }
+    contents.push({ role: 'user', parts: [{ text: message }] });
+
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents,
+          generationConfig: { maxOutputTokens: 300, temperature: 0.8 }
+        })
+      }
+    );
+
+    const data = await resp.json();
+    if (data.error) return res.status(500).json({ error: data.error.message });
+
+    const reply = data.candidates && data.candidates[0] && data.candidates[0].content
+      && data.candidates[0].content.parts && data.candidates[0].content.parts[0]
+      && data.candidates[0].content.parts[0].text;
+    if (!reply) return res.status(500).json({ error: 'AI 응답 없음' });
+
+    res.json({ reply });
+  } catch (err) {
+    console.error('Gemini API error:', err.message);
+    res.status(500).json({ error: 'AI 호출 실패: ' + err.message });
+  }
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);
