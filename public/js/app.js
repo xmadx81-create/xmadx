@@ -7996,11 +7996,19 @@ function _aiAutoDetectPersonal(input) {
 function openAiChat() {
   const overlay = document.getElementById('aiChatOverlay');
   overlay.style.display = 'flex';
+  _aiApplyTheme();
   _aiChatHistory = [];
+  _aiWizardState = null;
   document.getElementById('aiChatMessages').innerHTML = '';
   document.getElementById('aiChatInput').value = '';
+  const msgArea = document.getElementById('aiChatMessages');
+  msgArea.onscroll = () => {
+    const btn = document.getElementById('aiChatScrollBtn');
+    if (btn) btn.style.display = (msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight > 100) ? 'block' : 'none';
+  };
 
-  const name = currentUser ? currentUser.name : '사용자';
+  const prof = _aiPersonalProfile();
+  const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
   const mem = _aiMemory();
   const h = new Date().getHours();
   const _style = (mem.facts && mem.facts.chatStyle) || 'formal';
@@ -8056,7 +8064,6 @@ function openAiChat() {
     }, 3000);
   }
   // 생일 체크
-  const prof = _aiPersonalProfile();
   if (prof.birthday) {
     const todayMD = (new Date().getMonth() + 1) + '월 ' + new Date().getDate() + '일';
     if (prof.birthday === todayMD) {
@@ -8114,41 +8121,159 @@ function _topicToCmd(topic) {
   return map[topic] || '오늘 일정';
 }
 
+// ─── AI 비서 UI 고급화 ───
+const _aiThemes = {
+  default: { bg: 'linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%)', name: '기본' },
+  galaxy: { bg: 'linear-gradient(135deg,#0d0221 0%,#150734 30%,#0a1628 60%,#1a0536 100%)', name: '우주' },
+  nature: { bg: 'linear-gradient(135deg,#0b3d2e 0%,#1a4a3a 50%,#0d2b1f 100%)', name: '자연' },
+  neon: { bg: 'linear-gradient(135deg,#1a0a2e 0%,#2d1b4e 30%,#0a1628 60%,#1e0a3a 100%)', name: '네온' }
+};
+let _aiCurrentTheme = localStorage.getItem('aiChatTheme') || 'default';
+
+function _aiApplyTheme() {
+  const overlay = document.getElementById('aiChatOverlay');
+  if (!overlay) return;
+  const theme = _aiThemes[_aiCurrentTheme] || _aiThemes.default;
+  overlay.style.background = theme.bg;
+  overlay.setAttribute('data-theme', _aiCurrentTheme);
+}
+
+function _aiCycleTheme() {
+  const keys = Object.keys(_aiThemes);
+  const idx = keys.indexOf(_aiCurrentTheme);
+  _aiCurrentTheme = keys[(idx + 1) % keys.length];
+  localStorage.setItem('aiChatTheme', _aiCurrentTheme);
+  _aiApplyTheme();
+  const theme = _aiThemes[_aiCurrentTheme];
+  toast('🎨 테마: ' + theme.name);
+}
+
+function _aiChatScrollBottom() {
+  const area = document.getElementById('aiChatMessages');
+  if (area) area.scrollTop = area.scrollHeight;
+  const btn = document.getElementById('aiChatScrollBtn');
+  if (btn) btn.style.display = 'none';
+}
+
+function _aiShowProfileCard() {
+  const existing = document.getElementById('aiProfileCard');
+  if (existing) { existing.remove(); return; }
+  const lvl = _aiGetLevel();
+  const iq = _aiCalcIQ();
+  const mem = _aiMemory();
+  const prof = _aiPersonalProfile();
+  const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
+  const card = document.createElement('div');
+  card.id = 'aiProfileCard';
+  card.style.cssText = 'position:absolute; top:60px; left:16px; right:16px; z-index:9999; background:rgba(15,23,42,.95); border:1px solid rgba(124,58,237,.3); border-radius:16px; padding:20px; backdrop-filter:blur(15px); -webkit-backdrop-filter:blur(15px); animation:fadeIn .3s; box-shadow:0 10px 40px rgba(0,0,0,.5);';
+  const moodE = _aiMoodEmoji();
+  const chatCount = mem.chatCount || 0;
+  const daysUsed = (mem.daysUsed || []).length;
+  const logCount = _aiLifeLog().length;
+  const iqBar = Math.round((iq / 200) * 100);
+  card.innerHTML = `
+    <div style="text-align:center;">
+      <div style="width:64px; height:64px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; font-size:32px; margin:0 auto 8px; box-shadow:0 0 20px rgba(124,58,237,.5);">&#129302;</div>
+      <p style="font-size:18px; font-weight:700;">${lvl.emoji} AI 업무비서</p>
+      <p style="font-size:12px; color:rgba(255,255,255,.6); margin-top:2px;">Lv.${lvl.lv} ${lvl.title} · ${lvl.desc}</p>
+      <div style="margin:12px auto; width:80%; height:8px; background:rgba(255,255,255,.1); border-radius:4px; overflow:hidden;">
+        <div style="width:${iqBar}%; height:100%; background:linear-gradient(90deg,#7c3aed,#3b82f6); border-radius:4px; transition:width 1s;"></div>
+      </div>
+      <p style="font-size:11px; color:rgba(255,255,255,.5);">IQ ${iq}/200</p>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:16px; text-align:center;">
+      <div style="background:rgba(255,255,255,.06); border-radius:10px; padding:10px 6px;">
+        <p style="font-size:18px; font-weight:700;">${chatCount}</p>
+        <p style="font-size:10px; color:rgba(255,255,255,.5);">대화</p>
+      </div>
+      <div style="background:rgba(255,255,255,.06); border-radius:10px; padding:10px 6px;">
+        <p style="font-size:18px; font-weight:700;">${daysUsed}</p>
+        <p style="font-size:10px; color:rgba(255,255,255,.5);">사용일</p>
+      </div>
+      <div style="background:rgba(255,255,255,.06); border-radius:10px; padding:10px 6px;">
+        <p style="font-size:18px; font-weight:700;">${logCount}</p>
+        <p style="font-size:10px; color:rgba(255,255,255,.5);">기억</p>
+      </div>
+    </div>
+    <div style="margin-top:12px; font-size:12px; color:rgba(255,255,255,.6); text-align:center;">
+      ${moodE} 현재 기분: ${_aiCurrentMood === 'happy' ? '좋음' : _aiCurrentMood === 'tired' ? '피곤' : _aiCurrentMood === 'stressed' ? '스트레스' : '보통'}
+      ${prof.mbti ? ' · MBTI: ' + prof.mbti : ''}
+    </div>
+    <button onclick="this.parentElement.remove()" style="display:block; margin:14px auto 0; padding:8px 24px; border-radius:20px; border:none; background:rgba(255,255,255,.1); color:#fff; font-size:12px; cursor:pointer;">닫기</button>
+  `;
+  document.getElementById('aiChatMessages').parentElement.appendChild(card);
+}
+
+function _aiAddReactions(msgDiv) {
+  const reactions = document.createElement('div');
+  reactions.style.cssText = 'display:flex; gap:4px; margin-top:4px; padding-left:36px;';
+  reactions.innerHTML = `
+    <button class="ai-react-btn" onclick="_aiReact(this,'👍')" style="padding:2px 8px; border-radius:12px; border:1px solid rgba(255,255,255,.1); background:transparent; color:rgba(255,255,255,.5); font-size:12px; cursor:pointer; transition:all .2s;">👍</button>
+    <button class="ai-react-btn" onclick="_aiReact(this,'👎')" style="padding:2px 8px; border-radius:12px; border:1px solid rgba(255,255,255,.1); background:transparent; color:rgba(255,255,255,.5); font-size:12px; cursor:pointer; transition:all .2s;">👎</button>
+    <button class="ai-react-btn" onclick="_aiReact(this,'❤️')" style="padding:2px 8px; border-radius:12px; border:1px solid rgba(255,255,255,.1); background:transparent; color:rgba(255,255,255,.5); font-size:12px; cursor:pointer; transition:all .2s;">❤️</button>
+  `;
+  msgDiv.appendChild(reactions);
+}
+
+function _aiReact(btn, emoji) {
+  btn.style.background = 'rgba(124,58,237,.3)';
+  btn.style.borderColor = 'rgba(124,58,237,.5)';
+  btn.style.color = '#fff';
+  btn.parentElement.querySelectorAll('.ai-react-btn').forEach(b => { if (b !== btn) { b.style.background = 'transparent'; b.style.borderColor = 'rgba(255,255,255,.1)'; b.style.color = 'rgba(255,255,255,.5)'; } });
+  if (emoji === '👍' || emoji === '❤️') _aiRecordFeedback('positive');
+  else if (emoji === '👎') _aiRecordFeedback('negative');
+}
+
+function _aiTimeStamp() {
+  const now = new Date();
+  return String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+}
+
 function closeAiChat() {
   if (_aiChatVoiceMode) aiChatVoiceToggle();
   document.getElementById('aiChatOverlay').style.display = 'none';
   _aiChatHistory = [];
+  const profileCard = document.getElementById('aiProfileCard');
+  if (profileCard) profileCard.remove();
 }
 
 function _aiChatAddBot(text) {
   _aiChatHistory.push({ who: 'bot', text });
   const area = document.getElementById('aiChatMessages');
+  const wrapper = document.createElement('div');
   const div = document.createElement('div');
   div.style.cssText = 'display:flex; gap:8px; align-items:flex-start;';
+  const ts = _aiTimeStamp();
   div.innerHTML = `<div style="width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;">&#129302;</div>
-    <div style="max-width:80%; background:rgba(255,255,255,.1); border-radius:4px 16px 16px 16px; padding:10px 14px;">
-      <p class="aiChatText" style="font-size:14px; line-height:1.6; white-space:pre-line;"></p>
+    <div style="max-width:80%;">
+      <div style="background:rgba(255,255,255,.1); border-radius:4px 16px 16px 16px; padding:10px 14px;">
+        <p class="aiChatText" style="font-size:14px; line-height:1.6; white-space:pre-line;"></p>
+      </div>
+      <p style="font-size:9px; color:rgba(255,255,255,.3); margin-top:3px; padding-left:4px;">${ts}</p>
     </div>`;
-  area.appendChild(div);
+  wrapper.appendChild(div);
+  area.appendChild(wrapper);
   area.scrollTop = area.scrollHeight;
   const textEl = div.querySelector('.aiChatText');
   let i = 0;
   const timer = setInterval(() => {
-    i += 2;
+    i += 3;
     textEl.textContent = text.substring(0, i);
     area.scrollTop = area.scrollHeight;
-    if (i >= text.length) clearInterval(timer);
-  }, 15);
+    if (i >= text.length) { clearInterval(timer); _aiAddReactions(wrapper); }
+  }, 12);
 }
 
 function _aiChatAddUser(text) {
   _aiChatHistory.push({ who: 'user', text });
   const area = document.getElementById('aiChatMessages');
+  const ts = _aiTimeStamp();
   const div = document.createElement('div');
-  div.style.cssText = 'display:flex; justify-content:flex-end;';
+  div.style.cssText = 'display:flex; flex-direction:column; align-items:flex-end;';
   div.innerHTML = `<div style="max-width:80%; background:linear-gradient(135deg,#7c3aed,#3b82f6); border-radius:16px 4px 16px 16px; padding:10px 14px;">
     <p style="font-size:14px; line-height:1.6;">${text.replace(/</g,'&lt;')}</p>
-  </div>`;
+  </div>
+  <p style="font-size:9px; color:rgba(255,255,255,.3); margin-top:3px; padding-right:4px;">${ts}</p>`;
   area.appendChild(div);
   area.scrollTop = area.scrollHeight;
 }
@@ -8387,6 +8512,17 @@ async function _aiProcessChat(input, _detections) {
     const report = await _aiWeeklyReport();
     if (report) return { reply: report, suggests: ['이번 주 요약', '목표 확인'] };
     return { reply: '주간 리포트를 생성할 수 없어요.', suggests: ['이번 주 요약'] };
+  }
+
+  // --- [6] UI: AI 소개 / 테마 변경 ---
+  if (/AI\s*소개|비서\s*소개|자기\s*소개|너\s*누구|누구야|소개해/.test(t)) {
+    _aiShowProfileCard();
+    return { reply: _say('안녕하세요! AI 업무비서입니다! 👆 위에 프로필 카드를 띄워뒀어요!\n\n저는 대화할수록 똑똑해지는 AI예요.\n' + name + '님의 취향, 습관, 추억까지 기억하는 친구 같은 비서랍니다! 💜', '안녕! 나 AI 업무비서야! 👆 카드 띄워뒀어!\n대화할수록 똑똑해지고 ' + name + ' 취향까지 기억해! 💜'), suggests: ['도움말', '내 프로필', 'IQ 확인'] };
+  }
+  if (/테마\s*변경|테마\s*바꿔|배경\s*바꿔|색\s*바꿔/.test(t)) {
+    _aiCycleTheme();
+    const theme = _aiThemes[_aiCurrentTheme];
+    return { reply: _say('🎨 테마를 "' + theme.name + '"(으)로 변경했어요!\n헤더의 🎨 버튼으로도 바꿀 수 있어요.', '🎨 테마 "' + theme.name + '"로 바꿨어! 🎨 버튼으로도 바꿀 수 있어~'), suggests: ['테마 변경', '오늘 일정'] };
   }
 
   // --- [5] 마법사 시작 트리거 ---
