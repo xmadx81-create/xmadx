@@ -9971,16 +9971,47 @@ function _aiGetConversationSummary() {
 
 // ─── [2] 리마인더 엔진 ───
 function _aiParseReminder(input) {
-  const t = input.toLowerCase();
   let minutes = 0;
   let timeStr = '';
   let message = '';
-  const relMatch = input.match(/(\d+)\s*(분|시간)\s*(뒤|후|있다가)\s*(?:에)?\s*(.+?)(?:알려|리마인|해줘|알림|해|$)/);
-  if (relMatch) {
-    minutes = parseInt(relMatch[1]) * (relMatch[2] === '시간' ? 60 : 1);
-    message = relMatch[4].replace(/줘|좀|를|을|에|해/g, '').trim() || '리마인더';
+
+  // "N분 후에 X하는데 M분 전에 알려줘" → (N-M)분 후 알림
+  const advanceMatch = input.match(/(\d+)\s*(분|시간)\s*(?:뒤|후|있다가)(?:에)?\s*(.+?)\s*(\d+)\s*(분|시간)\s*(?:전|먼저)(?:에)?/);
+  if (advanceMatch) {
+    const eventMin = parseInt(advanceMatch[1]) * (advanceMatch[2] === '시간' ? 60 : 1);
+    const beforeMin = parseInt(advanceMatch[4]) * (advanceMatch[5] === '시간' ? 60 : 1);
+    minutes = Math.max(eventMin - beforeMin, 1);
+    message = advanceMatch[3].replace(/알람줄수있어\??|줄수있어\??|알람|알려|해줘|좀/g, '').replace(/\s*한\s*$/, '').replace(/\s*\?\s*$/, '').trim();
+    message = message.replace(/(?:올라가야|나가야|다녀와야|해야|가야)?(?:하는데|는데|인데)$/, '').trim() || '리마인더';
     return { minutes, message };
   }
+
+  // "M분 전에 알려줘" (이전 대화에서 시간 정보 참조)
+  const beforeOnly = input.match(/(\d+)\s*(분|시간)\s*전(?:에)?\s*(?:알려|알림|알람|해줘|해)/);
+  if (beforeOnly && !input.match(/(\d+)\s*(분|시간)\s*(?:뒤|후)/)) {
+    minutes = parseInt(beforeOnly[1]) * (beforeOnly[2] === '시간' ? 60 : 1);
+    message = '리마인더';
+    return { minutes, message };
+  }
+
+  // "N분 뒤에 X 알려줘"
+  const relMatch = input.match(/(\d+)\s*(분|시간)\s*(?:뒤|후|있다가)(?:에)?\s*(.+?)(?:알려|리마인|해줘|알림|해|$)/);
+  if (relMatch) {
+    minutes = parseInt(relMatch[1]) * (relMatch[2] === '시간' ? 60 : 1);
+    message = relMatch[4] ? relMatch[4].replace(/는데$|인데$|줘|좀|를|을|에|해$/g, '').trim() : '';
+    if (!message) message = '리마인더';
+    return { minutes, message };
+  }
+
+  // "X 알려줘 N분 뒤에" / "X N분 후에 알려줘"
+  const relMatch2 = input.match(/(.+?)\s*(\d+)\s*(분|시간)\s*(?:뒤|후)(?:에)?\s*(?:알려|알림|해줘|해)/);
+  if (relMatch2) {
+    minutes = parseInt(relMatch2[2]) * (relMatch2[3] === '시간' ? 60 : 1);
+    message = relMatch2[1].replace(/줘|좀|를|을|에|해$/g, '').trim() || '리마인더';
+    return { minutes, message };
+  }
+
+  // 절대 시간: "오후 3시에 X 알려줘"
   const absMatch = input.match(/(?:오전|오후)?\s*(\d{1,2})시\s*(?:(\d{1,2})분)?\s*(?:에)?\s*(.+?)(?:알려|리마인|해줘|알림|해|$)/);
   if (absMatch) {
     let h = parseInt(absMatch[1]);
@@ -9992,7 +10023,7 @@ function _aiParseReminder(input) {
     target.setHours(h, m, 0, 0);
     if (target <= now) target.setDate(target.getDate() + 1);
     minutes = Math.round((target - now) / 60000);
-    message = absMatch[3].replace(/줘|좀|를|을|에|해/g, '').trim() || '리마인더';
+    message = absMatch[3].replace(/는데$|인데$|줘|좀|를|을|에|해$/g, '').trim() || '리마인더';
     timeStr = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
     return { minutes, message, timeStr };
   }
