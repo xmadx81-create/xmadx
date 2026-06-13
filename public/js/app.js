@@ -220,6 +220,7 @@ async function checkAuth() {
     restorePendingVoice();
     setTimeout(() => startVoiceGuide(), 1500);
     _startKeepAlive();
+    setTimeout(aiSecretaryCheck, 8000);
   }
 }
 
@@ -352,12 +353,20 @@ async function renderHome() {
   const _tgMsg = _h < 9 ? '좋은 아침이에요!' : _h < 12 ? '오전도 힘차게!' : _h < 14 ? '점심 맛있게 드셨나요?' : _h < 18 ? '오후도 화이팅!' : '수고 많으셨어요!';
   const _todayEvts = (events || []).filter(e => (e.event_date || '').split('T')[0] === today);
   const _pendingTodos = (todos || []).filter(t => !t.completed);
+  const _overdueTodos = _pendingTodos.filter(t => t.due_date && t.due_date.split('T')[0] < today);
   const _streakCount = todayReports.length;
+  const _nowMin = _h * 60 + new Date().getMinutes();
+  const _nextEvt = _todayEvts.find(e => { if (!e.event_time) return false; const [eh,em] = e.event_time.split(':').map(Number); return (eh*60+em) > _nowMin; });
+
   let _aiTip = '';
+  let _aiUrgent = '';
+  if (_overdueTodos.length > 0) _aiUrgent = '⚠️ 기한 지난 할 일 ' + _overdueTodos.length + '건';
   if (!atd) _aiTip = '출근 체크가 아직이에요. 지금 할까요?';
-  else if (_todayEvts.length > 0 && _h < 17) { const nextEvt = _todayEvts.find(e => e.event_time && e.event_time > String(_h).padStart(2,'0')); if (nextEvt) _aiTip = '다음 일정: ' + (nextEvt.event_time||'').substring(0,5) + ' ' + nextEvt.title; }
+  else if (_nextEvt) { const diff = (parseInt(_nextEvt.event_time) * 60 + parseInt(_nextEvt.event_time.split(':')[1])) - _nowMin; _aiTip = (diff <= 30 ? '⏰ 곧! ' : '') + '다음 일정: ' + _nextEvt.event_time.substring(0,5) + ' ' + _nextEvt.title; }
   else if (_pendingTodos.length > 0) _aiTip = '할 일이 ' + _pendingTodos.length + '건 남아있어요.';
-  else if (_h >= 17) _aiTip = '오늘도 수고하셨어요. 퇴근 준비하세요!';
+  else if (atd && atd.check_in && !atd.check_out && _h >= 17) _aiTip = '퇴근 시간이에요. 퇴근 처리할까요?';
+  else if (_h >= 17) _aiTip = '오늘도 수고하셨어요!';
+  else if (_todayEvts.length === 0 && _h < 12) _aiTip = '오늘 일정이 비어있어요. 계획을 세워볼까요?';
   else _aiTip = '필요하면 언제든 불러주세요!';
 
   document.getElementById('mainContent').innerHTML = `
@@ -373,17 +382,26 @@ async function renderHome() {
             <span style="font-size:11px; opacity:.6;">${_tgEmoji} ${_tgMsg}</span>
           </div>
           <p style="font-size:14px; font-weight:500; line-height:1.4;">${currentUser.name}님, ${_aiTip}</p>
-          ${_streakCount > 0 ? `<p style="font-size:11px; color:#fbbf24; margin-top:4px;">🔥 오늘 ${_streakCount}건 작성 완료!</p>` : ''}
+          ${_aiUrgent ? `<p style="font-size:11px; color:#f87171; margin-top:3px; animation:pulse 2s infinite;">${_aiUrgent}</p>` : ''}
+          ${_streakCount > 0 ? `<p style="font-size:11px; color:#fbbf24; margin-top:3px;">🔥 오늘 ${_streakCount}건 작성 완료!</p>` : ''}
         </div>
         <div style="font-size:24px; opacity:.6;">🎤</div>
       </div>
       ${_todayEvts.length > 0 ? `
       <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,.1);">
         <p style="font-size:11px; opacity:.5; margin-bottom:6px;">📋 오늘 일정 ${_todayEvts.length}건</p>
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          ${_todayEvts.slice(0,4).map(e => `<span style="font-size:11px; background:rgba(255,255,255,.1); padding:3px 8px; border-radius:8px;">${e.event_time ? e.event_time.substring(0,5) + ' ' : ''}${e.title}</span>`).join('')}
-          ${_todayEvts.length > 4 ? `<span style="font-size:11px; opacity:.5;">+${_todayEvts.length - 4}건</span>` : ''}
-        </div>
+        ${_todayEvts.slice(0,4).map(e => {
+          const isPast = e.event_time && e.event_time < String(_h).padStart(2,'0') + ':' + String(new Date().getMinutes()).padStart(2,'0');
+          const isSoon = e.event_time && !isPast && _nextEvt && e.id === _nextEvt.id;
+          const style = isPast ? 'opacity:.4; text-decoration:line-through;' : isSoon ? 'background:rgba(251,191,36,.15); border:1px solid rgba(251,191,36,.3);' : 'background:rgba(255,255,255,.06);';
+          return `<div style="display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; margin-bottom:4px; ${style}">
+            <span style="font-size:12px; font-weight:600; min-width:40px;">${e.event_time ? e.event_time.substring(0,5) : '--:--'}</span>
+            <span style="font-size:12px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${e.title}</span>
+            ${isSoon ? '<span style="font-size:9px; background:#fbbf24; color:#000; padding:1px 5px; border-radius:6px; font-weight:700;">다음</span>' : ''}
+            ${isPast ? '<span style="font-size:9px; opacity:.5;">완료</span>' : ''}
+          </div>`;
+        }).join('')}
+        ${_todayEvts.length > 4 ? `<p style="font-size:11px; opacity:.4; text-align:center; margin-top:4px;">+${_todayEvts.length - 4}건 더...</p>` : ''}
       </div>` : ''}
       <!-- 비서 빠른 명령 -->
       <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,.1); display:flex; gap:8px;" onclick="event.stopPropagation();">
@@ -7117,6 +7135,26 @@ async function vgConversation() {
     }
   } catch(_) {}
 
+  // 할 일 체크: 미완료 + 기한 초과
+  try {
+    const todos = await api('/api/todos');
+    const pending = (todos || []).filter(t => !t.completed);
+    const today2 = new Date().toISOString().split('T')[0];
+    const overdue = pending.filter(t => t.due_date && t.due_date.split('T')[0] < today2);
+    if (overdue.length > 0) {
+      await new Promise(r => setTimeout(r, 300));
+      const odNames = overdue.slice(0, 2).map(t => t.title).join(', ');
+      vgAddBubble('⚠️ 기한이 지난 할 일이 ' + overdue.length + '건 있어요: ' + odNames, 'bot');
+      await vgSpeak('기한이 지난 할 일이 ' + overdue.length + '건 있어요. ' + odNames);
+      if (!_vgActive) return;
+    } else if (pending.length > 0) {
+      await new Promise(r => setTimeout(r, 300));
+      vgAddBubble('✅ 미완료 할 일이 ' + pending.length + '건 있어요.', 'bot');
+      await vgSpeak('미완료 할 일이 ' + pending.length + '건 있어요.');
+      if (!_vgActive) return;
+    }
+  } catch(_) {}
+
   // 출근 체크
   await new Promise(r => setTimeout(r, 300));
   vgAddBubble('출근 체크 도와드릴게요. 오늘은 어떤 근무이세요?', 'bot');
@@ -7382,6 +7420,109 @@ async function checkAttendancePopup() {
 }
 
 setInterval(checkAttendancePopup, 60000);
+
+// ─── AI 비서 꼼꼼 체크 시스템 ───
+let _alarmNotified = {};
+
+async function aiSecretaryCheck() {
+  if (!currentUser || currentUser.isAdmin) return;
+  const now = new Date();
+  const h = now.getHours();
+  const today = now.toISOString().split('T')[0];
+  const nowMin = h * 60 + now.getMinutes();
+
+  // 1. 일정 알람 — 10분 전 알림
+  try {
+    const events = await api('/api/calendar-events?date=' + today);
+    if (events && events.length > 0) {
+      for (const ev of events) {
+        if (!ev.event_time) continue;
+        const [eh, em] = ev.event_time.split(':').map(Number);
+        const evMin = eh * 60 + em;
+        const diff = evMin - nowMin;
+        const alarmKey = today + '_' + ev.id;
+        if (diff > 0 && diff <= 10 && !_alarmNotified[alarmKey]) {
+          _alarmNotified[alarmKey] = true;
+          _showSecretaryAlert('schedule', '📅 일정 알림', `${diff}분 후 "${ev.title}" 일정이 있어요!\n시간: ${ev.event_time}`, '확인');
+        }
+      }
+    }
+  } catch(_) {}
+
+  // 2. 기한 지난 할 일 알림 (하루 1번, 오전 9~10시)
+  if (h >= 9 && h < 10 && !_alarmNotified[today + '_overdue']) {
+    try {
+      const todos = await api('/api/todos');
+      const overdue = (todos || []).filter(t => !t.completed && t.due_date && t.due_date.split('T')[0] < today);
+      if (overdue.length > 0) {
+        _alarmNotified[today + '_overdue'] = true;
+        const names = overdue.slice(0, 3).map(t => '• ' + t.title).join('\n');
+        const moreText = overdue.length > 3 ? '\n외 ' + (overdue.length - 3) + '건...' : '';
+        _showSecretaryAlert('overdue', '⚠️ 기한 지난 할 일', `${overdue.length}건의 할 일이 기한을 넘겼어요:\n\n${names}${moreText}\n\n확인하고 처리해주세요!`, '할 일 보기', () => navigate('todos'));
+      }
+    } catch(_) {}
+  }
+
+  // 3. 보고서 미작성 알림 (16시 이후, 하루 1번)
+  if (h >= 16 && !_alarmNotified[today + '_noreport']) {
+    try {
+      const reports = await api(`/api/reports?from=${today}&to=${today}`);
+      const myReports = (reports || []).filter(r => r.author_id === currentUser.id);
+      if (myReports.length === 0) {
+        _alarmNotified[today + '_noreport'] = true;
+        _showSecretaryAlert('report', '📝 보고서 알림', '오늘 아직 업무일지를 작성하지 않으셨어요.\n퇴근 전에 한 건 작성해보시겠어요?', '지금 작성', () => openNewReport());
+      }
+    } catch(_) {}
+  }
+
+  // 4. 오늘 일정이 아예 없는 경우 알림 (10시, 하루 1번)
+  if (h >= 10 && h < 11 && !_alarmNotified[today + '_noevt']) {
+    try {
+      const events = await api('/api/calendar-events?date=' + today);
+      if (!events || events.length === 0) {
+        _alarmNotified[today + '_noevt'] = true;
+        _showSecretaryAlert('empty', '🗓️ 일정 없음', '오늘 등록된 일정이 없어요.\n업무 계획을 등록하시면 비서가 알림을 드릴게요!', '일정 등록', () => navigate('calendar'));
+      }
+    } catch(_) {}
+  }
+
+  // 5. 미퇴근 알림 (19시 이후, 하루 1번)
+  if (h >= 19 && !_alarmNotified[today + '_checkout']) {
+    try {
+      const atd = await api('/api/attendance/today');
+      if (atd && atd.check_in && !atd.check_out) {
+        _alarmNotified[today + '_checkout'] = true;
+        _showSecretaryAlert('checkout', '🌙 퇴근 알림', '아직 퇴근 처리가 안 되어 있어요.\n퇴근 처리하시겠어요?', '퇴근하기', () => doCheckOut());
+      }
+    } catch(_) {}
+  }
+}
+
+function _showSecretaryAlert(type, title, message, btnText, btnCallback) {
+  if (document.getElementById('secAlert_' + type)) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'secAlert_' + type;
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:9996; display:flex; align-items:center; justify-content:center; animation:fadeIn .3s;';
+  overlay.innerHTML = `
+    <div style="background:#fff; border-radius:20px; padding:24px; width:90%; max-width:340px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3);">
+      <div style="width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; font-size:24px; margin:0 auto 12px; color:#fff;">&#129302;</div>
+      <p style="font-size:11px; color:#7c3aed; font-weight:600; letter-spacing:1px; margin-bottom:4px;">AI 업무비서</p>
+      <p style="font-size:17px; font-weight:700; margin-bottom:8px; color:#1a1a2e;">${title}</p>
+      <p style="font-size:14px; color:#555; line-height:1.6; margin-bottom:20px; white-space:pre-line;">${message}</p>
+      <div style="display:flex; gap:8px;">
+        <button onclick="this.closest('[id^=secAlert]').remove()" style="flex:1; padding:12px; border-radius:12px; border:1px solid #e5e7eb; background:#fff; color:#555; font-size:14px; font-weight:600; cursor:pointer;">나중에</button>
+        <button id="secAlertBtn_${type}" style="flex:1; padding:12px; border-radius:12px; border:none; background:linear-gradient(135deg,#7c3aed,#3b82f6); color:#fff; font-size:14px; font-weight:700; cursor:pointer;">${btnText}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const actionBtn = document.getElementById('secAlertBtn_' + type);
+  actionBtn.addEventListener('click', () => {
+    overlay.remove();
+    if (btnCallback) btnCallback();
+  });
+}
+
+setInterval(aiSecretaryCheck, 60000);
 
 // 초기화 — 서버 연결 상태 표시 + 서버 준비 확인
 (async () => {
