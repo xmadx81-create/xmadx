@@ -6147,6 +6147,71 @@ let _vrRecog = null;
 let _vrFinalText = '';
 let _vrInterim = '';
 let _vrProcessed = 0;
+let _vrTimerInterval = null;
+let _vrStartTime = 0;
+let _vrAudioCtx = null;
+let _vrAnalyser = null;
+let _vrAnimFrame = null;
+
+function _vrStartTimer() {
+  _vrStartTime = Date.now();
+  const el = document.getElementById('vrTimer');
+  if (el) el.textContent = '00:00';
+  _vrTimerInterval = setInterval(() => {
+    const sec = Math.floor((Date.now() - _vrStartTime) / 1000);
+    const m = String(Math.floor(sec / 60)).padStart(2, '0');
+    const s = String(sec % 60).padStart(2, '0');
+    if (el) el.textContent = m + ':' + s;
+  }, 1000);
+}
+
+function _vrStopTimer() {
+  if (_vrTimerInterval) { clearInterval(_vrTimerInterval); _vrTimerInterval = null; }
+}
+
+function _vrStartWaveform(stream) {
+  try {
+    _vrAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = _vrAudioCtx.createMediaStreamSource(stream);
+    _vrAnalyser = _vrAudioCtx.createAnalyser();
+    _vrAnalyser.fftSize = 64;
+    source.connect(_vrAnalyser);
+    const bars = document.querySelectorAll('.vr-bar');
+    const dataArr = new Uint8Array(_vrAnalyser.frequencyBinCount);
+    function draw() {
+      _vrAnimFrame = requestAnimationFrame(draw);
+      _vrAnalyser.getByteFrequencyData(dataArr);
+      bars.forEach((bar, i) => {
+        const idx = Math.floor(i * dataArr.length / bars.length);
+        const val = dataArr[idx] || 0;
+        const h = Math.max(6, (val / 255) * 50);
+        bar.style.height = h + 'px';
+      });
+    }
+    draw();
+  } catch (_) {}
+}
+
+function _vrStopWaveform() {
+  if (_vrAnimFrame) { cancelAnimationFrame(_vrAnimFrame); _vrAnimFrame = null; }
+  if (_vrAudioCtx) { _vrAudioCtx.close().catch(() => {}); _vrAudioCtx = null; }
+  _vrAnalyser = null;
+  document.querySelectorAll('.vr-bar').forEach(b => { b.style.height = '8px'; });
+}
+
+function _vrTypeText(el, finalText, interimText) {
+  const cursor = document.getElementById('vrCursor');
+  if (!finalText && !interimText) {
+    el.innerHTML = '<span style="color:rgba(255,255,255,.3);">말씀해 주세요...</span>';
+    if (cursor) cursor.style.display = 'inline-block';
+    return;
+  }
+  let html = '';
+  if (finalText) html += '<span style="color:#e2e8f0;">' + finalText.replace(/</g,'&lt;') + '</span>';
+  if (interimText) html += '<span style="color:rgba(124,58,237,.7); font-style:italic;">' + interimText.replace(/</g,'&lt;') + '</span>';
+  el.innerHTML = html;
+  if (cursor) cursor.style.display = interimText ? 'inline-block' : 'none';
+}
 
 function startVoiceReport() {
   if (!SpeechRecognition) { toast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari를 사용해주세요.'); return; }
@@ -6156,8 +6221,22 @@ function startVoiceReport() {
   _vrFinalText = '';
   _vrInterim = '';
   _vrProcessed = 0;
-  document.getElementById('vrText').textContent = '듣고 있습니다...';
-  document.getElementById('vrTitle').textContent = '업무 내용을 말씀해 주세요';
+  const vrTextEl = document.getElementById('vrText');
+  _vrTypeText(vrTextEl, '', '');
+  document.getElementById('vrTitle').textContent = '듣고 있습니다';
+  document.getElementById('vrSubtitle').textContent = '말씀하신 내용을 AI가 실시간으로 분석합니다';
+  const orbCore = document.getElementById('vrOrbCore');
+  if (orbCore) orbCore.style.background = 'linear-gradient(135deg,#7c3aed,#3b82f6)';
+  const orbGlow = document.getElementById('vrOrbGlow');
+  if (orbGlow) orbGlow.style.animation = 'vrOrbPulse 2s ease-in-out infinite';
+
+  _vrStartTimer();
+
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    _vrStartWaveform(stream);
+    stream.getTracks().forEach(t => { t._vrTrack = true; });
+    window._vrStream = stream;
+  }).catch(() => {});
 
   const recog = new SpeechRecognition();
   recog.lang = 'ko-KR';
@@ -6176,8 +6255,7 @@ function startVoiceReport() {
       }
     }
     _vrInterim = interim;
-    const display = (_vrFinalText + interim).trim() || '듣고 있습니다...';
-    document.getElementById('vrText').textContent = display;
+    _vrTypeText(vrTextEl, _vrFinalText.trim(), interim);
   };
 
   recog.onend = () => {
@@ -6191,7 +6269,8 @@ function startVoiceReport() {
       toast('마이크 권한을 허용해주세요');
       cancelVoiceReport();
     } else if (e.error === 'no-speech') {
-      document.getElementById('vrTitle').textContent = '소리가 감지되지 않았습니다. 다시 말씀해 주세요.';
+      document.getElementById('vrTitle').textContent = '소리가 감지되지 않았습니다';
+      document.getElementById('vrSubtitle').textContent = '다시 말씀해 주세요';
     }
   };
 
@@ -6200,15 +6279,19 @@ function startVoiceReport() {
 
 function cancelVoiceReport() {
   if (_vrRecog) { const r = _vrRecog; _vrRecog = null; r.stop(); }
+  _vrStopTimer();
+  _vrStopWaveform();
+  if (window._vrStream) { window._vrStream.getTracks().forEach(t => t.stop()); window._vrStream = null; }
   document.getElementById('voiceRecordScreen').style.display = 'none';
   document.getElementById('vrRefineStep').style.display = 'none';
   document.getElementById('vrRecordingBtns').style.display = 'flex';
-  document.getElementById('vrMicIcon').style.animation = 'vrPulse 1.5s infinite';
-  document.getElementById('vrMicIcon').style.background = '#7c3aed';
 }
 
 function finishVoiceReport() {
   if (_vrRecog) { const r = _vrRecog; _vrRecog = null; r.stop(); }
+  _vrStopTimer();
+  _vrStopWaveform();
+  if (window._vrStream) { window._vrStream.getTracks().forEach(t => t.stop()); window._vrStream = null; }
 
   const text = (_vrFinalText + _vrInterim).trim();
   if (!text) { toast('음성이 인식되지 않았습니다'); cancelVoiceReport(); return; }
@@ -6216,10 +6299,15 @@ function finishVoiceReport() {
   localStorage.setItem('voiceCache', text);
 
   document.getElementById('vrRecordingBtns').style.display = 'none';
-  document.getElementById('vrMicIcon').style.animation = 'none';
-  document.getElementById('vrMicIcon').style.background = '#4a4a6a';
-  document.getElementById('vrTitle').textContent = '음성 인식 완료';
-  document.getElementById('vrText').textContent = text;
+  const orbCore = document.getElementById('vrOrbCore');
+  if (orbCore) orbCore.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
+  const orbGlow = document.getElementById('vrOrbGlow');
+  if (orbGlow) orbGlow.style.animation = 'none';
+  document.getElementById('vrTitle').textContent = '인식 완료';
+  document.getElementById('vrSubtitle').textContent = 'AI 다듬기로 텍스트를 정제할 수 있습니다';
+  document.getElementById('vrText').innerHTML = '<span style="color:#e2e8f0;">' + text.replace(/</g,'&lt;') + '</span>';
+  const cursor = document.getElementById('vrCursor');
+  if (cursor) cursor.style.display = 'none';
   document.getElementById('vrRawText').textContent = text;
   document.getElementById('vrRefinedText').value = text;
   document.getElementById('vrRefinePreview').style.display = 'none';
@@ -6228,25 +6316,78 @@ function finishVoiceReport() {
 
 function refineVoiceText() {
   const btn = document.getElementById('vrRefineBtn');
-  btn.textContent = '정제 중...';
+  btn.textContent = '분석 중...';
   btn.disabled = true;
 
   const raw = document.getElementById('vrRefinedText').value.trim();
-  if (!raw) { toast('텍스트가 없습니다'); btn.textContent = '✨ 글다듬기'; btn.disabled = false; return; }
+  if (!raw) { toast('텍스트가 없습니다'); btn.textContent = '✨ AI 다듬기'; btn.disabled = false; return; }
+
+  const analyzeEl = document.getElementById('vrAnalyzing');
+  const statusEl = document.getElementById('vrAnalyzeStatus');
+  analyzeEl.style.display = 'block';
+
+  const steps = ['텍스트 정제 중...', '구어체 변환 중...', '5W1H 분석 중...', '결과 생성 중...'];
+  let stepIdx = 0;
+  const stepTimer = setInterval(() => {
+    stepIdx++;
+    if (stepIdx < steps.length) statusEl.textContent = steps[stepIdx];
+  }, 400);
 
   setTimeout(() => {
+    clearInterval(stepTimer);
+    analyzeEl.style.display = 'none';
+
     const refined = polishVoiceText(raw);
     document.getElementById('vrRefinedText').value = refined;
 
-    const preview = previewVoice5W1H(refined);
-    const fieldsDiv = document.getElementById('vrRefineFields');
-    fieldsDiv.innerHTML = preview;
+    const preview = previewVoice5W1HCards(refined);
+    document.getElementById('vrRefineFields').innerHTML = preview;
     document.getElementById('vrRefinePreview').style.display = 'block';
 
-    btn.textContent = '✨ 글다듬기';
+    btn.textContent = '✨ AI 다듬기';
     btn.disabled = false;
-    toast('텍스트 정제 완료! 내용을 확인해주세요');
-  }, 300);
+  }, 1800);
+}
+
+function previewVoice5W1HCards(text) {
+  const fields = { who:'', when:'', where:'', what:'', how:'', why:'' };
+  let remaining = text.replace(/\[요약\].*$/s, '').trim();
+  function extract(re) {
+    const m = remaining.match(re);
+    if (m) { remaining = remaining.replace(m[0], ' ').replace(/\s{2,}/g, ' ').trim(); return m[0].trim(); }
+    return '';
+  }
+  const whenP = [/\d{1,2}월\s*\d{1,2}일\s*(?:오전|오후)?\s*(?:\d{1,2}시\s*(?:\d{1,2}분)?)?/, /(?:오전|오후)\s*\d{1,2}시\s*(?:\d{1,2}분)?/, /\d{1,2}월\s*\d{1,2}일/, /(?:어제|오늘|내일|모레|그저께)/, /(?:이번|지난|다음)\s*주\s*(?:월|화|수|목|금|토|일)?요?일?/, /(?:월|화|수|목|금|토|일)요일/];
+  for (const re of whenP) { if (!fields.when) fields.when = extract(re); }
+  const whereP = [/(충청[남북]?도?|경기도?|서울|부산|대구|인천|광주|대전|울산|세종|경[상남북]+도?|전[라남북]+도?|강원도?|제주도?)\s*[가-힣]{0,4}(?:지역|지사|지국|센터|사무소|현장|공장)?/, /(?:본사|지사|사무실|현장|지국|센터|회의실|연수원|공장|창고|매장|지점|사무소|영업소|출장지)\s*[가-힣]{0,4}/, /[가-힣]{1,10}(?:지국|센터|지사|사무소|영업소|지점|매장|현장)/];
+  for (const re of whereP) { if (!fields.where) fields.where = extract(re); }
+  const whoP = [/[가-힣]{2,4}\s*(?:님|씨|과장|대리|차장|부장|팀장|본부장|이사|사원|주임|계장|담당|선임|책임|매니저)/, /(?:담당자|본인|내가|제가)\s*[가-힣]{0,4}/];
+  for (const re of whoP) { if (!fields.who) { fields.who = extract(re); fields.who = fields.who.replace(/[가이는은]\s*$/, '').trim(); } }
+  const howP = [/(?:전화|이메일|대면|온라인|직접|팩스|문자|카톡|시스템|차량|KTX|비행기|버스|택시|지하철)\s*(?:로|으로|통해|이용|타고)?\s*[가-힣]{0,4}/, /(?:방문하여|출장하여|전화하여|메일로|유선으로)/];
+  for (const re of howP) { if (!fields.how) fields.how = extract(re); }
+  const whyP = [/[가-힣\s]{2,15}(?:위해서?|위하여|때문에|건으로|관련하여|관련해서|목적으로)/, /(?:요청|지시|필요|예정)\s*(?:에\s*의해|으로|이\s*있어)/];
+  for (const re of whyP) { if (!fields.why) fields.why = extract(re); }
+  const whatP = [/(?:인수인계|보고서\s*작성|회의|미팅|점검|교육|상담|접수|처리|확인|검토|작성|발송|정리|분석|세미나|연수|파견|조사|설명회|감사|계약|협의|영업|배송|수거|설치|수리|유지보수|AS)\s*[가-힣]{0,8}/, /(?:방문|출장)\s*[가-힣]{0,8}/];
+  for (const re of whatP) { if (!fields.what) fields.what = extract(re); }
+  remaining = remaining.trim();
+  if (!fields.what && remaining.length > 1) fields.what = remaining;
+
+  const cards = [
+    { key:'when', label:'언제', icon:'&#128197;', color:'#f59e0b', bg:'rgba(245,158,11,.12)' },
+    { key:'where', label:'어디서', icon:'&#128205;', color:'#34d399', bg:'rgba(52,211,153,.12)' },
+    { key:'who', label:'누가', icon:'&#128100;', color:'#60a5fa', bg:'rgba(96,165,250,.12)' },
+    { key:'what', label:'무엇을', icon:'&#128196;', color:'#f472b6', bg:'rgba(244,114,182,.12)' },
+    { key:'how', label:'어떻게', icon:'&#128295;', color:'#a78bfa', bg:'rgba(167,139,250,.12)' },
+    { key:'why', label:'왜', icon:'&#127919;', color:'#fb923c', bg:'rgba(251,146,60,.12)' }
+  ];
+  return cards.map((c, i) => {
+    const val = fields[c.key] || '-';
+    const hasVal = fields[c.key] ? 1 : 0.4;
+    return `<div style="background:${c.bg}; border:1px solid ${c.color}33; border-radius:12px; padding:10px 12px; opacity:${hasVal}; animation:vrCardIn .4s ${i*0.1}s both;">
+      <div style="font-size:10px; color:${c.color}; margin-bottom:4px; font-weight:600;">${c.icon} ${c.label}</div>
+      <div style="font-size:13px; color:#e2e8f0; word-break:keep-all;">${val}</div>
+    </div>`;
+  }).join('');
 }
 
 function polishVoiceText(text) {
@@ -6457,8 +6598,6 @@ async function applyRefinedVoice() {
   document.getElementById('voiceRecordScreen').style.display = 'none';
   document.getElementById('vrRefineStep').style.display = 'none';
   document.getElementById('vrRecordingBtns').style.display = 'flex';
-  document.getElementById('vrMicIcon').style.animation = 'vrPulse 1.5s infinite';
-  document.getElementById('vrMicIcon').style.background = '#7c3aed';
 
   await openNewReport();
   if (!currentUser) return;
@@ -6619,9 +6758,20 @@ function vgAddBubble(text, who) {
   const isBot = who === 'bot';
   const div = document.createElement('div');
   div.style.cssText = `max-width:82%; padding:12px 16px; border-radius:${isBot ? '4px 16px 16px 16px' : '16px 4px 16px 16px'}; font-size:14px; line-height:1.6; animation:fadeIn .3s; word-break:keep-all; ${isBot ? 'background:rgba(255,255,255,.12); color:#fff; align-self:flex-start;' : 'background:#7c3aed; color:#fff; align-self:flex-end;'}`;
-  div.textContent = text;
-  area.appendChild(div);
-  area.scrollTop = area.scrollHeight;
+  if (isBot) {
+    div.textContent = '';
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+    let i = 0;
+    const typeInterval = setInterval(() => {
+      if (i < text.length) { div.textContent += text[i]; i++; area.scrollTop = area.scrollHeight; }
+      else clearInterval(typeInterval);
+    }, 30);
+  } else {
+    div.textContent = text;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
 }
 
 function vgShowQuickReplies(options) {

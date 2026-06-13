@@ -403,39 +403,69 @@
   </div>
 </div>
 
-<!-- 음성 녹음 전체화면 -->
-<div id="voiceRecordScreen" style="display:none; position:fixed; inset:0; z-index:9999; background:#1a1a2e; color:#fff; flex-direction:column; align-items:center; overflow-y:auto; -webkit-overflow-scrolling:touch;">
-  <div style="text-align:center; padding:24px 24px 40px; max-width:340px; width:100%; margin:auto;">
-    <div id="vrMicIcon" style="width:100px; height:100px; border-radius:50%; background:#7c3aed; display:flex; align-items:center; justify-content:center; margin:0 auto 24px; font-size:44px; box-shadow:0 0 0 0 rgba(124,58,237,.5); animation:vrPulse 1.5s infinite;">
-      &#127908;
+<!-- 음성 녹음 전체화면 (AI 스타일) -->
+<div id="voiceRecordScreen" style="display:none; position:fixed; inset:0; z-index:9999; background:linear-gradient(180deg,#0f0f23 0%,#1a1a3e 50%,#0f0f23 100%); color:#fff; flex-direction:column; align-items:center; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+  <div style="text-align:center; padding:24px 24px 40px; max-width:380px; width:100%; margin:auto;">
+    <!-- AI 아바타 + 파형 -->
+    <div id="vrAiOrb" style="position:relative; width:140px; height:140px; margin:0 auto 20px;">
+      <div id="vrOrbGlow" style="position:absolute; inset:-20px; border-radius:50%; background:radial-gradient(circle, rgba(124,58,237,.3) 0%, transparent 70%); animation:vrOrbPulse 2s ease-in-out infinite;"></div>
+      <div id="vrOrbCore" style="position:absolute; inset:0; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; box-shadow:0 0 40px rgba(124,58,237,.4);">
+        <div id="vrWaveformBars" style="display:flex; align-items:center; gap:3px; height:50px;">
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+          <div class="vr-bar" style="width:4px; border-radius:2px; background:#fff; height:8px; transition:height .1s;"></div>
+        </div>
+      </div>
     </div>
-    <p id="vrTitle" style="font-size:20px; font-weight:700; margin-bottom:8px;">업무 내용을 말씀해 주세요</p>
-    <p style="font-size:13px; color:#aaa; margin-bottom:24px; line-height:1.6;">자유롭게 말하면 자동으로<br>육하원칙에 맞춰 분류됩니다</p>
-    <div id="vrPreview" style="background:rgba(255,255,255,.08); border-radius:12px; padding:16px; min-height:80px; margin-bottom:24px; text-align:left;">
-      <p id="vrText" style="font-size:14px; line-height:1.7; color:#ccc; min-height:20px;">...</p>
+    <p id="vrTimer" style="font-size:28px; font-weight:300; letter-spacing:4px; color:rgba(255,255,255,.6); margin-bottom:4px; font-variant-numeric:tabular-nums;">00:00</p>
+    <p id="vrTitle" style="font-size:18px; font-weight:600; margin-bottom:4px;">듣고 있습니다</p>
+    <p id="vrSubtitle" style="font-size:13px; color:rgba(255,255,255,.4); margin-bottom:24px;">말씀하신 내용을 AI가 실시간으로 분석합니다</p>
+    <!-- 실시간 인식 텍스트 (타이핑 효과) -->
+    <div id="vrPreview" style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:20px; min-height:80px; margin-bottom:24px; text-align:left; backdrop-filter:blur(10px);">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+        <div style="width:6px; height:6px; border-radius:50%; background:#22c55e; animation:pulse 1.5s infinite;"></div>
+        <span style="font-size:11px; color:rgba(255,255,255,.4); text-transform:uppercase; letter-spacing:1px;">실시간 인식</span>
+      </div>
+      <p id="vrText" style="font-size:15px; line-height:1.8; color:#e2e8f0; min-height:20px;">
+        <span style="color:rgba(255,255,255,.3);">말씀해 주세요...</span>
+      </p>
+      <span id="vrCursor" style="display:inline-block; width:2px; height:16px; background:#7c3aed; animation:vrBlink 1s infinite; vertical-align:text-bottom;"></span>
     </div>
     <div id="vrRecordingBtns" style="display:flex; gap:12px; justify-content:center;">
-      <button onclick="cancelVoiceReport()" style="padding:14px 28px; border-radius:28px; border:none; background:rgba(255,255,255,.15); color:#fff; font-size:15px; font-weight:600; cursor:pointer;">취소</button>
-      <button onclick="finishVoiceReport()" style="padding:14px 28px; border-radius:28px; border:none; background:#ef4444; color:#fff; font-size:15px; font-weight:600; cursor:pointer;">&#9724; 완료</button>
+      <button onclick="cancelVoiceReport()" style="padding:14px 28px; border-radius:28px; border:1px solid rgba(255,255,255,.15); background:transparent; color:#fff; font-size:15px; font-weight:600; cursor:pointer;">취소</button>
+      <button onclick="finishVoiceReport()" style="padding:14px 28px; border-radius:28px; border:none; background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; font-size:15px; font-weight:600; cursor:pointer; box-shadow:0 4px 15px rgba(239,68,68,.3);">&#9724; 완료</button>
     </div>
-    <!-- 글다듬기 단계 -->
+    <!-- AI 분석 단계 -->
     <div id="vrRefineStep" style="display:none;">
-      <div style="background:rgba(255,255,255,.06); border-radius:12px; padding:16px; margin-bottom:12px; text-align:left;">
-        <p style="font-size:12px; color:#aaa; margin-bottom:6px;">음성 원문</p>
+      <div id="vrAnalyzing" style="display:none; text-align:center; padding:30px 0;">
+        <div style="width:60px; height:60px; margin:0 auto 16px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; animation:vrOrbPulse 1.5s infinite;">
+          <span style="font-size:28px;">&#129302;</span>
+        </div>
+        <p style="font-size:16px; font-weight:600; margin-bottom:4px;">AI 분석 중...</p>
+        <p id="vrAnalyzeStatus" style="font-size:12px; color:rgba(255,255,255,.5);">텍스트 정제 중</p>
+      </div>
+      <div style="background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:16px; margin-bottom:12px; text-align:left;">
+        <p style="font-size:11px; color:rgba(255,255,255,.4); margin-bottom:6px; letter-spacing:1px;">ORIGINAL</p>
         <p id="vrRawText" style="font-size:13px; line-height:1.7; color:#999;"></p>
       </div>
-      <div style="background:rgba(124,58,237,.15); border:1px solid rgba(124,58,237,.3); border-radius:12px; padding:16px; margin-bottom:16px; text-align:left;">
-        <p style="font-size:12px; color:#b794f4; margin-bottom:6px;">정제된 결과 (수정 가능)</p>
+      <div style="background:linear-gradient(135deg, rgba(124,58,237,.1), rgba(59,130,246,.1)); border:1px solid rgba(124,58,237,.2); border-radius:16px; padding:16px; margin-bottom:16px; text-align:left;">
+        <p style="font-size:11px; color:#b794f4; margin-bottom:6px; letter-spacing:1px;">AI REFINED</p>
         <textarea id="vrRefinedText" style="width:100%; min-height:120px; background:transparent; border:none; color:#fff; font-size:14px; line-height:1.7; resize:vertical; outline:none;"></textarea>
       </div>
-      <div id="vrRefinePreview" style="display:none; background:rgba(255,255,255,.06); border-radius:12px; padding:16px; margin-bottom:16px; text-align:left;">
-        <p style="font-size:12px; color:#aaa; margin-bottom:8px;">5W1H 분류 미리보기</p>
-        <div id="vrRefineFields" style="font-size:13px; line-height:1.8; color:#ccc;"></div>
+      <div id="vrRefinePreview" style="display:none; margin-bottom:16px;">
+        <p style="font-size:11px; color:rgba(255,255,255,.4); margin-bottom:10px; letter-spacing:1px;">AI ANALYSIS — 5W1H</p>
+        <div id="vrRefineFields" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
       </div>
       <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-        <button onclick="cancelVoiceReport()" style="padding:12px 22px; border-radius:28px; border:none; background:rgba(255,255,255,.15); color:#fff; font-size:14px; font-weight:600; cursor:pointer;">취소</button>
-        <button id="vrRefineBtn" onclick="refineVoiceText()" style="padding:12px 22px; border-radius:28px; border:none; background:#7c3aed; color:#fff; font-size:14px; font-weight:600; cursor:pointer;">&#10024; 글다듬기</button>
-        <button onclick="applyRefinedVoice()" style="padding:12px 22px; border-radius:28px; border:none; background:#22c55e; color:#fff; font-size:14px; font-weight:600; cursor:pointer;">&#10003; 적용</button>
+        <button onclick="cancelVoiceReport()" style="padding:12px 22px; border-radius:28px; border:1px solid rgba(255,255,255,.12); background:transparent; color:#fff; font-size:14px; font-weight:600; cursor:pointer;">취소</button>
+        <button id="vrRefineBtn" onclick="refineVoiceText()" style="padding:12px 22px; border-radius:28px; border:none; background:linear-gradient(135deg,#7c3aed,#3b82f6); color:#fff; font-size:14px; font-weight:600; cursor:pointer; box-shadow:0 4px 15px rgba(124,58,237,.3);">&#10024; AI 다듬기</button>
+        <button onclick="applyRefinedVoice()" style="padding:12px 22px; border-radius:28px; border:none; background:linear-gradient(135deg,#22c55e,#16a34a); color:#fff; font-size:14px; font-weight:600; cursor:pointer; box-shadow:0 4px 15px rgba(34,197,94,.3);">&#10003; 적용</button>
       </div>
     </div>
   </div>
@@ -447,8 +477,11 @@
 <style>
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 @keyframes vrPulse { 0%{box-shadow:0 0 0 0 rgba(124,58,237,.5);} 70%{box-shadow:0 0 0 20px rgba(124,58,237,0);} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0);} }
+@keyframes vrOrbPulse { 0%,100%{transform:scale(1); opacity:.6;} 50%{transform:scale(1.15); opacity:1;} }
+@keyframes vrBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+@keyframes vrCardIn { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
 </style>
-<script src="/js/app.js?v=20260613a"></script>
+<script src="/js/app.js?v=20260613b"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;
