@@ -6449,7 +6449,7 @@ function startVoiceReport() {
 
   recog.start();
 
-  // 비서 멘트: 녹음 중 격려 메시지 변경
+  // 비서 멘트: 녹음 중 맥락 힌트 + 격려
   const subtitleEl = document.getElementById('vrSubtitle');
   const hints = [
     '말씀하신 내용을 AI가 실시간으로 분석합니다',
@@ -6457,6 +6457,23 @@ function startVoiceReport() {
     '누가, 언제, 어디서 등을 말하면 자동 분류돼요',
     '다 말씀하시면 완료 버튼을 눌러주세요'
   ];
+  // 맥락 힌트 동적 추가
+  try {
+    const _td = new Date().toISOString().split('T')[0];
+    const _nm2 = new Date().getHours() * 60 + new Date().getMinutes();
+    api('/api/calendar-events?date=' + _td).then(evs => {
+      if (evs && evs.length > 0) {
+        const nextE = evs.find(e => { if (!e.event_time) return false; const [eh,em] = e.event_time.split(':').map(Number); return (eh*60+em) > _nm2; });
+        if (nextE) hints.push('📅 다음 일정: ' + nextE.event_time.substring(0,5) + ' ' + nextE.title);
+      }
+    });
+    api('/api/todos').then(todos => {
+      const od = (todos || []).filter(t => !t.completed && t.due_date && t.due_date.split('T')[0] < _td);
+      if (od.length > 0) hints.push('⚠️ 기한 지난 할 일 ' + od.length + '건 — 보고서에 포함해보세요');
+      const pend = (todos || []).filter(t => !t.completed);
+      if (pend.length > 0 && od.length === 0) hints.push('✅ 미완료 할 일 ' + pend.length + '건이 있어요');
+    });
+  } catch(_) {}
   let hintIdx = 0;
   window._vrHintTimer = setInterval(() => {
     if (!_vrRecog) { clearInterval(window._vrHintTimer); return; }
@@ -6557,6 +6574,35 @@ function refineVoiceText() {
       </div>`;
       document.getElementById('vrRefinePreview').after(hintDiv);
     }
+
+    // 연관 작업 제안 — 일정/할일과 연동
+    const oldSuggest = document.getElementById('vrActionSuggest');
+    if (oldSuggest) oldSuggest.remove();
+    const _td2 = new Date().toISOString().split('T')[0];
+    Promise.all([api('/api/calendar-events?date=' + _td2), api('/api/todos')]).then(([evts, todos]) => {
+      const suggestions = [];
+      const od = (todos || []).filter(t => !t.completed && t.due_date && t.due_date.split('T')[0] < _td2);
+      const pend = (todos || []).filter(t => !t.completed);
+      if (od.length > 0) suggestions.push({ icon: '⚠️', text: '기한 지난 할 일 ' + od.length + '건', btn: '할 일 보기', action: "cancelVoiceReport();navigate('todos')" });
+      const nm3 = new Date().getHours() * 60 + new Date().getMinutes();
+      const nextE2 = (evts || []).find(e => { if (!e.event_time) return false; const [eh,em] = e.event_time.split(':').map(Number); return (eh*60+em) > nm3; });
+      if (nextE2) { const diff2 = parseInt(nextE2.event_time) * 60 + parseInt(nextE2.event_time.split(':')[1]) - nm3; if (diff2 <= 30) suggestions.push({ icon: '⏰', text: diff2 + '분 후 "' + nextE2.title + '"', btn: '일정 확인', action: "cancelVoiceReport();navigate('calendar')" }); }
+      if (pend.length >= 5) suggestions.push({ icon: '📋', text: '미완료 할 일 ' + pend.length + '건', btn: '정리하기', action: "cancelVoiceReport();navigate('todos')" });
+      if (suggestions.length > 0) {
+        const sgDiv = document.createElement('div');
+        sgDiv.id = 'vrActionSuggest';
+        sgDiv.innerHTML = `<div style="background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.15); border-radius:12px; padding:12px; margin-bottom:12px; animation:vrCardIn .4s both;">
+          <p style="font-size:12px; color:#a78bfa; margin-bottom:8px;">🤖 비서 추천</p>
+          ${suggestions.map(s => `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">
+            <span style="font-size:13px; color:#e2e8f0;">${s.icon} ${s.text}</span>
+            <button onclick="${s.action}" style="font-size:11px; padding:4px 10px; border-radius:8px; border:1px solid rgba(167,139,250,.3); background:rgba(167,139,250,.1); color:#a78bfa; cursor:pointer;">${s.btn}</button>
+          </div>`).join('')}
+        </div>`;
+        const missingEl = document.getElementById('vrMissingHint');
+        if (missingEl) missingEl.after(sgDiv);
+        else document.getElementById('vrRefinePreview').after(sgDiv);
+      }
+    }).catch(() => {});
 
     btn.textContent = '✨ AI 다듬기';
     btn.disabled = false;
@@ -7199,6 +7245,46 @@ async function vgConversation() {
     }
   } catch(_) {}
 
+  // 일정 알람 예고 — 30분 내 일정 사전 안내
+  try {
+    const evts30 = (await api('/api/calendar-events?date=' + new Date().toISOString().split('T')[0])) || [];
+    const nm = new Date().getHours() * 60 + new Date().getMinutes();
+    const soon = evts30.filter(e => { if (!e.event_time) return false; const [eh,em] = e.event_time.split(':').map(Number); const d = eh*60+em - nm; return d > 0 && d <= 30; });
+    if (soon.length > 0) {
+      await new Promise(r => setTimeout(r, 300));
+      const soonList = soon.map(e => e.event_time.substring(0,5) + ' ' + e.title).join(', ');
+      vgAddBubble('⏰ 30분 내 일정이 있어요! ' + soonList, 'bot');
+      await vgSpeak('30분 내 일정이 있습니다. ' + soonList);
+      if (!_vgActive) return;
+    }
+  } catch(_) {}
+
+  // 보고서 미작성 안내 (오후)
+  if (new Date().getHours() >= 14) {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const rps = await api(`/api/reports?from=${todayStr}&to=${todayStr}`);
+      const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
+      if (myRps.length === 0) {
+        await new Promise(r => setTimeout(r, 300));
+        vgAddBubble('📝 오늘 업무일지가 아직 없어요. 퇴근 전에 한 건 작성해보시겠어요?', 'bot');
+        await vgSpeak('오늘 업무일지가 아직 없어요. 퇴근 전에 작성해보시겠어요?');
+        if (!_vgActive) return;
+      }
+    } catch(_) {}
+  }
+
+  // 빈 일정 안내
+  try {
+    const todayEvts2 = (await api('/api/calendar-events?date=' + new Date().toISOString().split('T')[0])) || [];
+    if (todayEvts2.length === 0 && new Date().getHours() < 12) {
+      await new Promise(r => setTimeout(r, 300));
+      vgAddBubble('🗓️ 오늘 등록된 일정이 없어요. 업무 계획을 세워보시겠어요?', 'bot');
+      await vgSpeak('오늘 등록된 일정이 없어요. 업무 계획을 세워보시겠어요?');
+      if (!_vgActive) return;
+    }
+  } catch(_) {}
+
   // 출근 체크
   await new Promise(r => setTimeout(r, 300));
   vgAddBubble('출근 체크 도와드릴게요. 오늘은 어떤 근무이세요?', 'bot');
@@ -7284,6 +7370,23 @@ async function vgConversation() {
     vgShowSchedulePreview();
   } else {
     await new Promise(r => setTimeout(r, 300));
+    // 마무리 전 오늘 남은 업무 요약
+    try {
+      const _td3 = new Date().toISOString().split('T')[0];
+      const [_rps2, _todos2] = await Promise.all([api(`/api/reports?from=${_td3}&to=${_td3}`), api('/api/todos')]);
+      const _myRps2 = (_rps2 || []).filter(r => r.author_id === currentUser.id);
+      const _pend2 = (_todos2 || []).filter(t => !t.completed);
+      const summaryParts = [];
+      if (_myRps2.length > 0) summaryParts.push('보고서 ' + _myRps2.length + '건 작성됨');
+      if (_pend2.length > 0) summaryParts.push('할 일 ' + _pend2.length + '건 남음');
+      if (summaryParts.length > 0) {
+        const summary = '📊 현재 상태: ' + summaryParts.join(', ');
+        vgAddBubble(summary, 'bot');
+        await vgSpeak(summaryParts.join(', '));
+        if (!_vgActive) return;
+        await new Promise(r => setTimeout(r, 300));
+      }
+    } catch(_) {}
     const h = new Date().getHours();
     const closing = h >= 18 ? '오늘도 수고 많으셨어요. 푹 쉬세요! 🌙' : '필요하면 언제든 불러주세요. 오늘도 화이팅! 💪';
     vgAddBubble(closing, 'bot');
@@ -7394,6 +7497,13 @@ async function vgSaveSchedules() {
     : saved + '개 일정 저장 완료! 필요하면 언제든 불러주세요 💪';
   vgAddBubble(farewell, 'bot');
   await vgSpeak(farewell.replace(/[✨💪🌙]/g, ''));
+  // 알람 안내
+  const hasTime = _vgSchedules.some(s => s.time);
+  if (hasTime) {
+    await new Promise(r => setTimeout(r, 500));
+    vgAddBubble('⏰ 일정 10분 전에 자동으로 알려드릴게요!', 'bot');
+    await vgSpeak('일정 10분 전에 자동으로 알려드릴게요.');
+  }
   setTimeout(() => closeVoiceGuide(), 2000);
 }
 
@@ -7559,8 +7669,17 @@ function _showSecretaryAlert(type, title, message, btnText, btnCallback) {
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  // TTS 음성 안내
+  if (window.speechSynthesis) {
+    const plainMsg = message.replace(/\n/g, '. ').replace(/[•⚠️📅📝🌙🗓️]/g, '');
+    const utter = new SpeechSynthesisUtterance(plainMsg.substring(0, 80));
+    utter.lang = 'ko-KR'; utter.rate = 1.05; utter.pitch = 1.1;
+    speechSynthesis.cancel();
+    setTimeout(() => speechSynthesis.speak(utter), 300);
+  }
   const actionBtn = document.getElementById('secAlertBtn_' + type);
   actionBtn.addEventListener('click', () => {
+    if (window.speechSynthesis) speechSynthesis.cancel();
     overlay.remove();
     if (btnCallback) btnCallback();
   });
