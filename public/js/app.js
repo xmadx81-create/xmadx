@@ -8058,24 +8058,32 @@ let _aiLastUnmatched = '';
 let _aiLastWasFallback = false;
 
 async function _aiCallGemini(message) {
-  try {
-    const history = _aiChatHistory.slice(-10).map(h => ({
-      who: h.who, text: (h.text || '').substring(0, 300)
-    }));
-    const resp = await fetch('/api/ai-chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history })
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    if (data.actions && data.actions.length > 0) {
-      return { reply: data.reply || '', actions: data.actions };
+  const history = _aiChatHistory.slice(-10).map(h => ({
+    who: h.who, text: (h.text || '').substring(0, 300)
+  }));
+  const body = JSON.stringify({ message, history });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const resp = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      });
+      if (!resp.ok) {
+        if (attempt === 0) { await new Promise(r => setTimeout(r, 1500)); continue; }
+        return null;
+      }
+      const data = await resp.json();
+      if (data.actions && data.actions.length > 0) {
+        return { reply: data.reply || '', actions: data.actions };
+      }
+      return data.reply || null;
+    } catch (e) {
+      if (attempt === 0) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      return null;
     }
-    return data.reply || null;
-  } catch (e) {
-    return null;
   }
+  return null;
 }
 
 function _aiSimpleSimilarity(a, b) {
