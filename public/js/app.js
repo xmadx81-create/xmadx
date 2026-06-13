@@ -9004,7 +9004,7 @@ async function _aiProcessChat(input, _detections) {
 
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
-    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
+    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
   }
 
   // --- 감사/칭찬 ---
@@ -9360,7 +9360,27 @@ async function _aiProcessChat(input, _detections) {
   // --- 생산성 트렌드 ---
   if (/생산성\s*트렌드|이번\s*달\s*분석|월간\s*분석|월간\s*트렌드|생산성\s*분석|트렌드\s*분석/.test(t)) {
     await _aiDailyJournal();
-    return { reply: _aiJournalTrend(30), suggests: ['이번주 일지', '오늘 일지', '주간 리포트'] };
+    return { reply: _aiJournalTrend(30), suggests: ['이번주 일지', '오늘 예측', '패턴 분석'] };
+  }
+  // --- AI 예측: 오늘 예측 ---
+  if (/오늘\s*예측|AI\s*예측|예측해\s*줘|예측\s*브리핑|오늘\s*전망/.test(t)) {
+    await _aiDailyJournal();
+    return { reply: _aiPredictToday(), suggests: ['마감 위험', '이번주 전망', '패턴 분석'] };
+  }
+  // --- AI 예측: 마감 위험도 ---
+  if (/마감\s*위험|기한\s*체크|데드라인|마감\s*분석|기한\s*분석|마감\s*확인/.test(t)) {
+    const risk = await _aiDeadlineRisk();
+    return { reply: risk, suggests: ['오늘 예측', '할 일 확인', '이번주 전망'] };
+  }
+  // --- AI 예측: 이번주 전망 ---
+  if (/이번\s*주\s*전망|주간\s*예측|주간\s*전망|이번주\s*예측/.test(t)) {
+    await _aiDailyJournal();
+    return { reply: _aiWeekForecast(), suggests: ['오늘 예측', '마감 위험', '패턴 분석'] };
+  }
+  // --- AI 예측: 패턴 분석 ---
+  if (/패턴\s*분석|내\s*패턴|업무\s*패턴|습관\s*분석/.test(t)) {
+    await _aiDailyJournal();
+    return { reply: _aiPatternReport(), suggests: ['오늘 예측', '이번주 전망', '생산성 트렌드'] };
   }
 
   // --- 할 일 삭제 ---
@@ -9956,6 +9976,7 @@ function _aiDetectTopic(t) {
   if (/기분|감정|컨디션|힘들|피곤|쉬고/.test(t)) return '감정';
   if (/구글|웹검색|인터넷/.test(t)) return '웹검색';
   if (/일지|뭐했|트렌드|생산성/.test(t)) return '일지';
+  if (/예측|전망|마감|패턴|데드라인/.test(t)) return '예측';
   if (/검색|찾/.test(t)) return '검색';
   if (/프로필|취향|mbti|취미|좋아하|싫어하/.test(t)) return '개인정보';
   if (/먹었|먹은|추억|기념일/.test(t)) return '생활기록';
@@ -10456,6 +10477,209 @@ function _aiJournalTrend(days) {
   return r;
 }
 
+// ─── [8] AI 예측 엔진 ───
+function _aiAnalyzePatterns() {
+  const logs = _aiJournalHistory();
+  if (logs.length < 3) return null;
+
+  const byDay = [[], [], [], [], [], [], []];
+  logs.forEach(j => { byDay[new Date(j.date).getDay()].push(j); });
+
+  const dayStats = byDay.map((arr, i) => {
+    if (arr.length === 0) return { day: i, avgScore: 0, avgReports: 0, avgDone: 0, avgEvents: 0, count: 0 };
+    return {
+      day: i,
+      avgScore: Math.round(arr.reduce((s, j) => s + j.score, 0) / arr.length),
+      avgReports: +(arr.reduce((s, j) => s + j.reports, 0) / arr.length).toFixed(1),
+      avgDone: +(arr.reduce((s, j) => s + j.todoDone, 0) / arr.length).toFixed(1),
+      avgEvents: +(arr.reduce((s, j) => s + j.events, 0) / arr.length).toFixed(1),
+      count: arr.length
+    };
+  });
+
+  const workDays = dayStats.filter(d => d.day >= 1 && d.day <= 5 && d.count > 0);
+  const busiestDay = workDays.length > 0 ? workDays.reduce((a, b) => a.avgScore > b.avgScore ? a : b) : null;
+  const slowestDay = workDays.length > 0 ? workDays.reduce((a, b) => a.avgScore < b.avgScore ? a : b) : null;
+
+  const recentScores = logs.slice(-14).map(j => j.score);
+  const avgRecent = recentScores.length > 0 ? Math.round(recentScores.reduce((a, b) => a + b, 0) / recentScores.length) : 50;
+
+  return { dayStats, busiestDay, slowestDay, avgRecent, totalDays: logs.length };
+}
+
+function _aiPredictToday() {
+  const patterns = _aiAnalyzePatterns();
+  if (!patterns) return '아직 데이터가 부족해요. 며칠 더 사용하면 패턴을 분석할 수 있어요! 📊';
+
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const todayDay = new Date().getDay();
+  const stat = patterns.dayStats[todayDay];
+
+  let r = '🔮 오늘의 AI 예측\n━━━━━━━━━━━━━━\n\n';
+  r += '📅 ' + dayNames[todayDay] + '요일 패턴 분석 (데이터 ' + (stat.count || 0) + '일)\n\n';
+
+  if (stat.count === 0) {
+    r += '이 요일 데이터가 아직 없어요. 오늘 활동이 첫 기록이 될 거예요!\n';
+    return r;
+  }
+
+  const scoreBar = '█'.repeat(Math.floor(stat.avgScore / 10)) + '░'.repeat(10 - Math.floor(stat.avgScore / 10));
+  r += '📊 예상 생산성: [' + scoreBar + '] ' + stat.avgScore + '점\n';
+  r += '📝 보고서 작성 예상: ' + stat.avgReports + '건\n';
+  r += '✅ 할일 완료 예상: ' + stat.avgDone + '건\n';
+  r += '📅 일정 예상: ' + stat.avgEvents + '건\n\n';
+
+  r += '💡 예측 코멘트:\n';
+  if (stat.avgReports >= 1) r += '• 오늘은 보고서 쓸 확률이 높아요! 📝\n';
+  if (stat.avgScore >= 70) r += '• ' + dayNames[todayDay] + '요일은 생산성이 높은 날! 집중하세요 🔥\n';
+  else if (stat.avgScore < 40) r += '• ' + dayNames[todayDay] + '요일은 보통 여유로운 날이에요 ☕\n';
+  if (stat.avgDone >= 3) r += '• 할 일 처리량이 많은 날이에요. 미뤄둔 거 오늘 해치우세요! 💪\n';
+
+  if (patterns.busiestDay) {
+    r += '\n🏆 가장 바쁜 요일: ' + dayNames[patterns.busiestDay.day] + '요일 (' + patterns.busiestDay.avgScore + '점)';
+  }
+  if (patterns.slowestDay) {
+    r += '\n☕ 가장 여유로운 요일: ' + dayNames[patterns.slowestDay.day] + '요일 (' + patterns.slowestDay.avgScore + '점)';
+  }
+
+  return r;
+}
+
+async function _aiDeadlineRisk() {
+  if (!currentUser) return '로그인이 필요해요.';
+  try {
+    const todos = await api('/api/todos');
+    const pending = (todos || []).filter(t => !t.completed && t.due_date);
+    if (pending.length === 0) return '기한이 설정된 미완료 할 일이 없어요. 안전해요! ✅';
+
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const risks = { red: [], yellow: [], green: [] };
+
+    pending.forEach(t => {
+      const due = t.due_date.split('T')[0];
+      const diffMs = new Date(due) - new Date(todayStr);
+      const diffDays = Math.ceil(diffMs / 86400000);
+      const item = { title: t.title, due, diffDays };
+      if (diffDays < 0) risks.red.push(item);
+      else if (diffDays <= 1) risks.red.push(item);
+      else if (diffDays <= 3) risks.yellow.push(item);
+      else risks.green.push(item);
+    });
+
+    let r = '⚠️ 마감 위험도 분석\n━━━━━━━━━━━━━━\n\n';
+
+    if (risks.red.length > 0) {
+      r += '🔴 긴급 (' + risks.red.length + '건):\n';
+      risks.red.forEach(t => {
+        const label = t.diffDays < 0 ? '⏰ ' + Math.abs(t.diffDays) + '일 초과!' : t.diffDays === 0 ? '⏰ 오늘 마감!' : '⏰ 내일 마감';
+        r += '  • ' + t.title + ' — ' + label + '\n';
+      });
+      r += '\n';
+    }
+
+    if (risks.yellow.length > 0) {
+      r += '🟡 주의 (' + risks.yellow.length + '건):\n';
+      risks.yellow.forEach(t => { r += '  • ' + t.title + ' — ' + t.diffDays + '일 남음\n'; });
+      r += '\n';
+    }
+
+    if (risks.green.length > 0) {
+      r += '🟢 안전 (' + risks.green.length + '건):\n';
+      risks.green.forEach(t => { r += '  • ' + t.title + ' — ' + t.diffDays + '일 남음\n'; });
+      r += '\n';
+    }
+
+    if (risks.red.length > 0) r += '🚨 긴급한 일부터 처리하세요!';
+    else if (risks.yellow.length > 0) r += '⚡ 곧 마감인 일이 있어요. 미리 준비하세요!';
+    else r += '👍 여유 있어요. 이 페이스 유지하세요!';
+
+    return r;
+  } catch(_) { return '할 일 조회 중 오류가 생겼어요.'; }
+}
+
+function _aiWeekForecast() {
+  const patterns = _aiAnalyzePatterns();
+  if (!patterns) return '아직 데이터가 부족해요. 며칠 더 사용하면 주간 전망을 볼 수 있어요!';
+
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const today = new Date().getDay();
+
+  let r = '🔮 이번 주 전망\n━━━━━━━━━━━━━━\n\n';
+
+  for (let i = 0; i < 7; i++) {
+    const d = (today + i) % 7;
+    const stat = patterns.dayStats[d];
+    const isToday = i === 0;
+    const label = isToday ? '오늘' : dayNames[d] + '요일';
+
+    if (stat.count === 0) {
+      r += (isToday ? '▶ ' : '  ') + label + ': 데이터 없음\n';
+      continue;
+    }
+
+    const miniBar = '█'.repeat(Math.floor(stat.avgScore / 20));
+    let mood = '';
+    if (stat.avgScore >= 70) mood = '🔥';
+    else if (stat.avgScore >= 50) mood = '👍';
+    else if (stat.avgScore >= 30) mood = '☕';
+    else mood = '💤';
+
+    r += (isToday ? '▶ ' : '  ') + label + ' ' + miniBar + ' ' + stat.avgScore + '점 ' + mood;
+    if (stat.avgReports >= 1) r += ' 📝';
+    if (stat.avgEvents >= 2) r += ' 📅';
+    r += '\n';
+  }
+
+  r += '\n📝 = 보고서 예상  📅 = 일정 많음\n';
+
+  const weekWork = patterns.dayStats.slice(1, 6).filter(d => d.count > 0);
+  if (weekWork.length > 0) {
+    const weekAvg = Math.round(weekWork.reduce((s, d) => s + d.avgScore, 0) / weekWork.length);
+    r += '\n📊 주간 평균 예상 생산성: ' + weekAvg + '점';
+    if (weekAvg >= 70) r += '\n이번 주는 불타는 한 주가 될 거예요! 🔥';
+    else if (weekAvg >= 50) r += '\n꾸준한 한 주가 될 거예요! 💪';
+    else r += '\n여유 있는 한 주가 될 거예요 ☕';
+  }
+
+  return r;
+}
+
+function _aiPatternReport() {
+  const patterns = _aiAnalyzePatterns();
+  if (!patterns) return '아직 데이터가 부족해요. 최소 3일 이상의 일지가 필요합니다!';
+
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+  let r = '📊 나의 업무 패턴 리포트\n━━━━━━━━━━━━━━\n';
+  r += '📅 분석 기간: ' + patterns.totalDays + '일\n\n';
+
+  r += '요일별 생산성:\n';
+  patterns.dayStats.forEach((stat, i) => {
+    if (stat.count === 0) return;
+    const bar = '█'.repeat(Math.floor(stat.avgScore / 10)) + '░'.repeat(10 - Math.floor(stat.avgScore / 10));
+    r += dayNames[i] + ' [' + bar + '] ' + stat.avgScore + '점 (보고 ' + stat.avgReports + ' / 완료 ' + stat.avgDone + ')\n';
+  });
+
+  if (patterns.busiestDay && patterns.slowestDay) {
+    r += '\n🏆 최고 생산성: ' + dayNames[patterns.busiestDay.day] + '요일 (' + patterns.busiestDay.avgScore + '점)';
+    r += '\n☕ 최저 생산성: ' + dayNames[patterns.slowestDay.day] + '요일 (' + patterns.slowestDay.avgScore + '점)';
+
+    const gap = patterns.busiestDay.avgScore - patterns.slowestDay.avgScore;
+    r += '\n📐 편차: ' + gap + '점';
+    if (gap > 30) r += ' — 요일별 차이가 큰 편이에요. 루틴을 고르게 만들어보세요!';
+    else r += ' — 꾸준한 편이에요! 좋아요! 👍';
+  }
+
+  r += '\n\n📈 최근 2주 평균: ' + patterns.avgRecent + '점';
+  if (patterns.avgRecent >= 70) r += ' — 컨디션 최고! 🔥';
+  else if (patterns.avgRecent >= 50) r += ' — 안정적! 👍';
+  else if (patterns.avgRecent >= 30) r += ' — 조금 쉬어가도 괜찮아요 🌱';
+  else r += ' — 컨디션 관리가 필요해요 💪';
+
+  return r;
+}
+
 async function aiSecretaryCheck() {
   if (!currentUser || currentUser.isAdmin) return;
   const now = new Date();
@@ -10491,6 +10715,38 @@ async function aiSecretaryCheck() {
         const names = overdue.slice(0, 3).map(t => '• ' + t.title).join('\n');
         const moreText = overdue.length > 3 ? '\n외 ' + (overdue.length - 3) + '건...' : '';
         _showSecretaryAlert('overdue', '⚠️ 기한 지난 할 일', `${overdue.length}건의 할 일이 기한을 넘겼어요:\n\n${names}${moreText}\n\n확인하고 처리해주세요!`, '할 일 보기', () => navigate('todos'));
+      }
+    } catch(_) {}
+  }
+
+  // 2.3 AI 예측 알림 (오전 9~10시, 하루 1번)
+  if (h >= 9 && h < 10 && !_alarmNotified[today + '_predict']) {
+    try {
+      await _aiDailyJournal();
+      const patterns = _aiAnalyzePatterns();
+      if (patterns) {
+        const stat = patterns.dayStats[now.getDay()];
+        if (stat && stat.count >= 2 && stat.avgReports >= 1) {
+          _alarmNotified[today + '_predict'] = true;
+          _showSecretaryAlert('predict', '🔮 AI 예측', '오늘은 보고서를 쓸 확률이 높은 ' + ['일','월','화','수','목','금','토'][now.getDay()] + '요일이에요!\n(평균 ' + stat.avgReports + '건)\n\n미리 준비해보세요!', 'AI 예측 보기', () => { openAiChat(); setTimeout(() => _aiChatAddBot(_aiPredictToday()), 500); });
+        }
+      }
+    } catch(_) {}
+  }
+
+  // 2.4 마감 임박 할일 자동 경고 (매 체크, 하루 1번)
+  if (!_alarmNotified[today + '_deadline']) {
+    try {
+      const todos = await api('/api/todos');
+      const urgent = (todos || []).filter(t => {
+        if (t.completed || !t.due_date) return false;
+        const diff = Math.ceil((new Date(t.due_date.split('T')[0]) - new Date(today)) / 86400000);
+        return diff >= 0 && diff <= 1;
+      });
+      if (urgent.length > 0) {
+        _alarmNotified[today + '_deadline'] = true;
+        const names = urgent.slice(0, 3).map(t => '• ' + t.title).join('\n');
+        _showSecretaryAlert('deadline', '🚨 마감 임박!', urgent.length + '건의 할 일이 오늘/내일 마감이에요!\n\n' + names + '\n\n서둘러 처리해주세요!', '마감 분석', () => { openAiChat(); setTimeout(async () => _aiChatAddBot(await _aiDeadlineRisk()), 500); });
       }
     } catch(_) {}
   }
