@@ -7771,39 +7771,81 @@ function _aiCalcIQ() {
   const mem = _aiMemory();
   let iq = 70;
   const cc = mem.chatCount || 0;
-  iq += Math.min(cc, 200) * 0.1;
+  iq += Math.min(cc, 200) * 0.05;
   const factCount = Object.keys(mem.facts || {}).length;
-  iq += Math.min(factCount, 50) * 0.3;
+  iq += Math.min(factCount, 50) * 0.2;
   const topicCount = Object.keys(mem.topics || {}).length;
-  iq += topicCount * 2;
+  iq += topicCount * 1;
   const daysUsed = (mem.daysUsed || []).length;
-  iq += Math.min(daysUsed, 30) * 0.5;
+  iq += Math.min(daysUsed, 30) * 0.3;
   const cmdCount = Object.keys(mem.freqCmds || {}).length;
-  iq += cmdCount * 1;
+  iq += cmdCount * 0.5;
   const hourPats = Object.keys(mem.hourPatterns || {}).length;
-  iq += hourPats * 0.5;
-  if (mem.facts && mem.facts.chatStyle) iq += 2;
-  if (mem.facts && Object.keys(mem.facts).some(k => k.startsWith('pref_'))) iq += 3;
-  if (mem.facts && Object.keys(mem.facts).some(k => k.startsWith('mood_'))) iq += 2;
+  iq += hourPats * 0.3;
+  if (mem.facts && mem.facts.chatStyle) iq += 1;
+  if (mem.facts && Object.keys(mem.facts).some(k => k.startsWith('pref_'))) iq += 2;
+  if (mem.facts && Object.keys(mem.facts).some(k => k.startsWith('mood_'))) iq += 1;
   try {
     const prof = _aiPersonalProfile();
-    if (prof.mbti) iq += 2;
-    if (prof.birthday) iq += 2;
-    iq += Math.min((prof.likes || []).length, 10) * 0.5;
-    iq += Math.min((prof.dislikes || []).length, 10) * 0.5;
-    iq += Math.min((prof.hobbies || []).length, 5) * 1;
-    iq += Math.min(_aiLifeLog().length, 50) * 0.2;
+    if (prof.mbti) iq += 1;
+    if (prof.birthday) iq += 1;
+    iq += Math.min((prof.likes || []).length, 10) * 0.3;
+    iq += Math.min((prof.dislikes || []).length, 10) * 0.3;
+    iq += Math.min((prof.hobbies || []).length, 5) * 0.5;
+    iq += Math.min(_aiLifeLog().length, 50) * 0.1;
   } catch(_) {}
   return Math.round(Math.min(iq, 200));
 }
 
+function _aiCalcEXP() {
+  const mem = _aiMemory();
+  let exp = 0;
+  exp += (mem.chatCount || 0) * 2;
+  exp += (mem.daysUsed || []).length * 10;
+  exp += Object.keys(mem.facts || {}).length * 3;
+  exp += Object.values(mem.freqCmds || {}).reduce((s, v) => s + Math.min(v, 20), 0);
+  exp += Object.keys(mem.topics || {}).length * 5;
+  const posF = (mem.feedbackLog || []).filter(f => f === 'positive').length;
+  exp += posF * 5;
+  try {
+    const prof = _aiPersonalProfile();
+    if (prof.mbti) exp += 15;
+    if (prof.birthday) exp += 15;
+    if (prof.nickname) exp += 10;
+    exp += Math.min((prof.likes || []).length, 10) * 5;
+    exp += Math.min((prof.hobbies || []).length, 5) * 8;
+    exp += Math.min(_aiLifeLog().length, 50) * 3;
+    if (prof.stressRelief) exp += 10;
+    if (prof.goal) exp += 10;
+  } catch(_) {}
+  const journalDays = _aiJournalHistory().length;
+  exp += journalDays * 8;
+  return Math.round(exp);
+}
+
+const _aiLevelTable = [
+  { lv: 1, title: '신입 비서', emoji: '🌱', desc: '기본 명령 이해', reqExp: 0 },
+  { lv: 2, title: '주니어 비서', emoji: '📘', desc: '패턴 인식 시작', reqExp: 100 },
+  { lv: 3, title: '시니어 비서', emoji: '💎', desc: '개인화된 추천', reqExp: 300 },
+  { lv: 4, title: '수석 비서', emoji: '🌟', desc: '선제적 알림과 분석', reqExp: 700 },
+  { lv: 5, title: '전설의 비서', emoji: '👑', desc: '완벽한 맞춤형 서비스', reqExp: 1500 },
+];
+
 function _aiGetLevel() {
-  const iq = _aiCalcIQ();
-  if (iq >= 150) return { lv: 5, title: '전설의 비서', emoji: '👑', desc: '완벽한 맞춤형 서비스' };
-  if (iq >= 120) return { lv: 4, title: '수석 비서', emoji: '🌟', desc: '선제적 알림과 분석' };
-  if (iq >= 100) return { lv: 3, title: '시니어 비서', emoji: '💎', desc: '개인화된 추천' };
-  if (iq >= 85) return { lv: 2, title: '주니어 비서', emoji: '📘', desc: '패턴 인식 시작' };
-  return { lv: 1, title: '신입 비서', emoji: '🌱', desc: '기본 명령 이해' };
+  const exp = _aiCalcEXP();
+  for (let i = _aiLevelTable.length - 1; i >= 0; i--) {
+    if (exp >= _aiLevelTable[i].reqExp) {
+      const cur = _aiLevelTable[i];
+      const next = _aiLevelTable[i + 1];
+      return {
+        lv: cur.lv, title: cur.title, emoji: cur.emoji, desc: cur.desc,
+        exp, reqExp: cur.reqExp,
+        nextExp: next ? next.reqExp : null,
+        progress: next ? Math.round((exp - cur.reqExp) / (next.reqExp - cur.reqExp) * 100) : 100
+      };
+    }
+  }
+  return { lv: 1, title: '신입 비서', emoji: '🌱', desc: '기본 명령 이해', exp, reqExp: 0, nextExp: 100, progress: Math.round(exp / 100 * 100) };
 }
 
 function _aiRecordCmd(cmd) {
@@ -8043,7 +8085,8 @@ function openAiChat() {
   const iq = _aiCalcIQ();
   const badge = document.getElementById('aiChatLevelBadge');
   if (badge) badge.textContent = lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + ' · IQ ' + iq;
-  _aiChatAddBot(greeting + ' ' + name + '님! 무엇을 도와드릴까요? 😊\n' + lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + ' (IQ ' + iq + ')');
+  const expInfo = lvl.nextExp ? ' (EXP ' + lvl.exp + '/' + lvl.nextExp + ')' : ' (EXP MAX)';
+  _aiChatAddBot(greeting + ' ' + name + '님! 무엇을 도와드릴까요? 😊\n' + lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + expInfo);
 
   // 학습 기반 시간대 추천
   const hourSug = _aiGetHourSuggestion();
@@ -8052,12 +8095,10 @@ function openAiChat() {
   }
 
   // 레벨업 알림
-  const prevIQ = mem.prevIQ || 70;
   const prevLv = mem.prevLv || 1;
   if (lvl.lv > prevLv) {
-    setTimeout(() => { _aiChatAddBot('🎉 축하합니다! Lv.' + prevLv + ' → Lv.' + lvl.lv + ' ' + lvl.title + '로 레벨업!\n' + lvl.desc + ' 능력이 해금됐어요! ' + lvl.emoji); }, 2500);
+    setTimeout(() => { _aiChatAddBot('🎉 축하합니다! Lv.' + prevLv + ' → Lv.' + lvl.lv + ' ' + lvl.title + '로 레벨업!\n' + lvl.desc + ' 능력이 해금됐어요! ' + lvl.emoji + '\n\n📊 EXP: ' + lvl.exp + (lvl.nextExp ? ' (다음 레벨: ' + lvl.nextExp + ')' : '')); }, 2500);
   }
-  mem.prevIQ = iq;
   mem.prevLv = lvl.lv;
   _aiMemorySave(mem);
 
@@ -8489,7 +8530,56 @@ function aiChatVoiceToggle() {
   _aiChatShowSuggest(['오늘 브리핑', '할 일 확인', '오늘 일정']);
 }
 
+const _aiSlangDict = {
+  '방가방가': '반가워', '방가': '반가워', '하이루': '안녕', '하이요': '안녕',
+  'ㅎㅇ': '안녕', 'ㅂㅇ': '반가워', 'ㅎㅇㅎㅇ': '안녕안녕',
+  'ㄱㅅ': '감사', 'ㄱㅅㄱㅅ': '감사감사', 'ㄳ': '감사', 'ㄱㅅㅎ': '감사해',
+  'ㄴㄴ': '아니', 'ㅇㅇ': '응', 'ㅇㅋ': '오케이', 'ㅈㅅ': '죄송',
+  'ㄱㄱ': '가자', 'ㄱㄱㄱ': '가자가자', 'ㄹㅇ': '진짜', 'ㄹㅇㅋㅋ': '진짜 ㅋㅋ',
+  'ㅈㄱ': '자기소개', 'ㄷㄷ': '덜덜', 'ㅎㄷㄷ': '후덜덜', 'ㄱㄷ': '기다려',
+  'ㅂㅂ': '바이바이', 'ㅂ2': '바이바이', 'ㅂㅇ': '반가워',
+  'ㅋㅋ': '(웃음)', 'ㅎㅎ': '(웃음)', 'ㅠㅠ': '(슬픔)', 'ㅜㅜ': '(슬픔)',
+  '넹': '네', '넵': '네', '넴': '네', '얍': '네',
+  '엥': '왜', '엥?': '왜?', '앵': '왜',
+  '웅': '응', '엉': '응', '오키': '알겠어', '오키도키': '알겠어',
+  '갠찮': '괜찮', '갠차나': '괜찮아', '괜차나': '괜찮아',
+  '머해': '뭐해', '뭐행': '뭐해', '뭐함': '뭐해', '모해': '뭐해',
+  '짱이야': '최고야', '짱': '최고', '쩔어': '대단해', '쩐다': '대단해',
+  '헐': '놀라움', '대박': '놀라움', '레알': '진짜', '리얼': '진짜',
+  'ㅁㅊ': '미쳤', '미쳤다': '대단해', '쩔었다': '대단했어',
+  '알려줘용': '알려줘', '해줘용': '해줘', '부탁용': '부탁해',
+  '고마워용': '고마워', '감사용': '감사해', '사랑해용': '사랑해',
+  '힝': '(슬픔)', '흑흑': '(슬픔)', '에잇': '짜증',
+  '드루와': '와봐', '간다간다': '가자', '가즈아': '가자',
+  '맞팔': '맞팔로우', '선팔': '먼저 팔로우',
+  '꿀잼': '재미있어', '핵꿀잼': '엄청 재미있어', '노잼': '재미없어',
+  'ㄱㄴ': '가능', 'ㅆㄹ': '수고',
+  '수고링': '수고해', '수고루': '수고해', '고생링': '고생했어',
+  '홧팅': '화이팅', '파이팅': '화이팅', '빠이팅': '화이팅',
+  '안뇽': '안녕', '안뇽하세요': '안녕하세요', '방갑': '반가워',
+  '궁금': '궁금해', '몰라용': '모르겠어', '글쿤': '그렇구나',
+  '아하': '그렇구나', '오호': '그렇구나', '오오': '신기해',
+  'ㅇㅎ': '이해', 'ㅇㅋㅇㅋ': '알겠어', 'ㅊㅋ': '축하', 'ㅊㅋㅊㅋ': '축하축하',
+  '볼매': '볼수록매력', '심쿵': '심장쿵',
+};
+
+const _aiSlangGreetings = /^(방가방가|방가|하이루|하이요|ㅎㅇ|ㅂㅇ|ㅎㅇㅎㅇ|안뇽|안뇽하세요|방갑)$/i;
+const _aiSlangThanks = /^(ㄱㅅ|ㄱㅅㄱㅅ|ㄳ|ㄱㅅㅎ|고마워용|감사용)$/i;
+const _aiSlangBye = /^(ㅂㅂ|ㅂ2|바이바이|빠잉|수고링|수고루|고생링)$/i;
+const _aiSlangAgree = /^(ㅇㅇ|ㅇㅋ|넹|넵|넴|얍|웅|엉|오키|오키도키|ㅇㅋㅇㅋ|ㄱㄴ)$/i;
+const _aiSlangCheer = /^(홧팅|파이팅|빠이팅|가즈아|화이팅|ㄱㄱ|ㄱㄱㄱ|간다간다|드루와)$/i;
+const _aiSlangWhat = /^(머해|뭐행|뭐함|모해)$/i;
+const _aiSlangWow = /^(헐|대박|쩔어|쩐다|짱|짱이야|미쳤다|쩔었다|ㄷㄷ|ㅎㄷㄷ|오오|심쿵)$/i;
+
+function _aiNormalize(input) {
+  let t = input.trim();
+  const words = t.split(/\s+/);
+  const normalized = words.map(w => _aiSlangDict[w] || _aiSlangDict[w.toLowerCase()] || w);
+  return normalized.join(' ');
+}
+
 async function _aiProcessChat(input, _detections) {
+  const rawInput = input;
   const t = input.toLowerCase().trim();
   const today = new Date().toISOString().split('T')[0];
   const mem = _aiMemory();
@@ -8497,6 +8587,40 @@ async function _aiProcessChat(input, _detections) {
   const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
   _aiRecordTopic(_aiDetectTopic(t));
   const _style = (mem.facts && mem.facts.chatStyle) || 'formal';
+
+  // --- 은어 즉시 응답 ---
+  if (_aiSlangGreetings.test(t)) {
+    const gs = ['반가워요! ' + name + '님! 😊', '어서 오세요~ ' + name + '님! 방가방가! 🙌', '하이~ 오늘도 파이팅! 💪'];
+    return { reply: _say(gs[0], gs[1], gs[2]), suggests: ['오늘 브리핑', '할 일 확인', '추천해줘'] };
+  }
+  if (_aiSlangThanks.test(t)) {
+    return { reply: _say('별말씀을요! 더 필요한 거 있으면 말씀해주세요! 😊', '천만에~ 또 불러! 😉', '에헤~ 당연하죠! 😊'), suggests: ['도움말', '오늘 일정'] };
+  }
+  if (_aiSlangBye.test(t)) {
+    return { reply: _say('수고하셨어요! 다음에 또 봐요! 👋', '수고~ 다음에 또 봐! 👋', '바이바이~ 또 와용! 👋'), suggests: [] };
+  }
+  if (_aiSlangAgree.test(t)) {
+    const lastBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
+    if (lastBot) return { reply: _say('네! 알겠습니다 😊', '오키! 👌', '넹~ 알겠어용! 😊'), suggests: ['다음에 뭐 할까', '도움말'] };
+  }
+  if (_aiSlangCheer.test(t)) {
+    return { reply: _say('화이팅이에요! 💪🔥 오늘도 힘내세요!', '가즈아!! 💪🔥', '화이팅이에용! 💪🔥'), suggests: ['오늘 브리핑', '추천해줘'] };
+  }
+  if (_aiSlangWhat.test(t)) {
+    const h2 = new Date().getHours();
+    if (h2 < 10) return { reply: _say('아침 준비 중이에요! 오늘 브리핑 해드릴까요?', '아침~ 브리핑 해줄까?', '아침이에용~ 브리핑 할까용?'), suggests: ['오늘 브리핑', '출근해'] };
+    if (h2 < 14) return { reply: _say('일하고 있죠! ' + name + '님은요? 도움 필요하면 말씀해주세요!', '일하고 있지~ 뭐 필요해?', '일하고 있어용~ 뭐 해줄까용?'), suggests: ['추천해줘', '할 일 확인'] };
+    return { reply: _say(name + '님 기다리고 있었어요! 뭐 도와드릴까요?', name + ' 기다리고 있었어~ 뭐 할까?', name + '님 기다렸어용~ 뭐 할까용?'), suggests: ['오늘 일지', '추천해줘'] };
+  }
+  if (_aiSlangWow.test(t)) {
+    return { reply: _say('맞아요! 대단하죠! 😄', '크~ 맞지! 😎', 'ㅋㅋ 그치그치! 😆'), suggests: ['농담 해줘', '오늘 브리핑'] };
+  }
+
+  // 은어 정규화 후 재처리 (직접 매칭 안 된 경우)
+  const normalizedInput = _aiNormalize(input);
+  if (normalizedInput !== input) {
+    input = normalizedInput;
+  }
 
   // 말투 래퍼
   function _say(formal, casual, cute) {
@@ -9036,7 +9160,7 @@ async function _aiProcessChat(input, _detections) {
 
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
-    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n🧠 추천 — "추천해줘", "우선순위", "보고서 뭐 쓸까", "다음에 뭐 할까"\n👁️ 심연 — "나를 분석해", "번아웃 체크", 말투·감정·패턴 자동 분석\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
+    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n🧠 추천 — "추천해줘", "우선순위", "보고서 뭐 쓸까", "다음에 뭐 할까"\n👁️ 심연 — "나를 분석해", "번아웃 체크", "레벨 확인"\n🗣️ 은어 — 방가방가, 하이루, ㄱㅅ, ㅇㅇ, 머해 등 인터넷 은어 이해\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
   }
 
   // --- 감사/칭찬 ---
@@ -9413,6 +9537,26 @@ async function _aiProcessChat(input, _detections) {
   if (/패턴\s*분석|내\s*패턴|업무\s*패턴|습관\s*분석/.test(t)) {
     await _aiDailyJournal();
     return { reply: _aiPatternReport(), suggests: ['오늘 예측', '이번주 전망', '생산성 트렌드'] };
+  }
+  // --- 레벨/경험치 확인 ---
+  if (/레벨|경험치|EXP|내\s*레벨|비서\s*레벨|레벨\s*확인|렙|몇\s*레벨/.test(t)) {
+    const lvl2 = _aiGetLevel();
+    const iq2 = _aiCalcIQ();
+    let r = '📊 AI 비서 레벨 현황\n━━━━━━━━━━━━━━\n\n';
+    r += lvl2.emoji + ' Lv.' + lvl2.lv + ' ' + lvl2.title + '\n';
+    r += '🧠 IQ: ' + iq2 + '\n\n';
+    const bar = '█'.repeat(Math.floor(lvl2.progress / 10)) + '░'.repeat(10 - Math.floor(lvl2.progress / 10));
+    r += '📈 EXP: ' + lvl2.exp + (lvl2.nextExp ? ' / ' + lvl2.nextExp : ' (MAX)') + '\n';
+    r += '[' + bar + '] ' + lvl2.progress + '%\n\n';
+    r += '💡 경험치 얻는 법:\n';
+    r += '• 대화하기 (+2)\n• 매일 접속 (+10)\n• 프로필 등록 (+15)\n• 할일/일지 활동 (+3~8)\n• 좋아요 피드백 (+5)\n';
+    if (lvl2.nextExp) {
+      const remain = lvl2.nextExp - lvl2.exp;
+      r += '\n🎯 다음 레벨까지 ' + remain + ' EXP 남았어요!';
+    } else {
+      r += '\n👑 최고 레벨 달성! 전설의 비서!';
+    }
+    return { reply: r, suggests: ['나를 분석해', '패턴 분석', '오늘 일지'] };
   }
   // --- 스마트 추천 ---
   if (/추천해\s*줘|추천\s*해줘|뭐\s*하면\s*좋|지금\s*뭐\s*할|뭐\s*할까|할\s*거\s*추천|스마트\s*추천/.test(t)) {
