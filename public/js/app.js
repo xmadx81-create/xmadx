@@ -8126,7 +8126,11 @@ async function _aiProcessChat(input) {
   }
 
   // --- 채팅에서 할 일 직접 추가 (기한 지원) ---
-  const todoAddMatch = input.match(/(?:할\s*일|투두|todo)\s*(?:추가|등록|만들|넣)[:\s]*(.+)/i) || input.match(/["""](.+?)["""].*(?:할\s*일|투두).*(?:추가|등록)/);
+  const _todoRaw = input.match(/(?:할\s*일|투두|todo)\s*(?:추가|등록|만들|넣)[:\s]*(.+)/i) || input.match(/["""](.+?)["""].*(?:할\s*일|투두).*(?:추가|등록)/);
+  const todoAddMatch = _todoRaw && !(/^(할래|해줘|할게|줘|해|하자|좀|요|해주세요)$/i.test((_todoRaw[1]||'').trim())) ? _todoRaw : null;
+  if (!todoAddMatch && /(?:할\s*일|투두|todo)\s*(?:추가|등록|만들|넣)\s*$/i.test(input)) {
+    return { reply: _say('어떤 할 일을 추가할까요?\n예: "할 일 추가 회의록 정리 내일까지"', '뭐 추가할래? 예: "할 일 추가 보고서 내일까지"'), suggests: [] };
+  }
   if (todoAddMatch) {
     let raw = todoAddMatch[1].trim();
     let dueDate = '';
@@ -8153,7 +8157,8 @@ async function _aiProcessChat(input) {
   }
 
   // --- 채팅에서 일정 직접 등록 ---
-  const evtAddMatch = input.match(/(?:일정|스케줄)\s*(?:추가|등록|만들|넣)[:\s]*(.+)/i);
+  const _evtRaw = input.match(/(?:일정|스케줄)\s*(?:추가|등록|만들|넣)[:\s]*(.+)/i);
+  const evtAddMatch = _evtRaw && !(/^(할래|해줘|할게|줘|해|하자|좀|요|해주세요)$/i.test((_evtRaw[1]||'').trim())) ? _evtRaw : null;
   if (evtAddMatch) {
     const raw = evtAddMatch[1].trim();
     let time = '';
@@ -8618,14 +8623,20 @@ async function _aiProcessChat(input) {
   // --- 맥락 대화: 이전 답변 참조 ---
   const lastBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
   if (lastBot) {
-    if (/^(응|네|그래|맞아|좋아|ok|ㅇㅇ|그래서|해줘|부탁)$/i.test(t)) {
-      if (lastBot.text.includes('작성하시겠어요') || lastBot.text.includes('작성하시겠')) return _aiProcessChat('보고서 쓸래');
-      if (lastBot.text.includes('추가하시겠어요') || lastBot.text.includes('등록하시겠어요') || lastBot.text.includes('추가할까')) return _aiProcessChat('일정 등록할래');
-      if (lastBot.text.includes('처리하시겠어요')) return _aiProcessChat('퇴근 처리');
-      return { reply: '네, 무엇을 도와드릴까요?', suggests: ['오늘 일정', '할 일 확인', '보고서 쓸래'] };
+    if (/^(응|어|네|그래|맞아|좋아|ok|ㅇ|ㅇㅇ|웅|그래그래|그래서|해줘|부탁|당근|ㅇㅋ|오키|오케이|알겠|해|해봐)$/i.test(t)) {
+      if (lastBot.text.includes('작성하시겠어요') || lastBot.text.includes('작성하시겠') || lastBot.text.includes('기록하시겠')) return _aiProcessChat('보고서 쓸래');
+      if (lastBot.text.includes('추가하시겠어요') || lastBot.text.includes('등록하시겠어요') || lastBot.text.includes('추가할까') || lastBot.text.includes('추가할까요')) return _aiProcessChat('할 일 추가');
+      if (lastBot.text.includes('일정') && (lastBot.text.includes('등록') || lastBot.text.includes('추가'))) return _aiProcessChat('일정 등록할래');
+      if (lastBot.text.includes('처리하시겠어요') || lastBot.text.includes('퇴근') && lastBot.text.includes('할까')) return _aiProcessChat('퇴근 처리');
+      if (lastBot.text.includes('체크할까')) return _aiProcessChat('출근 체크');
+      if (lastBot.text.includes('등록할까요') || lastBot.text.includes('넣을까')) {
+        if (lastBot.text.includes('할 일')) return _aiProcessChat('할 일 추가');
+        if (lastBot.text.includes('일정')) return _aiProcessChat('일정 등록할래');
+      }
+      return { reply: _say('네, 무엇을 도와드릴까요?', '응! 뭐 해줄까?'), suggests: ['오늘 일정', '할 일 확인', '보고서 쓸래'] };
     }
-    if (/^(아니|됐어|괜찮|취소|ㄴㄴ)/.test(t)) {
-      return { reply: '알겠어요! 다른 건 없으시면 편하게 물어보세요 😊', suggests: ['오늘 일정', '도움말'] };
+    if (/^(아니|됐어|괜찮|취소|ㄴㄴ|싫어|안\s*할래|아닌데|놉|ㄴ)$/i.test(t)) {
+      return { reply: _say('알겠어요! 다른 건 없으시면 편하게 물어보세요 😊', '알겠어~ 다른 거 있으면 말해!'), suggests: ['오늘 일정', '도움말'] };
     }
   }
 
