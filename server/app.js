@@ -4079,15 +4079,19 @@ ${hour < 9 ? '→ 아침 시간대: 하루 시작 응원' : hour < 12 ? '→ 오
 
     let reply = rawReply;
     let actions = null;
-    const jsonMatch = rawReply.match(/```json\s*([\s\S]*?)```/);
-    if (jsonMatch) {
+    const fencedMatch = rawReply.match(/```json\s*([\s\S]*?)```/);
+    const rawJsonMatch = !fencedMatch && rawReply.match(/(\{"actions"\s*:\s*\[[\s\S]*?\]\s*\})/);
+    const jsonStr = fencedMatch ? fencedMatch[1] : rawJsonMatch ? rawJsonMatch[1] : null;
+    if (jsonStr) {
       try {
-        const parsed = JSON.parse(jsonMatch[1]);
+        const parsed = JSON.parse(jsonStr);
         if (parsed.actions && Array.isArray(parsed.actions)) {
           actions = parsed.actions;
         }
       } catch (_) {}
-      reply = rawReply.replace(/```json[\s\S]*?```/, '').trim();
+      reply = fencedMatch
+        ? rawReply.replace(/```json[\s\S]*?```/, '').trim()
+        : rawReply.replace(/\{"actions"\s*:\s*\[[\s\S]*?\]\s*\}/, '').trim();
     }
 
     res.json({ reply, actions });
