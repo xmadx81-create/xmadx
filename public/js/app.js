@@ -8053,7 +8053,8 @@ async function _aiCallGemini(message) {
     who: h.who, text: (h.text || '').substring(0, 300)
   }));
   const body = JSON.stringify({ message, history });
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const delays = [2000, 4000];
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const resp = await fetch('/api/ai-chat', {
         method: 'POST',
@@ -8061,7 +8062,7 @@ async function _aiCallGemini(message) {
         body
       });
       if (!resp.ok) {
-        if (attempt === 0) { await new Promise(r => setTimeout(r, 1500)); continue; }
+        if (attempt < 2) { await new Promise(r => setTimeout(r, delays[attempt])); continue; }
         return null;
       }
       const data = await resp.json();
@@ -8070,7 +8071,7 @@ async function _aiCallGemini(message) {
       }
       return data.reply || null;
     } catch (e) {
-      if (attempt === 0) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      if (attempt < 2) { await new Promise(r => setTimeout(r, delays[attempt])); continue; }
       return null;
     }
   }
@@ -9519,7 +9520,13 @@ async function _aiProcessChat(input, _detections) {
   }
 
   // ─── 최종 fallback ───
-  return { reply: _say('잠시 연결이 불안정해요. 다시 한번 말씀해주세요! 😊', '앗 잠깐 연결이 좀 그래~ 다시 말해줘!'), suggests: ['도움말', '오늘 브리핑', '오늘 일정'] };
+  const h3 = new Date().getHours();
+  const fallbacks = h3 < 12
+    ? ['좋은 아침이에요! 무엇을 도와드릴까요? ☀️', '오늘도 파이팅! 뭘 도와줄까?']
+    : h3 < 18
+    ? ['네, 말씀하세요! 뭘 도와드릴까요? 😊', '응응, 뭘 해줄까?']
+    : ['수고하셨어요! 뭘 도와드릴까요? 🌙', '오늘 하루도 고생~ 뭘 해줄까?'];
+  return { reply: _say(fallbacks[0], fallbacks[1]), suggests: ['도움말', '오늘 브리핑', '오늘 일정'] };
 }
 
 async function _aiExecuteActions(actions) {

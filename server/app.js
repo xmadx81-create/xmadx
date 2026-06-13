@@ -4209,5 +4209,10 @@ app.use((err, req, res, next) => {
   }
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`WorkFlow 서버 실행: http://localhost:${PORT}`);
+    const GK = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GK}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: '안녕' }] }], generationConfig: { maxOutputTokens: 10 } })
+    }).then(() => console.log('Gemini 워밍업 완료')).catch(() => console.log('Gemini 워밍업 실패 (무시)'));
   });
 })();
