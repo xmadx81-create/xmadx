@@ -7772,6 +7772,51 @@ function _aiWorkPivot() {
 function _aiIsWorkRelated(t) {
   return /할\s*일|일정|보고서|출근|퇴근|업무|회의|브리핑|스케줄|마감|보고|기한|목표|추천|우선|분석|집중|생산성|팀|프로젝트|일지|캘린더|투두|todo|출결|근태/i.test(t);
 }
+function _aiDetectIdiomCat(text) {
+  const m = [
+    [/힘들|지치|피곤|열심|노력|고생|수고|땀|분발|힘내/, 'effort'],
+    [/성공|잘\s*됐|이겼|최고|대박|완벽|승리|해냈/, 'success'],
+    [/위기|실패|안\s*돼|못|어려|힘든|고민|문제|망|큰일/, 'crisis'],
+    [/시간|빨리|늦|급해|마감|서둘|기한|빠르/, 'time'],
+    [/참|기다|인내|꾸준|계속|포기|버텨/, 'patience'],
+    [/시작|도전|새로|첫|출발|시도|나서/, 'start'],
+    [/배우|공부|학습|알|모르|지식|경험|수업/, 'learn'],
+    [/계획|준비|전략|목표|방향|정리|단계/, 'plan'],
+    [/같이|함께|팀|협력|도움|동료|우리/, 'team'],
+    [/변화|바뀌|달라|발전|성장|개선|혁신/, 'change'],
+    [/기분|감정|화나|슬프|기쁘|행복|우울|짜증/, 'emotion'],
+    [/배고프|밥|먹|점심|음식|건강|운동/, 'food'],
+    [/날씨|비|눈|덥|춥|자연|계절|봄|여름|가을|겨울/, 'nature'],
+    [/돈|월급|재테크|주식|투자|경제|절약/, 'money'],
+    [/사랑|연애|썸|결혼|이별|마음/, 'love'],
+    [/쉬|놀|퇴근|여행|휴가|여유|재미/, 'rest'],
+    [/리더|대표|관리|통솔|이끌|팀장|부장/, 'leader'],
+    [/말|소통|대화|듣|표현|의견/, 'comm'],
+    [/경쟁|싸움|이기|전술|승부|싸워/, 'war'],
+  ];
+  for (const [pat, cat] of m) { if (pat.test(text)) return cat; }
+  return 'wisdom';
+}
+function _aiPickIdiom(cat) {
+  if (!window._SAJASEONGEO) return null;
+  const db = window._SAJASEONGEO;
+  const pool = cat && db[cat] ? db[cat] : db[Object.keys(db)[Math.floor(Math.random() * Object.keys(db).length)]];
+  if (!pool || pool.length === 0) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+function _aiIdiomDrip(cat) {
+  const idiom = _aiPickIdiom(cat);
+  if (!idiom) return '';
+  return '\n\n🎓 **' + idiom[0] + '(' + idiom[1] + ')** — ' + idiom[2];
+}
+function _aiFindIdiom(term) {
+  if (!window._SAJASEONGEO) return null;
+  for (const cat of Object.keys(window._SAJASEONGEO)) {
+    const found = window._SAJASEONGEO[cat].find(function(e) { return e[0] === term; });
+    if (found) return { entry: found, cat: cat };
+  }
+  return null;
+}
 function _aiMemory() { try { return JSON.parse(localStorage.getItem('aiMemory') || '{}'); } catch(_) { return {}; } }
 function _aiMemorySave(mem) { localStorage.setItem('aiMemory', JSON.stringify(mem)); }
 function _aiLearn(key, value) {
@@ -10605,6 +10650,57 @@ async function _aiProcessChat(input, _detections) {
     return { reply: _say('🆘 긴급 지원 모드!\n\n지금 바로 도와드릴게요. 뭐가 급한가요?', '🆘 긴급! 뭐가 급해? 바로 도와줄게!'), suggests: ['우선순위 보기', '급한 거 확인', '오늘 브리핑', '도움말'] };
   }
 
+  // ─── 한자어/사자성어 뜻풀이 요청 ───
+  const _hanjaMeaningMatch = t.match(/(.{2,6})\s*(?:이?게?\s*(?:뭐|무슨)\s*(?:뜻|의미)|(?:뜻|의미)\s*(?:이?[가는]|알려|설명|풀이)|(?:뜻|의미)\s*(?:뭐|뭔))/);
+  if (_hanjaMeaningMatch) {
+    const term = _hanjaMeaningMatch[1].replace(/[은는이가을를의]/g,'').trim();
+    if (term.length >= 2 && window._SAJASEONGEO) {
+      const found = _aiFindIdiom(term);
+      if (found) {
+        return { reply: _say('📖 **' + found.entry[0] + '(' + found.entry[1] + ')**\n\n뜻: ' + found.entry[2] + '\n\n업무에 적용하면, ' + _aiWorkPivot(), '📖 **' + found.entry[0] + '(' + found.entry[1] + ')**\n\n' + found.entry[2] + '\n\n' + _aiWorkPivot()), suggests: ['사자성어 더', '오늘 브리핑'] };
+      }
+    }
+  }
+  if (/(.{2,6})\s*(?:뜻|의미|해석)\s*(?:좀|을|를)?\s*(?:알려|설명|풀이|해줘|해주|뭐야|뭐)/.test(t)) {
+    const termMatch = t.match(/(.{2,6})\s*(?:뜻|의미|해석)/);
+    if (termMatch && window._SAJASEONGEO) {
+      const term2 = termMatch[1].replace(/[은는이가을를의]/g,'').trim();
+      const found2 = _aiFindIdiom(term2);
+      if (found2) {
+        return { reply: _say('📖 **' + found2.entry[0] + '(' + found2.entry[1] + ')**\n\n뜻: ' + found2.entry[2] + '\n\n업무에 비유하면, 우리도 이 정신으로! ' + _aiWorkPivot(), '📖 **' + found2.entry[0] + '(' + found2.entry[1] + ')**\n\n' + found2.entry[2] + '\n\n' + _aiWorkPivot()), suggests: ['사자성어 더', '오늘 브리핑'] };
+      }
+    }
+  }
+
+  // ─── 사자성어 명령어 ───
+  if (/사자성어|고사성어|한자\s*성어|성어\s*알려|성어\s*해줘|사자성어\s*더/.test(t)) {
+    const cats = Object.keys(window._SAJASEONGEO || {});
+    if (cats.length === 0) return { reply: _say('사자성어 데이터를 불러오는 중이에요...', '잠깐만~'), suggests: [] };
+    const i1 = _aiPickIdiom(cats[Math.floor(Math.random() * cats.length)]);
+    const i2 = _aiPickIdiom(cats[Math.floor(Math.random() * cats.length)]);
+    const i3 = _aiPickIdiom(cats[Math.floor(Math.random() * cats.length)]);
+    let r = '📚 사자성어 타임!\n\n';
+    if (i1) r += '🎓 **' + i1[0] + '(' + i1[1] + ')** — ' + i1[2] + '\n';
+    if (i2) r += '🎓 **' + i2[0] + '(' + i2[1] + ')** — ' + i2[2] + '\n';
+    if (i3) r += '🎓 **' + i3[0] + '(' + i3[1] + ')** — ' + i3[2] + '\n';
+    r += '\n하나 더 들을래요, 아니면 업무 볼까요? 😄';
+    return { reply: _say(r, r), suggests: ['사자성어 더', '오늘 브리핑', '알아서해줘'] };
+  }
+
+  // ─── 사자성어 인식 (유저가 4글자 성어 입력 시 맞받아치기) ───
+  if (t.length >= 4 && t.length <= 5 && /^[가-힣]{4,5}$/.test(t) && window._SAJASEONGEO) {
+    const found = _aiFindIdiom(t);
+    if (found) {
+      const counter = _aiPickIdiom(found.cat);
+      let r = '오! **' + found.entry[0] + '(' + found.entry[1] + ')** — ' + found.entry[2];
+      if (counter && counter[0] !== found.entry[0]) {
+        r += '\n\n받아라! 🎯 **' + counter[0] + '(' + counter[1] + ')** — ' + counter[2];
+      }
+      r += '\n\n' + _aiWorkPivot();
+      return { reply: _say(r, r), suggests: ['사자성어 더', '오늘 브리핑', '할 일 확인'] };
+    }
+  }
+
   // ─── 비업무 대화 감지 + 말돌리기 ───
   const _offTopicMap = [
     { pat: /영화|드라마|넷플|유튜브|예능|시리즈|방송|OTT/, resp: ['영화/드라마 얘기시네요! 저도 명대사는 좀 알아요 ㅎㅎ', '오~ 영상 콘텐츠! 저는 업무 드라마 전문이에요 ㅋ'] },
@@ -10623,20 +10719,27 @@ async function _aiProcessChat(input, _detections) {
     for (const topic of _offTopicMap) {
       if (topic.pat.test(t)) {
         const resp = topic.resp[Math.floor(Math.random() * topic.resp.length)];
-        return { reply: _say(resp + '\n\n' + _aiWorkPivot(), resp + '\n\n' + _aiWorkPivot()), suggests: ['오늘 브리핑', '할 일 확인'] };
+        const idiom = _aiPickIdiom(_aiDetectIdiomCat(t));
+        const idiomStr = idiom ? '\n\n🎓 ' + idiom[0] + '(' + idiom[1] + ') — ' + idiom[2] : '';
+        return { reply: _say(resp + idiomStr + '\n\n' + _aiWorkPivot(), resp + idiomStr + '\n\n' + _aiWorkPivot()), suggests: ['사자성어 더', '오늘 브리핑'] };
       }
     }
   }
 
+  // --- 직접 작성 의도 감지 (쓰자/작성하자 루프 방지) ---
+  if (/(?:일지|보고서|기록|작성)\s*(?:쓰자|쓸래|쓰고|쓸까|쓰기|쓰자고|써보자|쓸|적자|적을래)|쓰자고|작성하자|작성할래/.test(t)) {
+    return _aiProcessChat('보고서 쓸래');
+  }
+
   // --- 만능 동사 처리: "~해줘" "~할래" "~하자" ---
-  const verbCmd = input.match(/(.{2,15}?)\s*(?:해줘|해주|할래|하자|시작해|시작|실행|고|가자|보자|하고\s*싶)$/);
+  const verbCmd = input.match(/(.{2,15}?)\s*(?:해줘|해주|할래|하자|시작해|시작|실행|고|가자|보자|쓰자|쓸래|적자|하고\s*싶)$/);
   if (verbCmd) {
     const cmd = verbCmd[1].replace(/를|을|좀|이거|나|내/g, '').trim();
     const cmdMap = [
       { kw: /브리핑|요약|현황|상황/, fwd: '오늘 브리핑' },
       { kw: /일정|스케줄|캘린더/, fwd: '오늘 일정' },
       { kw: /할\s*일|투두|todo/i, fwd: '할 일 확인' },
-      { kw: /보고서|일지|기록/, fwd: '보고서 쓸래' },
+      { kw: /보고서|일지|기록|작성/, fwd: '보고서 쓸래' },
       { kw: /출근/, fwd: '출근 체크' },
       { kw: /퇴근/, fwd: '퇴근 처리' },
       { kw: /집중|포모도로|타이머/, fwd: '집중 모드' },
@@ -10698,9 +10801,9 @@ async function _aiProcessChat(input, _detections) {
   else if (h2 < 18) smartSuggests.push('보고서 쓸래', '집중 모드');
   else smartSuggests.push('오늘 마무리', '이번 주 요약');
 
-  // 의도 추측 시도
+  // 의도 추측 시도 (이전 봇 메시지가 같은 힌트면 바로 포워딩)
   const guessMap = [
-    { kw: /쓰|작성|적|기록|입력/, hint: '혹시 보고서나 일지를 쓰시려는 건가요?', sg: ['보고서 쓸래', '직접 작성'] },
+    { kw: /쓰|작성|적|기록|입력/, hint: '혹시 보고서나 일지를 쓰시려는 건가요?', sg: ['보고서 쓸래', '직접 작성'], fwd: '보고서 쓸래' },
     { kw: /추가|등록|넣|만들/, hint: '할 일이나 일정을 추가하시려는 건가요?', sg: ['할 일 추가', '일정 등록할래'] },
     { kw: /확인|보여|보기|열어|열기/, hint: '확인하고 싶으신 게 있으세요?', sg: ['오늘 일정', '할 일 확인', '보고서 확인'] },
     { kw: /삭제|지워|취소|제거/, hint: '삭제하고 싶은 게 있으시면 알려주세요!', sg: ['할 일 삭제', '캘린더 열기'] },
@@ -10708,6 +10811,7 @@ async function _aiProcessChat(input, _detections) {
   ];
   for (const g of guessMap) {
     if (g.kw.test(t)) {
+      if (g.fwd && _lastBotText && _lastBotText.includes(g.hint.substring(0, 10))) return _aiProcessChat(g.fwd);
       _aiLearn('unmatched_' + Date.now(), input);
       return { reply: _say('🤔 ' + g.hint, '🤔 ' + g.hint.replace('요?', '?').replace('세요!', '!')), suggests: g.sg };
     }
@@ -10735,22 +10839,23 @@ async function _aiProcessChat(input, _detections) {
   }
 
   _aiLastWasFallback = true;
-  smartSuggests.push('추천해줘');
+  smartSuggests.push('사자성어 더');
+  const _fbIdiom = _aiPickIdiom(_aiDetectIdiomCat(t));
+  if (_fbIdiom) {
+    const _fbPivots = [
+      '흠, 잘 모르겠지만... 대신 사자성어 하나!\n\n🎓 **' + _fbIdiom[0] + '(' + _fbIdiom[1] + ')** — ' + _fbIdiom[2] + '\n\n' + _aiWorkPivot(),
+      '🤔 그건 좀 어렵네요~\n\n🎓 오늘의 한마디: **' + _fbIdiom[0] + '(' + _fbIdiom[1] + ')** — ' + _fbIdiom[2] + '\n\n' + _aiWorkPivot(),
+      '음... 대신 지혜 한 스푼! 🥄\n\n🎓 **' + _fbIdiom[0] + '(' + _fbIdiom[1] + ')** — ' + _fbIdiom[2] + '\n\n' + _aiWorkPivot(),
+    ];
+    return { reply: _say(_pick(_fbPivots), _pick(_fbPivots)), suggests: smartSuggests };
+  }
   let fallbackReply;
   if (t.length <= 5) {
-    const short = [
-      _say('네! 조금만 더 말씀해주시면 도와드릴 수 있어요! 😊', '응? 좀만 더 말해줘~ 도와줄게!'),
-      _say('듣고 있어요! 뭐가 필요하세요? 😊', '듣고 있어~ 뭐 해줄까?'),
-    ];
-    fallbackReply = short[Math.floor(Math.random() * short.length)];
+    fallbackReply = _say('네! 조금만 더 말씀해주시면 도와드릴 수 있어요! 😊', '응? 좀만 더 말해줘~ 도와줄게!');
   } else if (t.length <= 20) {
-    const mid = [
-      _say('음... "' + input.substring(0, 8) + '" 관련이시면 좀 더 자세히 알려주세요! 😊', '음~ 좀만 더 자세히 말해줘! 도와줄게!'),
-      _say('제가 아직 이해하기 어려운 표현이에요 😅\n아래 버튼을 눌러보시거나 다르게 말씀해주세요!', '그건 아직 어려워 😅 다른 말로 해줘!'),
-    ];
-    fallbackReply = mid[Math.floor(Math.random() * mid.length)];
+    fallbackReply = _say('음... "' + input.substring(0, 8) + '" 관련이시면 좀 더 자세히 알려주세요! 😊', '음~ 좀만 더 자세히 말해줘!');
   } else {
-    fallbackReply = _say('많이 말씀해주셨는데, 핵심만 짧게 다시 말씀해주시면 더 잘 도와드릴 수 있어요! 😊', '길어서 핵심을 못 잡았어~ 짧게 다시 말해줘! 😅');
+    fallbackReply = _say('핵심만 짧게 다시 말씀해주시면 더 잘 도와드릴 수 있어요! 😊', '짧게 다시 말해줘! 도와줄게 😅');
   }
   return { reply: fallbackReply, suggests: smartSuggests };
 }
