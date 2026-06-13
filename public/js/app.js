@@ -9902,13 +9902,45 @@ async function _aiProcessChat(input, _detections) {
     return { reply: _say('네! 말씀하세요 👂', '응? 말해봐!'), suggests: [] };
   }
 
-  // 뭐가 바뀌었는지 궁금
+  // 뭐가 바뀌었는지 / 달라졌다는 관찰
+  if (/뭔가\s*달라|달라졌|바뀌었|바뀐\s*거|변한\s*거|달라진\s*거/.test(t) && !/뭐가/.test(t)) {
+    return { reply: _pick([
+      _say('오! 눈치채셨어요? 😊 계속 업그레이드 중이에요! 더 잘할게요~\n\n' + _aiWorkPivot(), '오~ 눈치 빠르네! 계속 업그레이드 중이야~\n\n' + _aiWorkPivot()),
+      _say('맞아요! 조금씩 발전하고 있어요 💪\n\n' + _aiWorkPivot(), '맞아~ 나 점점 똑똑해지는 중! 💪\n\n' + _aiWorkPivot()),
+    ]), suggests: ['오늘 브리핑', '알아서해줘'] };
+  }
   if (/뭐가\s*바뀌|뭐\s*바뀌|뭐\s*달라|뭐가\s*달라|변경\s*사항|업데이트\s*내용|바뀐\s*거|새\s*기능/.test(t)) {
     return { reply: _say('최근 업데이트! 🆕\n\n• 💪 "알아서해줘" 같은 위임형 표현 인식\n• 🧠 시간대별 맥락 브리핑\n• 🔄 반복 미인식 시 자동 브리핑\n• 🎚️ AI 적극도 레벨 설정\n• 🗣️ 자연스러운 대화 대폭 개선\n\n한번 대화해보세요!', '요즘 많이 업그레이드됐어! 🆕\n\n"알아서해줘" 이해하고, 자연스러운 대화도 되고,\n적극도 설정도 가능해! 한번 써봐~'), suggests: ['알아서해줘', '오늘 브리핑'] };
   }
 
+  // "~잖아" 항의/확인 패턴
+  if (/잖아|잖아요/.test(t) && t.length >= 5 && t.length <= 30) {
+    if (/했잖|했잖아|했잖아요|정리했|작성했|말했|얘기했|했다고|했다니까/.test(t)) {
+      const recentBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-3);
+      const ctx = recentBot.map(h => h.text || '').join(' ');
+      if (/보고서|일지|기록|작성/.test(ctx) || /보고서|일지|기록|작성/.test(t)) return _aiProcessChat('보고서 확인');
+      if (/할\s*일|투두|완료/.test(ctx) || /할\s*일|투두/.test(t)) return _aiProcessChat('할 일 확인');
+      if (/일정|스케줄/.test(ctx) || /일정|스케줄/.test(t)) return _aiProcessChat('오늘 일정');
+      return { reply: _say('맞아요, 기억하고 있어요! 관련해서 더 필요한 게 있으세요?', '맞아맞아! 더 뭐 해줄까?'), suggests: ['오늘 브리핑', '추천해줘'] };
+    }
+    return { reply: _pick([
+      _say('맞아요, 그렇죠! 😊 더 알려주시면 도와드릴게요!', '맞아~ 더 말해봐!'),
+      _say('네, 알고 있어요! 뭘 도와드릴까요?', '응응~ 뭐 해줄까?'),
+    ]), suggests: ['오늘 브리핑', '알아서해줘'] };
+  }
+
+  // "~거든" 근거/설명 패턴
+  if (/거든|거든요/.test(t) && t.length >= 4 && t.length <= 30 && !/해줘|할래|하자/.test(t)) {
+    if (_aiIsWorkRelated(t)) {
+      return { reply: _say('아, 그런 상황이시군요! 그러면 제가 관련 내용을 확인해볼까요?', '아~ 그랬구나! 확인해볼까?'), suggests: ['오늘 브리핑', '알아서해줘'] };
+    }
+    return { reply: _pick([
+      _say('아, 그렇군요! 😊\n\n' + _aiWorkPivot(), '아~ 그렇구나!\n\n' + _aiWorkPivot()),
+    ]), suggests: ['오늘 브리핑', '할 일 확인'] };
+  }
+
   // 일반 관찰/감상 문장 (위의 어디에도 안 걸린 짧은 관찰)
-  if (t.length >= 3 && t.length <= 15 && /[다네군요지]$/.test(t) && !/해줘|할래|하자|할까|해주|시켜/.test(t)) {
+  if (t.length >= 3 && t.length <= 20 && /(?:[다네군요지]|구먼|구나|는데|건데|지만|든데|텐데|이야|인데|더라|대요|래요)$/.test(t) && !/해줘|할래|하자|할까|해주|시켜/.test(t)) {
     if (_aiIsWorkRelated(t)) {
       return { reply: _pick([
         _say('네, 그렇죠! 😊 더 자세히 알려주시면 도와드릴게요!', '응응~ 더 말해봐! 도와줄게!'),
@@ -10032,17 +10064,17 @@ async function _aiProcessChat(input, _detections) {
   if (/추천해\s*줘|추천\s*해줘|뭐\s*하면\s*좋|지금\s*뭐\s*할|뭐\s*할까|할\s*거\s*추천|스마트\s*추천/.test(t)) {
     return await _aiSmartRecommend();
   }
-  if (/알아서\s*해|알아서해|니가\s*알아서|너가\s*알아서|알아서\s*척척|알잘딱|알아서\s*잘/.test(t)) {
+  if (/알아서\s*해|알아서해|니가\s*알아서|너가\s*알아서|알아서\s*척척|알잘딱|알아서\s*잘|알아서\s*좀|좀\s*알아서/.test(t)) {
     const rec = await _aiNextAction();
     rec.reply = '💪 알아서 판단해볼게요!\n\n' + rec.reply;
     return rec;
   }
-  if (/일해\s*줘|일\s*좀\s*해|일하라고|일해$|일\s*시작|시켜\s*줘|자동으로\s*해/.test(t)) {
+  if (/일해\s*줘|일\s*좀\s*해|일하라고|일해$|일\s*시작|시켜\s*줘|자동으로\s*해|일해줘|일\s*해줘|일좀해|일\s*해$/.test(t)) {
     const rec = await _aiNextAction();
     rec.reply = '🏃 네! 지금 상황 분석했어요!\n\n' + rec.reply;
     return rec;
   }
-  if (/니가\s*알아야|너가\s*알아야|니가\s*판단|너가\s*판단|니가\s*정해|너가\s*정해|니가\s*해|너가\s*해/.test(t)) {
+  if (/니가\s*알아야|너가\s*알아야|니가\s*판단|너가\s*판단|니가\s*정해|너가\s*정해|니가\s*해|너가\s*해|알아야\s*하|알아야지|알아야한다|알아야\s*돼/.test(t)) {
     const rec = await _aiNextAction();
     rec.reply = '📊 ' + name + '님 상황을 분석해서 정리했어요!\n\n' + rec.reply;
     return rec;
