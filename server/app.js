@@ -4056,6 +4056,50 @@ ${eventList ? '오늘/내일 일정:\n' + eventList : '예정 일정: 없음'}
   }
 });
 
+// ─── AI 보고서 파싱 (자연어 → 육하원칙) ───
+app.post('/api/ai-parse-report', authMiddleware, async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: '텍스트가 필요합니다' });
+
+  const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
+  const parsePrompt = `사용자가 업무 내용을 자연어로 말했어. 이걸 업무일지 형식으로 파싱해줘.
+
+반드시 아래 JSON 형식으로만 응답해. 다른 말은 하지 마:
+{"work_category":"내근|외근|출장","what_task":"무엇을 했는지","where_place":"어디서","how_method":"어떻게","why_reason":"왜/목적","content":"전체 내용 요약 2~3문장","result_status":"완료|진행중|보류"}
+
+규칙:
+- 언급 안 된 항목은 빈 문자열 ""으로
+- work_category: 사무실/회사 내 → "내근", 외부방문 → "외근", 타지역 이동 → "출장"
+- 자연스러운 보고서 문체로 작성 (존댓말)`;
+
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: parsePrompt }] },
+          contents: [{ role: 'user', parts: [{ text }] }],
+          generationConfig: { maxOutputTokens: 400, temperature: 0.2 }
+        })
+      }
+    );
+    const data = await resp.json();
+    if (data.error) return res.status(500).json({ error: data.error.message });
+    const raw = data.candidates && data.candidates[0] && data.candidates[0].content
+      && data.candidates[0].content.parts && data.candidates[0].content.parts[0]
+      && data.candidates[0].content.parts[0].text;
+    if (!raw) return res.status(500).json({ error: 'AI 응답 없음' });
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ error: '파싱 실패' });
+    const parsed = JSON.parse(jsonMatch[0]);
+    res.json({ parsed });
+  } catch (err) {
+    res.status(500).json({ error: '파싱 실패: ' + err.message });
+  }
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);

@@ -9222,6 +9222,90 @@ async function _aiProcessChat(input, _detections) {
     return { reply: '어떤 방식으로 작성하시겠어요?', suggests: ['보고서 마법사', '음성으로 기록', '직접 작성'] };
   }
 
+  // --- 자연어 업무 보고 인식 → Gemini 파싱 → 보고서 자동 작성 ---
+  const _workKeywords = /다녀왔|다녀옴|했어|했음|진행했|완료했|마쳤|끝났|처리했|보고합니다|했습니다|수행했|참석했|방문했|미팅했/;
+  const _workContext = /회의|미팅|출장|고객|거래처|현장|사무실|보고서|프로젝트|개발|리뷰|교육|점검|상담|계약|납품|설치|수리|정비|영업|배송/;
+  if (_workKeywords.test(t) && _workContext.test(t) && t.length >= 10 && !/할\s*일|일정|출근|퇴근|검색|확인|보여|삭제/.test(t)) {
+    return {
+      reply: '📝 업무 내용이네요! 업무일지로 작성할까요?\n\n"' + input.substring(0, 60) + (input.length > 60 ? '...' : '') + '"',
+      suggests: ['네 작성해줘', '아니 됐어'],
+      _pendingReport: input
+    };
+  }
+  if (/^네\s*작성/.test(t) && _aiChatHistory.length > 0) {
+    const prevBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
+    if (prevBot && prevBot.text && prevBot.text.includes('업무일지로 작성할까요')) {
+      const prevUser = _aiChatHistory.filter(h => h.who === 'user').slice(-2, -1)[0];
+      const reportText = prevUser ? prevUser.text : '';
+      if (reportText.length >= 5) {
+        try {
+          const parseResp = await fetch('/api/ai-parse-report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: reportText })
+          });
+          if (parseResp.ok) {
+            const { parsed } = await parseResp.json();
+            return {
+              reply: '📋 AI가 분석한 업무일지 미리보기\n━━━━━━━━━━━━━━\n' +
+                '📁 유형: ' + (parsed.work_category || '내근') + '\n' +
+                '📌 업무: ' + (parsed.what_task || '-') + '\n' +
+                '📍 장소: ' + (parsed.where_place || '-') + '\n' +
+                '💡 방법: ' + (parsed.how_method || '-') + '\n' +
+                '📊 결과: ' + (parsed.result_status || '-') + '\n' +
+                '━━━━━━━━━━━━━━\n이대로 저장할까요?',
+              suggests: ['저장', '수정 후 저장', '취소'],
+              _parsedReport: parsed
+            };
+          }
+        } catch(e) {}
+        return { reply: 'AI 분석이 실패했어요. 직접 작성하시겠어요?', suggests: ['직접 작성', '보고서 마법사'], action: () => { closeAiChat(); openNewReport(); } };
+      }
+    }
+  }
+  if (/^저장$/.test(t) && _aiChatHistory.length > 0) {
+    const prevBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
+    if (prevBot && prevBot.text && prevBot.text.includes('AI가 분석한 업무일지')) {
+      const lines = prevBot.text.split('\n');
+      const extract = (prefix) => { const l = lines.find(l => l.startsWith(prefix)); return l ? l.replace(prefix, '').trim() : ''; };
+      const rBody = {
+        report_date: new Date().toISOString().split('T')[0],
+        work_category: extract('📁 유형: ') || '내근',
+        what_task: extract('📌 업무: '),
+        where_place: extract('📍 장소: '),
+        how_method: extract('💡 방법: '),
+        content: extract('📌 업무: ') + ' — ' + extract('💡 방법: '),
+        result_status: extract('📊 결과: '),
+        status: 'submitted'
+      };
+      try {
+        await api('/api/reports', { method: 'POST', body: rBody });
+        return { reply: '📝 업무일지 저장 완료! ✨\n\n' + rBody.what_task + '\n\n말 한마디로 일지가 완성됐어요! 👏', suggests: ['업무일지 보기', '하나 더 쓸래'] };
+      } catch(e) { return { reply: '저장 중 오류가 생겼어요.', suggests: ['다시 시도', '직접 작성'] }; }
+    }
+  }
+  if (/^수정\s*후\s*저장$/.test(t) && _aiChatHistory.length > 0) {
+    const prevBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
+    if (prevBot && prevBot.text && prevBot.text.includes('AI가 분석한 업무일지')) {
+      const lines = prevBot.text.split('\n');
+      const extract = (prefix) => { const l = lines.find(l => l.startsWith(prefix)); return l ? l.replace(prefix, '').trim() : ''; };
+      return {
+        reply: '수정 화면을 열게요!',
+        action: () => {
+          closeAiChat();
+          openNewReport(extract('📁 유형: ') || '내근');
+          setTimeout(() => {
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+            setVal('reportWhat', extract('📌 업무: '));
+            setVal('reportWhere', extract('📍 장소: '));
+            setVal('reportHow', extract('💡 방법: '));
+            setVal('reportContent', extract('📌 업무: ') + ' — ' + extract('💡 방법: '));
+          }, 500);
+        }
+      };
+    }
+  }
+
   // --- 자연어 할 일 인식: "~해야 돼", "~해야지" ---
   if (!/(일정|스케줄|출근|퇴근|검색|확인|열기|삭제|완료|보여|기억|말투)/.test(t)) {
     const nlTodo = input.match(/(.{2,30}?)(?:해야\s*(?:돼|해|됩니다|합니다|되는데|하는데)|(?:안\s*하면\s*안\s*돼|꼭\s*해야|반드시))/);
