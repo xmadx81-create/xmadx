@@ -7750,6 +7750,7 @@ setInterval(checkAttendancePopup, 60000);
 let _aiChatHistory = [];
 let _aiUnmatchedCount = 0;
 let _aiLastUnmatched = '';
+let _aiLastWasFallback = false;
 function _aiSimpleSimilarity(a, b) {
   if (!a || !b) return 0;
   const setA = new Set(a.split(''));
@@ -8634,6 +8635,8 @@ async function _aiProcessChat(input, _detections) {
   const prof = _aiPersonalProfile();
   const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
   _aiRecordTopic(_aiDetectTopic(t));
+  if (!_aiLastWasFallback) _aiUnmatchedCount = 0;
+  _aiLastWasFallback = false;
   const _style = (mem.facts && mem.facts.chatStyle) || 'formal';
 
   // --- 은어 즉시 응답 ---
@@ -9614,6 +9617,88 @@ async function _aiProcessChat(input, _detections) {
     return { reply: _say('재밌으셨다니 다행이에요! 😄', 'ㅋㅋㅋ 재밌지~?', 'ㅋㅋㅋ 재밌져?! 🤭'), suggests: ['농담 해줘', '명언'] };
   }
 
+  // ─── 자연 대화 엔진 ───
+
+  // 변화/업데이트 관찰
+  if (/달라졌|바뀌었|바뀐|업데이트|새로워|변했|다르네|달라$/.test(t) && t.length < 25) {
+    return { reply: _say('눈치가 빠르시네요! 😊 업데이트가 있었어요.\n더 똑똑해진 비서를 경험해보세요!', '오 눈치 빠르다~ 업데이트됐어! 한번 써봐! 😎'), suggests: ['뭐가 바뀌었어?', '오늘 브리핑', '도움말'] };
+  }
+
+  // 감탄/놀람 단독
+  if (/^(오+|와+|헐+|대박|ㄷㄷ|ㅎㄷㄷ|실화|오호+|오오+|우와+|세상에|미쳤|쩐다|쩔어)\?{0,3}!{0,3}$/.test(t)) {
+    const excl = [
+      _say('뭔가 놀라셨나 봐요! 😮 무슨 일이에요?', '오오 뭔 일이야? 😮'),
+      _say('저도 놀라고 싶어요! 무슨 일인지 알려주세요 😆', '나도 궁금해! 뭔데? 😆'),
+    ];
+    return { reply: excl[Math.floor(Math.random() * excl.length)], suggests: ['오늘 브리핑', '농담 해줘', '추천해줘'] };
+  }
+
+  // 긍정 반응 단독
+  if (/^(좋아+|좋다+|좋네|굿+|나이스|완벽|짱이다|멋지다|괜찮네|쏠쏠|쓸만|맘에\s*들|마음에\s*들)!{0,3}$/.test(t)) {
+    return { reply: _say('마음에 드셨다니 정말 기뻐요! 😊 더 필요한 거 있으세요?', '좋지좋지~! 더 필요한 거 있어? 😊'), suggests: ['오늘 브리핑', '추천해줘'] };
+  }
+
+  // 부정 감탄사 단독
+  if (/^(에이|아이+|아놔+|아씨+|아오+|에잇|하아+|후+|아이고+|아이구+|에휴+|에라이|아 진짜)!{0,3}$/.test(t)) {
+    return { reply: _say('뭔가 안 좋은 일이 있으셨나 봐요... 😢\n이야기해주시면 들을게요!', '왜 그래~ 무슨 일이야? 😢\n말해봐 들어줄게!'), suggests: ['추천해줘', '농담 해줘', '오늘 브리핑'] };
+  }
+
+  // 슬픔 이모티콘 단독
+  if (/^(ㅠ+|ㅜ+|ㅠㅜ+|ㅜㅠ+)$/.test(t)) {
+    return { reply: _say('괜찮으세요? 😢 무슨 일 있으시면 말씀해주세요.\n제가 할 수 있는 건 뭐든 도와드릴게요!', '왜 ㅠㅠ 무슨 일이야~? 말해봐!'), suggests: ['응원해줘', '농담 해줘', '추천해줘'] };
+  }
+
+  // ? 단독
+  if (/^\?{1,5}$/.test(t)) {
+    return { reply: _say('뭐가 궁금하세요? 😊 편하게 물어봐주세요!', '뭐가 궁금해~? 물어봐!'), suggests: ['도움말', '오늘 브리핑', '추천해줘'] };
+  }
+
+  // ! 단독
+  if (/^!{1,5}$/.test(t)) {
+    return { reply: _say('네! 무엇이든 말씀하세요! 💪', '말해! 뭐든 해줄게! 💪'), suggests: ['오늘 브리핑', '할 일 확인', '추천해줘'] };
+  }
+
+  // 맞장구/반응
+  if (/^(그렇구나|그렇군|아하|아~+|오~+|음~+|그러네|그러게|맞아|그치|인정|ㄹㅇ|리얼|확실히|그런가|그래서|아무튼|어쨌든|하긴)\.{0,3}$/.test(t)) {
+    const lastBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
+    return { reply: _say('네! 더 궁금하신 거나 필요한 거 있으세요? 😊', '응응~ 더 필요한 거 있어?'), suggests: ['오늘 브리핑', '할 일 확인', '추천해줘'] };
+  }
+
+  // 동의/수긍 확장 (기존 _aiSlangAgree 보완)
+  if (/^(그래|알겠어|알았어|오케이|그러자|그럴까|좋아좋아|알겠습니다|알았습니다|그래그래|ok|okay)\.?$/i.test(t)) {
+    return { reply: _say('네! 다음에 뭘 도와드릴까요? 😊', '오키~ 다음은 뭐 할래?'), suggests: ['오늘 브리핑', '할 일 확인', '추천해줘'] };
+  }
+
+  // 호기심/감상
+  if (/^.{0,10}(신기|흥미|궁금|오호|호오|우와|신박)!{0,3}$/.test(t) && t.length < 20) {
+    return { reply: _say('궁금하신 게 있으시면 뭐든 물어봐주세요! 🤗', '궁금한 거 있으면 물어봐~! 🤗'), suggests: ['도움말', '오늘 브리핑', 'IQ 확인'] };
+  }
+
+  // 단독 감정 (피곤/귀찮/힘들)
+  if (/^(귀찮|피곤|힘들|지쳤|졸려|잠와|잠온다|싫다|무리|힘드네|피곤하네|지친다)\.{0,3}$/.test(t)) {
+    return { reply: _say('힘드시죠... 😢 제가 대신 할 수 있는 건 도와드릴게요!\n뭐 해드릴까요?', '힘들지~ 제가 도울게! 뭐 해줄까?'), suggests: ['알아서해줘', '농담 해줘', '오늘 브리핑'] };
+  }
+
+  // 테스트/의미없는 입력
+  if (/^(테스트|test|hello|hi|ㅁㄴㅇㄹ|ㅂㅈㄷㄱ|아아아+|ㅇㅇㅇ+|가나다|abc)!{0,3}$/i.test(t)) {
+    return { reply: _say('잘 들려요! 😊 무엇을 도와드릴까요?', '잘 들려~ 뭐 해줄까? 😊'), suggests: ['오늘 브리핑', '도움말', '할 일 확인'] };
+  }
+
+  // 단독 인사 (안녕 등 확장)
+  if (/^(안녕+|하이+|여보세요|야|얘|있어\??|거기\??|듣고\s*있어\??|자니\??)!{0,3}$/.test(t)) {
+    return { reply: _say('네! 여기 있어요! 😊 ' + name + '님, 무엇을 도와드릴까요?', '여기 있어~ ' + name + '! 뭐 해줄까? 😊'), suggests: ['오늘 브리핑', '할 일 확인', '추천해줘'] };
+  }
+
+  // 짧은 부름 (야, 저기, 있잖아)
+  if (/^(야+|저기|있잖아|저기요|잠깐|잠깐만|이봐)!{0,3}$/.test(t)) {
+    return { reply: _say('네! 말씀하세요! 👂', '응? 말해봐! 👂'), suggests: ['오늘 브리핑', '추천해줘', '도움말'] };
+  }
+
+  // 뭐가 바뀌었는지 궁금
+  if (/뭐가\s*바뀌|뭐\s*바뀌|뭐\s*달라|뭐가\s*달라|변경\s*사항|업데이트\s*내용|바뀐\s*거|새\s*기능/.test(t)) {
+    return { reply: _say('최근 업데이트! 🆕\n\n• 💪 "알아서해줘" 같은 위임형 표현 인식\n• 🧠 시간대별 맥락 브리핑\n• 🔄 반복 미인식 시 자동 브리핑\n• 🎚️ AI 적극도 레벨 설정\n• 📋 브리핑 동의어 확장\n\n더 자연스러운 대화가 가능해졌어요!', '요즘 많이 업그레이드됐어! 🆕\n\n"알아서해줘" 같은 표현도 이해하고,\n시간대별 맥락 브리핑도 되고,\nAI 적극도도 설정 가능해! 😎'), suggests: ['알아서해줘', '오늘 브리핑', '적극도 설정'] };
+  }
+
   // --- 업무 조언 ---
   if (/조언|어떻게\s*해야|방법|팁\s*알려|노하우/.test(t)) {
     const tips = [
@@ -10449,13 +10534,25 @@ async function _aiProcessChat(input, _detections) {
     return rec;
   }
 
-  smartSuggests.push('구글 ' + input.substring(0, 10));
-  const fallbacks = [
-    _say('이해하기 어려웠어요. 웹에서 검색해볼까요? 아니면 구체적으로 말씀해주세요!', '잘 모르겠어~ 웹에서 검색해볼까? 자세히 말해줘!'),
-    _say('아직 그건 어렵지만, 매일 배우고 있어요! 웹 검색이나 아래 버튼을 눌러보세요.', '그건 아직 어려워~ 구글에서 찾아볼까?'),
-    _say('"도움말"이라고 하시면 제가 할 수 있는 것들을 알려드릴게요!', '"도움말"이라고 하면 뭐 할 수 있는지 알려줄게!'),
-  ];
-  return { reply: fallbacks[Math.floor(Math.random() * fallbacks.length)], suggests: smartSuggests };
+  _aiLastWasFallback = true;
+  smartSuggests.push('추천해줘');
+  let fallbackReply;
+  if (t.length <= 5) {
+    const short = [
+      _say('네! 조금만 더 말씀해주시면 도와드릴 수 있어요! 😊', '응? 좀만 더 말해줘~ 도와줄게!'),
+      _say('듣고 있어요! 뭐가 필요하세요? 😊', '듣고 있어~ 뭐 해줄까?'),
+    ];
+    fallbackReply = short[Math.floor(Math.random() * short.length)];
+  } else if (t.length <= 20) {
+    const mid = [
+      _say('음... "' + input.substring(0, 8) + '" 관련이시면 좀 더 자세히 알려주세요! 😊', '음~ 좀만 더 자세히 말해줘! 도와줄게!'),
+      _say('제가 아직 이해하기 어려운 표현이에요 😅\n아래 버튼을 눌러보시거나 다르게 말씀해주세요!', '그건 아직 어려워 😅 다른 말로 해줘!'),
+    ];
+    fallbackReply = mid[Math.floor(Math.random() * mid.length)];
+  } else {
+    fallbackReply = _say('많이 말씀해주셨는데, 핵심만 짧게 다시 말씀해주시면 더 잘 도와드릴 수 있어요! 😊', '길어서 핵심을 못 잡았어~ 짧게 다시 말해줘! 😅');
+  }
+  return { reply: fallbackReply, suggests: smartSuggests };
 }
 
 function _aiDetectTopic(t) {
