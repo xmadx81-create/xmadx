@@ -438,6 +438,13 @@
       </p>
       <span id="vrCursor" style="display:inline-block; width:2px; height:16px; background:#7c3aed; animation:vrBlink 1s infinite; vertical-align:text-bottom;"></span>
     </div>
+    <!-- 실시간 5W1H 감지 태그 -->
+    <div id="vrLiveTags" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; min-height:24px;"></div>
+    <!-- 단어 카운터 -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding:0 4px;">
+      <span id="vrWordCount" style="font-size:11px; color:rgba(255,255,255,.3);">0 단어</span>
+      <span id="vrConfidence" style="font-size:11px; color:rgba(255,255,255,.3);"></span>
+    </div>
     <div id="vrRecordingBtns" style="display:flex; gap:12px; justify-content:center;">
       <button onclick="cancelVoiceReport()" style="padding:14px 28px; border-radius:28px; border:1px solid rgba(255,255,255,.15); background:transparent; color:#fff; font-size:15px; font-weight:600; cursor:pointer;">취소</button>
       <button onclick="finishVoiceReport()" style="padding:14px 28px; border-radius:28px; border:none; background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; font-size:15px; font-weight:600; cursor:pointer; box-shadow:0 4px 15px rgba(239,68,68,.3);">&#9724; 완료</button>
@@ -482,7 +489,7 @@
 @keyframes vrBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }
 @keyframes vrCardIn { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
 </style>
-<script src="/js/app.js?v=20260613d"></script>
+<script src="/js/app.js?v=20260613e"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;

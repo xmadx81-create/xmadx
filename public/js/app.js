@@ -385,6 +385,13 @@ async function renderHome() {
           ${_todayEvts.length > 4 ? `<span style="font-size:11px; opacity:.5;">+${_todayEvts.length - 4}건</span>` : ''}
         </div>
       </div>` : ''}
+      <!-- 비서 빠른 명령 -->
+      <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,.1); display:flex; gap:8px;" onclick="event.stopPropagation();">
+        <button onclick="startVoiceReport()" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">🎤 음성기록</button>
+        <button onclick="openNewReport()" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">📝 보고서</button>
+        <button onclick="navigate('calendar')" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">📅 일정</button>
+        <button onclick="navigate('todos')" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">✅ 할일</button>
+      </div>
     </div>
 
     <div style="margin-bottom:20px;">
@@ -5762,7 +5769,32 @@ async function submitCheckIn() {
 async function doCheckOut() {
   if (!confirm('퇴근 처리하시겠습니까?')) return;
   const res = await api('/api/attendance/check-out', { method: 'POST' });
-  if (res) { toast('퇴근 완료! 수고하셨습니다.'); renderHome(); }
+  if (res) {
+    // AI 비서 퇴근 리포트
+    const today = new Date().toISOString().split('T')[0];
+    const [reports, todayEvents] = await Promise.all([
+      api(`/api/reports?from=${today}&to=${today}`),
+      api('/api/calendar-events?date=' + today)
+    ]);
+    const myReports = (reports || []).filter(r => r.author_id === currentUser.id);
+    const evtCount = (todayEvents || []).length;
+    const checkIn = res.check_in ? res.check_in.substring(11,16) : '';
+    const checkOut = res.check_out ? res.check_out.substring(11,16) : '';
+
+    let summary = `오늘 하루 수고하셨어요! 🌙\n\n`;
+    summary += `⏰ 근무시간: ${checkIn} ~ ${checkOut}`;
+    if (res.check_in && res.check_out) {
+      const mins = Math.floor((new Date(res.check_out) - new Date(res.check_in)) / 60000);
+      summary += ` (${Math.floor(mins/60)}시간 ${mins%60}분)`;
+    }
+    summary += `\n📝 보고서: ${myReports.length}건 작성`;
+    if (evtCount > 0) summary += `\n📅 일정: ${evtCount}건 처리`;
+    if (myReports.length >= 3) summary += `\n\n🔥 오늘 많이 하셨네요! 푹 쉬세요.`;
+    else summary += `\n\n내일도 좋은 하루 되세요!`;
+
+    showResultModal('success', '🤖 AI 비서 — 퇴근 리포트', summary, '확인');
+    renderHome();
+  }
 }
 
 let attMonth = new Date().toISOString().substring(0, 7);
@@ -6253,6 +6285,38 @@ function _vrTypeText(el, finalText, interimText) {
   if (cursor) cursor.style.display = interimText ? 'inline-block' : 'none';
 }
 
+function _vrUpdateLiveTags(text) {
+  if (!text) return;
+  const tags = [];
+  const checks = [
+    { key:'when', label:'언제', color:'#f59e0b', patterns:[/(?:오전|오후)\s*\d{1,2}시/, /\d{1,2}월\s*\d{1,2}일/, /(?:어제|오늘|내일|모레)/, /(?:월|화|수|목|금|토|일)요일/] },
+    { key:'where', label:'어디서', color:'#34d399', patterns:[/(?:본사|지사|사무실|현장|센터|회의실|공장|매장|지점)/, /(?:서울|부산|대구|인천|광주|대전|울산|경기|제주)/] },
+    { key:'who', label:'누가', color:'#60a5fa', patterns:[/[가-힣]{2,4}\s*(?:님|과장|대리|차장|부장|팀장|사원|주임|매니저|선임)/, /(?:제가|본인|담당자)/] },
+    { key:'what', label:'무엇을', color:'#f472b6', patterns:[/(?:회의|미팅|점검|교육|상담|보고서|작성|처리|확인|검토|영업|계약|협의)/] },
+    { key:'how', label:'어떻게', color:'#a78bfa', patterns:[/(?:전화|이메일|대면|온라인|방문|출장|화상)/] },
+    { key:'why', label:'왜', color:'#fb923c', patterns:[/(?:위해|때문에|건으로|관련|요청|지시)/] }
+  ];
+  for (const c of checks) {
+    for (const p of c.patterns) {
+      if (p.test(text)) { tags.push(c); break; }
+    }
+  }
+  const el = document.getElementById('vrLiveTags');
+  if (el) {
+    el.innerHTML = tags.map(t =>
+      `<span style="font-size:10px; padding:3px 8px; border-radius:10px; background:${t.color}22; color:${t.color}; border:1px solid ${t.color}44; animation:vrCardIn .3s both;">${t.label} ✓</span>`
+    ).join('');
+  }
+  const wcEl = document.getElementById('vrWordCount');
+  if (wcEl) {
+    const words = text.split(/\s+/).filter(w => w.length > 0).length;
+    wcEl.textContent = words + ' 단어';
+    if (words >= 20) wcEl.style.color = '#22c55e';
+    else if (words >= 10) wcEl.style.color = '#f59e0b';
+    else wcEl.style.color = 'rgba(255,255,255,.3)';
+  }
+}
+
 function startVoiceReport() {
   if (!SpeechRecognition) { toast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari를 사용해주세요.'); return; }
 
@@ -6265,6 +6329,12 @@ function startVoiceReport() {
   _vrTypeText(vrTextEl, '', '');
   document.getElementById('vrTitle').textContent = '듣고 있습니다';
   document.getElementById('vrSubtitle').textContent = '말씀하신 내용을 AI가 실시간으로 분석합니다';
+  const liveTagsEl = document.getElementById('vrLiveTags');
+  if (liveTagsEl) liveTagsEl.innerHTML = '';
+  const wcEl = document.getElementById('vrWordCount');
+  if (wcEl) { wcEl.textContent = '0 단어'; wcEl.style.color = 'rgba(255,255,255,.3)'; }
+  const confEl = document.getElementById('vrConfidence');
+  if (confEl) confEl.textContent = '';
   const orbCore = document.getElementById('vrOrbCore');
   if (orbCore) orbCore.style.background = 'linear-gradient(135deg,#7c3aed,#3b82f6)';
   const orbGlow = document.getElementById('vrOrbGlow');
@@ -6296,6 +6366,7 @@ function startVoiceReport() {
     }
     _vrInterim = interim;
     _vrTypeText(vrTextEl, _vrFinalText.trim(), interim);
+    _vrUpdateLiveTags((_vrFinalText + interim).trim());
   };
 
   recog.onend = () => {
@@ -6838,21 +6909,38 @@ function closeVoiceGuide() {
   localStorage.setItem('vgDone', today);
 }
 
+function _vgSetAvatar(state) {
+  const av = document.getElementById('vgAvatar');
+  const st = document.getElementById('vgStatusText');
+  if (!av) return;
+  const states = {
+    idle:     { emoji: '&#129302;', status: '' },
+    speaking: { emoji: '&#128483;', status: '말하고 있어요...' },
+    listening:{ emoji: '&#127908;', status: '🎤 듣고 있습니다...' },
+    thinking: { emoji: '&#129504;', status: '생각하고 있어요...' }
+  };
+  const s = states[state] || states.idle;
+  av.innerHTML = s.emoji;
+  if (st) st.textContent = s.status;
+}
+
 function vgSpeak(text) {
   return new Promise(resolve => {
     if (!window.speechSynthesis || !_vgActive) { resolve(); return; }
+    _vgSetAvatar('speaking');
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'ko-KR';
     u.rate = 1.05;
     u.pitch = 1.1;
-    u.onend = () => setTimeout(resolve, 200);
-    u.onerror = () => resolve();
+    u.onend = () => { _vgSetAvatar('idle'); setTimeout(resolve, 200); };
+    u.onerror = () => { _vgSetAvatar('idle'); resolve(); };
     setTimeout(() => speechSynthesis.speak(u), 100);
   });
 }
 
 function vgShowThinking() {
+  _vgSetAvatar('thinking');
   const area = document.getElementById('vgChatArea');
   const div = document.createElement('div');
   div.id = 'vgThinking';
@@ -6904,7 +6992,7 @@ function vgHideQuickReplies() {
 function vgQuickReply(text) {
   vgHideQuickReplies();
   document.getElementById('vgMicBtn').style.display = 'none';
-  document.getElementById('vgStatusText').textContent = '';
+  _vgSetAvatar('idle');
   if (_vgRecog) { try { _vgRecog.stop(); } catch(e){} _vgRecog = null; }
   if (_vgResolve) { const r = _vgResolve; _vgResolve = null; r(text); }
 }
@@ -6919,11 +7007,11 @@ function vgListen(timeout) {
     if (!SpeechRecognition || !_vgActive) { resolve(''); return; }
 
     document.getElementById('vgMicBtn').style.display = 'inline-flex';
-    document.getElementById('vgStatusText').textContent = '듣고 있습니다... 🎤';
+    _vgSetAvatar('listening');
 
     _vgResolve = function(text) {
       document.getElementById('vgMicBtn').style.display = 'none';
-      document.getElementById('vgStatusText').textContent = '';
+      _vgSetAvatar('idle');
       _vgResolve = null;
       resolve(text);
     };
@@ -6990,6 +7078,25 @@ async function vgConversation() {
   vgAddBubble(dayCtx + ' ' + tg.comment, 'bot');
   await vgSpeak(dayCtx + ' ' + tg.comment);
   if (!_vgActive) return;
+
+  // 어제 업무 요약
+  await new Promise(r => setTimeout(r, 400));
+  vgShowThinking();
+  await new Promise(r => setTimeout(r, 600));
+  try {
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const yReports = await api(`/api/reports?from=${yesterday}&to=${yesterday}`);
+    const myYReports = (yReports || []).filter(r => r.author_id === currentUser.id);
+    if (myYReports.length > 0) {
+      const cats = {};
+      myYReports.forEach(r => { const c = r.work_category || '기타'; cats[c] = (cats[c]||0) + 1; });
+      const catSummary = Object.entries(cats).map(([k,v]) => k + ' ' + v + '건').join(', ');
+      const yMsg = '어제는 ' + myYReports.length + '건 업무 처리하셨어요. (' + catSummary + ')';
+      vgAddBubble('📊 ' + yMsg, 'bot');
+      await vgSpeak(yMsg);
+      if (!_vgActive) return;
+    }
+  } catch(_) {}
 
   // 브리핑: 오늘 등록된 일정 확인
   await new Promise(r => setTimeout(r, 400));
