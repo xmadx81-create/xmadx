@@ -9704,9 +9704,29 @@ async function _aiProcessChat(input, _detections) {
     }
     return { reply: r, suggests: ['나를 분석해', '패턴 분석', '오늘 일지'] };
   }
-  // --- 스마트 추천 ---
+  // --- 스마트 추천 / 위임형 표현 ---
   if (/추천해\s*줘|추천\s*해줘|뭐\s*하면\s*좋|지금\s*뭐\s*할|뭐\s*할까|할\s*거\s*추천|스마트\s*추천/.test(t)) {
     return await _aiSmartRecommend();
+  }
+  if (/알아서\s*해|알아서해|니가\s*알아서|너가\s*알아서|알아서\s*척척|알잘딱|알아서\s*잘/.test(t)) {
+    const rec = await _aiSmartRecommend();
+    rec.reply = '💪 알아서 판단해볼게요!\n\n' + rec.reply;
+    return rec;
+  }
+  if (/일해\s*줘|일\s*좀\s*해|일하라고|일해$|일\s*시작|시켜\s*줘|자동으로\s*해/.test(t)) {
+    const rec = await _aiSmartRecommend();
+    rec.reply = '🏃 네! 지금 상황 분석했어요!\n\n' + rec.reply;
+    return rec;
+  }
+  if (/니가\s*알아야|너가\s*알아야|니가\s*판단|너가\s*판단|니가\s*정해|너가\s*정해|니가\s*해|너가\s*해/.test(t)) {
+    const rec = await _aiSmartRecommend();
+    rec.reply = '📊 ' + name + '님 상황을 분석해서 정리했어요!\n\n' + rec.reply;
+    return rec;
+  }
+  if (/뭘\s*해야|뭐\s*해야|해야\s*할\s*게|해야\s*될|할\s*게\s*뭐|지금\s*뭘|뭘\s*하지|뭐\s*하지/.test(t) && !/등록|추가|작성/.test(t)) {
+    const rec = await _aiSmartRecommend();
+    rec.reply = '🧠 지금 해야 할 것들을 정리해봤어요!\n\n' + rec.reply;
+    return rec;
   }
   // --- 우선순위 자동 정렬 ---
   if (/우선\s*순위|뭐\s*부터|급한\s*거|중요한\s*거\s*먼저|순서\s*정해/.test(t)) {
@@ -10330,7 +10350,7 @@ async function _aiProcessChat(input, _detections) {
     { kw: /추가|등록|넣|만들/, hint: '할 일이나 일정을 추가하시려는 건가요?', sg: ['할 일 추가', '일정 등록할래'] },
     { kw: /확인|보여|보기|열어|열기/, hint: '확인하고 싶으신 게 있으세요?', sg: ['오늘 일정', '할 일 확인', '보고서 확인'] },
     { kw: /삭제|지워|취소|제거/, hint: '삭제하고 싶은 게 있으시면 알려주세요!', sg: ['할 일 삭제', '캘린더 열기'] },
-    { kw: /해줘|해주|해봐|해볼|할래|하자/, hint: '무엇을 도와드릴까요? 구체적으로 말씀해주시면 바로 처리해드릴게요!', sg: ['오늘 브리핑', '할 일 확인', '도움말'] },
+    { kw: /해봐|해볼/, hint: '무엇을 해볼까요? 구체적으로 말씀해주시면 바로 처리해드릴게요!', sg: ['오늘 브리핑', '할 일 확인', '도움말'] },
   ];
   for (const g of guessMap) {
     if (g.kw.test(t)) {
