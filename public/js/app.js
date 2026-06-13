@@ -8053,8 +8053,7 @@ async function _aiCallGemini(message) {
     who: h.who, text: (h.text || '').substring(0, 300)
   }));
   const body = JSON.stringify({ message, history });
-  const delays = [2000, 4000];
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const resp = await fetch('/api/ai-chat', {
         method: 'POST',
@@ -8062,7 +8061,7 @@ async function _aiCallGemini(message) {
         body
       });
       if (!resp.ok) {
-        if (attempt < 2) { await new Promise(r => setTimeout(r, delays[attempt])); continue; }
+        if (attempt === 0) { await new Promise(r => setTimeout(r, 3000)); continue; }
         return null;
       }
       const data = await resp.json();
@@ -8071,7 +8070,7 @@ async function _aiCallGemini(message) {
       }
       return data.reply || null;
     } catch (e) {
-      if (attempt < 2) { await new Promise(r => setTimeout(r, delays[attempt])); continue; }
+      if (attempt === 0) { await new Promise(r => setTimeout(r, 3000)); continue; }
       return null;
     }
   }
@@ -9020,100 +9019,44 @@ function _aiNormalize(input) {
 }
 
 async function _aiProcessChat(input, _detections) {
-  const rawInput = input;
   const t = input.toLowerCase().trim();
   const today = new Date().toISOString().split('T')[0];
-  const mem = _aiMemory();
-  const prof = _aiPersonalProfile();
-  const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
-  _aiRecordTopic(_aiDetectTopic(t));
-  if (!_aiLastWasFallback) _aiUnmatchedCount = 0;
-  _aiLastWasFallback = false;
-  const _style = (mem.facts && mem.facts.chatStyle) || 'formal';
 
-  // --- 은어 즉시 응답 ---
-  if (_aiSlangGreetings.test(t)) {
-    const gs = ['반가워요! ' + name + '님! 😊', '어서 오세요~ ' + name + '님! 방가방가! 🙌', '하이~ 오늘도 파이팅! 💪'];
-    return { reply: _say(gs[0], gs[1], gs[2]), suggests: ['오늘 브리핑', '할 일 확인', '추천해줘'] };
+  // --- UI 전용 핸들러 (JS 실행 필요, Gemini 불가) ---
+
+  if (/보고서\s*마법사|일지\s*마법사|단계별\s*작성|마법사\s*모드/.test(t)) return _aiStartWizard('report');
+  if (/일정\s*마법사/.test(t)) return _aiStartWizard('event');
+  if (/할\s*일\s*마법사/.test(t)) return _aiStartWizard('todo');
+  if (/하나\s*더\s*쓸래/.test(t)) return _aiStartWizard('report');
+  if (/테마\s*변경|테마\s*바꿔|배경\s*바꿔|색\s*바꿔/.test(t)) {
+    _aiCycleTheme();
+    return { reply: '🎨 테마를 "' + _aiThemes[_aiCurrentTheme].name + '"(으)로 변경했어요!', suggests: ['테마 변경'] };
   }
-  if (_aiSlangThanks.test(t)) {
-    return { reply: _say('별말씀을요! 더 필요한 거 있으면 말씀해주세요! 😊', '천만에~ 또 불러! 😉', '에헤~ 당연하죠! 😊'), suggests: ['도움말', '오늘 일정'] };
+  if (/음성.*기록|말로.*기록|음성으로/.test(t)) {
+    return { reply: '음성 기록 화면을 열게요! 🎤', action: () => { closeAiChat(); startVoiceReport(); } };
   }
-  if (_aiSlangBye.test(t)) {
-    return { reply: _say('수고하셨어요! 다음에 또 봐요! 👋', '수고~ 다음에 또 봐! 👋', '바이바이~ 또 와용! 👋'), suggests: [] };
+  if (/직접\s*작성|직접\s*입력/.test(t)) {
+    return { reply: '업무일지 작성 화면을 열게요!', action: () => { closeAiChat(); openNewReport(); } };
   }
-  if (_aiSlangAgree.test(t)) {
-    const lastBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
-    if (lastBot) return { reply: _say('네! 알겠습니다 😊', '오키! 👌', '넹~ 알겠어용! 😊'), suggests: ['다음에 뭐 할까', '도움말'] };
+  if (/할\s*일\s*(관리|열기|페이지|이동)/.test(t)) {
+    return { reply: '할 일 관리 페이지로 이동할게요!', action: () => { closeAiChat(); navigate('todo'); } };
   }
-  if (_aiSlangCheer.test(t)) {
-    return { reply: _say('화이팅이에요! 💪🔥 오늘도 힘내세요!', '가즈아!! 💪🔥', '화이팅이에용! 💪🔥'), suggests: ['오늘 브리핑', '추천해줘'] };
-  }
-  if (_aiSlangWhat.test(t)) {
-    const h2 = new Date().getHours();
-    if (h2 < 10) return { reply: _say('아침 준비 중이에요! 오늘 브리핑 해드릴까요?', '아침~ 브리핑 해줄까?', '아침이에용~ 브리핑 할까용?'), suggests: ['오늘 브리핑', '출근해'] };
-    if (h2 < 14) return { reply: _say('일하고 있죠! ' + name + '님은요? 도움 필요하면 말씀해주세요!', '일하고 있지~ 뭐 필요해?', '일하고 있어용~ 뭐 해줄까용?'), suggests: ['추천해줘', '할 일 확인'] };
-    return { reply: _say(name + '님 기다리고 있었어요! 뭐 도와드릴까요?', name + ' 기다리고 있었어~ 뭐 할까?', name + '님 기다렸어용~ 뭐 할까용?'), suggests: ['오늘 일지', '추천해줘'] };
-  }
-  if (_aiSlangWow.test(t)) {
-    return { reply: _say('맞아요! 대단하죠! 😄', '크~ 맞지! 😎', 'ㅋㅋ 그치그치! 😆'), suggests: ['농담 해줘', '오늘 브리핑'] };
-  }
-  if (_aiSlangBiz.test(t)) {
-    const bizKey = t.toLowerCase();
-    const meaning = _aiSlangDict[bizKey] || _aiSlangDict[t] || t;
-    const bizTips = {
-      'asap': '🔥 급한 건이군요! 우선순위 높은 할 일로 등록할까요?',
-      'fyi': '📋 참고 정보군요! 메모로 저장해둘까요?',
-      'wip': '🔧 작업 진행중이시군요! 진행률 체크해드릴까요?',
-      'eod': '⏰ 오늘 마감이네요! 남은 할 일 확인해드릴까요?',
-      'eta': '🕐 도착/완료 예상 시간이 필요하신 거죠?',
-      '컨펌': '✅ 확인/승인 필요한 건이 있으신가요?',
-      '블로커': '🚧 진행을 막는 문제가 있으신가요? 우선순위 정리해드릴까요?',
-      '데드라인': '⏳ 마감 임박한 건 확인해드릴까요?',
-      '팔로업': '📞 후속 조치가 필요한 건이 있으시군요!',
-      '펜딩': '⏸️ 보류 중인 건이 있군요. 할 일에서 확인해볼까요?',
-      '킥오프': '🚀 새 프로젝트 시작이군요! 일정 등록 도와드릴까요?',
-    };
-    const tip = bizTips[bizKey] || ('💼 "' + t + '" = ' + meaning + '! 업무 용어도 잘 알고 있어요~');
-    return { reply: _say(tip, tip.replace('요?', '?').replace('요!', '!'), tip), suggests: ['할 일 확인', '오늘 브리핑', '추천해줘'] };
+  if (/^검색\s+(.+)/.test(t)) {
+    const q = t.match(/^검색\s+(.+)/)[1];
+    return { reply: '🔍 "' + q + '" 검색할게요!', action: () => { closeAiChat(); showGlobalSearch(); setTimeout(() => { const el = document.getElementById('searchInput'); if (el) { el.value = q; doGlobalSearch(); } }, 300); } };
   }
 
-  // 은어 정규화 후 재처리 (직접 매칭 안 된 경우)
-  const normalizedInput = _aiNormalize(input);
-  if (normalizedInput !== input) {
-    input = normalizedInput;
-  }
-
-  // 말투 래퍼
-  function _say(formal, casual, cute) {
-    if (_style === 'casual') return casual || formal;
-    if (_style === 'cute') return cute || casual || formal;
-    return formal;
-  }
-
-  // --- [1] 맥락 참조 해결 ---
-  const _ref = _aiResolveReference(input);
-  if (_ref && _ref.reprocess) {
-    return _aiProcessChat(_ref.ref, _detections);
-  }
-  if (_ref && _ref.type === 'quoted') {
-    return { reply: _say('아까 말씀하신 "' + _ref.ref + '"에 대해 더 도움이 필요하신가요?', '아까 "' + _ref.ref + '" 그거? 뭐 더 할까?'), suggests: ['네 더 알려줘', '다른 거 할래'] };
-  }
-  if (_ref && _ref.type === 'keyword') {
-    return { reply: _say('아까 "' + _ref.match.text.substring(0, 40) + '..." 관련 말씀이시죠? 무엇을 도와드릴까요?', '아까 "' + _ref.match.text.substring(0, 30) + '..." 그거? 뭐 해줄까?'), suggests: ['자세히 알려줘', '다른 거 할래'] };
-  }
-
-  // --- [2] 리마인더 명령 ---
+  // 리마인더 (클라이언트 타이머)
   if (/알려줘|리마인|알림\s*설정|알람/.test(t) && /(\d+)\s*(분|시간)|(\d{1,2})시/.test(t)) {
     const reminder = _aiParseReminder(input);
     if (reminder) {
       _aiSetReminder(reminder.minutes, reminder.message, reminder.timeStr);
       const when = reminder.timeStr ? reminder.timeStr + '에' : reminder.minutes + '분 후에';
-      return { reply: _say('⏰ 리마인더 설정 완료!\n\n📌 "' + reminder.message + '"\n🕐 ' + when + ' 알려드릴게요!\n\n(채팅을 닫아도 알림이 와요!)', '⏰ 리마인더 설정!\n"' + reminder.message + '" ' + when + ' 알려줄게!'), suggests: ['리마인더 목록', '오늘 일정'] };
+      return { reply: '⏰ "' + reminder.message + '" ' + when + ' 알려드릴게요!', suggests: ['리마인더 목록'] };
     }
   }
   if (/리마인더\s*(목록|확인|보여|현황)/.test(t)) {
-    if (_aiReminders.length === 0) return { reply: _say('설정된 리마인더가 없어요!', '리마인더 없어~'), suggests: ['리마인더 설정 방법', '오늘 일정'] };
+    if (_aiReminders.length === 0) return { reply: '설정된 리마인더가 없어요!', suggests: ['오늘 일정'] };
     let reply = '⏰ 리마인더 목록:\n\n';
     _aiReminders.forEach((r, i) => {
       const remain = Math.round((r.fireAt - Date.now()) / 60000);
@@ -9121,368 +9064,8 @@ async function _aiProcessChat(input, _detections) {
     });
     return { reply, suggests: ['오늘 일정'] };
   }
-  if (/리마인더\s*(설정\s*방법|어떻게|사용법)/.test(t)) {
-    return { reply: '⏰ 리마인더 사용법:\n\n• "30분 뒤 회의 준비 알려줘"\n• "3시에 고객 전화 알려줘"\n• "1시간 후 보고서 제출 알림"\n• "오후 5시에 퇴근 알려줘"\n\n채팅을 닫아도 알림이 팝업으로 와요!', suggests: [] };
-  }
 
-  // --- [3] 주간 리포트 명령 ---
-  if (/주간\s*리포트|주간\s*AI\s*리포트|자동\s*리포트|AI\s*리포트/.test(t)) {
-    const report = await _aiWeeklyReport();
-    if (report) return { reply: report, suggests: ['이번 주 요약', '목표 확인'] };
-    return { reply: '주간 리포트를 생성할 수 없어요.', suggests: ['이번 주 요약'] };
-  }
-
-  // --- [6] UI: AI 소개 / 테마 변경 ---
-  if (/AI\s*소개|비서\s*소개|자기\s*소개|너\s*누구|누구야|소개해/.test(t)) {
-    _aiShowProfileCard();
-    return { reply: _say('안녕하세요! AI 업무비서입니다! 👆 위에 프로필 카드를 띄워뒀어요!\n\n저는 대화할수록 똑똑해지는 AI예요.\n' + name + '님의 취향, 습관, 추억까지 기억하는 친구 같은 비서랍니다! 💜', '안녕! 나 AI 업무비서야! 👆 카드 띄워뒀어!\n대화할수록 똑똑해지고 ' + name + ' 취향까지 기억해! 💜'), suggests: ['도움말', '내 프로필', 'IQ 확인'] };
-  }
-  if (/테마\s*변경|테마\s*바꿔|배경\s*바꿔|색\s*바꿔/.test(t)) {
-    _aiCycleTheme();
-    const theme = _aiThemes[_aiCurrentTheme];
-    return { reply: _say('🎨 테마를 "' + theme.name + '"(으)로 변경했어요!\n헤더의 🎨 버튼으로도 바꿀 수 있어요.', '🎨 테마 "' + theme.name + '"로 바꿨어! 🎨 버튼으로도 바꿀 수 있어~'), suggests: ['테마 변경', '오늘 일정'] };
-  }
-
-  // --- [5] 마법사 시작 트리거 ---
-  if (/보고서\s*마법사|일지\s*마법사|단계별\s*작성|마법사\s*모드/.test(t)) {
-    return _aiStartWizard('report');
-  }
-  if (/일정\s*마법사/.test(t)) {
-    return _aiStartWizard('event');
-  }
-  if (/할\s*일\s*마법사/.test(t)) {
-    return _aiStartWizard('todo');
-  }
-  if (/하나\s*더\s*쓸래/.test(t)) {
-    return _aiStartWizard('report');
-  }
-
-  // --- 인사 ---
-  if (/^(안녕|하이|헬로|반가|ㅎㅇ|야|여기|있어\??)/.test(t)) {
-    const h = new Date().getHours();
-    const tg = h < 12 ? '좋은 오전' : h < 18 ? '좋은 오후' : '좋은 저녁';
-    return { reply: _say(tg + '이에요! ' + name + '님, 무엇이든 물어보세요!', tg + '~ ' + name + ', 뭐 도와줄까?', tg + '이에용~ ' + name + '님! 뭐든 물어봐용!'), suggests: ['오늘 일정', '할 일 확인', '보고서 쓸래'] };
-  }
-
-  // --- 이름 기억 ---
-  const nameMatch = t.match(/(?:내\s*이름|제\s*이름)(?:은|는)\s*(.+?)(?:이야|야|입니다|이에요|예요|요|$)/);
-  if (nameMatch) {
-    return { reply: nameMatch[1].trim() + '님이시군요! 기억할게요 😊', learn: { userName: nameMatch[1].trim() } };
-  }
-
-  // --- 기억/학습 요청 ---
-  const rememberMatch = t.match(/(.+?)\s*(?:기억해|기억해줘|알아둬|메모해|저장해)/);
-  if (rememberMatch) {
-    const fact = rememberMatch[1].replace(/^(내가|제가|나는|저는)\s*/, '').trim();
-    return { reply: '"' + fact + '" 기억해둘게요! 📝', learn: { ['memo_' + Date.now()]: fact }, suggests: ['기억한 것 보여줘'] };
-  }
-
-  // --- 기억한 것 보기 ---
-  if (/기억한\s*것|기억\s*보여|메모\s*보여|뭐\s*기억/.test(t)) {
-    const facts = mem.facts || {};
-    const memos = Object.entries(facts).filter(([k]) => k.startsWith('memo_')).map(([, v]) => v);
-    const others = Object.entries(facts).filter(([k]) => !k.startsWith('memo_'));
-    let reply = '';
-    if (memos.length > 0) reply += '📝 메모:\n' + memos.map(m => '• ' + m).join('\n');
-    if (others.length > 0) reply += (reply ? '\n\n' : '') + '💡 학습 정보:\n' + others.map(([k, v]) => '• ' + k + ': ' + v).join('\n');
-    if (!reply) reply = '아직 기억한 것이 없어요. "OOO 기억해" 라고 말해보세요!';
-    return { reply, suggests: ['할 일 확인', '오늘 일정'] };
-  }
-
-  // --- 선호 학습 (영구 기억) ---
-  const prefMatch = t.match(/(?:나는|저는|내가)\s*(.+?)\s*(?:좋아해|좋아함|선호해|원해|사랑해|최애)/);
-  if (prefMatch && !t.includes('싫')) {
-    const pref = prefMatch[1].replace(/를|을|이|가|은|는/g, '').trim();
-    _aiProfileAddToList('likes', pref);
-    return { reply: _say('💜 ' + name + '님이 ' + pref + '을(를) 좋아하시는 거 영구 기억할게요! 절대 안 까먹어요!', '💜 ' + pref + ' 좋아하는 거 기억! 절대 안 까먹을게!'), learn: { ['pref_' + pref]: 'like' } };
-  }
-  const dislikeMatch2 = t.match(/(?:나는|저는|내가)\s*(.+?)\s*(?:싫어|싫어해|못\s*먹|질색|별로|극혐|안\s*좋아)/);
-  if (dislikeMatch2) {
-    const pref = dislikeMatch2[1].replace(/를|을|이|가|은|는/g, '').trim();
-    _aiProfileAddToList('dislikes', pref);
-    return { reply: _say('💜 ' + name + '님이 ' + pref + '을(를) 싫어하시는 거 기억할게요! 다시는 안 추천해요!', '💜 ' + pref + ' 싫어하는 거 기억! 안 추천할게!'), learn: { ['pref_' + pref]: 'dislike' } };
-  }
-
-  // --- 자동 감지 피드백 (음식, 장소, MBTI 등) ---
-  if (_detections && _detections.length > 0) {
-    const d = _detections[0];
-    if (d.type === 'food') {
-      return { reply: _say('😋 ' + d.value + ' 먹었군요! 맛있었어요? 기억해둘게요! 📔', '😋 ' + d.value + '! 맛있었어? 기억해둘게~ 📔'), suggests: ['맛있었어', '별로였어', '오늘 일정'] };
-    }
-    if (d.type === 'place') {
-      return { reply: _say('🗺️ ' + d.value + '에 다녀오셨군요! 어땠어요? 기억해둘게요!', '🗺️ ' + d.value + ' 다녀왔어? 어땠어? 기억해둘게~'), suggests: ['좋았어', '별로였어'] };
-    }
-    if (d.type === 'mbti') {
-      return { reply: _say('💜 MBTI가 ' + d.value + '이시군요! 영원히 기억할게요! 😊\n' + d.value + ' 유형에 맞는 업무 스타일도 참고할게요!', '💜 ' + d.value + '! 기억했어~ 앞으로 너한테 맞는 스타일로 도와줄게!'), suggests: ['내 프로필', '오늘 일정'] };
-    }
-    if (d.type === 'hobby') {
-      return { reply: _say('💜 취미가 ' + d.value + '이시군요! 기억해둘게요! 🎯', '💜 ' + d.value + ' 취미! 기억! 🎯'), suggests: ['내 프로필', '오늘 일정'] };
-    }
-    if (d.type === 'birthday') {
-      return { reply: _say('🎂 생일이 ' + d.value + '이시군요! 절대 안 까먹을게요! 그날 축하해드릴게요!', '🎂 ' + d.value + '이 생일! 절대 안 까먹어! 축하할게!'), suggests: ['내 프로필'] };
-    }
-    if (d.type === 'nickname') {
-      return { reply: _say('😊 앞으로 ' + d.value + '(이)라고 부를게요!', '😊 오케이 ' + d.value + '! 앞으로 그렇게 부를게~'), suggests: ['내 프로필'] };
-    }
-  }
-
-  // --- 내 프로필 / 내 취향 / 나에 대해 뭐 알아 ---
-  if (/내\s*프로필|내\s*취향|나에?\s*대해\s*뭐|뭐\s*기억.*나|나를?\s*얼마나\s*알|내\s*정보\s*기억/.test(t)) {
-    let reply = '💜 ' + name + '님에 대한 기억\n━━━━━━━━━━━━━━\n\n';
-    let hasInfo = false;
-    if (prof.nickname) { reply += '📛 별명: ' + prof.nickname + '\n'; hasInfo = true; }
-    if (prof.mbti) { reply += '🧬 MBTI: ' + prof.mbti + '\n'; hasInfo = true; }
-    if (prof.birthday) { reply += '🎂 생일: ' + prof.birthday + '\n'; hasInfo = true; }
-    if (prof.hobbies && prof.hobbies.length > 0) { reply += '🎯 취미: ' + prof.hobbies.join(', ') + '\n'; hasInfo = true; }
-    if (prof.likes && prof.likes.length > 0) { reply += '❤️ 좋아하는 것: ' + prof.likes.join(', ') + '\n'; hasInfo = true; }
-    if (prof.dislikes && prof.dislikes.length > 0) { reply += '💔 싫어하는 것: ' + prof.dislikes.join(', ') + '\n'; hasInfo = true; }
-    const recentFoods = _aiGetLifeLogByType('food', 5);
-    if (recentFoods.length > 0) { reply += '\n🍽️ 최근 먹은 것:\n' + recentFoods.map(f => '• ' + f.date + ' ' + f.what).join('\n') + '\n'; hasInfo = true; }
-    const recentPlaces = _aiGetLifeLogByType('place', 5);
-    if (recentPlaces.length > 0) { reply += '\n🗺️ 최근 다녀온 곳:\n' + recentPlaces.map(p => '• ' + p.date + ' ' + p.where).join('\n') + '\n'; hasInfo = true; }
-    const logCount = _aiLifeLog().length;
-    if (logCount > 0) reply += '\n📔 총 생활 기록: ' + logCount + '건';
-    if (!hasInfo) reply += '아직 기억한 게 없어요!\n\n"나는 ENFP야", "취미는 등산이야", "삼겹살 먹었어" 처럼\n자연스럽게 말해주시면 기억할게요! 💜';
-    else reply += '\n\n💡 더 많이 얘기할수록 더 잘 기억해요!';
-    return { reply, suggests: ['추억 보여줘', '뭐 먹었지', 'IQ 확인'] };
-  }
-
-  // --- 뭐 먹었지 / 어제 뭐 먹었 / 음식 기록 ---
-  if (/뭐\s*먹었|먹은\s*거|음식\s*기록|식사\s*기록|밥\s*기록/.test(t)) {
-    const foods = _aiGetLifeLogByType('food', 10);
-    if (foods.length === 0) return { reply: _say('아직 음식 기록이 없어요!\n"삼겹살 먹었어" 처럼 말해주시면 기록할게요! 🍽️', '음식 기록 없어~ "치킨 먹었어" 이렇게 말해줘!'), suggests: ['내 프로필'] };
-    let reply = '🍽️ 음식 기록\n━━━━━━━━━━━━━━\n\n';
-    const byDate = {};
-    foods.forEach(f => { if (!byDate[f.date]) byDate[f.date] = []; byDate[f.date].push(f.what); });
-    Object.keys(byDate).sort().reverse().forEach(d => {
-      reply += '📅 ' + d + ': ' + byDate[d].join(', ') + '\n';
-    });
-    return { reply, suggests: ['내 프로필', '오늘 일정'] };
-  }
-
-  // --- 추억 / 기념일 / N년전 오늘 ---
-  if (/추억|기념일|n년\s*전|예전에\s*뭐|옛날|지난\s*기록/.test(t)) {
-    const anns = _aiGetAnniversaries();
-    const allLogs = _aiLifeLog();
-    if (allLogs.length === 0) return { reply: _say('아직 기록된 추억이 없어요!\n매일 "뭐 먹었어", "어디 다녀왔어" 말해주시면\n나중에 기념일에 추억을 알려드릴게요! 💜', '추억이 아직 없어~ 매일 말해주면 기억해둘게!'), suggests: ['내 프로필'] };
-    let reply = '📔 ' + name + '님과의 추억\n━━━━━━━━━━━━━━\n\n';
-    if (anns.length > 0) {
-      reply += '🎉 오늘의 기념일:\n';
-      anns.forEach(a => {
-        if (a.type === 'food') reply += '• ' + a.yearsAgo + '년 전 오늘 "' + a.what + '" 먹었어요!\n';
-        else if (a.type === 'place') reply += '• ' + a.yearsAgo + '년 전 오늘 "' + a.where + '"에 갔었어요!\n';
-        else if (a.type === 'activity') reply += '• ' + a.yearsAgo + '년 전 오늘 "' + a.what + '" 했어요!\n';
-      });
-      reply += '\n';
-    }
-    reply += '📊 기록 통계:\n';
-    reply += '• 총 기록: ' + allLogs.length + '건\n';
-    reply += '• 음식: ' + allLogs.filter(l => l.type === 'food').length + '건\n';
-    reply += '• 장소: ' + allLogs.filter(l => l.type === 'place').length + '건\n';
-    const firstDate = allLogs[0] ? allLogs[0].date : '-';
-    reply += '• 첫 기록: ' + firstDate;
-    return { reply, suggests: ['뭐 먹었지', '내 프로필'] };
-  }
-
-  // --- 웹 검색 (구글/인터넷) ---
-  const _wsRe1 = /(?:웹\s*검색|인터넷\s*검색|구글에서|구글로|구글\s|구글링|인터넷에서|웹에서)\s*(.+)/i;
-  const _wsRe2 = /(.+?)\s*(?:웹\s*검색|구글\s*검색|인터넷\s*검색|구글에서\s*검색|검색해\s*봐|검색해\s*줘)/;
-  const _wsClean = (s) => s.replace(/^에서\s*/, '').replace(/검색해봐|검색해줘|검색해주|검색해|검색$|해줘|해주|해봐|알려줘|찾아줘|좀\s*|해$/g, '').replace(/^(?:구글에서|구글로|구글링|구글|웹에서|인터넷에서|웹검색|인터넷검색)\s*/i, '').trim();
-  if (_wsRe1.test(input) || _wsRe2.test(input)) {
-    const wsM1 = input.match(_wsRe1), wsM2 = input.match(_wsRe2);
-    const wsQ1 = wsM1 ? _wsClean(wsM1[1]) : '', wsQ2 = wsM2 ? _wsClean(wsM2[1]) : '';
-    const query = wsQ1.length >= wsQ2.length ? wsQ1 : wsQ2;
-    if (query) {
-      if (query.length < 2) return { reply: '뭘 검색할까요? "구글 서울 날씨" 처럼 말해주세요!', suggests: [] };
-      try {
-        const data = await api('/api/search?q=' + encodeURIComponent(query));
-        _aiSessionLearn('search_' + query, data);
-        if (data.abstract) {
-          let reply = '🔍 "' + query + '" 검색 결과\n━━━━━━━━━━━━━━\n\n';
-          reply += '📖 ' + data.abstract + '\n';
-          if (data.results && data.results.length > 1) {
-            reply += '\n📋 관련 정보:\n';
-            data.results.slice(1, 4).forEach(r => { reply += '• ' + r.title + '\n'; });
-          }
-          reply += '\n💡 이 정보는 순간 기억이에요 (내일이면 까먹어요!)';
-          return { reply, suggests: ['더 검색', '오늘 일정'] };
-        }
-        if (data.results && data.results.length > 0) {
-          let reply = '🔍 "' + query + '" 검색 결과\n━━━━━━━━━━━━━━\n\n';
-          data.results.slice(0, 5).forEach(r => { reply += '• ' + r.title + '\n'; });
-          reply += '\n💡 순간 기억! (오늘만 기억해요)';
-          return { reply, suggests: ['더 검색', '오늘 일정'] };
-        }
-        return { reply: '🔍 "' + query + '"에 대한 검색 결과가 없어요.\n다른 키워드로 시도해보세요!', suggests: ['더 검색'] };
-      } catch(e) {
-        return { reply: '🔍 검색 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.', suggests: ['더 검색'] };
-      }
-    }
-  }
-  if (/^더\s*검색$/.test(t)) {
-    return { reply: _say('무엇을 검색할까요?\n\n예: "구글 오늘 뉴스"\n예: "웹검색 React 18 새기능"', '뭘 검색할까? "구글 OOO" 이렇게 말해!'), suggests: [] };
-  }
-
-  // --- 업무 상황 판단: 바빠? 한가해? ---
-  if (/바빠|한가|일\s*많|할\s*거\s*많|남은\s*거|뭐\s*남았|얼마나\s*남/.test(t)) {
-    try {
-      const [evts, todos] = await Promise.all([api('/api/calendar-events?date=' + today), api('/api/todos')]);
-      const pend = (todos || []).filter(td => !td.completed);
-      const evtCount = (evts || []).length;
-      const total = pend.length + evtCount;
-      let level, emoji;
-      if (total === 0) { level = '한가한 하루예요!'; emoji = '☀️'; }
-      else if (total <= 3) { level = '여유로운 편이에요.'; emoji = '🙂'; }
-      else if (total <= 6) { level = '적당히 바쁜 하루예요.'; emoji = '💼'; }
-      else { level = '꽤 바쁜 하루네요!'; emoji = '🔥'; }
-      let reply = emoji + ' ' + _say('오늘 업무 현황: ' + level, '오늘? ' + level);
-      reply += '\n📅 일정 ' + evtCount + '건 · ✅ 할 일 ' + pend.length + '건';
-      const od = pend.filter(td => td.due_date && td.due_date.split('T')[0] < today);
-      if (od.length > 0) reply += '\n⚠️ 기한 초과 ' + od.length + '건 — 우선 처리 추천!';
-      return { reply, suggests: total === 0 ? ['일정 등록할래', '목표 설정'] : ['우선순위 보기', '할 일 확인', '오늘 일정'] };
-    } catch(_) { return { reply: '업무 현황 조회 중 오류가 생겼어요.' }; }
-  }
-
-  // --- 우선순위 / 급한 거 ---
-  if (/우선\s*순위|뭐부터|먼저\s*해야|급한\s*거|중요한\s*거|시급|긴급/.test(t)) {
-    try {
-      const [todos, evts] = await Promise.all([api('/api/todos'), api('/api/calendar-events?date=' + today)]);
-      const pend = (todos || []).filter(td => !td.completed);
-      const od = pend.filter(td => td.due_date && td.due_date.split('T')[0] <= today);
-      const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-      const soon = (evts || []).filter(e => { if (!e.event_time) return false; const [eh,em] = e.event_time.split(':').map(Number); return (eh*60+em) > nowMin && (eh*60+em) - nowMin <= 120; });
-      let reply = '📋 우선순위 추천:\n\n';
-      let idx = 1;
-      if (soon.length > 0) { soon.forEach(e => { reply += idx++ + '. ⏰ [곧 시작] ' + e.event_time.substring(0,5) + ' ' + e.title + '\n'; }); }
-      if (od.length > 0) { od.forEach(td => { reply += idx++ + '. ⚠️ [기한 초과] ' + td.title + '\n'; }); }
-      const urgent = pend.filter(td => td.due_date && td.due_date.split('T')[0] === today && !od.includes(td));
-      if (urgent.length > 0) { urgent.forEach(td => { reply += idx++ + '. 🔴 [오늘 마감] ' + td.title + '\n'; }); }
-      if (idx === 1) reply += _say('급한 업무가 없어요! 여유롭게 진행하세요 😊', '급한 거 없어~ 여유롭게 해!');
-      else reply += '\n💡 위에서부터 순서대로 처리해보세요!';
-      return { reply, suggests: ['할 일 확인', '오늘 일정'] };
-    } catch(_) { return { reply: '우선순위 분석 중 오류가 생겼어요.' }; }
-  }
-
-  // --- 다 끝났어 / 일 다 했다 ---
-  if (/(다\s*끝|다\s*했|일\s*끝|완료했|끝냈)/.test(t) && !/할\s*일|목표|번/.test(t)) {
-    try {
-      const todos = await api('/api/todos');
-      const pend = (todos || []).filter(td => !td.completed);
-      if (pend.length === 0) return { reply: _say('정말 다 끝내셨군요! 👏 대단해요!\n오늘 마무리 리포트를 확인해보세요.', '와 진짜 다 했어! 👏 대단하다!'), suggests: ['오늘 마무리', '퇴근 처리'] };
-      return { reply: _say('아직 ' + pend.length + '건이 남아있어요!\n\n' + pend.slice(0,3).map(td => '• ' + td.title).join('\n') + '\n\n조금만 더 힘내세요! 💪', '아직 ' + pend.length + '개 남았어~\n\n' + pend.slice(0,3).map(td => '• ' + td.title).join('\n')), suggests: ['할 일 확인', '우선순위 보기'] };
-    } catch(_) { return { reply: '업무 확인 중 오류가 생겼어요.' }; }
-  }
-
-  // --- 내일 일정 ---
-  if (/내일\s*(일정|스케줄|뭐|할\s*거)/.test(t)) {
-    try {
-      const tmr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-      const events = await api('/api/calendar-events?date=' + tmr);
-      if (events && events.length > 0) {
-        const list = events.map(e => (e.event_time ? e.event_time.substring(0, 5) : '--:--') + ' ' + e.title).join('\n');
-        return { reply: _say('📅 내일 일정 ' + events.length + '건이에요:\n\n' + list, '📅 내일 일정 ' + events.length + '건~\n\n' + list), suggests: ['오늘 일정', '일정 등록할래'] };
-      }
-      return { reply: _say('내일은 등록된 일정이 없어요!', '내일은 일정 없어~ 여유로운 날이겠다!', '내일은 일정 없어용! 푹 쉬세용~'), suggests: ['일정 등록할래'] };
-    } catch(_) { return { reply: '일정 조회 중 문제가 생겼어요.' }; }
-  }
-
-  // --- 이번 주 일정 ---
-  if (/(이번\s*주|금주|이번주)\s*(일정|스케줄)/.test(t)) {
-    try {
-      const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-      const events = await api(`/api/events?from=${today}&to=${weekEnd}`);
-      if (events && events.length > 0) {
-        const byDate = {};
-        events.forEach(e => { const d = (e.event_date||'').split('T')[0]; if (!byDate[d]) byDate[d] = []; byDate[d].push(e); });
-        const days = ['일','월','화','수','목','금','토'];
-        let list = '';
-        Object.keys(byDate).sort().forEach(d => {
-          const dow = days[new Date(d).getDay()];
-          list += '\n📌 ' + d.substring(5) + '(' + dow + ') — ' + byDate[d].map(e => (e.event_time ? e.event_time.substring(0,5) + ' ' : '') + e.title).join(', ');
-        });
-        return { reply: _say('📅 이번 주 일정 ' + events.length + '건:' + list, '📅 이번 주 일정 ' + events.length + '건이야~' + list), suggests: ['오늘 일정', '내일 일정'] };
-      }
-      return { reply: _say('이번 주 남은 일정이 없어요!', '이번 주 일정 없어~ 한가하네!'), suggests: ['일정 등록할래'] };
-    } catch(_) { return { reply: '일정 조회 중 문제가 생겼어요.' }; }
-  }
-
-  // --- 오늘 일정 ---
-  if (/일정|스케줄|오늘\s*뭐/.test(t) && !/할\s*일|등록|추가|만들|넣|내일|이번\s*주|팀|확인|열기|하나\s*더|상세/.test(t)) {
-    try {
-      const events = await api('/api/calendar-events?date=' + today);
-      if (events && events.length > 0) {
-        const list = events.map(e => (e.event_time ? e.event_time.substring(0, 5) : '--:--') + ' ' + e.title).join('\n');
-        return { reply: _say('📅 오늘 일정 ' + events.length + '건이에요:\n\n' + list, '📅 오늘 일정 ' + events.length + '건~\n\n' + list), suggests: ['일정 등록할래', '내일 일정', '다음 일정'] };
-      }
-      return { reply: _say('오늘은 등록된 일정이 없어요! 추가하시겠어요?', '오늘 일정 없어~ 추가할래?', '오늘 일정 없어용~ 추가할까용?'), suggests: ['일정 등록할래', '내일 일정'] };
-    } catch(_) { return { reply: '일정 조회 중 문제가 생겼어요.' }; }
-  }
-
-  // --- 할 일 ---
-  if (/할\s*일\s*(확인|보여|알려|목록|체크)|투두|todo|미완료/.test(t)) {
-    try {
-      const todos = await api('/api/todos');
-      const pending = (todos || []).filter(td => !td.completed);
-      const overdue = pending.filter(td => td.due_date && td.due_date.split('T')[0] < today);
-      if (pending.length === 0) return { reply: _say('할 일이 모두 완료됐어요! 깔끔하네요 ✨', '다 했어! 깔끔~ ✨', '다 했어용! 깔끔하당 ✨'), suggests: ['오늘 일정', '보고서 쓸래'] };
-      let reply = '✅ 미완료 할 일 ' + pending.length + '건:\n\n';
-      reply += pending.slice(0, 5).map(td => (td.due_date && td.due_date.split('T')[0] < today ? '⚠️ ' : '• ') + td.title + (td.due_date ? ' (기한: ' + td.due_date.split('T')[0] + ')' : '')).join('\n');
-      if (pending.length > 5) reply += '\n... 외 ' + (pending.length - 5) + '건';
-      if (overdue.length > 0) reply += '\n\n⚠️ ' + overdue.length + '건이 기한을 넘겼어요!';
-      return { reply, suggests: ['할 일 관리 열기', '오늘 일정'], action: overdue.length > 0 ? undefined : undefined };
-    } catch(_) { return { reply: '할 일 조회 중 문제가 생겼어요.' }; }
-  }
-
-  // --- 할 일 관리 열기 ---
-  if (/할\s*일\s*(관리|열기|페이지|이동)/.test(t)) {
-    return { reply: '할 일 관리 페이지로 이동할게요!', action: () => { closeAiChat(); navigate('todo'); } };
-  }
-
-  // --- 음성 기록 (구체적 패턴 먼저) ---
-  if (/음성.*기록|말로.*기록|음성으로/.test(t)) {
-    return { reply: '음성 기록 화면을 열게요! 🎤', action: () => { closeAiChat(); startVoiceReport(); } };
-  }
-  // --- 직접 작성 (구체적 패턴 먼저) ---
-  if (/직접\s*작성|직접\s*입력/.test(t)) {
-    return { reply: '업무일지 작성 화면을 열게요!', action: () => { closeAiChat(); openNewReport(); } };
-  }
-  // --- 보고서/일지 작성 (넓은 패턴) ---
-  const _reportNeg = /확인|보여|몇|팀|라고\??|이게|뭐야|뭔|아닌|맞아|싸가지|별로|아니거든|쓰레기|이상|왜\s*이|이거\s*뭐|어디|언제|했나|봤|안\s*됐|못\s*했|삭제|수정\s*되|고쳐|잘못/;
-  const _reportPos = /쓸래|쓸게|작성|마법사|기록|써야|쓸까|작성할|쓰고/;
-  if ((/보고서|업무\s*일지/.test(t) && _reportPos.test(t) && !_reportNeg.test(t)) ||
-      (/^(보고서|일지|업무일지|쓸래)$/.test(t))) {
-    return { reply: '어떤 방식으로 작성하시겠어요?', suggests: ['보고서 마법사', '음성으로 기록', '직접 작성'] };
-  }
-
-  // --- 출퇴근 (확인 후 처리) ---
-  if (/^(출근|출근\s*체크|출근해|나\s*왔어|도착)$/.test(t)) {
-    return { reply: '출근 처리할까요?', suggests: ['네', '아니요'] , _pendingAction: 'checkin' };
-  }
-  if (/^(퇴근|퇴근\s*체크|퇴근해|퇴근\s*처리)$/.test(t)) {
-    return { reply: '퇴근 처리할까요?', suggests: ['네', '아니요'], _pendingAction: 'checkout' };
-  }
-  if (/^네$/.test(t) && _aiChatHistory.length > 0) {
-    const prev = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
-    if (prev && prev.text && prev.text.includes('출근 처리할까요')) {
-      return { reply: '출근 처리했어요! ⏰', action: () => { doCheckIn(); } };
-    }
-    if (prev && prev.text && prev.text.includes('퇴근 처리할까요')) {
-      return { reply: '퇴근 처리했어요! ⏰', action: () => { doCheckOut(); } };
-    }
-  }
-
-  // --- 검색 ---
-  if (/^검색\s+(.+)/.test(t)) {
-    const q = t.match(/^검색\s+(.+)/)[1];
-    return { reply: '🔍 "' + q + '" 검색 결과를 보여드릴게요!', action: () => { closeAiChat(); showGlobalSearch(); setTimeout(() => { const el = document.getElementById('searchInput'); if (el) { el.value = q; doGlobalSearch(); } }, 300); } };
-  }
-
-  // --- 도움말 / 사용법 ---
-  if (/도움말|뭐\s*할\s*수|사용법|어떻게\s*써/.test(t)) {
-    return { reply: '📱 AI 비서 사용법\n━━━━━━━━━━━━━━\n\n자연스럽게 말하면 돼요!\n\n📝 "헌혈 다녀왔어" → 업무일지 자동 작성\n📅 "다음주 월요일 미팅 9시반" → 일정 등록\n✅ "보고서 정리해야돼" → 할일 추가\n⏰ "출근" / "퇴근" → 출퇴근 처리\n📊 "브리핑" → 오늘 현황 요약\n\n💡 여러 요청을 한번에 말해도 OK!\n예: "회의 다녀왔어, 내일 3시 미팅 등록해줘"', suggests: ['오늘 브리핑', '오늘 일정', '할 일 확인'] };
-  }
-
-  // --- "네 모두 등록해줘" / "네 등록해줘" → 대기 중인 Gemini 액션 실행 ---
+  // --- 대기 액션 처리 ---
   if (/^(네|응|어|좋아|ㅇ|ㅇㅇ|오키|ok)\s*(모두\s*)?등록/.test(t) && window._aiPendingActions && window._aiPendingActions.length > 0) {
     const actions = window._aiPendingActions;
     window._aiPendingActions = null;
@@ -9490,54 +9073,55 @@ async function _aiProcessChat(input, _detections) {
   }
   if (/^(수정|수정할래|다시)/.test(t) && window._aiPendingActions) {
     window._aiPendingActions = null;
-    return { reply: '취소했어요. 다시 말씀해주세요!', suggests: ['도움말'] };
+    return { reply: '취소했어요. 다시 말씀해주세요!', suggests: [] };
+  }
+  if (/^네$/.test(t) && _aiChatHistory.length > 0) {
+    const prev = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
+    if (prev && prev.text) {
+      if (prev.text.includes('출근 처리할까요')) return { reply: '출근 처리했어요! ⏰', action: () => { doCheckIn(); } };
+      if (prev.text.includes('퇴근 처리할까요')) return { reply: '퇴근 처리했어요! ⏰', action: () => { doCheckOut(); } };
+    }
   }
 
-  // ─── Gemini AI 호출 (모든 자연어 처리) ───
+  // --- 모든 대화 → Gemini AI ---
   const _geminiResult = await _aiCallGemini(input);
-  if (_geminiResult) {
-    _aiUnmatchedCount = 0;
-    _aiLastWasFallback = false;
 
-    if (typeof _geminiResult === 'object' && _geminiResult.actions) {
-      const actions = _geminiResult.actions;
-      window._aiPendingActions = actions;
-      let preview = _geminiResult.reply ? _geminiResult.reply + '\n\n' : '';
-      preview += '📋 처리할 항목:\n';
-      actions.forEach((a, i) => {
-        const icon = a.type === 'report' ? '📝' : a.type === 'event' ? '📅' : a.type === 'todo' ? '✅' : '📌';
-        const label = a.type === 'report' ? '업무일지' : a.type === 'event' ? '일정' : a.type === 'todo' ? '할 일' : a.type;
-        preview += icon + ' ' + (i+1) + '. ' + label + ': ' + (a.title || '') + '\n';
-        if (a.date) preview += '   📆 ' + a.date + (a.time ? ' ' + a.time : '') + '\n';
-      });
-      preview += '\n등록할까요?';
-      return { reply: preview, suggests: ['네 등록해줘', '수정할래', '취소'] };
+  if (_geminiResult && typeof _geminiResult === 'object' && _geminiResult.actions) {
+    const actions = _geminiResult.actions;
+    const hasCheckAction = actions.some(a => a.type === 'checkin' || a.type === 'checkout');
+    if (hasCheckAction && actions.length === 1) {
+      const a = actions[0];
+      return { reply: (a.type === 'checkin' ? '출근' : '퇴근') + ' 처리할까요?', suggests: ['네', '아니요'] };
     }
+    window._aiPendingActions = actions;
+    let preview = _geminiResult.reply ? _geminiResult.reply + '\n\n' : '';
+    preview += '📋 처리할 항목:\n';
+    actions.forEach((a, i) => {
+      const icon = a.type === 'report' ? '📝' : a.type === 'event' ? '📅' : a.type === 'todo' ? '✅' : '📌';
+      const label = a.type === 'report' ? '업무일지' : a.type === 'event' ? '일정' : a.type === 'todo' ? '할 일' : a.type;
+      preview += icon + ' ' + (i+1) + '. ' + label + ': ' + (a.title || '') + '\n';
+      if (a.date) preview += '   📆 ' + a.date + (a.time ? ' ' + a.time : '') + '\n';
+    });
+    preview += '\n등록할까요?';
+    return { reply: preview, suggests: ['네 등록해줘', '수정할래', '취소'] };
+  }
 
+  if (_geminiResult) {
     const h2 = new Date().getHours();
     const _gSugg = h2 < 10 ? ['출근', '오늘 브리핑'] : h2 < 14 ? ['오늘 일정', '할 일 확인'] : h2 < 18 ? ['보고서 쓸래', '브리핑'] : ['오늘 마무리', '이번 주 요약'];
     return { reply: _geminiResult, suggests: _gSugg };
   }
 
-  // ─── 최종 fallback (Gemini 실패 시) — 자연스러운 공감 ───
+  // --- fallback (Gemini 실패) ---
   const h3 = new Date().getHours();
-  const casual = /으휴|에휴|하[.…]+|ㅠ|힘들|지친|짜증|피곤/.test(t);
-  const fun = /ㅋ|ㅎ|ㅎㅎ|ㅋㅋ|웃|재밌/.test(t);
-  let fb;
-  if (casual) {
-    fb = h3 < 18
-      ? ['그런 날도 있죠... 오늘 하루 잘 버티고 있는 거예요 💪', '에이 그래도 여기까지 온 거 대단한 거야~']
-      : ['오늘 하루 고생 많았어요. 내일은 분명 더 나을 거예요 🌙', '수고했어~ 오늘 하루 충분히 잘했어!'];
-  } else if (fun) {
-    fb = ['ㅋㅋ 좋은 에너지네요! 😄', 'ㅎㅎ 기분 좋아 보이는데~'];
-  } else {
-    fb = h3 < 12
-      ? ['오늘 하루도 응원해요! 천천히 시작해봐요 ☀️', '좋은 아침~ 오늘도 한 걸음씩!']
-      : h3 < 18
-      ? ['오후도 힘내봐요! 벌써 반이나 왔잖아요 😊', '반 넘었다~ 조금만 더 파이팅!']
-      : ['오늘도 수고 많았어요. 푹 쉬세요 🌙', '하루 마무리 잘 하고 있네~ 수고했어!'];
-  }
-  return { reply: _say(fb[0], fb[1]), suggests: ['오늘 브리핑', '오늘 일정', '도움말'] };
+  const tired = /으휴|에휴|하[.…]+|ㅠ|힘들|지친|짜증|피곤/.test(t);
+  const happy = /ㅋ|ㅎ|ㅎㅎ|ㅋㅋ|웃|재밌/.test(t);
+  const fb = tired
+    ? (h3 < 18 ? '그런 날도 있죠... 오늘 하루 잘 버티고 있는 거예요 💪' : '오늘 하루 고생 많았어요. 내일은 분명 더 나을 거예요 🌙')
+    : happy
+    ? 'ㅋㅋ 좋은 에너지네요! 😄'
+    : (h3 < 12 ? '오늘 하루도 응원해요! ☀️' : h3 < 18 ? '오후도 힘내봐요! 벌써 반이나 왔잖아요 😊' : '오늘도 수고 많았어요. 푹 쉬세요 🌙');
+  return { reply: fb, suggests: ['오늘 브리핑', '오늘 일정', '도움말'] };
 }
 
 async function _aiExecuteActions(actions) {

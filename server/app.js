@@ -3933,6 +3933,7 @@ app.get('/api/search', async (req, res) => {
 });
 
 // ─── AI 비서 Gemini 프록시 ───
+const _ctxCache = {};
 app.post('/api/ai-chat', authMiddleware, async (req, res) => {
   const { message, history } = req.body;
   if (!message) return res.status(400).json({ error: '메시지가 필요합니다' });
@@ -3943,7 +3944,10 @@ app.post('/api/ai-chat', authMiddleware, async (req, res) => {
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
   let userContext = '';
-  try {
+  const cached = _ctxCache[userId];
+  if (cached && Date.now() - cached.ts < 300000) {
+    userContext = cached.ctx;
+  } else try {
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
     const [todoRes, todoDoneRes, eventRes, attRes, attWeekRes, reportRes, userRes] = await Promise.all([
       query('SELECT title, due_date, completed, priority FROM todos WHERE user_id = $1 AND completed = FALSE ORDER BY priority DESC, due_date ASC NULLS LAST LIMIT 10', [userId]),
@@ -3978,6 +3982,7 @@ ${eventList ? '오늘/내일 일정:\n' + eventList : '예정 일정: 없음'}
 할일 완료: ${todosDoneCount}건 | 남은 할일: ${todosLeft}건
 ${reportTopics ? '최근 업무 키워드: ' + reportTopics : '최근 보고서: 없음'}
 이 데이터로 사용자의 업무 리듬과 상태를 귀납적으로 추론해서 대화에 자연스럽게 녹여.`;
+    _ctxCache[userId] = { ctx: userContext, ts: Date.now() };
   } catch (e) { /* DB 조회 실패해도 AI는 작동 */ }
 
   try {
@@ -4057,27 +4062,36 @@ ${hour < 9 ? '→ 아침 시간대: 하루 시작 응원' : hour < 12 ? '→ 오
     }
     contents.push({ role: 'user', parts: [{ text: message }] });
 
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 12000);
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: ac.signal,
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents,
-          generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
-        })
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`;
+    const geminiBody = JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents,
+      generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
+    });
+
+    let data;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 15000);
+        const resp = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: ac.signal,
+          body: geminiBody
+        });
+        clearTimeout(timer);
+        data = await resp.json();
+        if (!data.error && data.candidates?.[0]?.content?.parts?.[0]?.text) break;
+        if (attempt === 0) { await new Promise(r => setTimeout(r, 2000)); continue; }
+      } catch (e) {
+        if (attempt === 0) { await new Promise(r => setTimeout(r, 2000)); continue; }
+        throw e;
       }
-    );
-    clearTimeout(timer);
+    }
 
-    const data = await resp.json();
-    if (data.error) return res.status(500).json({ error: data.error.message });
-
-    const rawReply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (data?.error) return res.status(500).json({ error: data.error.message });
+    const rawReply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!rawReply) return res.status(500).json({ error: 'AI 응답 없음' });
 
     let reply = rawReply;
