@@ -346,7 +346,47 @@ async function renderHome() {
   const priorityStyle = { urgent: 'background:#fef2f2; border-left:4px solid #ef4444; color:#991b1b;', important: 'background:#fffbeb; border-left:4px solid #f59e0b; color:#92400e;', normal: 'background:#f0f9ff; border-left:4px solid #3b82f6; color:#1e40af;' };
   const priorityIcon = { urgent: '&#128680;', important: '&#9888;&#65039;', normal: '&#128227;' };
 
+  // AI 비서 위젯 데이터
+  const _h = new Date().getHours();
+  const _tgEmoji = _h < 9 ? '🌅' : _h < 12 ? '☀️' : _h < 14 ? '🍚' : _h < 18 ? '🌤️' : '🌙';
+  const _tgMsg = _h < 9 ? '좋은 아침이에요!' : _h < 12 ? '오전도 힘차게!' : _h < 14 ? '점심 맛있게 드셨나요?' : _h < 18 ? '오후도 화이팅!' : '수고 많으셨어요!';
+  const _todayEvts = (events || []).filter(e => (e.event_date || '').split('T')[0] === today);
+  const _pendingTodos = (todos || []).filter(t => !t.completed);
+  const _streakCount = todayReports.length;
+  let _aiTip = '';
+  if (!atd) _aiTip = '출근 체크가 아직이에요. 지금 할까요?';
+  else if (_todayEvts.length > 0 && _h < 17) { const nextEvt = _todayEvts.find(e => e.event_time && e.event_time > String(_h).padStart(2,'0')); if (nextEvt) _aiTip = '다음 일정: ' + (nextEvt.event_time||'').substring(0,5) + ' ' + nextEvt.title; }
+  else if (_pendingTodos.length > 0) _aiTip = '할 일이 ' + _pendingTodos.length + '건 남아있어요.';
+  else if (_h >= 17) _aiTip = '오늘도 수고하셨어요. 퇴근 준비하세요!';
+  else _aiTip = '필요하면 언제든 불러주세요!';
+
   document.getElementById('mainContent').innerHTML = `
+    <!-- AI 비서 카드 -->
+    <div onclick="startVoiceReport()" style="margin-bottom:16px; padding:16px; border-radius:16px; background:linear-gradient(135deg,#1e3a5f,#2d1b69); color:#fff; cursor:pointer; position:relative; overflow:hidden;">
+      <div style="position:absolute; top:-20px; right:-20px; width:100px; height:100px; border-radius:50%; background:rgba(124,58,237,.2);"></div>
+      <div style="position:absolute; bottom:-30px; right:40px; width:80px; height:80px; border-radius:50%; background:rgba(59,130,246,.15);"></div>
+      <div style="display:flex; align-items:center; gap:12px; position:relative;">
+        <div style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; box-shadow:0 4px 12px rgba(124,58,237,.4);">&#129302;</div>
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            <span style="font-size:11px; background:rgba(255,255,255,.15); padding:2px 8px; border-radius:10px;">AI 업무비서</span>
+            <span style="font-size:11px; opacity:.6;">${_tgEmoji} ${_tgMsg}</span>
+          </div>
+          <p style="font-size:14px; font-weight:500; line-height:1.4;">${currentUser.name}님, ${_aiTip}</p>
+          ${_streakCount > 0 ? `<p style="font-size:11px; color:#fbbf24; margin-top:4px;">🔥 오늘 ${_streakCount}건 작성 완료!</p>` : ''}
+        </div>
+        <div style="font-size:24px; opacity:.6;">🎤</div>
+      </div>
+      ${_todayEvts.length > 0 ? `
+      <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,.1);">
+        <p style="font-size:11px; opacity:.5; margin-bottom:6px;">📋 오늘 일정 ${_todayEvts.length}건</p>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          ${_todayEvts.slice(0,4).map(e => `<span style="font-size:11px; background:rgba(255,255,255,.1); padding:3px 8px; border-radius:8px;">${e.event_time ? e.event_time.substring(0,5) + ' ' : ''}${e.title}</span>`).join('')}
+          ${_todayEvts.length > 4 ? `<span style="font-size:11px; opacity:.5;">+${_todayEvts.length - 4}건</span>` : ''}
+        </div>
+      </div>` : ''}
+    </div>
+
     <div style="margin-bottom:20px;">
       <p style="font-size:15px; color:var(--gray-500);">안녕하세요,</p>
       <p style="font-size:22px; font-weight:600;">${currentUser.name} ${currentUser.position || ''}님</p>
@@ -6335,6 +6375,9 @@ function finishVoiceReport() {
   document.getElementById('vrRefinedText').value = text;
   document.getElementById('vrRefinePreview').style.display = 'none';
   document.getElementById('vrRefineStep').style.display = 'block';
+
+  // 자동 AI 다듬기 실행
+  setTimeout(() => refineVoiceText(), 500);
 }
 
 function refineVoiceText() {
@@ -6363,14 +6406,30 @@ function refineVoiceText() {
     const refined = polishVoiceText(raw);
     document.getElementById('vrRefinedText').value = refined;
 
-    const preview = previewVoice5W1HCards(refined);
-    document.getElementById('vrRefineFields').innerHTML = preview;
+    const { html: cardsHtml, missing } = previewVoice5W1HCards(refined);
+    document.getElementById('vrRefineFields').innerHTML = cardsHtml;
     document.getElementById('vrRefinePreview').style.display = 'block';
+
+    // 빠진 항목 안내
+    const missingArea = document.getElementById('vrMissingHint');
+    if (missingArea) missingArea.remove();
+    if (missing.length > 0 && missing.length <= 4) {
+      const hintDiv = document.createElement('div');
+      hintDiv.id = 'vrMissingHint';
+      const missingNames = { when:'언제', where:'어디서', who:'누가', what:'무엇을', how:'어떻게', why:'왜' };
+      const missingList = missing.map(k => missingNames[k]).join(', ');
+      hintDiv.innerHTML = `<div style="background:rgba(251,191,36,.1); border:1px solid rgba(251,191,36,.2); border-radius:12px; padding:12px; margin-bottom:12px; text-align:left; animation:vrCardIn .4s both;">
+        <p style="font-size:12px; color:#fbbf24; margin-bottom:4px;">💡 비서 팁</p>
+        <p style="font-size:13px; color:#e2e8f0; line-height:1.5;">'${missingList}' 정보가 빠져있어요. 위 텍스트에 추가하면 보고서가 더 완성도 높아져요!</p>
+      </div>`;
+      document.getElementById('vrRefinePreview').after(hintDiv);
+    }
 
     btn.textContent = '✨ AI 다듬기';
     btn.disabled = false;
   }, 1800);
 }
+
 
 function previewVoice5W1HCards(text) {
   const fields = { who:'', when:'', where:'', what:'', how:'', why:'' };
@@ -6403,14 +6462,31 @@ function previewVoice5W1HCards(text) {
     { key:'how', label:'어떻게', icon:'&#128295;', color:'#a78bfa', bg:'rgba(167,139,250,.12)' },
     { key:'why', label:'왜', icon:'&#127919;', color:'#fb923c', bg:'rgba(251,146,60,.12)' }
   ];
-  return cards.map((c, i) => {
+  const missing = cards.filter(c => !fields[c.key]).map(c => c.key);
+  const filled = cards.filter(c => fields[c.key]).length;
+  const scorePercent = Math.round(filled / cards.length * 100);
+  const scoreColor = scorePercent >= 80 ? '#22c55e' : scorePercent >= 50 ? '#f59e0b' : '#ef4444';
+  const scoreLabel = scorePercent >= 80 ? '훌륭해요!' : scorePercent >= 50 ? '괜찮아요' : '보완 필요';
+
+  const scoreBar = `<div style="grid-column:1/-1; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); border-radius:12px; padding:10px 12px; animation:vrCardIn .3s both;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <span style="font-size:11px; color:rgba(255,255,255,.5);">완성도</span>
+      <span style="font-size:12px; color:${scoreColor}; font-weight:700;">${scorePercent}% ${scoreLabel}</span>
+    </div>
+    <div style="height:6px; background:rgba(255,255,255,.08); border-radius:3px; overflow:hidden;">
+      <div style="height:100%; width:${scorePercent}%; background:${scoreColor}; border-radius:3px; transition:width .8s;"></div>
+    </div>
+  </div>`;
+
+  const html = scoreBar + cards.map((c, i) => {
     const val = fields[c.key] || '-';
     const hasVal = fields[c.key] ? 1 : 0.4;
-    return `<div style="background:${c.bg}; border:1px solid ${c.color}33; border-radius:12px; padding:10px 12px; opacity:${hasVal}; animation:vrCardIn .4s ${i*0.1}s both;">
+    return `<div style="background:${c.bg}; border:1px solid ${c.color}33; border-radius:12px; padding:10px 12px; opacity:${hasVal}; animation:vrCardIn .4s ${(i+1)*0.1}s both;">
       <div style="font-size:10px; color:${c.color}; margin-bottom:4px; font-weight:600;">${c.icon} ${c.label}</div>
       <div style="font-size:13px; color:#e2e8f0; word-break:keep-all;">${val}</div>
     </div>`;
   }).join('');
+  return { html, missing };
 }
 
 function polishVoiceText(text) {
@@ -6776,7 +6852,23 @@ function vgSpeak(text) {
   });
 }
 
+function vgShowThinking() {
+  const area = document.getElementById('vgChatArea');
+  const div = document.createElement('div');
+  div.id = 'vgThinking';
+  div.style.cssText = 'max-width:82%; padding:12px 16px; border-radius:4px 16px 16px 16px; font-size:14px; background:rgba(255,255,255,.12); color:rgba(255,255,255,.5); align-self:flex-start; animation:fadeIn .3s;';
+  div.innerHTML = '<span style="animation:pulse 1s infinite;">●</span> <span style="animation:pulse 1s .2s infinite;">●</span> <span style="animation:pulse 1s .4s infinite;">●</span>';
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function vgHideThinking() {
+  const el = document.getElementById('vgThinking');
+  if (el) el.remove();
+}
+
 function vgAddBubble(text, who) {
+  vgHideThinking();
   const area = document.getElementById('vgChatArea');
   const isBot = who === 'bot';
   const div = document.createElement('div');
@@ -6901,6 +6993,8 @@ async function vgConversation() {
 
   // 브리핑: 오늘 등록된 일정 확인
   await new Promise(r => setTimeout(r, 400));
+  vgShowThinking();
+  await new Promise(r => setTimeout(r, 800));
   let briefing = '';
   try {
     const today = new Date().toISOString().split('T')[0];
@@ -6933,12 +7027,13 @@ async function vgConversation() {
   else if (wt.includes('출장')) workType = '출장';
   vgAddBubble(wtResp || workType, 'user');
 
+  vgShowThinking();
   try {
     await api('/api/attendance/checkin', { method: 'POST', body: { work_type: workType, work_summary: '' } });
     _vgDidCheckin = true;
   } catch(e) {}
 
-  await new Promise(r => setTimeout(r, 400));
+  await new Promise(r => setTimeout(r, 800));
   const wtEmoji = workType === '외근' ? '🚗' : workType === '출장' ? '✈️' : '🏢';
   const wtComment = workType === '외근' ? '이동 중 안전하게 다녀오세요!' : workType === '출장' ? '출장길 편안하시길 바라요!' : '사무실에서 집중하기 좋은 날이에요!';
   vgAddBubble(wtEmoji + ' ' + workType + ' 체크 완료! ' + wtComment, 'bot');
@@ -6959,10 +7054,10 @@ async function vgConversation() {
   if (planResp) {
     vgAddBubble(planResp, 'user');
 
-    await new Promise(r => setTimeout(r, 300));
-    vgAddBubble('네, 잘 들었어요. 정리하고 있어요... ✨', 'bot');
-    await new Promise(r => setTimeout(r, 800));
+    vgShowThinking();
+    await new Promise(r => setTimeout(r, 1200));
     _vgSchedules = vgParseSchedules(planResp);
+    vgAddBubble('네, 잘 들었어요! ' + _vgSchedules.length + '개 일정을 파악했어요. ✨', 'bot');
 
     vgAddBubble('혹시 더 추가할 일정이 있으세요?', 'bot');
     vgShowQuickReplies(['네, 더 있어요', '이게 다예요']);
