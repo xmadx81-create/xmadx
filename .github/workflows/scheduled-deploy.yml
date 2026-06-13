@@ -1,0 +1,29 @@
+name: 금요일 정식 배포
+
+on:
+  schedule:
+    # 매주 금요일 23:50 KST = 14:50 UTC
+    - cron: '50 14 * * 5'
+  workflow_dispatch:
+    # 수동 실행도 가능 (GitHub Actions 탭에서 "Run workflow" 버튼)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: staging 브랜치 확인
+        run: |
+          git fetch origin staging || { echo "staging 브랜치가 없습니다. 배포 건너뜀."; exit 0; }
+
+      - name: staging → main 머지
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout main
+          git merge origin/staging --no-ff -m "deploy: 금요일 정식 배포 (자동 머지 staging → main)"
+          git push origin main
