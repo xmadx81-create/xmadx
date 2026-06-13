@@ -8667,10 +8667,14 @@ async function _aiProcessChat(input, _detections) {
   }
 
   // --- 웹 검색 (구글/인터넷) ---
-  if (/(?:웹\s*검색|인터넷\s*검색|구글|구글링|인터넷에서|웹에서)\s*(.+)/i.test(input) || /(.+?)\s*(?:웹\s*검색|구글\s*검색|인터넷\s*검색)/.test(input)) {
-    const wsMatch = input.match(/(?:웹\s*검색|인터넷\s*검색|구글|구글링|인터넷에서|웹에서)\s*(.+)/i) || input.match(/(.+?)\s*(?:웹\s*검색|구글\s*검색|인터넷\s*검색)/);
-    if (wsMatch) {
-      const query = wsMatch[1].replace(/해줘|해주|해봐|알려줘|찾아줘|해$/g, '').trim();
+  const _wsRe1 = /(?:웹\s*검색|인터넷\s*검색|구글에서|구글로|구글\s|구글링|인터넷에서|웹에서)\s*(.+)/i;
+  const _wsRe2 = /(.+?)\s*(?:웹\s*검색|구글\s*검색|인터넷\s*검색|구글에서\s*검색|검색해\s*봐|검색해\s*줘)/;
+  const _wsClean = (s) => s.replace(/^에서\s*/, '').replace(/검색해봐|검색해줘|검색해주|검색해|검색$|해줘|해주|해봐|알려줘|찾아줘|좀\s*|해$/g, '').replace(/^(?:구글에서|구글로|구글링|구글|웹에서|인터넷에서|웹검색|인터넷검색)\s*/i, '').trim();
+  if (_wsRe1.test(input) || _wsRe2.test(input)) {
+    const wsM1 = input.match(_wsRe1), wsM2 = input.match(_wsRe2);
+    const wsQ1 = wsM1 ? _wsClean(wsM1[1]) : '', wsQ2 = wsM2 ? _wsClean(wsM2[1]) : '';
+    const query = wsQ1.length >= wsQ2.length ? wsQ1 : wsQ2;
+    if (query) {
       if (query.length < 2) return { reply: '뭘 검색할까요? "구글 서울 날씨" 처럼 말해주세요!', suggests: [] };
       try {
         const data = await api('/api/search?q=' + encodeURIComponent(query));
