@@ -7766,6 +7766,82 @@ function _aiRecordTopic(topic) {
   _aiMemorySave(mem);
 }
 
+// ─── AI 지능지수(IQ) 엔진 ───
+function _aiCalcIQ() {
+  const mem = _aiMemory();
+  let iq = 70;
+  const cc = mem.chatCount || 0;
+  iq += Math.min(cc, 200) * 0.1;
+  const factCount = Object.keys(mem.facts || {}).length;
+  iq += Math.min(factCount, 50) * 0.3;
+  const topicCount = Object.keys(mem.topics || {}).length;
+  iq += topicCount * 2;
+  const daysUsed = (mem.daysUsed || []).length;
+  iq += Math.min(daysUsed, 30) * 0.5;
+  const cmdCount = Object.keys(mem.freqCmds || {}).length;
+  iq += cmdCount * 1;
+  const hourPats = Object.keys(mem.hourPatterns || {}).length;
+  iq += hourPats * 0.5;
+  if (mem.facts && mem.facts.chatStyle) iq += 2;
+  if (mem.facts && Object.keys(mem.facts).some(k => k.startsWith('pref_'))) iq += 3;
+  if (mem.facts && Object.keys(mem.facts).some(k => k.startsWith('mood_'))) iq += 2;
+  return Math.round(Math.min(iq, 200));
+}
+
+function _aiGetLevel() {
+  const iq = _aiCalcIQ();
+  if (iq >= 150) return { lv: 5, title: '전설의 비서', emoji: '👑', desc: '완벽한 맞춤형 서비스' };
+  if (iq >= 120) return { lv: 4, title: '수석 비서', emoji: '🌟', desc: '선제적 알림과 분석' };
+  if (iq >= 100) return { lv: 3, title: '시니어 비서', emoji: '💎', desc: '개인화된 추천' };
+  if (iq >= 85) return { lv: 2, title: '주니어 비서', emoji: '📘', desc: '패턴 인식 시작' };
+  return { lv: 1, title: '신입 비서', emoji: '🌱', desc: '기본 명령 이해' };
+}
+
+function _aiRecordCmd(cmd) {
+  const mem = _aiMemory();
+  if (!mem.freqCmds) mem.freqCmds = {};
+  mem.freqCmds[cmd] = (mem.freqCmds[cmd] || 0) + 1;
+  const today = new Date().toISOString().split('T')[0];
+  if (!mem.daysUsed) mem.daysUsed = [];
+  if (!mem.daysUsed.includes(today)) {
+    mem.daysUsed.push(today);
+    if (mem.daysUsed.length > 60) mem.daysUsed = mem.daysUsed.slice(-60);
+  }
+  const hour = new Date().getHours();
+  if (!mem.hourPatterns) mem.hourPatterns = {};
+  const hKey = 'h' + hour;
+  if (!mem.hourPatterns[hKey]) mem.hourPatterns[hKey] = {};
+  mem.hourPatterns[hKey][cmd] = (mem.hourPatterns[hKey][cmd] || 0) + 1;
+  if (!mem.responseLog) mem.responseLog = [];
+  mem.responseLog.push({ cmd, time: Date.now(), hour });
+  if (mem.responseLog.length > 200) mem.responseLog = mem.responseLog.slice(-200);
+  _aiMemorySave(mem);
+}
+
+function _aiGetTopCmds(n) {
+  const mem = _aiMemory();
+  return Object.entries(mem.freqCmds || {}).sort((a, b) => b[1] - a[1]).slice(0, n);
+}
+
+function _aiGetHourSuggestion() {
+  const mem = _aiMemory();
+  const hour = new Date().getHours();
+  const hKey = 'h' + hour;
+  const hourData = (mem.hourPatterns || {})[hKey];
+  if (!hourData) return null;
+  const sorted = Object.entries(hourData).sort((a, b) => b[1] - a[1]);
+  if (sorted.length > 0 && sorted[0][1] >= 3) return sorted[0][0];
+  return null;
+}
+
+function _aiRecordFeedback(type) {
+  const mem = _aiMemory();
+  if (!mem.feedback) mem.feedback = { positive: 0, negative: 0 };
+  if (type === 'positive') mem.feedback.positive++;
+  else mem.feedback.negative++;
+  _aiMemorySave(mem);
+}
+
 function openAiChat() {
   const overlay = document.getElementById('aiChatOverlay');
   overlay.style.display = 'flex';
@@ -7792,7 +7868,27 @@ function openAiChat() {
   const lastMood = mem.facts && mem.facts['mood_' + new Date(Date.now() - 86400000).toISOString().split('T')[0]];
   if (lastMood === 'bad') greeting += _style === 'casual' ? ' 어제 힘들었지? 오늘은 나을 거야!' : ' 어제 힘드셨죠? 오늘은 더 좋은 하루 될 거예요!';
 
-  _aiChatAddBot(greeting + ' ' + name + '님! 무엇을 도와드릴까요? 😊');
+  const lvl = _aiGetLevel();
+  const iq = _aiCalcIQ();
+  const badge = document.getElementById('aiChatLevelBadge');
+  if (badge) badge.textContent = lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + ' · IQ ' + iq;
+  _aiChatAddBot(greeting + ' ' + name + '님! 무엇을 도와드릴까요? 😊\n' + lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + ' (IQ ' + iq + ')');
+
+  // 학습 기반 시간대 추천
+  const hourSug = _aiGetHourSuggestion();
+  if (hourSug) {
+    setTimeout(() => { _aiChatAddBot('🧠 ' + name + '님이 이 시간에 자주 "' + hourSug + '"을(를) 사용하시더라고요!'); }, 2000);
+  }
+
+  // 레벨업 알림
+  const prevIQ = mem.prevIQ || 70;
+  const prevLv = mem.prevLv || 1;
+  if (lvl.lv > prevLv) {
+    setTimeout(() => { _aiChatAddBot('🎉 축하합니다! Lv.' + prevLv + ' → Lv.' + lvl.lv + ' ' + lvl.title + '로 레벨업!\n' + lvl.desc + ' 능력이 해금됐어요! ' + lvl.emoji); }, 2500);
+  }
+  mem.prevIQ = iq;
+  mem.prevLv = lvl.lv;
+  _aiMemorySave(mem);
 
   // 프로액티브 팁 — 상황에 맞는 안내 자동 표시
   setTimeout(async () => {
@@ -7812,16 +7908,21 @@ function openAiChat() {
     } catch(_) {}
   }, 1500);
 
-  // 스마트 추천: 시간대별 + 학습 기반
+  // 스마트 추천: 학습 기반 + 시간대별
   let suggests = [];
-  const topics = mem.topics || {};
-  const topTopic = Object.entries(topics).sort((a, b) => b[1] - a[1])[0];
-  if (h < 10) suggests = ['오늘 브리핑', '출근 체크', '오늘 일정'];
-  else if (h < 12) suggests = ['오늘 일정', '할 일 확인', '보고서 쓸래'];
-  else if (h < 14) suggests = ['점심 추천', '할 일 확인', '오늘 일정'];
-  else if (h < 17) suggests = ['할 일 확인', '보고서 쓸래', '오늘 브리핑'];
-  else suggests = ['퇴근 처리', '오늘 브리핑', '이번 주 요약'];
-  if (topTopic && !suggests.includes(_topicToCmd(topTopic[0]))) suggests.push(_topicToCmd(topTopic[0]));
+  const topCmds = _aiGetTopCmds(3).map(([c]) => c).filter(c => c.length <= 15);
+  if (topCmds.length >= 2 && (mem.chatCount || 0) > 20) {
+    suggests = topCmds.slice(0, 3);
+  } else {
+    const topics = mem.topics || {};
+    const topTopic = Object.entries(topics).sort((a, b) => b[1] - a[1])[0];
+    if (h < 10) suggests = ['오늘 브리핑', '출근 체크', '오늘 일정'];
+    else if (h < 12) suggests = ['오늘 일정', '할 일 확인', '보고서 쓸래'];
+    else if (h < 14) suggests = ['점심 추천', '할 일 확인', '오늘 일정'];
+    else if (h < 17) suggests = ['할 일 확인', '보고서 쓸래', '오늘 브리핑'];
+    else suggests = ['퇴근 처리', '오늘 브리핑', '이번 주 요약'];
+    if (topTopic && !suggests.includes(_topicToCmd(topTopic[0]))) suggests.push(_topicToCmd(topTopic[0]));
+  }
   suggests = suggests.slice(0, 4);
   suggests.push('도움말');
   _aiChatShowSuggest(suggests);
@@ -7915,6 +8016,13 @@ async function sendAiChat() {
   input.value = '';
   _aiChatHideSuggest();
   _aiChatAddUser(text);
+  _aiRecordCmd(text.toLowerCase().trim());
+  const lastUserMsg = _aiChatHistory.filter(h => h.who === 'user').slice(-2, -1)[0];
+  if (lastUserMsg) {
+    const ft = text.toLowerCase().trim();
+    if (/^(응|어|네|좋아|맞아|고마워|ㅇ|ㅇㅇ|ok|좋아|감사)/i.test(ft)) _aiRecordFeedback('positive');
+    else if (/^(아니|됐어|ㄴㄴ|싫|별로)/i.test(ft)) _aiRecordFeedback('negative');
+  }
   _aiChatThinking();
   document.getElementById('aiChatStatus').textContent = '생각 중...';
 
@@ -9034,6 +9142,31 @@ async function _aiProcessChat(input) {
     else reply += '꾸준히 사용하면 점점 더 똑똑해질 거예요!';
 
     return { reply, suggests: ['기분 통계', '목표 확인', '집중 모드'] };
+  }
+
+  // --- AI 지능 레벨 / 학습 현황 ---
+  if (/지능|레벨|IQ|아이큐|똑똑|학습\s*현황|성장|얼마나\s*알|뭘\s*알/.test(t)) {
+    const iq = _aiCalcIQ();
+    const lvl = _aiGetLevel();
+    const topCmds = _aiGetTopCmds(5);
+    const fb = mem.feedback || { positive: 0, negative: 0 };
+    const daysUsed = (mem.daysUsed || []).length;
+    let reply = '🧠 AI 비서 지능 현황\n━━━━━━━━━━━━━━\n\n';
+    reply += lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + '\n';
+    reply += '📊 IQ: ' + iq + ' / 200\n';
+    reply += '💬 총 대화: ' + (mem.chatCount || 0) + '회\n';
+    reply += '📅 사용일수: ' + daysUsed + '일\n';
+    reply += '📝 학습 데이터: ' + Object.keys(mem.facts || {}).length + '개\n';
+    reply += '👍 만족 응답: ' + fb.positive + '회 / 👎 불만족: ' + fb.negative + '회\n';
+    if (topCmds.length > 0) {
+      reply += '\n🔥 자주 쓰는 명령:\n';
+      reply += topCmds.map(([cmd, cnt], i) => (i+1) + '. ' + cmd + ' (' + cnt + '회)').join('\n');
+    }
+    const nextLv = lvl.lv < 5 ? [85, 100, 120, 150][lvl.lv - 1] : null;
+    if (nextLv) reply += '\n\n🎯 다음 레벨(Lv.' + (lvl.lv+1) + ')까지 IQ ' + (nextLv - iq) + ' 남음!';
+    else reply += '\n\n👑 최고 레벨 달성! 전설의 비서!';
+    reply += '\n\n💡 더 많이 대화할수록 IQ가 올라가요!';
+    return { reply, suggests: ['업무 분석', '기분 통계', '대화 통계'] };
   }
 
   // --- 말투 변경 ---

@@ -413,7 +413,7 @@
     <div style="display:flex; align-items:center; gap:10px;">
       <div style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; font-size:18px;">&#129302;</div>
       <div>
-        <p style="font-size:14px; font-weight:700;">AI 업무비서</p>
+        <p style="font-size:14px; font-weight:700;">AI 업무비서 <span id="aiChatLevelBadge" style="font-size:11px; font-weight:500; padding:2px 7px; border-radius:10px; background:rgba(124,58,237,.35); margin-left:4px;"></span></p>
         <p id="aiChatStatus" style="font-size:11px; color:#22c55e;">온라인</p>
       </div>
     </div>
@@ -513,7 +513,7 @@
 @keyframes vrBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }
 @keyframes vrCardIn { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
 </style>
-<script src="/js/app.js?v=20260613s"></script>
+<script src="/js/app.js?v=20260613t"></script>
 <script>
 window.onerror = function(msg, url, line) {
   document.title = 'ERR:' + line + ':' + msg;
