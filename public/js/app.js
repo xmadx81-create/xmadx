@@ -8066,27 +8066,38 @@ function openAiChat() {
   const mem = _aiMemory();
   const h = new Date().getHours();
   const _style = (mem.facts && mem.facts.chatStyle) || 'formal';
+  const pers = _aiPersonality();
+  const day = new Date().getDay();
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
   let greeting;
-  if (_style === 'casual') {
+  if (pers.level >= 4) {
+    greeting = h < 9 ? '좋은 아침!' : h < 12 ? '오전도 파이팅!' : h < 14 ? '점심은 챙겼죠?' : h < 17 ? '오후도 달려요!' : h < 19 ? '마무리 시간!' : '늦은 시간까지 고생!';
+  } else if (_style === 'casual') {
     greeting = h < 9 ? '좋은 아침~' : h < 12 ? '오전 파이팅~' : h < 14 ? '점심 먹었어?' : h < 18 ? '오후도 힘내~' : '수고했어~';
   } else if (_style === 'cute') {
     greeting = h < 9 ? '좋은 아침이에용~' : h < 12 ? '오전도 힘내세용~' : h < 14 ? '점심 맛있게 먹었어용?' : h < 18 ? '오후도 파이팅이에용~' : '수고 많으셨어용~';
   } else {
     greeting = h < 9 ? '좋은 아침이에요' : h < 12 ? '오전도 힘내세요' : h < 14 ? '점심은 드셨나요?' : h < 18 ? '오후도 파이팅' : '수고 많으셨어요';
   }
-  if (mem.chatCount > 30) greeting += _style === 'casual' ? ', 역시 단골!' : ', 역시 단골이시네요!';
-  else if (mem.chatCount > 10) greeting += _style === 'casual' ? ', 자주 오네~' : ', 자주 찾아주시네요!';
-  else if (mem.chatCount > 0) greeting += _style === 'casual' ? ', 또 왔네!' : ', 다시 만나서 반가워요!';
-  // 기분 기반 인사
+
+  if (mem.chatCount > 30) greeting += pers.level >= 3 ? ' 벌써 단골이네요!' : ', 역시 단골이시네요!';
+  else if (mem.chatCount > 10) greeting += pers.level >= 3 ? ' 자주 만나니 좋아요!' : ', 자주 찾아주시네요!';
+  else if (mem.chatCount > 0) greeting += ', 다시 만나서 반가워요!';
+
   const lastMood = mem.facts && mem.facts['mood_' + new Date(Date.now() - 86400000).toISOString().split('T')[0]];
-  if (lastMood === 'bad') greeting += _style === 'casual' ? ' 어제 힘들었지? 오늘은 나을 거야!' : ' 어제 힘드셨죠? 오늘은 더 좋은 하루 될 거예요!';
+  if (lastMood === 'bad') greeting += ' 어제 힘드셨죠? 오늘은 더 좋은 하루 될 거예요!';
+
+  const sitComment = _aiSituationalComment();
+  if (sitComment) greeting += '\n' + sitComment;
 
   const lvl = _aiGetLevel();
   const iq = _aiCalcIQ();
   const badge = document.getElementById('aiChatLevelBadge');
   if (badge) badge.textContent = lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + ' · IQ ' + iq;
-  const expInfo = lvl.nextExp ? ' (EXP ' + lvl.exp + '/' + lvl.nextExp + ')' : ' (EXP MAX)';
-  _aiChatAddBot(greeting + ' ' + name + '님! 무엇을 도와드릴까요? 😊\n' + lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + expInfo);
+  const expBar = '█'.repeat(Math.floor(lvl.progress / 20)) + '░'.repeat(5 - Math.floor(lvl.progress / 20));
+  const expInfo = lvl.nextExp ? ' [' + expBar + '] ' + lvl.exp + '/' + lvl.nextExp : ' [█████] MAX';
+  _aiChatAddBot(greeting + ' ' + name + '님!\n' + lvl.emoji + ' Lv.' + lvl.lv + ' ' + lvl.title + expInfo);
 
   // 학습 기반 시간대 추천
   const hourSug = _aiGetHourSuggestion();
@@ -8387,6 +8398,7 @@ async function sendAiChat() {
   }
   const _detections = _aiAutoDetectPersonal(text);
   const _emotion = _aiDetectEmotion(text);
+  _aiMirrorStyle(text);
   _aiChatThinking();
   document.getElementById('aiChatStatus').textContent = '생각 중... ' + _aiMoodEmoji();
 
@@ -8408,8 +8420,11 @@ async function sendAiChat() {
   if (!response) {
     response = await _aiProcessChat(text, _detections);
   }
-  // [4] 감정 기반 응답 조정
-  if (response && response.reply) response.reply = _aiMoodAdjust(response.reply);
+  // [4] 감정 기반 응답 조정 + [11] 인격 진화
+  if (response && response.reply) {
+    response.reply = _aiMoodAdjust(response.reply);
+    response.reply = _aiAddPersonality(response.reply);
+  }
 
   _aiChatRemoveThinking();
   document.getElementById('aiChatStatus').textContent = _aiChatVoiceMode ? '🎤 음성 대화 중 ' + _aiMoodEmoji() : _aiMoodEmoji() + ' 온라인';
@@ -11223,6 +11238,161 @@ async function _aiNextAction() {
 
     return { reply: '👉 지금 이거 하세요!\n━━━━━━━━━━━━━━\n\n' + icon + ' ' + action, suggests };
   } catch(_) { return { reply: '추천을 생성하지 못했어요.', suggests: [] }; }
+}
+
+// ─── [11] AI 인격 진화 엔진 ───
+
+function _aiPersonality() {
+  const lvl = _aiGetLevel();
+  const lv = lvl.lv;
+  return {
+    level: lv,
+    suffix: lv >= 4 ? ['요 😎', '요! ✨', '~ 💡', '! 🔥'][Math.floor(Math.random() * 4)] :
+            lv >= 3 ? ['요!', '요 😊', '죠!', '요~'][Math.floor(Math.random() * 4)] :
+            lv >= 2 ? ['요!', '요 😊', '요!', '요!'][Math.floor(Math.random() * 4)] :
+            ['요...!', '요! 😅', '요~', '요!'][Math.floor(Math.random() * 4)],
+    prefix: lv >= 5 ? '' : lv >= 4 ? '' : lv >= 3 ? '' : lv >= 2 ? '' : '혹시... ',
+    filler: lv >= 5 ? ['참고로,', '근데요,', '아 그리고!', '꿀팁인데,'][Math.floor(Math.random() * 4)] :
+            lv >= 4 ? ['참고로', '덧붙이면', '팁 하나!'][Math.floor(Math.random() * 3)] :
+            lv >= 3 ? ['참고로', '덧붙이면'][Math.floor(Math.random() * 2)] :
+            '',
+  };
+}
+
+let _aiTMICounter = 0;
+const _aiTMIs = {
+  general: [
+    '근데 알아요? 사람은 하루에 평균 6만 가지 생각을 한대요! 🧠',
+    '재밌는 사실: 꿀은 절대 상하지 않아요. 3000년 된 꿀도 먹을 수 있대요! 🍯',
+    'TMI인데, 옥토퍼스(문어)는 심장이 3개래요! 🐙',
+    '알고 계셨어요? 바나나는 사실 열매가 아니라 베리(berry)래요! 🍌',
+    '재밌는 사실: 하품은 전염되는데, 강아지한테도 전염된대요! 🐕',
+    'TMI! 지구에서 가장 긴 지명은 85글자래요. 태국에 있대요 🌏',
+    '알고 계셨어요? 인간의 뼈는 콘크리트보다 4배 강해요! 💪',
+    '재밌는 사실: 우주에서는 울 수 없대요. 눈물이 떠다녀서! 🚀',
+    'TMI! 돌고래는 한쪽 눈만 감고 자요. 뇌의 반만 쉬는 거래요! 🐬',
+    '알고 계셨어요? 웃음은 칼로리를 소비해요! 15분 웃으면 40칼로리! 😂',
+  ],
+  work: [
+    '직장 꿀팁: 포모도로 기법 — 25분 집중 + 5분 휴식이 효율적이래요! 🍅',
+    '알고 계셨어요? 멀티태스킹하면 생산성이 40% 떨어진대요! 한 가지씩 해요! 🎯',
+    '직장 생존팁: 메일 제목에 마감일을 넣으면 회신율이 2배래요! 📧',
+    '재밌는 통계: 월요일 오전이 1주일 중 가장 생산성 낮은 시간이래요 😴',
+    '꿀팁: 어려운 일은 오전에, 반복 업무는 오후에 하면 효율적! ⚡',
+    '직장 TMI: 회의 시간을 25분이나 50분으로 잡으면 5분 여유가 생겨요! ⏰',
+  ],
+  season: {
+    spring: ['봄이네요! 벚꽃 구경 가셨어요? 🌸', '봄바람이 좋은 계절! 점심에 산책 어때요? 🌿'],
+    summer: ['더운 날씨에 수분 보충 잘 하세요! 💧', '에어컨 너무 세면 감기 조심! 🌡️'],
+    fall: ['가을이라 하늘이 예쁘죠? 🍂', '독서하기 좋은 계절이에요! 📚'],
+    winter: ['따뜻하게 입으셨어요? 🧣', '따뜻한 음료 한 잔 추천! ☕'],
+  }
+};
+
+function _aiGetSeason() {
+  const m = new Date().getMonth() + 1;
+  if (m >= 3 && m <= 5) return 'spring';
+  if (m >= 6 && m <= 8) return 'summer';
+  if (m >= 9 && m <= 11) return 'fall';
+  return 'winter';
+}
+
+function _aiSituationalComment() {
+  const now = new Date();
+  const h = now.getHours();
+  const day = now.getDay();
+  const date = now.getDate();
+  const month = now.getMonth() + 1;
+
+  if (day === 1 && h < 12) {
+    const monMsgs = ['월요일이네요... 이겨냅시다! 💪', '월요병은 커피로! ☕ 화이팅!', '한 주의 시작! 가볍게 워밍업부터! 🏃'];
+    return monMsgs[Math.floor(Math.random() * monMsgs.length)];
+  }
+  if (day === 3) return '수요일! 반환점 돌았어요! 🎯';
+  if (day === 5 && h >= 14) {
+    const friMsgs = ['불금이다!! 🎉', '금요일 오후~ 주말이 코앞! 🌟', '조금만 더 힘내면 주말! 🎊'];
+    return friMsgs[Math.floor(Math.random() * friMsgs.length)];
+  }
+  if (day === 0 || day === 6) return '주말인데 일하시는 거예요? 대단해요! 💪';
+
+  if (h >= 21) return '이 시간에도 일하시다니... 건강 챙기세요! 🌙';
+  if (h >= 19) return '야근이시네요... 무리하지 마세요! 💪';
+  if (h === 11 && now.getMinutes() >= 30) return '곧 점심시간! 뭐 먹을지 고민되시죠? 🍽️';
+  if (h === 14) return '점심 후 졸린 시간! 커피 한 잔 어때요? ☕';
+
+  if (date === 1) return '새로운 달의 시작! 이번 달도 화이팅! 📅';
+  if (date >= 28) return '월말이네요! 마무리 잘 하세요! 📋';
+
+  return null;
+}
+
+function _aiTMI() {
+  _aiTMICounter++;
+  if (_aiTMICounter % 4 !== 0) return null;
+
+  const prof = _aiPersonalProfile();
+  const season = _aiGetSeason();
+  const pool = [];
+
+  pool.push(..._aiTMIs.general);
+  pool.push(..._aiTMIs.work);
+  if (_aiTMIs.season[season]) pool.push(..._aiTMIs.season[season]);
+
+  if ((prof.hobbies || []).some(h => /운동|헬스|달리기/.test(h))) pool.push('운동 좋아하시잖아요! 점심에 가볍게 스트레칭이라도 해보세요! 🏋️');
+  if ((prof.hobbies || []).some(h => /독서|책/.test(h))) pool.push('책 좋아하시잖아요! 요즘 뭐 읽으세요? 📖');
+  if ((prof.hobbies || []).some(h => /게임/.test(h))) pool.push('게임 좋아하시잖아요! 퇴근 후 한 판 각이네요! 🎮');
+  if ((prof.likes || []).some(l => /커피/.test(l))) pool.push('커피 좋아하시잖아요! 오늘 몇 잔째예요? ☕');
+
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+let _aiUserStyleCache = null;
+
+function _aiMirrorStyle(input) {
+  if (!_aiUserStyleCache) {
+    _aiUserStyleCache = { kkCount: 0, emojiCount: 0, banmalCount: 0, jonmalCount: 0, totalMsg: 0 };
+    try {
+      const saved = localStorage.getItem('aiMirror_' + (currentUser ? currentUser.id : 'x'));
+      if (saved) _aiUserStyleCache = JSON.parse(saved);
+    } catch(_) {}
+  }
+  const c = _aiUserStyleCache;
+  c.totalMsg++;
+  if (/ㅋ{2,}|ㅎ{2,}/.test(input)) c.kkCount++;
+  if (/[😊😄🎉❤️💕🔥😂🤣😆👍💪✨🎯😎]/.test(input)) c.emojiCount++;
+  if (/야$|어$|지$|거든$|잖아$|냐$|해$|봐$|줘$/.test(input.trim())) c.banmalCount++;
+  if (/요$|니다$|세요$|까요$/.test(input.trim())) c.jonmalCount++;
+
+  try { localStorage.setItem('aiMirror_' + (currentUser ? currentUser.id : 'x'), JSON.stringify(c)); } catch(_) {}
+
+  return {
+    useKK: c.totalMsg > 5 && c.kkCount / c.totalMsg > 0.3,
+    useEmoji: c.totalMsg > 5 && c.emojiCount / c.totalMsg > 0.3,
+    useBanmal: c.totalMsg > 10 && c.banmalCount > c.jonmalCount * 2,
+  };
+}
+
+function _aiAddPersonality(reply) {
+  const pers = _aiPersonality();
+  const tmi = _aiTMI();
+  const sitComment = _aiSituationalComment();
+  const mirror = _aiUserStyleCache || { useKK: false, useEmoji: false, useBanmal: false };
+
+  let result = reply;
+
+  if (tmi && result.length < 200) {
+    result += '\n\n💡 ' + tmi;
+  }
+
+  if (pers.level >= 4 && Math.random() < 0.2 && result.length < 150) {
+    result += '\n\n' + pers.filler + ' ' + (sitComment || '오늘도 파이팅이에요!');
+  }
+
+  if (mirror.useKK && Math.random() < 0.3 && !/ㅋ/.test(result)) {
+    result = result.replace(/(!|요!)/, '$1 ㅋㅋ');
+  }
+
+  return result;
 }
 
 // ─── [10] 심연의 눈 — Deep Insight Engine ───
