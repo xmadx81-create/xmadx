@@ -3045,7 +3045,7 @@ app.get('/api/notifications', authMiddleware, async (req, res) => {
   const boardCommentResult = await query(`
     SELECT bc.id, bc.content, bc.created_at, bc.author_name, bp.title as post_title
     FROM board_comments bc JOIN board_posts bp ON bc.post_id = bp.id
-    WHERE bp.author_id = $1 AND bc.user_id != $1
+    WHERE bp.author_id = $1 AND bc.author_id != $1
     ORDER BY bc.created_at DESC LIMIT 10
   `, [userId]);
   boardCommentResult.rows.forEach(c => {
