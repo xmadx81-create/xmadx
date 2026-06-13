@@ -6275,10 +6275,26 @@ function startVoiceReport() {
   };
 
   recog.start();
+
+  // 비서 멘트: 녹음 중 격려 메시지 변경
+  const subtitleEl = document.getElementById('vrSubtitle');
+  const hints = [
+    '말씀하신 내용을 AI가 실시간으로 분석합니다',
+    '잘 듣고 있어요, 천천히 말씀하세요',
+    '누가, 언제, 어디서 등을 말하면 자동 분류돼요',
+    '다 말씀하시면 완료 버튼을 눌러주세요'
+  ];
+  let hintIdx = 0;
+  window._vrHintTimer = setInterval(() => {
+    if (!_vrRecog) { clearInterval(window._vrHintTimer); return; }
+    hintIdx = (hintIdx + 1) % hints.length;
+    if (subtitleEl) { subtitleEl.style.opacity = '0'; setTimeout(() => { subtitleEl.textContent = hints[hintIdx]; subtitleEl.style.opacity = '1'; }, 300); }
+  }, 5000);
 }
 
 function cancelVoiceReport() {
   if (_vrRecog) { const r = _vrRecog; _vrRecog = null; r.stop(); }
+  if (window._vrHintTimer) { clearInterval(window._vrHintTimer); window._vrHintTimer = null; }
   _vrStopTimer();
   _vrStopWaveform();
   if (window._vrStream) { window._vrStream.getTracks().forEach(t => t.stop()); window._vrStream = null; }
@@ -6289,6 +6305,7 @@ function cancelVoiceReport() {
 
 function finishVoiceReport() {
   if (_vrRecog) { const r = _vrRecog; _vrRecog = null; r.stop(); }
+  if (window._vrHintTimer) { clearInterval(window._vrHintTimer); window._vrHintTimer = null; }
   _vrStopTimer();
   _vrStopWaveform();
   if (window._vrStream) { window._vrStream.getTracks().forEach(t => t.stop()); window._vrStream = null; }
@@ -6303,8 +6320,14 @@ function finishVoiceReport() {
   if (orbCore) orbCore.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
   const orbGlow = document.getElementById('vrOrbGlow');
   if (orbGlow) orbGlow.style.animation = 'none';
-  document.getElementById('vrTitle').textContent = '인식 완료';
-  document.getElementById('vrSubtitle').textContent = 'AI 다듬기로 텍스트를 정제할 수 있습니다';
+
+  // 비서 멘트: 완료 후 피드백
+  const wordCount = text.split(/\s+/).length;
+  let feedback = '깔끔하게 정리해드릴게요!';
+  if (wordCount > 30) feedback = '내용이 풍부하네요! 꼼꼼하게 분석해드릴게요.';
+  else if (wordCount < 5) feedback = '짧은 내용이지만 잘 정리해드릴게요.';
+  document.getElementById('vrTitle').textContent = '인식 완료 ✓';
+  document.getElementById('vrSubtitle').textContent = feedback;
   document.getElementById('vrText').innerHTML = '<span style="color:#e2e8f0;">' + text.replace(/</g,'&lt;') + '</span>';
   const cursor = document.getElementById('vrCursor');
   if (cursor) cursor.style.display = 'none';
@@ -6326,7 +6349,7 @@ function refineVoiceText() {
   const statusEl = document.getElementById('vrAnalyzeStatus');
   analyzeEl.style.display = 'block';
 
-  const steps = ['텍스트 정제 중...', '구어체 변환 중...', '5W1H 분석 중...', '결과 생성 중...'];
+  const steps = ['구어체를 문어체로 다듬고 있어요...', '불필요한 표현을 정리하고 있어요...', '육하원칙으로 분류하고 있어요...', '보고서에 맞게 정리 중이에요...'];
   let stepIdx = 0;
   const stepTimer = setInterval(() => {
     stepIdx++;
@@ -6841,23 +6864,63 @@ function vgListen(timeout) {
   });
 }
 
+function _vgTimeGreeting() {
+  const h = new Date().getHours();
+  if (h < 9) return { greet: '좋은 아침이에요', period: '아침', emoji: '🌅', comment: '일찍 시작하시는군요! 부지런하세요.' };
+  if (h < 12) return { greet: '좋은 오전이에요', period: '오전', emoji: '☀️', comment: '오늘도 활기차게 시작해볼까요?' };
+  if (h < 14) return { greet: '점심시간이네요', period: '점심', emoji: '🍚', comment: '식사는 하셨나요?' };
+  if (h < 18) return { greet: '좋은 오후에요', period: '오후', emoji: '🌤️', comment: '오후도 힘내봐요!' };
+  return { greet: '늦은 시간까지 수고 많으세요', period: '저녁', emoji: '🌙', comment: '무리하지 마시고 마무리해요.' };
+}
+
+function _vgDayContext() {
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const now = new Date();
+  const d = days[now.getDay()];
+  if (d === '월') return '월요일, 새로운 한 주가 시작됐어요!';
+  if (d === '금') return '금요일이에요! 이번 주도 거의 다 왔어요.';
+  if (d === '수') return '수요일, 한 주의 반환점이에요.';
+  return d + '요일이에요.';
+}
+
 async function vgConversation() {
   if (!_vgActive) return;
   const name = currentUser.name || '사용자';
+  const tg = _vgTimeGreeting();
+  const dayCtx = _vgDayContext();
 
-  vgAddBubble('안녕하세요 ' + name + '님! 출근하신걸 축하드려요! 🎉', 'bot');
-  await vgSpeak('안녕하세요 ' + name + '님! 출근하신걸 축하드려요!');
+  // 인사
+  vgAddBubble(tg.greet + ', ' + name + '님! ' + tg.emoji, 'bot');
+  await vgSpeak(tg.greet + ', ' + name + '님!');
   if (!_vgActive) return;
 
+  await new Promise(r => setTimeout(r, 600));
+  vgAddBubble(dayCtx + ' ' + tg.comment, 'bot');
+  await vgSpeak(dayCtx + ' ' + tg.comment);
+  if (!_vgActive) return;
+
+  // 브리핑: 오늘 등록된 일정 확인
   await new Promise(r => setTimeout(r, 400));
-  vgAddBubble('오늘 하루도 힘차게 시작해봐요! 어떤 일들이 기다리고 있을까요? 😊', 'bot');
-  await vgSpeak('오늘 하루도 힘차게 시작해봐요! 어떤 일들이 기다리고 있을까요?');
-  if (!_vgActive) return;
+  let briefing = '';
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const events = await api('/api/calendar-events?date=' + today);
+    if (events && events.length > 0) {
+      briefing = '오늘 등록된 일정이 ' + events.length + '건 있어요.';
+      const first3 = events.slice(0, 3).map(e => (e.event_time ? e.event_time.substring(0,5) + ' ' : '') + e.title).join(', ');
+      briefing += ' ' + first3;
+      if (events.length > 3) briefing += ' 외 ' + (events.length - 3) + '건';
+      vgAddBubble('📋 ' + briefing, 'bot');
+      await vgSpeak(briefing);
+      if (!_vgActive) return;
+    }
+  } catch(_) {}
 
+  // 출근 체크
   await new Promise(r => setTimeout(r, 300));
-  vgAddBubble('오늘은 내근이세요? 외근이세요? 🏢', 'bot');
+  vgAddBubble('출근 체크 도와드릴게요. 오늘은 어떤 근무이세요?', 'bot');
   vgShowQuickReplies(['내근', '외근', '출장']);
-  await vgSpeak('오늘은 내근이세요? 외근이세요?');
+  await vgSpeak('출근 체크 도와드릴게요. 오늘은 어떤 근무이세요?');
   if (!_vgActive) return;
 
   const wtResp = await vgListen(10000);
@@ -6875,38 +6938,52 @@ async function vgConversation() {
     _vgDidCheckin = true;
   } catch(e) {}
 
-  await new Promise(r => setTimeout(r, 300));
-  const emoji = workType === '외근' ? '🚗' : workType === '출장' ? '✈️' : '🏢';
-  vgAddBubble(workType + '이시군요! ' + emoji + ' 출근 체크도 해드렸어요! 오늘 어떤 업무 계획이 있으세요? 자유롭게 말씀해주세요.', 'bot');
-  await vgSpeak(workType + '이시군요! 출근 체크도 해드렸어요! 오늘 어떤 업무 계획이 있으세요? 자유롭게 말씀해주세요.');
+  await new Promise(r => setTimeout(r, 400));
+  const wtEmoji = workType === '외근' ? '🚗' : workType === '출장' ? '✈️' : '🏢';
+  const wtComment = workType === '외근' ? '이동 중 안전하게 다녀오세요!' : workType === '출장' ? '출장길 편안하시길 바라요!' : '사무실에서 집중하기 좋은 날이에요!';
+  vgAddBubble(wtEmoji + ' ' + workType + ' 체크 완료! ' + wtComment, 'bot');
+  await vgSpeak(workType + ' 체크 완료! ' + wtComment);
+  if (!_vgActive) return;
+
+  // 업무 계획 수집
+  await new Promise(r => setTimeout(r, 400));
+  vgAddBubble('오늘 계획하신 업무가 있으시면 말씀해주세요. 제가 정리해드릴게요. 🗂️', 'bot');
+  document.getElementById('vgStatusText').textContent = '🎤 듣고 있습니다...';
+  await vgSpeak('오늘 계획하신 업무가 있으시면 말씀해주세요. 제가 정리해드릴게요.');
   if (!_vgActive) return;
 
   const planResp = await vgListen(20000);
   if (!_vgActive) return;
+  document.getElementById('vgStatusText').textContent = '';
 
   if (planResp) {
     vgAddBubble(planResp, 'user');
-    _vgSchedules = vgParseSchedules(planResp);
 
     await new Promise(r => setTimeout(r, 300));
-    vgAddBubble('네! 또 다른 일정이 있으세요?', 'bot');
-    vgShowQuickReplies(['네, 더 있어요', '아니요, 끝이에요']);
-    await vgSpeak('네! 또 다른 일정이 있으세요?');
+    vgAddBubble('네, 잘 들었어요. 정리하고 있어요... ✨', 'bot');
+    await new Promise(r => setTimeout(r, 800));
+    _vgSchedules = vgParseSchedules(planResp);
+
+    vgAddBubble('혹시 더 추가할 일정이 있으세요?', 'bot');
+    vgShowQuickReplies(['네, 더 있어요', '이게 다예요']);
+    await vgSpeak('혹시 더 추가할 일정이 있으세요?');
     if (!_vgActive) return;
 
     const moreResp = await vgListen(8000);
     if (!_vgActive) return;
     vgHideQuickReplies();
-    vgAddBubble(moreResp || '아니요', 'user');
+    vgAddBubble(moreResp || '이게 다예요', 'user');
 
     const wantMore = moreResp && (moreResp.includes('네') || moreResp.includes('더') || moreResp.includes('있') || moreResp.includes('응'));
     if (wantMore) {
-      vgAddBubble('네, 말씀해주세요! 🎤', 'bot');
+      vgAddBubble('네, 말씀해주세요! 계속 듣고 있을게요 🎤', 'bot');
+      document.getElementById('vgStatusText').textContent = '🎤 듣고 있습니다...';
       await vgSpeak('네, 말씀해주세요!');
       if (!_vgActive) return;
 
       const more2 = await vgListen(20000);
       if (!_vgActive) return;
+      document.getElementById('vgStatusText').textContent = '';
       if (more2) {
         vgAddBubble(more2, 'user');
         _vgSchedules = _vgSchedules.concat(vgParseSchedules(more2));
@@ -6915,14 +6992,18 @@ async function vgConversation() {
   }
 
   if (_vgSchedules.length > 0) {
-    await new Promise(r => setTimeout(r, 300));
-    vgAddBubble(_vgSchedules.length + '개의 일정을 정리했어요! 확인하고 저장해주세요 📋', 'bot');
-    await vgSpeak(_vgSchedules.length + '개의 일정을 정리했어요! 확인하고 저장해주세요');
+    await new Promise(r => setTimeout(r, 400));
+    const cnt = _vgSchedules.length;
+    const praise = cnt >= 4 ? '알찬 하루가 되겠네요!' : cnt >= 2 ? '잘 정리됐어요!' : '깔끔하게 정리했어요!';
+    vgAddBubble('📋 ' + cnt + '개 일정 정리 완료! ' + praise + ' 확인하고 수정할 부분이 있으면 고쳐주세요.', 'bot');
+    await vgSpeak(cnt + '개 일정 정리 완료! ' + praise);
     vgShowSchedulePreview();
   } else {
     await new Promise(r => setTimeout(r, 300));
-    vgAddBubble('오늘도 좋은 하루 되세요! 화이팅! 💪', 'bot');
-    await vgSpeak('오늘도 좋은 하루 되세요! 화이팅!');
+    const h = new Date().getHours();
+    const closing = h >= 18 ? '오늘도 수고 많으셨어요. 푹 쉬세요! 🌙' : '필요하면 언제든 불러주세요. 오늘도 화이팅! 💪';
+    vgAddBubble(closing, 'bot');
+    await vgSpeak(closing);
     setTimeout(() => closeVoiceGuide(), 2500);
   }
 }
@@ -7021,9 +7102,15 @@ async function vgSaveSchedules() {
     if (res) saved++;
   }
   toast(saved + '개 일정이 저장되었습니다!');
-  vgAddBubble(saved + '개 일정이 저장되었습니다! 오늘도 화이팅! 🔥', 'bot');
-  await vgSpeak(saved + '개 일정이 저장되었습니다! 오늘도 화이팅!');
-  setTimeout(() => closeVoiceGuide(), 1500);
+  const h = new Date().getHours();
+  const farewell = h >= 18
+    ? '오늘 하루 마무리 잘 하세요! 수고 많으셨어요 🌙'
+    : saved >= 3
+    ? saved + '개 일정 모두 저장했어요! 알찬 하루 되시길 바랍니다 ✨'
+    : saved + '개 일정 저장 완료! 필요하면 언제든 불러주세요 💪';
+  vgAddBubble(farewell, 'bot');
+  await vgSpeak(farewell.replace(/[✨💪🌙]/g, ''));
+  setTimeout(() => closeVoiceGuide(), 2000);
 }
 
 // ─── 출근 체크 팝업 (매일 10시까지, 전원 출근시 종료) ───
