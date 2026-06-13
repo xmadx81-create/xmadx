@@ -9042,7 +9042,10 @@ async function _aiProcessChat(input, _detections) {
     return { reply: '업무일지 작성 화면을 열게요!', action: () => { closeAiChat(); openNewReport(); } };
   }
   // --- 보고서/일지 작성 (넓은 패턴) ---
-  if (/보고서|일지|업무\s*일지|쓸래/.test(t) && !/확인|보여|몇|팀|라고\??|이게|뭐야|뭔|아닌|맞아|싸가지|별로|아니거든|쓰레기|이상|왜 이|이거 뭐/.test(t)) {
+  const _reportNeg = /확인|보여|몇|팀|라고\??|이게|뭐야|뭔|아닌|맞아|싸가지|별로|아니거든|쓰레기|이상|왜\s*이|이거\s*뭐|어디|언제|했나|봤|안\s*됐|못\s*했|삭제|수정\s*되|고쳐|잘못/;
+  const _reportPos = /쓸래|쓸게|작성|마법사|기록|써야|쓸까|작성할|쓰고/;
+  if ((/보고서|업무\s*일지/.test(t) && _reportPos.test(t) && !_reportNeg.test(t)) ||
+      (/^(보고서|일지|업무일지|쓸래)$/.test(t))) {
     return { reply: '어떤 방식으로 작성하시겠어요?', suggests: ['보고서 마법사', '음성으로 기록', '직접 작성'] };
   }
 
@@ -9220,9 +9223,9 @@ async function _aiProcessChat(input, _detections) {
     return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n🧠 추천 — "추천해줘", "우선순위", "보고서 뭐 쓸까", "다음에 뭐 할까"\n👁️ 심연 — "나를 분석해", "번아웃 체크", "레벨 확인"\n🗣️ 은어 — 방가방가, 하이루, ㄱㅅ, ㅇㅇ, 머해 등 인터넷 은어 이해\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
   }
 
-  // --- 불만/항의 감지 ---
-  if (/이게\s*(뭐|뭔|일지|보고서)|뭐야\s*이게|싸가지|짜증나|별로야|쓰레기|이상해|엉뚱|다시\s*해|왜\s*이래|제대로|이거\s*맞아\??|이게\s*맞아\??|이게\s*다야\??/.test(t)) {
-    return { reply: '😣 죄송해요! 제가 잘못 처리한 것 같아요.\n\n어떤 부분이 문제인지 알려주시면 바로 고쳐볼게요!\n다시 해드릴까요?', suggests: ['다시 해줘', '취소', '도움말'] };
+  // --- 불만/항의 감지 (30종) ---
+  if (/이게\s*(뭐|뭔|일지|보고서|답|전부)|뭐야\s*이게|싸가지|짜증나|짜증|별로야|별로|쓰레기|이상해|엉뚱|다시\s*해|왜\s*이래|제대로|이거\s*맞아|이게\s*맞아|이게\s*다야|말도\s*안\s*돼|잘못|엉망|개판|못\s*알아|이해\s*못|답답|느려|바보|멍청|한심|황당|어이없|말이\s*돼\??|실망|뭐하는\s*거|쓸모|소용\s*없/.test(t)) {
+    return { reply: '앗, 제가 잘못 이해한 것 같아요 😅\n\n어떤 부분이 잘못됐는지 알려주시면 바로 고쳐볼게요!\n다시 해드릴까요?', suggests: ['다시 해줘', '취소', '도움말'] };
   }
 
   // --- 감정 오판 복구 ---
@@ -9234,7 +9237,7 @@ async function _aiProcessChat(input, _detections) {
     }
     _aiMoodScore = 60;
     _aiCurrentMood = 'neutral';
-    return { reply: '아, 제가 잘못 읽었네요! 죄송해요 😅\n\n' + name + '님 감정을 섣불리 판단했어요.\n다시 알려주시면 더 잘 이해해볼게요!\n\n지금 기분이 어떠세요?', suggests: ['기분 좋아', '보통이야', '좀 힘들어'], learn: { lastMood: null } };
+    return { reply: '아, 제가 잘못 이해한 것 같아요! 😅\n\n' + name + '님 마음을 섣불리 판단했네요.\n다시 알려주시면 더 잘 이해해볼게요!\n\n지금 기분이 어떠세요?', suggests: ['기분 좋아', '보통이야', '좀 힘들어'], learn: { lastMood: null } };
   }
 
   // --- 감사/칭찬 ---
@@ -10632,11 +10635,16 @@ function _aiStartWizard(type) {
     return { reply: resume, suggests: ['이어하기', '처음부터', '취소'] };
   }
   if (type === 'report') {
+    const uid = currentUser ? currentUser.id : 'x';
+    const wizardUsed = localStorage.getItem('aiWizardUsed_' + uid);
+    const exampleMsg = !wizardUsed ? '\n\n💡 완성 예시:\n┌─────────────────┐\n│ 📌 고객사 미팅 진행      │\n│ 💡 화상회의 2시간, 계약조건 협의  │\n│ 📊 합의 완료, 서명 예정    │\n│ 🎯 다음: 계약서 최종본 검토   │\n└─────────────────┘' : '';
+    if (!wizardUsed) localStorage.setItem('aiWizardUsed_' + uid, '1');
     _aiWizardState = {
       type: 'report',
       step: 0,
       data: {},
       _lastActivity: Date.now(),
+      _example: exampleMsg,
       steps: [
         { key: 'what_task', q: '📝 어떤 업무를 하셨나요?\n(예: "고객사 미팅 진행", "코드 리뷰")' },
         { key: 'how_done', q: '💡 어떻게 진행하셨나요?\n(예: "화상회의로 2시간 진행", "PR 5건 검토")' },
@@ -10644,7 +10652,7 @@ function _aiStartWizard(type) {
         { key: 'next_plan', q: '🎯 다음 계획이 있으시면 말씀해주세요!\n(없으면 "없어" 또는 "끝")' },
       ]
     };
-    return { reply: '📝 업무일지 마법사를 시작할게요!\n한 단계씩 질문드릴게요. 편하게 답해주세요!\n\n' + _aiWizardState.steps[0].q, suggests: [] };
+    return { reply: '📝 업무일지 마법사를 시작할게요!\n━━━━━━━━━━━━━━\n📌 마법사 모드 (1/' + _aiWizardState.steps.length + '단계)\n💬 각 질문에 답하면 자동으로 일지가 완성돼요\n🚪 "취소"라고 하면 언제든 중단 가능' + (_aiWizardState._example || '') + '\n\n' + _aiWizardState.steps[0].q, suggests: ['취소'] };
   }
   if (type === 'event') {
     _aiWizardState = {
@@ -10658,7 +10666,7 @@ function _aiStartWizard(type) {
         { key: 'time', q: '⏰ 몇 시인가요?\n(예: "오후 2시", "3시 30분")' },
       ]
     };
-    return { reply: '📅 일정 등록 마법사를 시작할게요!\n\n' + _aiWizardState.steps[0].q, suggests: [] };
+    return { reply: '📅 일정 등록 마법사를 시작할게요!\n━━━━━━━━━━━━━━\n📌 마법사 모드 (1/' + _aiWizardState.steps.length + '단계) | "취소"로 중단\n\n' + _aiWizardState.steps[0].q, suggests: ['취소'] };
   }
   if (type === 'todo') {
     _aiWizardState = {
@@ -10671,7 +10679,7 @@ function _aiStartWizard(type) {
         { key: 'due', q: '📅 기한이 있나요?\n(예: "내일까지", "금요일까지", "없어")' },
       ]
     };
-    return { reply: '✅ 할 일 등록 마법사를 시작할게요!\n\n' + _aiWizardState.steps[0].q, suggests: [] };
+    return { reply: '✅ 할 일 등록 마법사를 시작할게요!\n━━━━━━━━━━━━━━\n📌 마법사 모드 (1/' + _aiWizardState.steps.length + '단계) | "취소"로 중단\n\n' + _aiWizardState.steps[0].q, suggests: ['취소'] };
   }
   return null;
 }
@@ -10715,6 +10723,51 @@ async function _aiProcessWizard(input) {
     }
   }
   const currentStep = w.steps[w.step];
+  if (w.type === 'report' && t.length < 2 && !/없|끝|ㄴ/.test(t)) {
+    return { reply: '📝 내용이 너무 짧아요. 좀 더 자세히 적어주시면 좋은 보고서가 돼요!\n\n' + currentStep.q, suggests: [] };
+  }
+  if (w.type === 'report' && /^[ㅋㅎㅠㅜㅇ]+$/.test(t)) {
+    return { reply: '🤔 보고서에 들어갈 내용을 입력해주세요!\n\n' + currentStep.q, suggests: [] };
+  }
+  if (w.type === 'report' && /[시씨씹개새]발|ㅅㅂ|ㅂㅅ|니\s*살태|꺼져|죽어/.test(t)) {
+    w._pendingInput = t;
+    return { reply: '🤔 혹시 보고서에 들어갈 내용이 맞나요?\n\n입력하신 내용: "' + t + '"\n\n이대로 넣을까요, 다시 입력할까요?', suggests: ['이대로', '다시 입력'] };
+  }
+  if (/^다시\s*입력$/.test(t)) {
+    return { reply: w.steps[w.step].q, suggests: [] };
+  }
+  if (/^이대로$/.test(t) && w._pendingInput) {
+    t = w._pendingInput;
+    delete w._pendingInput;
+  }
+  const _formalScore = (s) => {
+    let score = 0;
+    if (/습니다|합니다|했습니다|됐습니다/.test(s)) score += 3;
+    if (/요$|해요|했어요|됐어요/.test(s)) score += 2;
+    if (/했어|했지|했음|됐어|함$|임$/.test(s)) score += 1;
+    if (/ㅋ|ㅎ|ㅠ|ㅜ/.test(s)) score -= 1;
+    return score;
+  };
+  if (w.type === 'report' && w.step >= 1) {
+    const prevKeys = Object.keys(w.data);
+    if (prevKeys.length > 0) {
+      const prevScores = prevKeys.map(k => _formalScore(w.data[k]));
+      const avgPrev = prevScores.reduce((a, b) => a + b, 0) / prevScores.length;
+      const curScore = _formalScore(t);
+      if (Math.abs(curScore - avgPrev) >= 3 && t.length > 5) {
+        if (!w._toneWarned) {
+          w._toneWarned = true;
+          w._pendingInput = t;
+          return { reply: '🤔 이전 답변과 말투가 좀 달라진 것 같아요.\n\n입력: "' + t + '"\n\n이게 보고서 내용이 맞나요?', suggests: ['맞아', '다시 입력'] };
+        }
+      }
+    }
+  }
+  if (/^맞아$/.test(t) && w._pendingInput) {
+    t = w._pendingInput;
+    delete w._pendingInput;
+    delete w._toneWarned;
+  }
   w.data[currentStep.key] = t;
   w.step++;
   _aiWizardSave();
