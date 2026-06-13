@@ -6976,10 +6976,15 @@ setInterval(checkAttendancePopup, 60000);
   }
 
   if (!serverReady && isLoginVisible) {
-    indicator.textContent = '서버 응답 없음 — 새로고침 해주세요';
+    indicator.textContent = '서버 응답 없음 — 터치하여 재시도';
     indicator.style.background = 'rgba(220,38,38,0.85)';
-    if (loginBtn) loginBtn.disabled = true;
-    return;
+    indicator.style.cursor = 'pointer';
+    indicator.onclick = () => location.reload();
+    if (loginBtn) {
+      loginBtn.disabled = false;
+      loginBtn.style.opacity = '';
+    }
+    setTimeout(() => { indicator.style.display = 'none'; }, 8000);
   }
 
   if (isLoginVisible && loginBtn) { loginBtn.disabled = false; loginBtn.style.opacity = ''; }
