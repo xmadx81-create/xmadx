@@ -9004,7 +9004,7 @@ async function _aiProcessChat(input, _detections) {
 
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
-    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 브리핑', '보고서 마법사', '리마인더 설정 방법'] };
+    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
   }
 
   // --- 감사/칭찬 ---
@@ -9315,24 +9315,52 @@ async function _aiProcessChat(input, _detections) {
   }
   if (/팁\s*더\s*줘/.test(t)) { return _aiProcessChat('조언'); }
 
-  // --- 오늘 뭐 했지? (활동 로그) ---
-  if (/오늘\s*뭐\s*했|활동\s*로그|내가\s*한\s*일/.test(t)) {
-    try {
-      const [rps, todos, atd] = await Promise.all([
-        api(`/api/reports?from=${today}&to=${today}`),
-        api('/api/todos'),
-        api('/api/attendance/today')
-      ]);
-      const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
-      const done = (todos || []).filter(td => td.completed);
-      let reply = '📋 오늘 활동 기록:\n\n';
-      reply += '⏰ ' + (atd && atd.check_in ? (atd.check_in||'').substring(11,16) + ' 출근' : '미출근') + '\n';
-      if (myRps.length > 0) reply += '📝 업무일지 ' + myRps.length + '건: ' + myRps.map(r => (r.what_task||r.content||'').substring(0,20)).join(', ') + '\n';
-      if (done.length > 0) reply += '✅ 완료 할 일 ' + done.length + '건\n';
-      const chatCount = _aiChatHistory.filter(h => h.who === 'user').length;
-      reply += '💬 비서 대화 ' + chatCount + '회';
-      return { reply, suggests: ['오늘 마무리', '보고서 쓸래'] };
-    } catch(_) { return { reply: '활동 기록 조회 중 오류가 생겼어요.' }; }
+  // --- 오늘 뭐 했지? → AI 자동 일지 ---
+  if (/오늘\s*뭐\s*했|활동\s*로그|내가\s*한\s*일|오늘\s*일지|일일\s*일지|오늘\s*요약|하루\s*요약|하루\s*정리|퇴근\s*일지/.test(t)) {
+    const j = await _aiDailyJournal();
+    return { reply: _aiFormatJournal(j), suggests: ['이번주 일지', '생산성 트렌드', '보고서 쓸래'] };
+  }
+  // --- 어제 일지 ---
+  if (/어제\s*뭐\s*했|어제\s*일지|어제\s*요약/.test(t)) {
+    const yd = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const cached = _aiJournalFind(yd);
+    if (cached) return { reply: _aiFormatJournal(cached), suggests: ['오늘 일지', '이번주 일지'] };
+    const j = await _aiDailyJournal(yd);
+    return { reply: _aiFormatJournal(j), suggests: ['오늘 일지', '이번주 일지'] };
+  }
+  // --- 이번주 일지 (주간 일지 모아보기) ---
+  if (/이번\s*주\s*일지|주간\s*일지|이번주\s*요약|금주\s*일지/.test(t)) {
+    const logs = _aiJournalHistory();
+    const now = new Date();
+    const mon = new Date(now); mon.setDate(now.getDate() - (now.getDay() || 7) + 1);
+    const monStr = mon.toISOString().split('T')[0];
+    const weekLogs = logs.filter(j => j.date >= monStr);
+    if (weekLogs.length === 0) {
+      const j = await _aiDailyJournal();
+      return { reply: '📅 이번 주 일지가 아직 없어요.\n오늘 일지부터 시작할게요!\n\n' + _aiFormatJournal(j), suggests: ['생산성 트렌드', '오늘 일정'] };
+    }
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    let r = '📅 이번 주 일지 모아보기\n━━━━━━━━━━━━━━\n\n';
+    const avgScore = Math.round(weekLogs.reduce((s, j) => s + j.score, 0) / weekLogs.length);
+    r += '📊 주간 평균 생산성: ' + avgScore + '점\n\n';
+    weekLogs.forEach(j => {
+      const dn = dayNames[new Date(j.date).getDay()];
+      const bar = '█'.repeat(Math.floor(j.score / 10)) + '░'.repeat(10 - Math.floor(j.score / 10));
+      r += '📌 ' + j.date.substring(5) + '(' + dn + ') [' + bar + '] ' + j.score + '점\n';
+      r += '   → ' + j.oneLine + '\n';
+    });
+    const totalRps = weekLogs.reduce((s, j) => s + j.reports, 0);
+    const totalDone = weekLogs.reduce((s, j) => s + j.todoDone, 0);
+    r += '\n📝 보고서: ' + totalRps + '건 | ✅ 완료: ' + totalDone + '건';
+    if (avgScore >= 70) r += '\n\n🔥 이번 주 정말 열심히 하고 있어요!';
+    else if (avgScore >= 40) r += '\n\n👍 꾸준히 잘하고 있어요!';
+    else r += '\n\n💪 다음 주는 더 화이팅!';
+    return { reply: r, suggests: ['생산성 트렌드', '오늘 일지', '주간 리포트'] };
+  }
+  // --- 생산성 트렌드 ---
+  if (/생산성\s*트렌드|이번\s*달\s*분석|월간\s*분석|월간\s*트렌드|생산성\s*분석|트렌드\s*분석/.test(t)) {
+    await _aiDailyJournal();
+    return { reply: _aiJournalTrend(30), suggests: ['이번주 일지', '오늘 일지', '주간 리포트'] };
   }
 
   // --- 할 일 삭제 ---
@@ -9927,6 +9955,7 @@ function _aiDetectTopic(t) {
   if (/목표|집중|포모도로|우선순위|급한/.test(t)) return '생산성';
   if (/기분|감정|컨디션|힘들|피곤|쉬고/.test(t)) return '감정';
   if (/구글|웹검색|인터넷/.test(t)) return '웹검색';
+  if (/일지|뭐했|트렌드|생산성/.test(t)) return '일지';
   if (/검색|찾/.test(t)) return '검색';
   if (/프로필|취향|mbti|취미|좋아하|싫어하/.test(t)) return '개인정보';
   if (/먹었|먹은|추억|기념일/.test(t)) return '생활기록';
@@ -10276,6 +10305,157 @@ async function _aiProcessWizard(input) {
   return null;
 }
 
+// ─── [7] AI 자동 일지 엔진 ───
+function _aiJournalHistory() {
+  try { return JSON.parse(localStorage.getItem('aiJournal_' + (currentUser ? currentUser.id : 'x')) || '[]'); } catch(_) { return []; }
+}
+function _aiJournalSave(logs) {
+  const trimmed = logs.slice(-90);
+  localStorage.setItem('aiJournal_' + (currentUser ? currentUser.id : 'x'), JSON.stringify(trimmed));
+}
+function _aiJournalFind(date) {
+  return _aiJournalHistory().find(j => j.date === date) || null;
+}
+
+async function _aiDailyJournal(targetDate) {
+  if (!currentUser) return null;
+  const td = targetDate || new Date().toISOString().split('T')[0];
+  try {
+    const [rps, todos, evts, atd] = await Promise.all([
+      api(`/api/reports?from=${td}&to=${td}`),
+      api('/api/todos'),
+      api('/api/calendar-events?date=' + td),
+      api('/api/attendance/today')
+    ]);
+    const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
+    const allTodos = todos || [];
+    const completed = allTodos.filter(t => t.completed);
+    const pending = allTodos.filter(t => !t.completed);
+    const myEvts = evts || [];
+    const chatCount = _aiChatHistory.filter(h => h.who === 'user').length;
+
+    const tasks = myRps.map(r => (r.what_task || r.content || '').substring(0, 40)).filter(Boolean);
+    const doneList = completed.map(t => t.title).slice(0, 5);
+    const evtList = myEvts.map(e => (e.event_time ? e.event_time.substring(0, 5) + ' ' : '') + e.title).slice(0, 5);
+
+    let oneLine = '';
+    if (tasks.length > 0) oneLine = tasks[0];
+    else if (doneList.length > 0) oneLine = '할일 ' + doneList.length + '건 완료';
+    else if (myEvts.length > 0) oneLine = evtList[0];
+    else oneLine = '기록 없음';
+
+    const score = Math.min(100, myRps.length * 20 + completed.length * 15 + myEvts.length * 10 + Math.min(chatCount, 5) * 2 + (atd && atd.check_in ? 10 : 0));
+
+    const journal = {
+      date: td,
+      oneLine,
+      score,
+      reports: myRps.length,
+      todoDone: completed.length,
+      todoPending: pending.length,
+      events: myEvts.length,
+      chatCount,
+      checkIn: atd && atd.check_in ? (atd.check_in || '').substring(11, 16) : null,
+      checkOut: atd && atd.check_out ? (atd.check_out || '').substring(11, 16) : null,
+      tasks,
+      doneList,
+      evtList,
+      createdAt: new Date().toISOString()
+    };
+
+    const logs = _aiJournalHistory();
+    const idx = logs.findIndex(j => j.date === td);
+    if (idx >= 0) logs[idx] = journal; else logs.push(journal);
+    _aiJournalSave(logs);
+
+    return journal;
+  } catch(_) { return null; }
+}
+
+function _aiFormatJournal(j) {
+  if (!j) return '일지를 생성할 수 없어요.';
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const d = new Date(j.date);
+  const dayName = dayNames[d.getDay()];
+  const scoreBar = '█'.repeat(Math.floor(j.score / 10)) + '░'.repeat(10 - Math.floor(j.score / 10));
+
+  let r = '📋 AI 자동 일지\n';
+  r += '━━━━━━━━━━━━━━\n';
+  r += '📅 ' + j.date + ' (' + dayName + ')\n';
+  r += '📊 생산성: [' + scoreBar + '] ' + j.score + '점\n\n';
+
+  if (j.checkIn) r += '⏰ 출근: ' + j.checkIn + (j.checkOut ? ' → 퇴근: ' + j.checkOut : ' (미퇴근)') + '\n';
+
+  if (j.tasks.length > 0) {
+    r += '\n📝 업무일지 ' + j.reports + '건:\n';
+    j.tasks.forEach(t => { r += '  • ' + t + '\n'; });
+  }
+
+  if (j.doneList.length > 0) {
+    r += '\n✅ 완료한 일 ' + j.todoDone + '건:\n';
+    j.doneList.forEach(t => { r += '  • ' + t + '\n'; });
+  }
+
+  if (j.todoPending > 0) r += '\n⬜ 남은 할 일: ' + j.todoPending + '건\n';
+
+  if (j.evtList.length > 0) {
+    r += '\n📅 일정 ' + j.events + '건:\n';
+    j.evtList.forEach(e => { r += '  • ' + e + '\n'; });
+  }
+
+  r += '\n💬 비서 대화: ' + j.chatCount + '회\n';
+
+  r += '\n💡 한 줄 요약: "' + j.oneLine + '"';
+
+  if (j.score >= 80) r += '\n\n🔥 오늘 엄청 열심히 하셨어요!';
+  else if (j.score >= 50) r += '\n\n👍 알찬 하루였어요!';
+  else if (j.score >= 20) r += '\n\n🌱 차근차근 성장 중!';
+  else r += '\n\n☕ 내일은 더 화이팅!';
+
+  return r;
+}
+
+function _aiJournalTrend(days) {
+  const logs = _aiJournalHistory();
+  if (logs.length === 0) return '아직 일지 기록이 없어요. 매일 자동으로 쌓이니 며칠 뒤에 확인해보세요!';
+
+  const recent = logs.slice(-days);
+  const avgScore = Math.round(recent.reduce((s, j) => s + j.score, 0) / recent.length);
+  const totalReports = recent.reduce((s, j) => s + j.reports, 0);
+  const totalDone = recent.reduce((s, j) => s + j.todoDone, 0);
+  const totalEvents = recent.reduce((s, j) => s + j.events, 0);
+
+  const best = recent.reduce((a, b) => a.score > b.score ? a : b);
+  const worst = recent.reduce((a, b) => a.score < b.score ? a : b);
+
+  const half1 = recent.slice(0, Math.floor(recent.length / 2));
+  const half2 = recent.slice(Math.floor(recent.length / 2));
+  const avg1 = half1.length ? Math.round(half1.reduce((s, j) => s + j.score, 0) / half1.length) : 0;
+  const avg2 = half2.length ? Math.round(half2.reduce((s, j) => s + j.score, 0) / half2.length) : 0;
+  const trendIcon = avg2 > avg1 + 5 ? '📈 상승세!' : avg2 < avg1 - 5 ? '📉 하락세' : '➡️ 유지 중';
+
+  let r = '📈 생산성 트렌드 (최근 ' + recent.length + '일)\n';
+  r += '━━━━━━━━━━━━━━\n\n';
+  r += '📊 평균 생산성: ' + avgScore + '점\n';
+  r += '📝 보고서: 총 ' + totalReports + '건 (일평균 ' + (totalReports / recent.length).toFixed(1) + '건)\n';
+  r += '✅ 완료 할일: 총 ' + totalDone + '건\n';
+  r += '📅 일정: 총 ' + totalEvents + '건\n\n';
+
+  r += '🏆 최고의 날: ' + best.date + ' (' + best.score + '점)\n';
+  r += '💤 쉬어간 날: ' + worst.date + ' (' + worst.score + '점)\n\n';
+
+  r += '추세: ' + trendIcon + '\n';
+
+  r += '\n📊 일별 점수:\n';
+  recent.slice(-7).forEach(j => {
+    const bar = '█'.repeat(Math.floor(j.score / 10));
+    const dn = ['일', '월', '화', '수', '목', '금', '토'][new Date(j.date).getDay()];
+    r += j.date.substring(5) + '(' + dn + ') ' + bar + ' ' + j.score + '\n';
+  });
+
+  return r;
+}
+
 async function aiSecretaryCheck() {
   if (!currentUser || currentUser.isAdmin) return;
   const now = new Date();
@@ -10320,6 +10500,17 @@ async function aiSecretaryCheck() {
     _alarmNotified[today + '_weekly'] = true;
     _aiWeeklyReport().then(report => {
       if (report) _showSecretaryAlert('weekly', '📊 주간 AI 리포트', '지난주 업무 분석이 준비됐어요!\nAI 비서를 열어 확인하세요.', 'AI 비서 열기', () => { openAiChat(); setTimeout(() => _aiChatAddBot(report), 500); });
+    });
+  }
+
+  // 2.7 퇴근 전 자동 일지 (17~18시, 하루 1번)
+  if (h >= 17 && h < 18 && !_alarmNotified[today + '_journal']) {
+    _alarmNotified[today + '_journal'] = true;
+    _aiDailyJournal().then(j => {
+      if (j && j.score > 0) {
+        const msg = '오늘 생산성 ' + j.score + '점!\n"' + j.oneLine + '"\n\nAI 비서에서 상세 일지를 확인하세요.';
+        _showSecretaryAlert('journal', '📋 오늘의 일지', msg, '일지 보기', () => { openAiChat(); setTimeout(() => _aiChatAddBot(_aiFormatJournal(j)), 500); });
+      }
     });
   }
 
