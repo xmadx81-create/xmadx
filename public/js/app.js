@@ -1331,6 +1331,10 @@ async function renderMore() {
         <span class="qa-icon">&#128295;</span>
         <span class="qa-label" style="color:var(--primary); font-weight:700;">네비 설정</span>
       </button>
+      <button class="quick-action-btn" onclick="showAppFAQ()" style="border:2px solid #6366f1; background:#eef2ff;">
+        <span class="qa-icon">&#10068;</span>
+        <span class="qa-label" style="color:#6366f1; font-weight:700;">사용 도움말</span>
+      </button>
       <button class="quick-action-btn" onclick="installApp()" style="border:2px solid #10b981; background:#ecfdf5;">
         <span class="qa-icon">&#128241;</span>
         <span class="qa-label" style="color:#10b981; font-weight:700;">홈 화면에 추가</span>
@@ -1380,6 +1384,142 @@ function installApp() {
     </div>`;
   }
   showResultModal('info', '📱 홈 화면에 추가', guide, '확인');
+}
+
+// ─── 사용 도움말 (FAQ) ───
+function showAppFAQ() {
+  const faqData = [
+    { cat: '기본 사용법', icon: '📱', color: '#3b82f6', items: [
+      { q: '로그인은 어떻게 하나요?', a: '연락처(전화번호)와 비밀번호를 입력하면 로그인됩니다. 처음 사용하시면 회원가입을 먼저 진행해주세요.' },
+      { q: '비밀번호를 잊었어요', a: '로그인 화면에서 "비밀번호 재설정"을 누르면 이름과 연락처로 확인 후 새 비밀번호를 설정할 수 있어요.' },
+      { q: '홈 화면에 앱을 추가하고 싶어요', a: '더보기 → 설정 → "홈 화면에 추가" 버튼을 누르면 브라우저별 안내가 나와요. 추가하면 앱처럼 바로 실행할 수 있어요.' },
+      { q: '로그아웃은 어디서 하나요?', a: '화면 오른쪽 상단의 빨간 전원(⏻) 버튼을 누르면 로그아웃됩니다.' },
+      { q: '하단 네비게이션 메뉴를 바꿀 수 있나요?', a: '더보기 → 설정 → "네비 설정"에서 원하는 메뉴 3개를 선택하면 하단 바를 맞춤 설정할 수 있어요.' },
+      { q: '알림은 어떻게 확인하나요?', a: '상단 종(🔔) 아이콘을 누르면 공지사항, 댓글, 팀 활동 등 알림을 확인할 수 있어요.' },
+    ]},
+    { cat: '업무일지', icon: '📝', color: '#10b981', items: [
+      { q: '업무일지는 어떻게 작성하나요?', a: '홈 화면 하단 + 버튼 → "새 업무일지"를 누르거나, 업무일지 탭에서 + 버튼을 누르세요. 제목, 내용, 업무 분류를 입력하면 돼요.' },
+      { q: '음성으로 업무일지를 작성할 수 있나요?', a: '네! + 버튼 → "AI 비서에게 말하기"를 누르면 음성으로 내용을 말하고 AI가 자동 정리해요. 홈 화면 AI 비서 카드의 🎤 버튼으로도 가능해요.' },
+      { q: 'AI 다듬기는 뭔가요?', a: '음성이나 구어체로 입력한 내용을 AI가 보고서 형식으로 다듬어줘요. 불필요한 말("음", "그")을 제거하고, 문장을 정리하며, 육하원칙(5W1H)으로 자동 분류해요.' },
+      { q: '육하원칙(5W1H) 카드는 뭔가요?', a: '"누가, 언제, 어디서, 무엇을, 어떻게, 왜"를 자동 분석해 카드로 보여줘요. 완성도 %가 표시되고, 빠진 항목은 비서가 팁으로 알려줘요.' },
+      { q: '작성한 일지를 수정/삭제할 수 있나요?', a: '업무일지 목록에서 해당 일지를 누르면 상세 화면이 나와요. 본인이 작성한 일지는 수정, 삭제가 가능해요.' },
+      { q: '다른 팀원의 일지도 볼 수 있나요?', a: '네, 업무일지 탭에서 "전체"를 선택하면 같은 팀 팀원들의 일지를 볼 수 있어요. 팀 설정에 따라 범위가 달라요.' },
+    ]},
+    { cat: 'AI 비서', icon: '🤖', color: '#7c3aed', items: [
+      { q: 'AI 비서는 어떤 기능인가요?', a: '출근 시 자동으로 인사, 어제 업무 요약, 오늘 브리핑을 해주고, 출근 체크와 일정 등록까지 음성으로 도와주는 기능이에요.' },
+      { q: 'AI 비서가 자동으로 알림을 주나요?', a: '네! 5가지 자동 알림이 있어요:\n• 일정 10분 전 알림\n• 기한 지난 할 일 알림 (오전)\n• 업무일지 미작성 알림 (오후)\n• 빈 일정 안내 (오전)\n• 퇴근 미처리 알림 (저녁)' },
+      { q: '음성 안내를 끄고 싶어요', a: '현재 음성 가이드가 말하는 중에 "닫기" 버튼을 누르면 음성이 중단돼요. 음성 가이드는 하루에 한 번만 자동 실행되고, 이후에는 직접 호출해야 해요.' },
+      { q: 'AI 비서가 안 나타나요', a: '음성 가이드는 하루 1회 자동 실행됩니다. 이미 실행된 경우 다시 나타나지 않아요. 홈의 AI 비서 카드를 누르면 음성 기록을 시작할 수 있어요.' },
+      { q: '녹음 중 비서 힌트는 뭔가요?', a: '음성 녹음 중 화면 하단에 다음 일정, 기한 초과 할 일 등 맥락 정보를 표시해줘요. 보고서 작성에 참고하시면 돼요.' },
+    ]},
+    { cat: '일정 / 할 일', icon: '📅', color: '#f59e0b', items: [
+      { q: '일정은 어떻게 등록하나요?', a: '더보기 → 팀 일정 또는 업무 캘린더에서 날짜를 선택하고 + 버튼으로 등록하세요. AI 비서 음성가이드에서 말로 등록할 수도 있어요.' },
+      { q: '일정 알림은 언제 오나요?', a: '등록된 일정 시간 10분 전에 AI 비서가 팝업과 음성으로 알려줘요. 시간이 입력된 일정만 해당돼요.' },
+      { q: '할 일은 어떻게 관리하나요?', a: '더보기 → 할 일 관리에서 추가/완료 처리/삭제할 수 있어요. 기한을 설정하면 기한 초과 시 AI 비서가 알려줘요.' },
+      { q: '기한 지난 할 일 알림을 받고 싶어요', a: '할 일에 기한(마감일)을 설정해두면 오전 9~10시에 자동으로 알림이 와요. 음성가이드 브리핑에서도 안내해줘요.' },
+      { q: '캘린더에서 일정을 한눈에 볼 수 있나요?', a: '더보기 → 업무 캘린더에서 월별/주별로 모든 일정을 확인할 수 있어요. 홈 화면 AI 비서 카드에서도 오늘 일정 목록이 표시돼요.' },
+    ]},
+    { cat: '출퇴근', icon: '⏰', color: '#6366f1', items: [
+      { q: '출근 체크는 어떻게 하나요?', a: 'AI 비서 음성가이드가 아침에 자동으로 출근 체크를 도와줘요. 또는 더보기 → 출퇴근 기록에서 직접 체크할 수 있어요.' },
+      { q: '퇴근 처리는 어떻게 하나요?', a: '더보기 → 출퇴근 기록에서 퇴근 버튼을 누르거나, 저녁 7시 이후에는 AI 비서가 퇴근 알림을 보내줘요.' },
+      { q: '출퇴근 기록을 확인하고 싶어요', a: '더보기 → 출퇴근 기록에서 이번 달의 출퇴근 내역, 근무 유형(내근/외근/출장), 시간을 확인할 수 있어요.' },
+      { q: '근무 유형(내근/외근/출장)은 어떻게 바꾸나요?', a: '출근 체크 시 근무 유형을 선택할 수 있어요. AI 음성가이드에서는 "외근" 또는 "출장"이라고 말하면 자동 인식돼요.' },
+    ]},
+    { cat: '소통 / 기타', icon: '💬', color: '#ec4899', items: [
+      { q: '공지사항은 어디서 보나요?', a: '더보기 → 공지사항에서 확인할 수 있어요. 중요 공지는 상단에 고정 표시되고, 홈 화면에도 최신 공지가 나와요.' },
+      { q: '팀 게시판은 어떻게 사용하나요?', a: '더보기 → 팀 게시판에서 자유/질문/정보공유/건의 카테고리로 글을 작성하고 댓글을 달 수 있어요.' },
+      { q: '즐겨찾기 기능이 있나요?', a: '네! 업무일지나 주요 항목에 별표(⭐)를 누르면 즐겨찾기에 추가돼요. 더보기 → 즐겨찾기에서 모아볼 수 있어요.' },
+      { q: '통합 검색은 어떻게 하나요?', a: '상단 돋보기(🔍) 아이콘을 누르면 업무일지, 일정, 할 일, 게시글 등 모든 내용을 한번에 검색할 수 있어요.' },
+      { q: '빠른 메모 기능이 있나요?', a: '더보기 → 빠른 메모에서 간단한 메모를 작성할 수 있어요. 업무일지로 변환하기 전 아이디어를 빠르게 기록할 때 유용해요.' },
+      { q: '주간 보고서/월간 요약은 뭔가요?', a: '이번 주 또는 이번 달 작성한 업무일지를 자동으로 요약 정리해주는 기능이에요. 더보기 → 분석 & 인사이트에서 확인하세요.' },
+    ]},
+  ];
+
+  let openCat = 0;
+  let openQ = -1;
+
+  function renderFAQ() {
+    return faqData.map((cat, ci) => {
+      const isOpen = openCat === ci;
+      return `<div style="margin-bottom:8px;">
+        <button onclick="toggleFaqCat(${ci})" style="width:100%; display:flex; align-items:center; gap:10px; padding:14px 16px; background:${isOpen ? cat.color + '10' : '#fff'}; border:1px solid ${isOpen ? cat.color + '40' : '#e5e7eb'}; border-radius:12px; cursor:pointer; text-align:left;">
+          <span style="font-size:20px;">${cat.icon}</span>
+          <span style="flex:1; font-size:15px; font-weight:600; color:${isOpen ? cat.color : '#374151'};">${cat.cat}</span>
+          <span style="font-size:12px; color:#9ca3af; background:#f3f4f6; padding:2px 8px; border-radius:10px;">${cat.items.length}개</span>
+          <span style="font-size:14px; color:#9ca3af; transition:transform .2s; transform:rotate(${isOpen ? '180' : '0'}deg);">&#9660;</span>
+        </button>
+        ${isOpen ? `<div style="padding:4px 0 0 0;">
+          ${cat.items.map((item, qi) => {
+            const qOpen = openQ === qi;
+            return `<div style="margin:4px 0; border-radius:10px; overflow:hidden; border:1px solid ${qOpen ? cat.color + '30' : '#f3f4f6'};">
+              <button onclick="toggleFaqQ(${qi})" style="width:100%; display:flex; align-items:center; gap:8px; padding:12px 14px; background:${qOpen ? '#fafafa' : '#fff'}; border:none; cursor:pointer; text-align:left;">
+                <span style="width:20px; height:20px; border-radius:50%; background:${cat.color}15; color:${cat.color}; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">Q</span>
+                <span style="flex:1; font-size:14px; color:#1f2937; font-weight:500;">${item.q}</span>
+                <span style="font-size:12px; color:#9ca3af; transform:rotate(${qOpen ? '180' : '0'}deg);">&#9660;</span>
+              </button>
+              ${qOpen ? `<div style="padding:0 14px 14px 42px; animation:vrCardIn .3s both;">
+                <p style="font-size:13px; color:#4b5563; line-height:1.7; white-space:pre-line;">${item.a}</p>
+              </div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  window.toggleFaqCat = function(ci) { openCat = openCat === ci ? -1 : ci; openQ = -1; document.getElementById('faqList').innerHTML = renderFAQ(); };
+  window.toggleFaqQ = function(qi) { openQ = openQ === qi ? -1 : qi; document.getElementById('faqList').innerHTML = renderFAQ(); };
+
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+      <div style="width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#6366f1,#8b5cf6); display:flex; align-items:center; justify-content:center; font-size:22px; color:#fff;">&#10068;</div>
+      <div>
+        <p style="font-size:18px; font-weight:700; color:#1f2937;">사용 도움말</p>
+        <p style="font-size:13px; color:#6b7280;">자주 묻는 질문과 답변을 확인하세요</p>
+      </div>
+    </div>
+    <div style="margin-bottom:16px; position:relative;">
+      <input type="text" id="faqSearch" class="form-control" placeholder="궁금한 내용을 검색하세요..." oninput="searchFAQ(this.value)" style="padding-left:36px;">
+      <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:16px; color:#9ca3af;">&#128269;</span>
+    </div>
+    <div id="faqSearchResult" style="display:none; margin-bottom:16px;"></div>
+    <div id="faqList">${renderFAQ()}</div>
+    <div class="card" style="margin-top:16px; text-align:center; background:linear-gradient(135deg,#eef2ff,#faf5ff); border:1px solid #c7d2fe;">
+      <p style="font-size:14px; color:#4338ca; font-weight:600; margin-bottom:4px;">찾는 답이 없나요?</p>
+      <p style="font-size:13px; color:#6366f1;">상단 &#10067; 도움말 모드를 켜면 각 버튼의 기능을 확인할 수 있어요.</p>
+    </div>
+  `;
+
+  window.searchFAQ = function(keyword) {
+    const k = keyword.trim().toLowerCase();
+    const resultEl = document.getElementById('faqSearchResult');
+    const listEl = document.getElementById('faqList');
+    if (!k) { resultEl.style.display = 'none'; listEl.style.display = 'block'; return; }
+    const matches = [];
+    faqData.forEach(cat => {
+      cat.items.forEach(item => {
+        if (item.q.toLowerCase().includes(k) || item.a.toLowerCase().includes(k)) {
+          matches.push({ cat: cat.cat, icon: cat.icon, color: cat.color, q: item.q, a: item.a });
+        }
+      });
+    });
+    if (matches.length === 0) {
+      resultEl.innerHTML = '<div class="card" style="text-align:center; color:#9ca3af; padding:24px;"><p style="font-size:24px; margin-bottom:8px;">&#128533;</p><p>검색 결과가 없습니다</p></div>';
+    } else {
+      resultEl.innerHTML = `<p style="font-size:13px; color:#6b7280; margin-bottom:8px;">${matches.length}개 결과</p>` +
+        matches.map(m => `<div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+            <span style="font-size:14px;">${m.icon}</span>
+            <span style="font-size:11px; color:${m.color}; font-weight:600;">${m.cat}</span>
+          </div>
+          <p style="font-size:14px; font-weight:600; color:#1f2937; margin-bottom:6px;">${m.q.replace(new RegExp(k, 'gi'), '<mark style="background:#fef08a;">$&</mark>')}</p>
+          <p style="font-size:13px; color:#4b5563; line-height:1.6; white-space:pre-line;">${m.a.replace(new RegExp(k, 'gi'), '<mark style="background:#fef08a;">$&</mark>')}</p>
+        </div>`).join('');
+    }
+    resultEl.style.display = 'block';
+    listEl.style.display = 'none';
+  };
 }
 
 // ─── 네비 설정 ───
