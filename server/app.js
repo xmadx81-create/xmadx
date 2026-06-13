@@ -3938,7 +3938,7 @@ app.post('/api/ai-chat', authMiddleware, async (req, res) => {
   const { message, history } = req.body;
   if (!message) return res.status(400).json({ error: '메시지가 필요합니다' });
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
+  const GROQ_KEY = process.env.GROQ_API_KEY || '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';
   const userId = req.session.userId;
   const today = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
@@ -4051,40 +4051,30 @@ ${hour < 9 ? '→ 아침 시간대: 하루 시작 응원' : hour < 12 ? '→ 오
 - 영어 금지, 자기비하 금지, 5문장 초과 금지, 거짓 금지
 - "뭘 도와드릴까요?" 같은 기계적 응답 금지 — 항상 사람의 말에 반응해` + userContext;
 
-    const contents = [];
+    const messages = [{ role: 'system', content: systemPrompt }];
     if (history && history.length > 0) {
       history.slice(-10).forEach(h => {
-        contents.push({
-          role: h.who === 'user' ? 'user' : 'model',
-          parts: [{ text: h.text }]
-        });
+        messages.push({ role: h.who === 'user' ? 'user' : 'assistant', content: h.text });
       });
     }
-    contents.push({ role: 'user', parts: [{ text: message }] });
-
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`;
-    const geminiBody = JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents,
-      generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
-    });
+    messages.push({ role: 'user', content: message });
 
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 15000);
-    const resp = await fetch(geminiUrl, {
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_KEY}` },
       signal: ac.signal,
-      body: geminiBody
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, max_tokens: 500, temperature: 0.7 })
     });
     clearTimeout(timer);
     const data = await resp.json();
 
     if (data?.error) {
-      console.error('Gemini error:', JSON.stringify(data.error).substring(0, 200));
+      console.error('Groq error:', JSON.stringify(data.error).substring(0, 200));
       return res.status(500).json({ error: data.error.message });
     }
-    const rawReply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const rawReply = data?.choices?.[0]?.message?.content;
     if (!rawReply) return res.status(500).json({ error: 'AI 응답 없음' });
 
     let reply = rawReply;
@@ -4112,7 +4102,7 @@ app.post('/api/ai-parse-report', authMiddleware, async (req, res) => {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: '텍스트가 필요합니다' });
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
+  const GRQ = process.env.GROQ_API_KEY || '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';
   const parsePrompt = `사용자가 업무 내용을 자연어로 말했어. 이걸 업무일지 형식으로 파싱해줘.
 
 반드시 아래 JSON 형식으로만 응답해. 다른 말은 하지 마:
@@ -4124,23 +4114,22 @@ app.post('/api/ai-parse-report', authMiddleware, async (req, res) => {
 - 자연스러운 보고서 문체로 작성 (존댓말)`;
 
   try {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: parsePrompt }] },
-          contents: [{ role: 'user', parts: [{ text }] }],
-          generationConfig: { maxOutputTokens: 400, temperature: 0.2 }
-        })
-      }
-    );
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GRQ}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: parsePrompt },
+          { role: 'user', content: text }
+        ],
+        max_tokens: 400,
+        temperature: 0.2
+      })
+    });
     const data = await resp.json();
     if (data.error) return res.status(500).json({ error: data.error.message });
-    const raw = data.candidates && data.candidates[0] && data.candidates[0].content
-      && data.candidates[0].content.parts && data.candidates[0].content.parts[0]
-      && data.candidates[0].content.parts[0].text;
+    const raw = data?.choices?.[0]?.message?.content;
     if (!raw) return res.status(500).json({ error: 'AI 응답 없음' });
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.status(500).json({ error: '파싱 실패' });
@@ -4156,7 +4145,7 @@ app.post('/api/ai-parse-intent', authMiddleware, async (req, res) => {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: '텍스트가 필요합니다' });
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
+  const GRQ = process.env.GROQ_API_KEY || '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';
   const today = new Date().toISOString().split('T')[0];
   const dow = new Date().getDay();
   const dowNames = ['일','월','화','수','목','금','토'];
@@ -4194,21 +4183,22 @@ app.post('/api/ai-parse-intent', authMiddleware, async (req, res) => {
 - 의도가 명확하지 않으면 "chat"으로`;
 
   try {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: parsePrompt }] },
-          contents: [{ role: 'user', parts: [{ text }] }],
-          generationConfig: { maxOutputTokens: 500, temperature: 0.1 }
-        })
-      }
-    );
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GRQ}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: parsePrompt },
+          { role: 'user', content: text }
+        ],
+        max_tokens: 500,
+        temperature: 0.1
+      })
+    });
     const data = await resp.json();
     if (data.error) return res.status(500).json({ error: data.error.message });
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const raw = data?.choices?.[0]?.message?.content;
     if (!raw) return res.status(500).json({ error: 'AI 응답 없음' });
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return res.status(500).json({ error: '파싱 실패' });
@@ -4237,10 +4227,11 @@ app.use((err, req, res, next) => {
   }
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`WorkFlow 서버 실행: http://localhost:${PORT}`);
-    const GK = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GK}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: '안녕' }] }], generationConfig: { maxOutputTokens: 10 } })
-    }).then(() => console.log('Gemini 워밍업 완료')).catch(() => console.log('Gemini 워밍업 실패 (무시)'));
+    const GRQ = process.env.GROQ_API_KEY || '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';
+    fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GRQ}` },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: '안녕' }], max_tokens: 10 })
+    }).then(() => console.log('Groq 워밍업 완료')).catch(() => console.log('Groq 워밍업 실패 (무시)'));
   });
 })();
