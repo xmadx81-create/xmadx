@@ -9004,7 +9004,7 @@ async function _aiProcessChat(input, _detections) {
 
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
-    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
+    return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n🧠 추천 — "추천해줘", "우선순위", "보고서 뭐 쓸까", "다음에 뭐 할까"\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
   }
 
   // --- 감사/칭찬 ---
@@ -9381,6 +9381,22 @@ async function _aiProcessChat(input, _detections) {
   if (/패턴\s*분석|내\s*패턴|업무\s*패턴|습관\s*분석/.test(t)) {
     await _aiDailyJournal();
     return { reply: _aiPatternReport(), suggests: ['오늘 예측', '이번주 전망', '생산성 트렌드'] };
+  }
+  // --- 스마트 추천 ---
+  if (/추천해\s*줘|추천\s*해줘|뭐\s*하면\s*좋|지금\s*뭐\s*할|뭐\s*할까|할\s*거\s*추천|스마트\s*추천/.test(t)) {
+    return await _aiSmartRecommend();
+  }
+  // --- 우선순위 자동 정렬 ---
+  if (/우선\s*순위|뭐\s*부터|급한\s*거|중요한\s*거\s*먼저|순서\s*정해/.test(t)) {
+    return { reply: await _aiPriorityReport(), suggests: ['1번 완료', '추천해줘', '마감 위험'] };
+  }
+  // --- 보고서 뭐 쓸까 ---
+  if (/보고서\s*뭐\s*쓸|뭐\s*쓸지\s*모르|보고서\s*추천|보고서\s*가이드|뭐\s*적을|쓸\s*거\s*추천/.test(t)) {
+    return await _aiSuggestReport();
+  }
+  // --- 다음에 뭐 할까 / 다음 행동 ---
+  if (/다음에?\s*뭐|다음\s*행동|지금\s*이거|뭐\s*해야\s*[해하]/.test(t)) {
+    return await _aiNextAction();
   }
 
   // --- 할 일 삭제 ---
@@ -9977,6 +9993,7 @@ function _aiDetectTopic(t) {
   if (/구글|웹검색|인터넷/.test(t)) return '웹검색';
   if (/일지|뭐했|트렌드|생산성/.test(t)) return '일지';
   if (/예측|전망|마감|패턴|데드라인/.test(t)) return '예측';
+  if (/추천|우선순위|뭐부터|뭐할까/.test(t)) return '추천';
   if (/검색|찾/.test(t)) return '검색';
   if (/프로필|취향|mbti|취미|좋아하|싫어하/.test(t)) return '개인정보';
   if (/먹었|먹은|추억|기념일/.test(t)) return '생활기록';
@@ -10678,6 +10695,314 @@ function _aiPatternReport() {
   else r += ' — 컨디션 관리가 필요해요 💪';
 
   return r;
+}
+
+// ─── [9] 스마트 추천 엔진 ───
+async function _aiSmartRecommend() {
+  if (!currentUser) return { reply: '로그인이 필요해요.', suggests: [] };
+  const now = new Date();
+  const h = now.getHours();
+  const todayStr = now.toISOString().split('T')[0];
+  const dayName = ['일','월','화','수','목','금','토'][now.getDay()];
+
+  try {
+    const [todos, evts, rps, atd] = await Promise.all([
+      api('/api/todos'),
+      api('/api/calendar-events?date=' + todayStr),
+      api(`/api/reports?from=${todayStr}&to=${todayStr}`),
+      api('/api/attendance/today')
+    ]);
+
+    const pending = (todos || []).filter(t => !t.completed);
+    const urgent = pending.filter(t => t.due_date && Math.ceil((new Date(t.due_date.split('T')[0]) - new Date(todayStr)) / 86400000) <= 1);
+    const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
+    const upcomingEvts = (evts || []).filter(e => {
+      if (!e.event_time) return false;
+      const [eh, em] = e.event_time.split(':').map(Number);
+      return eh * 60 + em > h * 60 + now.getMinutes();
+    });
+    const checkedIn = atd && atd.check_in;
+    const checkedOut = atd && atd.check_out;
+
+    const recs = [];
+    const suggests = [];
+
+    if (!checkedIn && h >= 7 && h < 11) {
+      recs.push({ icon: '⏰', text: '출근 체크를 아직 안 했어요!', priority: 10 });
+      suggests.push('출근해');
+    }
+
+    if (urgent.length > 0) {
+      recs.push({ icon: '🚨', text: '마감 임박 할일 ' + urgent.length + '건: ' + urgent.slice(0, 2).map(t => '"' + t.title + '"').join(', '), priority: 9 });
+      suggests.push('마감 위험');
+    }
+
+    if (upcomingEvts.length > 0) {
+      const next = upcomingEvts[0];
+      recs.push({ icon: '📅', text: '다음 일정: ' + next.event_time.substring(0, 5) + ' ' + next.title, priority: 8 });
+    }
+
+    if (pending.length > 0 && urgent.length === 0) {
+      const top = _aiPrioritize(pending).slice(0, 2);
+      recs.push({ icon: '✅', text: '추천 할일: ' + top.map(t => '"' + t.title + '"').join(', '), priority: 6 });
+      suggests.push('우선순위');
+    }
+
+    if (myRps.length === 0 && h >= 14) {
+      recs.push({ icon: '📝', text: '오늘 아직 보고서를 안 썼어요. 지금 작성하면 딱 좋아요!', priority: 5 });
+      suggests.push('보고서 뭐 쓸까');
+    }
+
+    if (h >= 11 && h < 13) {
+      recs.push({ icon: '🍜', text: '점심시간이에요! 잠깐 쉬어가세요.', priority: 3 });
+    }
+
+    if (checkedIn && !checkedOut && h >= 17) {
+      recs.push({ icon: '🌙', text: '퇴근 시간이에요! 일지 정리하고 마무리하세요.', priority: 4 });
+      suggests.push('오늘 일지');
+    }
+
+    if (pending.length === 0 && myRps.length > 0) {
+      recs.push({ icon: '🎉', text: '할 일 다 끝! 보고서도 썼고! 완벽한 하루예요!', priority: 2 });
+    }
+
+    const patterns = _aiAnalyzePatterns();
+    if (patterns) {
+      const stat = patterns.dayStats[now.getDay()];
+      if (stat && stat.count >= 2) {
+        recs.push({ icon: '🔮', text: dayName + '요일 평균 생산성 ' + stat.avgScore + '점 — ' + (stat.avgScore >= 70 ? '오늘도 화이팅!' : stat.avgScore >= 40 ? '꾸준히 가요!' : '가볍게 시작해봐요!'), priority: 1 });
+      }
+    }
+
+    recs.sort((a, b) => b.priority - a.priority);
+
+    let r = '🧠 스마트 추천\n━━━━━━━━━━━━━━\n';
+    r += '📅 ' + todayStr + ' (' + dayName + ') ' + String(h).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + '\n\n';
+
+    if (recs.length === 0) {
+      r += '지금은 특별한 추천이 없어요. 여유롭게 보내세요! ☕';
+    } else {
+      recs.slice(0, 5).forEach((rec, i) => {
+        r += (i + 1) + '. ' + rec.icon + ' ' + rec.text + '\n';
+      });
+    }
+
+    r += '\n💡 상황이 바뀌면 다시 물어봐주세요!';
+    if (suggests.length === 0) suggests.push('오늘 일지', '할 일 확인');
+
+    return { reply: r, suggests };
+  } catch(_) { return { reply: '추천을 생성하지 못했어요. 잠시 후 다시 시도해주세요.', suggests: [] }; }
+}
+
+function _aiPrioritize(pendingTodos) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  return pendingTodos.slice().sort((a, b) => {
+    let sa = 0, sb = 0;
+
+    if (a.due_date) {
+      const da = Math.ceil((new Date(a.due_date.split('T')[0]) - new Date(todayStr)) / 86400000);
+      if (da < 0) sa += 100;
+      else if (da === 0) sa += 80;
+      else if (da === 1) sa += 60;
+      else if (da <= 3) sa += 40;
+      else sa += 20;
+    }
+    if (b.due_date) {
+      const db = Math.ceil((new Date(b.due_date.split('T')[0]) - new Date(todayStr)) / 86400000);
+      if (db < 0) sb += 100;
+      else if (db === 0) sb += 80;
+      else if (db === 1) sb += 60;
+      else if (db <= 3) sb += 40;
+      else sb += 20;
+    }
+
+    const urgentWords = /긴급|급함|중요|필수|ASAP|마감|시급/;
+    if (urgentWords.test(a.title)) sa += 30;
+    if (urgentWords.test(b.title)) sb += 30;
+
+    if (a.priority === 'high') sa += 25;
+    else if (a.priority === 'medium') sa += 15;
+    if (b.priority === 'high') sb += 25;
+    else if (b.priority === 'medium') sb += 15;
+
+    if (!a.due_date && !b.due_date) {
+      const ca = new Date(a.created_at || 0).getTime();
+      const cb = new Date(b.created_at || 0).getTime();
+      if (ca < cb) sa += 5;
+      else if (cb < ca) sb += 5;
+    }
+
+    return sb - sa;
+  });
+}
+
+async function _aiPriorityReport() {
+  if (!currentUser) return '로그인이 필요해요.';
+  try {
+    const todos = await api('/api/todos');
+    const pending = (todos || []).filter(t => !t.completed);
+    if (pending.length === 0) return '미완료 할 일이 없어요! 완벽해요! 🎉';
+
+    const sorted = _aiPrioritize(pending);
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    let r = '🎯 우선순위 자동 정렬\n━━━━━━━━━━━━━━\n\n';
+    sorted.slice(0, 10).forEach((t, i) => {
+      let tag = '';
+      if (t.due_date) {
+        const diff = Math.ceil((new Date(t.due_date.split('T')[0]) - new Date(todayStr)) / 86400000);
+        if (diff < 0) tag = ' 🔴 ' + Math.abs(diff) + '일 초과';
+        else if (diff === 0) tag = ' 🔴 오늘 마감';
+        else if (diff === 1) tag = ' 🟠 내일 마감';
+        else if (diff <= 3) tag = ' 🟡 ' + diff + '일 남음';
+        else tag = ' 🟢 ' + diff + '일 남음';
+      }
+      const urgentWords = /긴급|급함|중요|필수|ASAP|마감|시급/;
+      if (urgentWords.test(t.title)) tag += ' ⚡';
+      r += (i + 1) + '. ' + t.title + tag + '\n';
+    });
+
+    if (sorted.length > 10) r += '\n... 외 ' + (sorted.length - 10) + '건';
+
+    r += '\n\n💡 위에서부터 순서대로 처리하면 효율적이에요!';
+    if (sorted[0]) r += '\n👉 지금 바로: "' + sorted[0].title + '"';
+
+    return r;
+  } catch(_) { return '할 일 조회 중 오류가 생겼어요.'; }
+}
+
+async function _aiSuggestReport() {
+  if (!currentUser) return { reply: '로그인이 필요해요.', suggests: [] };
+  const now = new Date();
+  const h = now.getHours();
+  const todayStr = now.toISOString().split('T')[0];
+
+  try {
+    const [todos, evts, rps] = await Promise.all([
+      api('/api/todos'),
+      api('/api/calendar-events?date=' + todayStr),
+      api(`/api/reports?from=${todayStr}&to=${todayStr}`)
+    ]);
+
+    const completed = (todos || []).filter(t => t.completed);
+    const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
+    const myEvts = evts || [];
+
+    let r = '📝 보고서 작성 가이드\n━━━━━━━━━━━━━━\n\n';
+
+    if (myRps.length > 0) {
+      r += '✅ 오늘 이미 ' + myRps.length + '건 작성했어요.\n';
+      r += '추가로 쓸 내용이 있다면 아래를 참고하세요!\n\n';
+    }
+
+    r += '💡 이런 내용 어때요?\n\n';
+
+    const suggestions = [];
+
+    if (completed.length > 0) {
+      suggestions.push('✅ 완료한 할일 기반:\n   → "' + completed.slice(0, 3).map(t => t.title).join('", "') + '"');
+    }
+
+    if (myEvts.length > 0) {
+      suggestions.push('📅 오늘 일정 기반:\n   → "' + myEvts.slice(0, 3).map(e => e.title).join('", "') + '"');
+    }
+
+    if (h >= 9 && h < 12) {
+      suggestions.push('🌅 오전 업무:\n   → 어제 이어서 진행한 일, 오전 회의 내용');
+    } else if (h >= 12 && h < 15) {
+      suggestions.push('☀️ 오후 업무:\n   → 오전 완료 건, 오후 계획');
+    } else if (h >= 15) {
+      suggestions.push('🌆 하루 마무리:\n   → 오늘 처리한 일 정리, 내일 계획');
+    }
+
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+    const recentRps = await api(`/api/reports?from=${weekAgo}&to=${todayStr}`);
+    const myRecent = (recentRps || []).filter(r => r.author_id === currentUser.id);
+    if (myRecent.length > 0) {
+      const lastTask = (myRecent[0].what_task || myRecent[0].content || '').substring(0, 30);
+      suggestions.push('📋 최근 보고서 이어서:\n   → "' + lastTask + '..." 후속 작업');
+    }
+
+    if (suggestions.length === 0) {
+      suggestions.push('📌 자유 주제:\n   → 오늘 한 일, 느낀 점, 내일 계획');
+    }
+
+    r += suggestions.join('\n\n');
+    r += '\n\n✍️ "보고서 마법사"를 사용하면 대화로 쉽게 작성할 수 있어요!';
+
+    return { reply: r, suggests: ['보고서 마법사', '직접 쓸래', '오늘 일지'] };
+  } catch(_) { return { reply: '정보 조회 중 오류가 생겼어요.', suggests: [] }; }
+}
+
+async function _aiNextAction() {
+  if (!currentUser) return { reply: '로그인이 필요해요.', suggests: [] };
+  const now = new Date();
+  const h = now.getHours();
+  const todayStr = now.toISOString().split('T')[0];
+
+  try {
+    const [todos, evts, rps, atd] = await Promise.all([
+      api('/api/todos'),
+      api('/api/calendar-events?date=' + todayStr),
+      api(`/api/reports?from=${todayStr}&to=${todayStr}`),
+      api('/api/attendance/today')
+    ]);
+
+    const pending = (todos || []).filter(t => !t.completed);
+    const sorted = _aiPrioritize(pending);
+    const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
+    const checkedIn = atd && atd.check_in;
+    const nowMin = h * 60 + now.getMinutes();
+
+    const nextEvt = (evts || []).find(e => {
+      if (!e.event_time) return false;
+      const [eh, em] = e.event_time.split(':').map(Number);
+      return eh * 60 + em > nowMin && eh * 60 + em - nowMin <= 30;
+    });
+
+    let action = '', icon = '', suggests = [];
+
+    if (!checkedIn && h >= 7 && h < 11) {
+      action = '출근 체크부터 하세요!';
+      icon = '⏰';
+      suggests = ['출근해', '할 일 확인'];
+    } else if (nextEvt) {
+      const [eh, em] = nextEvt.event_time.split(':').map(Number);
+      const diff = eh * 60 + em - nowMin;
+      action = diff + '분 후 "' + nextEvt.title + '" 일정이 있어요. 준비하세요!';
+      icon = '📅';
+      suggests = ['오늘 일정', '할 일 확인'];
+    } else if (sorted.length > 0 && sorted[0].due_date) {
+      const diff = Math.ceil((new Date(sorted[0].due_date.split('T')[0]) - new Date(todayStr)) / 86400000);
+      if (diff <= 1) {
+        action = '"' + sorted[0].title + '" — ' + (diff <= 0 ? '마감 지났어요!' : '내일 마감!') + ' 지금 바로 시작하세요!';
+        icon = '🚨';
+        suggests = ['마감 위험', '1번 완료'];
+      } else {
+        action = '"' + sorted[0].title + '" 부터 시작하는 게 좋겠어요. (' + diff + '일 남음)';
+        icon = '✅';
+        suggests = ['우선순위', '1번 완료'];
+      }
+    } else if (sorted.length > 0) {
+      action = '"' + sorted[0].title + '" 부터 해볼까요?';
+      icon = '✅';
+      suggests = ['우선순위', '1번 완료'];
+    } else if (myRps.length === 0 && h >= 14) {
+      action = '할 일은 다 끝났어요! 업무일지 한 건 작성하면 완벽한 하루!';
+      icon = '📝';
+      suggests = ['보고서 마법사', '오늘 일지'];
+    } else if (h >= 17) {
+      action = '오늘 할 일 다 끝! 일지 정리하고 퇴근 준비하세요!';
+      icon = '🌙';
+      suggests = ['오늘 일지', '퇴근해'];
+    } else {
+      action = '특별히 급한 건 없어요. 여유롭게 진행하세요!';
+      icon = '☕';
+      suggests = ['추천해줘', '오늘 일정'];
+    }
+
+    return { reply: '👉 지금 이거 하세요!\n━━━━━━━━━━━━━━\n\n' + icon + ' ' + action, suggests };
+  } catch(_) { return { reply: '추천을 생성하지 못했어요.', suggests: [] }; }
 }
 
 async function aiSecretaryCheck() {
