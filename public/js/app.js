@@ -9042,7 +9042,7 @@ async function _aiProcessChat(input, _detections) {
     return { reply: '업무일지 작성 화면을 열게요!', action: () => { closeAiChat(); openNewReport(); } };
   }
   // --- 보고서/일지 작성 (넓은 패턴) ---
-  if (/보고서|일지|업무\s*일지|쓸래/.test(t) && !/확인|보여|몇|팀/.test(t)) {
+  if (/보고서|일지|업무\s*일지|쓸래/.test(t) && !/확인|보여|몇|팀|라고\??|이게|뭐야|뭔|아닌|맞아|싸가지|별로|아니거든|쓰레기|이상|왜 이|이거 뭐/.test(t)) {
     return { reply: '어떤 방식으로 작성하시겠어요?', suggests: ['보고서 마법사', '음성으로 기록', '직접 작성'] };
   }
 
@@ -9218,6 +9218,11 @@ async function _aiProcessChat(input, _detections) {
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
     return { reply: '✨ 말이 곧 법! 이렇게 말하면 바로 실행돼요!\n\n📱 이동 — "캘린더 열어", "할 일 보여줘"\n📅 일정 — "3시에 미팅 있어", "내일 일정"\n✅ 할 일 — "회의록 추가해", "할 일 마법사"\n📝 보고서 — "보고서 마법사", "음성 기록", "직접 쓸래"\n⏰ 출퇴근 — "출근해", "퇴근해", "나 왔어"\n⏰ 리마인더 — "30분 뒤 회의 알려줘", "3시에 알려줘"\n📊 브리핑 — "바빠?", "뭐부터?", "주간 리포트"\n📋 일지 — "오늘 뭐했지", "이번주 일지", "생산성 트렌드"\n🔮 예측 — "오늘 예측", "마감 위험", "이번주 전망", "패턴 분석"\n🧠 추천 — "추천해줘", "우선순위", "보고서 뭐 쓸까", "다음에 뭐 할까"\n👁️ 심연 — "나를 분석해", "번아웃 체크", "레벨 확인"\n🗣️ 은어 — 방가방가, 하이루, ㄱㅅ, ㅇㅇ, 머해 등 인터넷 은어 이해\n💜 기억 — "나는 ENFP야", "삼겹살 먹었어", "내 프로필"\n🔍 검색 — "구글 OOO", "웹검색 OOO"\n📔 추억 — "추억 보여줘", "뭐 먹었지"\n🎬 문화 — "드라마 명대사", "명언", "농담"\n🎤 음성 — 마이크 버튼으로 말로도 대화 가능!\n💡 맥락 — "아까 그거", "다시 해줘" 대화 참조 가능!\n✨ 마법 — "열려라 참깨!" 해보세요 😉\n\n뭐든 편하게 말하세요. 감정도 읽고 친구처럼 기억해요! 💜', suggests: ['오늘 일지', '보고서 마법사', '생산성 트렌드'] };
+  }
+
+  // --- 불만/항의 감지 ---
+  if (/이게\s*(뭐|뭔|일지|보고서)|뭐야\s*이게|싸가지|짜증나|별로야|쓰레기|이상해|엉뚱|다시\s*해|왜\s*이래|제대로|이거\s*맞아\??|이게\s*맞아\??|이게\s*다야\??/.test(t)) {
+    return { reply: '😣 죄송해요! 제가 잘못 처리한 것 같아요.\n\n어떤 부분이 문제인지 알려주시면 바로 고쳐볼게요!\n다시 해드릴까요?', suggests: ['다시 해줘', '취소', '도움말'] };
   }
 
   // --- 감정 오판 복구 ---
@@ -10631,6 +10636,7 @@ function _aiStartWizard(type) {
       type: 'report',
       step: 0,
       data: {},
+      _lastActivity: Date.now(),
       steps: [
         { key: 'what_task', q: '📝 어떤 업무를 하셨나요?\n(예: "고객사 미팅 진행", "코드 리뷰")' },
         { key: 'how_done', q: '💡 어떻게 진행하셨나요?\n(예: "화상회의로 2시간 진행", "PR 5건 검토")' },
@@ -10645,6 +10651,7 @@ function _aiStartWizard(type) {
       type: 'event',
       step: 0,
       data: {},
+      _lastActivity: Date.now(),
       steps: [
         { key: 'title', q: '📅 일정 제목이 뭔가요?\n(예: "팀 미팅", "고객 방문")' },
         { key: 'date', q: '📆 언제인가요?\n(예: "오늘", "내일", "6월 20일")' },
@@ -10658,6 +10665,7 @@ function _aiStartWizard(type) {
       type: 'todo',
       step: 0,
       data: {},
+      _lastActivity: Date.now(),
       steps: [
         { key: 'title', q: '✅ 할 일이 뭔가요?\n(예: "보고서 제출", "코드 배포")' },
         { key: 'due', q: '📅 기한이 있나요?\n(예: "내일까지", "금요일까지", "없어")' },
@@ -10671,6 +10679,12 @@ function _aiStartWizard(type) {
 async function _aiProcessWizard(input) {
   if (!_aiWizardState) return null;
   const w = _aiWizardState;
+  if (w._lastActivity && Date.now() - w._lastActivity > 5 * 60 * 1000) {
+    _aiWizardState = null;
+    _aiWizardSave();
+    return { reply: '⏰ 마법사가 5분 이상 대기해서 자동 중단됐어요.\n이어하려면 "보고서 마법사"를 다시 시작해주세요!', suggests: ['보고서 마법사', '도움말'] };
+  }
+  w._lastActivity = Date.now();
   const t = input.trim();
   if (/^(취소|그만|중단|멈춰|안\s*할래)$/i.test(t)) {
     _aiWizardState = null;
@@ -10678,20 +10692,50 @@ async function _aiProcessWizard(input) {
     return { reply: '마법사를 취소했어요. 다른 건 없으세요?', suggests: ['오늘 일정', '할 일 확인'] };
   }
   if (/^이어하기$/.test(t) && w.step > 0) {
+    if (w._confirmed === 'pending') {
+      return { reply: '이대로 제출할까요?', suggests: ['제출', '수정할래', '취소'] };
+    }
     return { reply: '이어서 진행할게요!\n\n' + w.steps[w.step].q, suggests: [] };
   }
   if (/^처음부터$/.test(t)) {
-    w.step = 0; w.data = {};
+    w.step = 0; w.data = {}; delete w._confirmed;
     _aiWizardSave();
     return { reply: '처음부터 다시 시작할게요!\n\n' + w.steps[0].q, suggests: [] };
+  }
+  if (w._confirmed === 'pending') {
+    if (/^제출$|^네$|^ㅇㅇ$|^확인$|^ㄱㄱ$/.test(t)) {
+      delete w._confirmed;
+      _aiWizardSave();
+    } else if (/수정|다시|고치|바꿔/.test(t)) {
+      w.step = 0; delete w._confirmed;
+      _aiWizardSave();
+      return { reply: '처음부터 다시 작성할게요!\n\n' + w.steps[0].q, suggests: [] };
+    } else {
+      return { reply: '제출할까요, 수정할까요, 취소할까요?', suggests: ['제출', '수정할래', '취소'] };
+    }
   }
   const currentStep = w.steps[w.step];
   w.data[currentStep.key] = t;
   w.step++;
   _aiWizardSave();
   if (w.step < w.steps.length) {
-    return { reply: '✅ 확인! ' + (w.step) + '/' + w.steps.length + ' 완료\n\n' + w.steps[w.step].q, suggests: w.type === 'report' && w.step === w.steps.length - 1 ? ['없어', '끝'] : [] };
+    const statusBar = '📌 마법사 진행 중 (' + w.step + '/' + w.steps.length + '단계)';
+    return { reply: '✅ 확인! ' + (w.step) + '/' + w.steps.length + ' 완료\n\n' + w.steps[w.step].q + '\n\n' + statusBar, suggests: w.type === 'report' && w.step === w.steps.length - 1 ? ['없어', '끝'] : [] };
   }
+
+  if (w.type === 'report' && !w._confirmed) {
+    const next = (w.data.next_plan && !/없|끝|ㄴ/.test(w.data.next_plan)) ? w.data.next_plan : '';
+    let preview = '📋 작성된 보고서 미리보기\n━━━━━━━━━━━━━━\n\n';
+    preview += '📌 업무: ' + w.data.what_task + '\n';
+    preview += '💡 방법: ' + (w.data.how_done || '-') + '\n';
+    preview += '📊 결과: ' + (w.data.result || '-') + '\n';
+    if (next) preview += '🎯 다음: ' + next + '\n';
+    preview += '\n━━━━━━━━━━━━━━\n이대로 제출할까요?';
+    w._confirmed = 'pending';
+    _aiWizardSave();
+    return { reply: preview, suggests: ['제출', '수정할래', '취소'] };
+  }
+
   _aiWizardState = null;
   _aiWizardSave();
   if (w.type === 'report') {
