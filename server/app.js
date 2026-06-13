@@ -4124,6 +4124,74 @@ app.post('/api/ai-parse-report', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── AI 복합 요청 파싱 ───
+app.post('/api/ai-parse-intent', authMiddleware, async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: '텍스트가 필요합니다' });
+
+  const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD3_RnkU9fAXWTuWky2XyjNoXEweG87_SY';
+  const today = new Date().toISOString().split('T')[0];
+  const dow = new Date().getDay();
+  const dowNames = ['일','월','화','수','목','금','토'];
+
+  const parsePrompt = `사용자가 업무 비서에게 자연어로 요청했어. 오늘 날짜는 ${today} (${dowNames[dow]}요일)이야.
+사용자의 메시지에서 의도(intent)를 파악해서 JSON 배열로 응답해.
+하나의 메시지에 여러 요청이 있을 수 있어. 각각 분리해서 파싱해.
+
+가능한 intent 종류:
+1. "report" — 업무일지/보고서 작성 요청
+2. "event" — 일정/스케줄/미팅 등록 요청
+3. "todo" — 할 일 추가 요청
+4. "chat" — 일반 대화/질문 (위에 해당 안 되면)
+
+반드시 아래 JSON 배열 형식으로만 응답. 다른 말 하지마:
+[
+  {
+    "intent": "report|event|todo|chat",
+    "title": "핵심 제목 (간결하게)",
+    "date": "YYYY-MM-DD 형식 날짜 (상대표현 계산: 내일, 다음주 월요일 등)",
+    "time": "HH:MM 형식 (24시간제, 없으면 빈문자열)",
+    "details": "추가 상세 내용",
+    "category": "내근|외근|출장|회의|미팅|기타"
+  }
+]
+
+규칙:
+- "다음주 월요일" = 이번 주 기준 다음 월요일 날짜 계산
+- "9시반" = "09:30", "오후 2시" = "14:00"
+- "~일거야", "아마" = 추정이지만 그대로 등록 정보로 사용
+- "헌혈하고 옴" = 보고서(report) intent. "~하고 왔어/옴/다녀왔어" 패턴
+- "미팅 일정 등록해줘" = 일정(event) intent
+- content 안에 ","나 "그리고"로 구분된 여러 요청을 각각 분리
+- 날짜를 반드시 YYYY-MM-DD로 계산해서 넣어
+- 의도가 명확하지 않으면 "chat"으로`;
+
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: parsePrompt }] },
+          contents: [{ role: 'user', parts: [{ text }] }],
+          generationConfig: { maxOutputTokens: 500, temperature: 0.1 }
+        })
+      }
+    );
+    const data = await resp.json();
+    if (data.error) return res.status(500).json({ error: data.error.message });
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!raw) return res.status(500).json({ error: 'AI 응답 없음' });
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return res.status(500).json({ error: '파싱 실패' });
+    const intents = JSON.parse(jsonMatch[0]);
+    res.json({ intents });
+  } catch (err) {
+    res.status(500).json({ error: '파싱 실패: ' + err.message });
+  }
+});
+
 // ─── 글로벌 에러 핸들러 ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);

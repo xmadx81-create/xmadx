@@ -9535,6 +9535,67 @@ async function _aiProcessChat(input, _detections) {
     }
   }
 
+  // --- AI 스마트 파싱: 복합 요청 감지 → Gemini 파싱 ---
+  const _hasAction = /등록|작성|추가|넣어|해줘|기록/;
+  const _hasTime = /\d{1,2}시|오전|오후|\d{1,2}:\d{2}|반일거|시반/;
+  const _hasRelDate = /다음\s*주|이번\s*주|내일|모레|다음\s*달|월요일|화요일|수요일|목요일|금요일|토요일|일요일/;
+  const _hasMulti = /[,，]\s*|그리고|이랑|하고\s*.{3,}(?:등록|추가|해줘|넣어)/;
+  const _isComplex = (_hasAction.test(t) && ((_hasRelDate.test(t) && (_hasTime.test(t) || /일정|미팅|회의|등록/.test(t))) || (t.length >= 25 && _hasTime.test(t) && _hasMulti.test(input))));
+  if (_isComplex) {
+    try {
+      const parseRes = await api('/api/ai-parse-intent', { method: 'POST', body: { text: input } });
+      if (parseRes && parseRes.intents && parseRes.intents.length > 0) {
+        const intents = parseRes.intents.filter(i => i.intent !== 'chat');
+        if (intents.length > 0) {
+          window._aiPendingIntents = intents;
+          let preview = '🤖 요청을 분석했어요!\n━━━━━━━━━━━━━━\n\n';
+          intents.forEach((it, idx) => {
+            const icon = it.intent === 'report' ? '📝' : it.intent === 'event' ? '📅' : '✅';
+            const typeLabel = it.intent === 'report' ? '업무일지' : it.intent === 'event' ? '일정' : '할 일';
+            preview += icon + ' ' + (idx + 1) + '. ' + typeLabel + ': ' + (it.title || '(제목 없음)') + '\n';
+            if (it.date) preview += '   📆 ' + it.date + (it.time ? ' ' + it.time : '') + '\n';
+            if (it.details) preview += '   💬 ' + it.details + '\n';
+            preview += '\n';
+          });
+          preview += '위 내용으로 등록할까요?';
+          return { reply: preview, suggests: ['네 모두 등록해줘', '수정할래', '취소'] };
+        }
+      }
+    } catch(_) {}
+  }
+  // --- "네 모두 등록해줘" → 대기 중인 intents 일괄 등록 ---
+  if (/^네\s*(모두\s*)?등록/.test(t) && window._aiPendingIntents && window._aiPendingIntents.length > 0) {
+    const intents = window._aiPendingIntents;
+    window._aiPendingIntents = null;
+    let resultMsg = '✨ 등록 결과\n━━━━━━━━━━━━━━\n\n';
+    let successCount = 0;
+    for (const it of intents) {
+      try {
+        if (it.intent === 'event') {
+          await api('/api/calendar-events', { method: 'POST', body: { title: it.title, description: it.details || '', event_date: it.date || today, event_time: it.time || '', event_type: it.category || '업무' } });
+          resultMsg += '📅 일정 등록 완료: ' + (it.date || '') + (it.time ? ' ' + it.time : '') + ' "' + it.title + '"\n';
+          successCount++;
+        } else if (it.intent === 'report') {
+          const parseRes = await api('/api/ai-parse-report', { method: 'POST', body: { text: it.title + (it.details ? ' ' + it.details : '') } });
+          if (parseRes && parseRes.parsed) {
+            const p = parseRes.parsed;
+            await api('/api/reports', { method: 'POST', body: { report_date: it.date || today, report_type: 'daily', work_category: p.work_category || it.category || '내근', what_task: p.what_task || it.title, where_place: p.where_place || '', how_method: p.how_method || '', why_reason: p.why_reason || '', content: p.content || it.details || '', status: p.result_status || '완료' } });
+            resultMsg += '📝 업무일지 등록 완료: "' + (p.what_task || it.title) + '"\n';
+            successCount++;
+          }
+        } else if (it.intent === 'todo') {
+          await api('/api/todos', { method: 'POST', body: { title: it.title, memo: it.details || '', priority: 'normal', due_date: it.date || null } });
+          resultMsg += '✅ 할 일 추가 완료: "' + it.title + '"\n';
+          successCount++;
+        }
+      } catch(e) {
+        resultMsg += '❌ 실패: ' + it.title + '\n';
+      }
+    }
+    resultMsg += '\n총 ' + successCount + '건 처리 완료!';
+    return { reply: resultMsg, suggests: ['오늘 일정', '할 일 확인', '오늘 브리핑'] };
+  }
+
   // --- 자연어 할 일 인식: "~해야 돼", "~해야지" ---
   if (!/(일정|스케줄|출근|퇴근|검색|확인|열기|삭제|완료|보여|기억|말투)/.test(t)) {
     const nlTodo = input.match(/(.{2,30}?)(?:해야\s*(?:돼|해|됩니다|합니다|되는데|하는데)|(?:안\s*하면\s*안\s*돼|꼭\s*해야|반드시))/);
