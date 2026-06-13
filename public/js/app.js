@@ -7754,8 +7754,8 @@ let _aiLastWasFallback = false;
 
 async function _aiCallGemini(message) {
   try {
-    const history = _aiChatHistory.slice(-6).map(h => ({
-      who: h.who, text: (h.text || '').substring(0, 200)
+    const history = _aiChatHistory.slice(-10).map(h => ({
+      who: h.who, text: (h.text || '').substring(0, 300)
     }));
     const resp = await fetch('/api/ai-chat', {
       method: 'POST',
@@ -10752,7 +10752,18 @@ async function _aiProcessChat(input, _detections) {
     }
   }
 
-  // ─── 비업무 대화 감지 + 말돌리기 ───
+  // ─── Gemini AI 호출 (진짜 AI 대화) ───
+  const _geminiReply2 = await _aiCallGemini(input);
+  if (_geminiReply2) {
+    _aiUnmatchedCount = 0;
+    _aiLastWasFallback = false;
+    const h2 = new Date().getHours();
+    const _gSugg = h2 < 10 ? ['출근 체크', '오늘 브리핑'] : h2 < 14 ? ['오늘 일정', '할 일 확인'] : h2 < 18 ? ['보고서 쓸래', '오늘 브리핑'] : ['오늘 마무리', '이번 주 요약'];
+    _gSugg.push('사자성어 더');
+    return { reply: _geminiReply2, suggests: _gSugg };
+  }
+
+  // ─── (Gemini 실패 시) 비업무 대화 감지 + 말돌리기 ───
   const _offTopicMap = [
     { pat: /영화|드라마|넷플|유튜브|예능|시리즈|방송|OTT/, resp: ['영화/드라마 얘기시네요! 저도 명대사는 좀 알아요 ㅎㅎ', '오~ 영상 콘텐츠! 저는 업무 드라마 전문이에요 ㅋ'] },
     { pat: /게임|롤|배그|로아|오버워치|발로란트|스팀|닌텐도|플스|스위치|겜/, resp: ['게임 얘기시군요! 저의 게임은 "업무 클리어"예요 ㅋ', '게임! 저도 할 줄 알면 좋겠어요~'] },
@@ -10889,15 +10900,7 @@ async function _aiProcessChat(input, _detections) {
     return rec;
   }
 
-  // ─── Gemini AI 호출 (진짜 AI 응답) ───
-  const _geminiReply = await _aiCallGemini(input);
-  if (_geminiReply) {
-    _aiUnmatchedCount = 0;
-    _aiLastWasFallback = false;
-    return { reply: _geminiReply, suggests: ['오늘 브리핑', '할일 목록', '사자성어 더'] };
-  }
-
-  // ─── Gemini 실패 시 기존 fallback ───
+  // ─── 최종 fallback (Gemini 실패 시) ───
   _aiLastWasFallback = true;
   smartSuggests.push('사자성어 더');
   const _fbIdiom = _aiPickIdiom(_aiDetectIdiomCat(t));
