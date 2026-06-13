@@ -456,7 +456,8 @@ app.get('/api/search', authMiddleware, async (req, res) => {
 });
 
 // ─── 캘린더 ───
-app.get('/api/calendar', authMiddleware, async (req, res) => {
+app.get('/api/calendar', authMiddleware, async (req, res, next) => {
+  if (req.query.month && req.query.month.includes('-')) return next();
   const { year, month } = req.query;
   const y = parseInt(year) || new Date().getFullYear();
   const m = parseInt(month) || (new Date().getMonth() + 1);
