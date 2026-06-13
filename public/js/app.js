@@ -7748,6 +7748,16 @@ setInterval(checkAttendancePopup, 60000);
 
 // ─── AI 비서 채팅 + 학습 시스템 ───
 let _aiChatHistory = [];
+let _aiUnmatchedCount = 0;
+let _aiLastUnmatched = '';
+function _aiSimpleSimilarity(a, b) {
+  if (!a || !b) return 0;
+  const setA = new Set(a.split(''));
+  const setB = new Set(b.split(''));
+  let common = 0;
+  for (const c of setA) if (setB.has(c)) common++;
+  return common / Math.max(setA.size, setB.size);
+}
 function _aiMemory() { try { return JSON.parse(localStorage.getItem('aiMemory') || '{}'); } catch(_) { return {}; } }
 function _aiMemorySave(mem) { localStorage.setItem('aiMemory', JSON.stringify(mem)); }
 function _aiLearn(key, value) {
@@ -8624,6 +8634,7 @@ async function _aiProcessChat(input, _detections) {
   const prof = _aiPersonalProfile();
   const name = prof.nickname || (currentUser ? currentUser.name : '사용자');
   _aiRecordTopic(_aiDetectTopic(t));
+  _aiUnmatchedCount = 0;
   const _style = (mem.facts && mem.facts.chatStyle) || 'formal';
 
   // --- 은어 즉시 응답 ---
@@ -9368,7 +9379,7 @@ async function _aiProcessChat(input, _detections) {
   }
 
   // --- 종합 브리핑 ---
-  if (/브리핑|종합|오늘\s*현황|한눈에|요약해|상황\s*알려/.test(t)) {
+  if (/브리핑|종합|오늘\s*현황|한눈에|요약해\s*줘?|상황\s*알려|정리해\s*줘|오늘\s*뭐\s*있|현황\s*정리|지금\s*상황|상황\s*보고|하루\s*정리/.test(t)) {
     try {
       const [evts, todos, rps, atd] = await Promise.all([
         api('/api/calendar-events?date=' + today),
@@ -9392,7 +9403,14 @@ async function _aiProcessChat(input, _detections) {
         '\n\n💬 "밤이 길수록 낮이 빛나는 법." — 이태원 클라쓰',
       ];
       reply += briefingQuotes[Math.floor(Math.random() * briefingQuotes.length)];
-      return { reply, suggests: ['할 일 확인', '일정 상세', '보고서 쓸래'] };
+      const bSuggests = [];
+      if (!(atd && atd.check_in)) bSuggests.push('출근해');
+      if (od.length > 0) bSuggests.push('마감 위험');
+      if (pend.length > 0) bSuggests.push('우선순위');
+      if ((evts || []).length > 0) bSuggests.push('일정 상세');
+      if (myRps.length === 0) bSuggests.push('보고서 쓸래');
+      if (bSuggests.length < 3) bSuggests.push('추천해줘');
+      return { reply, suggests: bSuggests.slice(0, 4) };
     } catch(_) { return { reply: '브리핑 데이터를 불러오는 중 문제가 생겼어요.' }; }
   }
 
@@ -9709,22 +9727,22 @@ async function _aiProcessChat(input, _detections) {
     return await _aiSmartRecommend();
   }
   if (/알아서\s*해|알아서해|니가\s*알아서|너가\s*알아서|알아서\s*척척|알잘딱|알아서\s*잘/.test(t)) {
-    const rec = await _aiSmartRecommend();
+    const rec = await _aiNextAction();
     rec.reply = '💪 알아서 판단해볼게요!\n\n' + rec.reply;
     return rec;
   }
   if (/일해\s*줘|일\s*좀\s*해|일하라고|일해$|일\s*시작|시켜\s*줘|자동으로\s*해/.test(t)) {
-    const rec = await _aiSmartRecommend();
+    const rec = await _aiNextAction();
     rec.reply = '🏃 네! 지금 상황 분석했어요!\n\n' + rec.reply;
     return rec;
   }
   if (/니가\s*알아야|너가\s*알아야|니가\s*판단|너가\s*판단|니가\s*정해|너가\s*정해|니가\s*해|너가\s*해/.test(t)) {
-    const rec = await _aiSmartRecommend();
+    const rec = await _aiNextAction();
     rec.reply = '📊 ' + name + '님 상황을 분석해서 정리했어요!\n\n' + rec.reply;
     return rec;
   }
   if (/뭘\s*해야|뭐\s*해야|해야\s*할\s*게|해야\s*될|할\s*게\s*뭐|지금\s*뭘|뭘\s*하지|뭐\s*하지/.test(t) && !/등록|추가|작성/.test(t)) {
-    const rec = await _aiSmartRecommend();
+    const rec = await _aiNextAction();
     rec.reply = '🧠 지금 해야 할 것들을 정리해봤어요!\n\n' + rec.reply;
     return rec;
   }
@@ -10137,6 +10155,24 @@ async function _aiProcessChat(input, _detections) {
   if (/^tmi\s*보통$|^잡지식\s*보통$/i.test(t)) { _aiProfileSet('tmiLevel', 'normal'); return { reply: '📎 TMI 보통으로 설정! 업무시간엔 적게, 쉬는 시간엔 적당히 넣을게요~', suggests: ['TMI 끄기', 'TMI 많이'] }; }
   if (/^tmi\s*많이$|^잡지식\s*많이$/i.test(t)) { _aiProfileSet('tmiLevel', 'high'); return { reply: '💡 TMI 많이 모드! 잡지식 폭격 가즈아~ 🚀', suggests: ['TMI 끄기', 'TMI 보통'] }; }
 
+  // --- AI 적극도 설정 (D-5) ---
+  if (/적극도\s*(설정|조절|레벨|변경)?|자발적\s*제안|제안\s*레벨|AI\s*레벨/.test(t)) {
+    const lvMatch = t.match(/(1|2|3|4|소극|보통|적극|긴급)/);
+    if (lvMatch) {
+      const lvMap = { '1': 1, '소극': 1, '2': 2, '보통': 2, '3': 3, '적극': 3, '4': 4, '긴급': 4 };
+      const lv = lvMap[lvMatch[1]] || 3;
+      _aiProfileSet('proactiveLevel', lv);
+      const lvNames = { 1: '소극적 (Lv.1)', 2: '보통 (Lv.2)', 3: '적극적 (Lv.3)', 4: '긴급 (Lv.4)' };
+      return { reply: '🎚️ AI 적극도를 ' + lvNames[lv] + '으로 설정했어요!\n\n' +
+        (lv === 1 ? '조용히 필요할 때만 알려드릴게요.' : lv === 2 ? '막연한 입력 시 도움을 제안해드릴게요.' : lv === 3 ? '적극적으로 상황 분석하고 브리핑할게요!' : '최대한 빨리 도와드릴게요!'),
+        suggests: ['오늘 브리핑', '도움말'] };
+    }
+    const curLv = prof.proactiveLevel || 3;
+    const lvLabels = { 1: '🔇 소극적', 2: '📎 보통', 3: '🔥 적극적', 4: '🚨 긴급' };
+    return { reply: '🎚️ AI 적극도 설정\n\n현재: ' + (lvLabels[curLv] || '적극적') + '\n\n• Lv.1 소극적: 조용히 알림\n• Lv.2 보통: 막연할 때 제안\n• Lv.3 적극적: 위임 시 즉시 브리핑\n• Lv.4 긴급: 반복 미인식 시 자동 전환\n\n"적극도 1~4" 로 설정하세요!',
+      suggests: ['적극도 1', '적극도 2', '적극도 3', '적극도 4'] };
+  }
+
   // --- 오늘의 명언 ---
   if (/명언|격언|동기부여|좋은\s*말/.test(t)) {
     const quotes = [
@@ -10335,6 +10371,40 @@ async function _aiProcessChat(input, _detections) {
     }
   }
 
+  // --- D-5 Lv.2: 막연한 입력 감지 ---
+  const proactiveLv = prof.proactiveLevel || 3;
+  if (proactiveLv >= 2 && /^(음+|흠+|뭐지|글쎄|어떡하지|모르겠|뭐냐|뭐야|뭘까|하아+|허+|에휴|아놔)\.{0,5}$/.test(t)) {
+    if (proactiveLv >= 3) {
+      const rec = await _aiNextAction();
+      rec.reply = '🤔 뭘 할지 고민되시나 봐요! 현황을 정리해드릴게요.\n\n' + rec.reply;
+      return rec;
+    }
+    return { reply: '🤔 뭘 할지 고민되시나 봐요?\n현재 상황을 정리해드릴까요?', suggests: ['응 정리해줘', '아니 괜찮아', '오늘 브리핑'] };
+  }
+
+  // --- D-3: "해줘" 단독 입력 맥락 추론 ---
+  if (/^해\s*줘?$|^해$|^해주세요$|^해\s*주세요$/.test(t)) {
+    const recentUser = _aiChatHistory.filter(h => h.who === 'user').slice(-3);
+    const recentBot = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
+    const ctx = recentUser.map(h => h.text || '').join(' ') + ' ' + (recentBot ? recentBot.text || '' : '');
+    const ctxMap = [
+      { kw: /브리핑|요약|현황|상황/, fwd: '오늘 브리핑' },
+      { kw: /일정|스케줄|캘린더/, fwd: '오늘 일정' },
+      { kw: /할\s*일|투두|todo/i, fwd: '할 일 확인' },
+      { kw: /보고서|일지|기록/, fwd: '보고서 쓸래' },
+      { kw: /출근/, fwd: '출근 체크' },
+      { kw: /퇴근/, fwd: '퇴근 처리' },
+      { kw: /추천|뭐\s*할/, fwd: '추천해줘' },
+      { kw: /분석|패턴|통계/, fwd: '업무 분석' },
+    ];
+    for (const c of ctxMap) {
+      if (c.kw.test(ctx)) return _aiProcessChat(c.fwd);
+    }
+    const rec = await _aiNextAction();
+    rec.reply = '💡 이전 대화에서 맥락을 찾아봤어요!\n\n' + rec.reply;
+    return rec;
+  }
+
   // --- 스마트 폴백: 키워드 기반 의도 추측 ---
   const h2 = new Date().getHours();
   let smartSuggests = ['도움말'];
@@ -10367,6 +10437,19 @@ async function _aiProcessChat(input, _detections) {
   }
 
   _aiLearn('unmatched_' + Date.now(), input);
+
+  // --- D-4: 반복 미인식 → 자동 브리핑 전환 ---
+  _aiUnmatchedCount++;
+  const _umSimilarity = _aiSimpleSimilarity(t, _aiLastUnmatched);
+  _aiLastUnmatched = t;
+
+  if (_aiUnmatchedCount >= 2 && (_umSimilarity > 0.3 || /짜증|답답|아씨|에잇|ㅡㅡ|미치|돌겠|왜\s*이래|아\s*몰라|몰라/.test(t))) {
+    _aiUnmatchedCount = 0;
+    const rec = await _aiNextAction();
+    rec.reply = '😥 죄송해요, 제가 잘 못 알아들었네요.\n바로 현황을 보여드릴게요!\n\n' + rec.reply;
+    return rec;
+  }
+
   smartSuggests.push('구글 ' + input.substring(0, 10));
   const fallbacks = [
     _say('이해하기 어려웠어요. 웹에서 검색해볼까요? 아니면 구체적으로 말씀해주세요!', '잘 모르겠어~ 웹에서 검색해볼까? 자세히 말해줘!'),
@@ -11328,6 +11411,104 @@ async function _aiSmartRecommend() {
 
     return { reply: r, suggests };
   } catch(_) { return { reply: '추천을 생성하지 못했어요. 잠시 후 다시 시도해주세요.', suggests: [] }; }
+}
+
+async function _aiNextAction() {
+  if (!currentUser) return { reply: '로그인이 필요해요.', suggests: [] };
+  const now = new Date();
+  const h = now.getHours();
+  const todayStr = now.toISOString().split('T')[0];
+  const dayName = ['일','월','화','수','목','금','토'][now.getDay()];
+  const name = _aiPersonalProfile().nickname || currentUser.name || '';
+
+  try {
+    const [todos, evts, rps, atd] = await Promise.all([
+      api('/api/todos'),
+      api('/api/calendar-events?date=' + todayStr),
+      api(`/api/reports?from=${todayStr}&to=${todayStr}`),
+      api('/api/attendance/today')
+    ]);
+
+    const pending = (todos || []).filter(t => !t.completed);
+    const urgent = pending.filter(t => t.due_date && Math.ceil((new Date(t.due_date.split('T')[0]) - new Date(todayStr)) / 86400000) <= 1);
+    const overdue = pending.filter(t => t.due_date && t.due_date.split('T')[0] < todayStr);
+    const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
+    const upcomingEvts = (evts || []).filter(e => {
+      if (!e.event_time) return false;
+      const [eh, em] = e.event_time.split(':').map(Number);
+      return eh * 60 + em > h * 60 + now.getMinutes();
+    });
+    const checkedIn = atd && atd.check_in;
+    const checkedOut = atd && atd.check_out;
+
+    let greeting = '';
+    if (h < 9) greeting = '🌅 좋은 아침이에요!';
+    else if (h < 12) greeting = '☀️ 오전 업무 시간이에요!';
+    else if (h < 14) greeting = '🍜 점심시간이네요!';
+    else if (h < 17) greeting = '⚡ 오후 집중 타임!';
+    else if (h < 19) greeting = '🌆 마무리 시간이에요!';
+    else greeting = '🌙 야근 중이시네요...';
+
+    let r = greeting + ' ' + name + '님의 현재 상황이에요.\n━━━━━━━━━━━━━━\n\n';
+    r += '⏰ ' + (checkedIn ? '출근 ✅' + (checkedOut ? ' → 퇴근 ✅' : '') : '미출근 ❌') + '\n';
+    r += '📅 일정 ' + (evts || []).length + '건';
+    if (upcomingEvts.length > 0) r += ' (남은 ' + upcomingEvts.length + '건)';
+    r += '\n';
+    r += '✅ 할일 ' + pending.length + '건';
+    if (urgent.length > 0) r += ' (🚨 긴급 ' + urgent.length + '건)';
+    if (overdue.length > 0) r += ' (⚠️ 기한초과 ' + overdue.length + '건)';
+    r += '\n';
+    r += '📝 보고서 ' + myRps.length + '건 작성\n\n';
+
+    const actions = [];
+    const suggests = [];
+
+    if (!checkedIn && h >= 7 && h < 11) {
+      actions.push('1️⃣ 출근 체크 → "출근해"');
+      suggests.push('출근해');
+    }
+    if (overdue.length > 0) {
+      actions.push((actions.length + 1) + '️⃣ 기한 초과 할일 처리 → ' + overdue.slice(0, 2).map(t => '"' + t.title + '"').join(', '));
+      suggests.push('마감 위험');
+    }
+    if (urgent.length > 0 && overdue.length === 0) {
+      actions.push((actions.length + 1) + '️⃣ 긴급 할일 처리 → ' + urgent.slice(0, 2).map(t => '"' + t.title + '"').join(', '));
+      suggests.push('우선순위');
+    }
+    if (upcomingEvts.length > 0) {
+      const next = upcomingEvts[0];
+      const [eh2, em2] = next.event_time.split(':').map(Number);
+      const minLeft = eh2 * 60 + em2 - (h * 60 + now.getMinutes());
+      actions.push((actions.length + 1) + '️⃣ ' + minLeft + '분 후 일정 → ' + next.title);
+      suggests.push('오늘 일정');
+    }
+    if (pending.length > 0 && actions.length < 3) {
+      const top = _aiPrioritize(pending)[0];
+      if (top && !overdue.includes(top) && !urgent.includes(top)) {
+        actions.push((actions.length + 1) + '️⃣ 다음 추천 할일 → "' + top.title + '"');
+        suggests.push('할 일 확인');
+      }
+    }
+    if (myRps.length === 0 && h >= 14 && actions.length < 4) {
+      actions.push((actions.length + 1) + '️⃣ 보고서 작성 → "보고서 쓸래"');
+      suggests.push('보고서 쓸래');
+    }
+    if (checkedIn && !checkedOut && h >= 17 && actions.length < 4) {
+      actions.push((actions.length + 1) + '️⃣ 퇴근 정리 → "오늘 마무리"');
+      suggests.push('오늘 마무리');
+    }
+
+    if (actions.length === 0) {
+      r += '🎉 현재 긴급한 건 없어요! 여유롭게 보내세요~';
+      suggests.push('할 일 추가', '오늘 일정', '추천해줘');
+    } else {
+      r += '📋 지금 이렇게 하시면 돼요:\n';
+      r += actions.join('\n') + '\n';
+      r += '\n👆 위 항목을 말씀해주시면 바로 처리해드릴게요!';
+    }
+
+    return { reply: r, suggests };
+  } catch(_) { return { reply: '상황 분석에 실패했어요. 잠시 후 다시 시도해주세요.', suggests: ['오늘 브리핑'] }; }
 }
 
 function _aiPrioritize(pendingTodos) {
