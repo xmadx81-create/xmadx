@@ -553,7 +553,7 @@ app.get('/api/dashboard', authMiddleware, async (req, res) => {
 
   const todoCountResult = await query(`
     SELECT COUNT(*) FILTER (WHERE completed = FALSE) as pending,
-           COUNT(*) FILTER (WHERE completed = TRUE AND updated_at >= $2) as done_today
+           COUNT(*) FILTER (WHERE completed = TRUE AND completed_at >= $2) as done_today
     FROM todos WHERE user_id = $1
   `, [userId, today]);
   const todoStats = todoCountResult.rows[0] || { pending: 0, done_today: 0 };
@@ -3189,6 +3189,30 @@ app.post('/api/events', authMiddleware, async (req, res) => {
   const id = uuidv4();
   await query('INSERT INTO team_events (id, author_id, author_name, title, description, event_date, event_time, event_type, color) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
     [id, req.session.userId, authorName, title, description || '', event_date, event_time || '', event_type || '회의', typeColors[event_type] || '#3b82f6']);
+  res.json({ id });
+});
+
+app.get('/api/calendar-events', authMiddleware, async (req, res) => {
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const result = await query(
+    'SELECT * FROM team_events WHERE event_date = $1 ORDER BY event_time ASC',
+    [date]
+  );
+  res.json(result.rows);
+});
+
+app.post('/api/calendar-events', authMiddleware, async (req, res) => {
+  const { title, description, event_date, event_time, event_type } = req.body;
+  if (!title || !event_date) return res.status(400).json({ error: '제목과 날짜를 입력하세요' });
+  let authorName = '관리자';
+  if (req.session.userId && req.session.userId !== 'admin-user') {
+    const u = await query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+    if (u.rows[0]) authorName = u.rows[0].name;
+  }
+  const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '업무': '#6366f1', '기타': '#6366f1' };
+  const id = uuidv4();
+  await query('INSERT INTO team_events (id, author_id, author_name, title, description, event_date, event_time, event_type, color) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [id, req.session.userId, authorName, title, description || '', event_date, event_time || '', event_type || '업무', typeColors[event_type] || '#6366f1']);
   res.json({ id });
 });
 

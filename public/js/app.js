@@ -495,7 +495,7 @@ async function renderHome() {
         <button onclick="startVoiceReport()" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">🎤 음성</button>
         <button onclick="openNewReport()" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">📝 보고서</button>
         <button onclick="navigate('calendar')" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">📅 일정</button>
-        <button onclick="navigate('todos')" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">✅ 할일</button>
+        <button onclick="navigate('todo')" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:12px; cursor:pointer;">✅ 할일</button>
       </div>
     </div>
 
@@ -6849,11 +6849,11 @@ function refineVoiceText() {
       const suggestions = [];
       const od = (todos || []).filter(t => !t.completed && t.due_date && t.due_date.split('T')[0] < _td2);
       const pend = (todos || []).filter(t => !t.completed);
-      if (od.length > 0) suggestions.push({ icon: '⚠️', text: '기한 지난 할 일 ' + od.length + '건', btn: '할 일 보기', action: "cancelVoiceReport();navigate('todos')" });
+      if (od.length > 0) suggestions.push({ icon: '⚠️', text: '기한 지난 할 일 ' + od.length + '건', btn: '할 일 보기', action: "cancelVoiceReport();navigate('todo')" });
       const nm3 = new Date().getHours() * 60 + new Date().getMinutes();
       const nextE2 = (evts || []).find(e => { if (!e.event_time) return false; const [eh,em] = e.event_time.split(':').map(Number); return (eh*60+em) > nm3; });
       if (nextE2) { const diff2 = parseInt(nextE2.event_time) * 60 + parseInt(nextE2.event_time.split(':')[1]) - nm3; if (diff2 <= 30) suggestions.push({ icon: '⏰', text: diff2 + '분 후 "' + nextE2.title + '"', btn: '일정 확인', action: "cancelVoiceReport();navigate('calendar')" }); }
-      if (pend.length >= 5) suggestions.push({ icon: '📋', text: '미완료 할 일 ' + pend.length + '건', btn: '정리하기', action: "cancelVoiceReport();navigate('todos')" });
+      if (pend.length >= 5) suggestions.push({ icon: '📋', text: '미완료 할 일 ' + pend.length + '건', btn: '정리하기', action: "cancelVoiceReport();navigate('todo')" });
       if (suggestions.length > 0) {
         const sgDiv = document.createElement('div');
         sgDiv.id = 'vrActionSuggest';
@@ -7570,7 +7570,7 @@ async function vgConversation() {
 
   vgShowThinking();
   try {
-    await api('/api/attendance/checkin', { method: 'POST', body: { work_type: workType, work_summary: '' } });
+    await api('/api/attendance/check-in', { method: 'POST', body: { work_type: workType, work_summary: '' } });
     _vgDidCheckin = true;
   } catch(e) {}
 
@@ -9252,7 +9252,7 @@ async function _aiProcessChat(input, _detections) {
 
   // --- 할 일 관리 열기 ---
   if (/할\s*일\s*(관리|열기|페이지|이동)/.test(t)) {
-    return { reply: '할 일 관리 페이지로 이동할게요!', action: () => { closeAiChat(); navigate('todos'); } };
+    return { reply: '할 일 관리 페이지로 이동할게요!', action: () => { closeAiChat(); navigate('todo'); } };
   }
 
   // --- 음성 기록 (구체적 패턴 먼저) ---
@@ -10541,7 +10541,7 @@ async function _aiProcessChat(input, _detections) {
   // --- 팀원 현황 ---
   if (/팀원\s*(현황|상태|출근|누가)|누가\s*출근/.test(t)) {
     try {
-      const atdBoard = await api('/api/attendance/board');
+      const atdBoard = await api('/api/attendance/team-board');
       if (!atdBoard) return { reply: '팀원 현황을 불러올 수 없어요.' };
       const checked = (atdBoard.members || []).filter(m => m.check_in);
       const notChecked = (atdBoard.members || []).filter(m => !m.check_in);
@@ -12995,7 +12995,7 @@ async function aiSecretaryCheck() {
         _alarmNotified[today + '_overdue'] = true;
         const names = overdue.slice(0, 3).map(t => '• ' + t.title).join('\n');
         const moreText = overdue.length > 3 ? '\n외 ' + (overdue.length - 3) + '건...' : '';
-        _showSecretaryAlert('overdue', '⚠️ 기한 지난 할 일', `${overdue.length}건의 할 일이 기한을 넘겼어요:\n\n${names}${moreText}\n\n확인하고 처리해주세요!`, '할 일 보기', () => navigate('todos'));
+        _showSecretaryAlert('overdue', '⚠️ 기한 지난 할 일', `${overdue.length}건의 할 일이 기한을 넘겼어요:\n\n${names}${moreText}\n\n확인하고 처리해주세요!`, '할 일 보기', () => navigate('todo'));
       }
     } catch(_) {}
   }
