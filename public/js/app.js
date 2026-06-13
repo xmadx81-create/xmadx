@@ -224,6 +224,8 @@ async function login() {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('active');
     rebuildNav();
+    _navHistory.length = 0;
+    history.replaceState({ page: 'home' }, '', '#home');
     navigate('home');
     toast(`${data.name}님 환영합니다!`);
     restorePendingVoice();
@@ -285,8 +287,18 @@ async function logout() {
   showLogin();
 }
 
-// ─── 네비게이션 ───
-function navigate(page) {
+// ─── 네비게이션 + 브라우저 뒤로가기 지원 ───
+const _navHistory = [];
+let _isPopState = false;
+
+function navigate(page, skipHistory) {
+  if (!skipHistory && !_isPopState) {
+    if (_navHistory.length === 0 || _navHistory[_navHistory.length - 1] !== page) {
+      _navHistory.push(page);
+      history.pushState({ page }, '', '#' + page);
+    }
+  }
+  _isPopState = false;
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
   const fab = document.getElementById('fabBtn');
@@ -311,6 +323,35 @@ function navigate(page) {
 
   rebuildNav();
 }
+
+window.addEventListener('popstate', (e) => {
+  const aiOverlay = document.getElementById('aiChatOverlay');
+  if (aiOverlay && aiOverlay.style.display === 'flex') {
+    closeAiChat();
+    history.pushState({ page: currentPage }, '', '#' + currentPage);
+    return;
+  }
+
+  const openModals = document.querySelectorAll('.modal.show');
+  if (openModals.length > 0) {
+    openModals.forEach(m => closeModal(m.id));
+    history.pushState({ page: currentPage }, '', '#' + currentPage);
+    return;
+  }
+
+  if (_navHistory.length > 1) {
+    _navHistory.pop();
+    const prevPage = _navHistory[_navHistory.length - 1];
+    _isPopState = true;
+    navigate(prevPage, true);
+  } else {
+    history.pushState({ page: 'home' }, '', '#home');
+    if (currentPage !== 'home') {
+      _isPopState = true;
+      navigate('home', true);
+    }
+  }
+});
 
 // ─── 홈 화면 ───
 function isManager() {
@@ -2855,6 +2896,7 @@ function selectChip(el) {
 function openModal(id) {
   document.getElementById(id).classList.add('show');
   document.body.style.overflow = 'hidden';
+  history.pushState({ modal: id, page: currentPage }, '', '#' + currentPage);
 }
 
 function closeModal(id) {
@@ -8230,6 +8272,7 @@ function _aiAutoDetectPersonal(input) {
 function openAiChat() {
   const overlay = document.getElementById('aiChatOverlay');
   overlay.style.display = 'flex';
+  history.pushState({ aiChat: true, page: currentPage }, '', '#ai-chat');
   _aiApplyTheme();
   _aiChatHistory = [];
   _aiWizardState = null;
