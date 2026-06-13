@@ -7715,6 +7715,349 @@ async function checkAttendancePopup() {
 
 setInterval(checkAttendancePopup, 60000);
 
+// ─── AI 비서 채팅 + 학습 시스템 ───
+let _aiChatHistory = [];
+function _aiMemory() { try { return JSON.parse(localStorage.getItem('aiMemory') || '{}'); } catch(_) { return {}; } }
+function _aiMemorySave(mem) { localStorage.setItem('aiMemory', JSON.stringify(mem)); }
+function _aiLearn(key, value) {
+  const mem = _aiMemory();
+  if (!mem.facts) mem.facts = {};
+  mem.facts[key] = value;
+  if (!mem.chatCount) mem.chatCount = 0;
+  mem.chatCount++;
+  mem.lastChat = new Date().toISOString();
+  _aiMemorySave(mem);
+}
+function _aiRecordTopic(topic) {
+  const mem = _aiMemory();
+  if (!mem.topics) mem.topics = {};
+  mem.topics[topic] = (mem.topics[topic] || 0) + 1;
+  _aiMemorySave(mem);
+}
+
+function openAiChat() {
+  const overlay = document.getElementById('aiChatOverlay');
+  overlay.style.display = 'flex';
+  _aiChatHistory = [];
+  document.getElementById('aiChatMessages').innerHTML = '';
+  document.getElementById('aiChatInput').value = '';
+
+  const name = currentUser ? currentUser.name : '사용자';
+  const mem = _aiMemory();
+  const h = new Date().getHours();
+  let greeting = h < 9 ? '좋은 아침이에요' : h < 12 ? '오전도 힘내세요' : h < 14 ? '점심은 드셨나요?' : h < 18 ? '오후도 파이팅' : '수고 많으셨어요';
+  if (mem.chatCount > 10) greeting += ', 자주 찾아주시네요!';
+  else if (mem.chatCount > 0) greeting += ', 다시 만나서 반가워요!';
+
+  _aiChatAddBot(greeting + ' ' + name + '님! 무엇을 도와드릴까요? 😊');
+
+  const suggests = ['오늘 일정 알려줘', '할 일 확인', '보고서 작성', '출근 체크', '도움말'];
+  _aiChatShowSuggest(suggests);
+}
+
+function closeAiChat() {
+  document.getElementById('aiChatOverlay').style.display = 'none';
+  _aiChatHistory = [];
+}
+
+function _aiChatAddBot(text) {
+  _aiChatHistory.push({ who: 'bot', text });
+  const area = document.getElementById('aiChatMessages');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex; gap:8px; align-items:flex-start;';
+  div.innerHTML = `<div style="width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;">&#129302;</div>
+    <div style="max-width:80%; background:rgba(255,255,255,.1); border-radius:4px 16px 16px 16px; padding:10px 14px;">
+      <p class="aiChatText" style="font-size:14px; line-height:1.6; white-space:pre-line;"></p>
+    </div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  const textEl = div.querySelector('.aiChatText');
+  let i = 0;
+  const timer = setInterval(() => {
+    i += 2;
+    textEl.textContent = text.substring(0, i);
+    area.scrollTop = area.scrollHeight;
+    if (i >= text.length) clearInterval(timer);
+  }, 15);
+}
+
+function _aiChatAddUser(text) {
+  _aiChatHistory.push({ who: 'user', text });
+  const area = document.getElementById('aiChatMessages');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex; justify-content:flex-end;';
+  div.innerHTML = `<div style="max-width:80%; background:linear-gradient(135deg,#7c3aed,#3b82f6); border-radius:16px 4px 16px 16px; padding:10px 14px;">
+    <p style="font-size:14px; line-height:1.6;">${text.replace(/</g,'&lt;')}</p>
+  </div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function _aiChatShowSuggest(items) {
+  const el = document.getElementById('aiChatSuggest');
+  el.style.display = 'flex';
+  el.innerHTML = items.map(t => `<button onclick="document.getElementById('aiChatInput').value='${t}';sendAiChat();" style="padding:6px 12px; border-radius:16px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:rgba(255,255,255,.7); font-size:12px; cursor:pointer; white-space:nowrap;">${t}</button>`).join('');
+}
+
+function _aiChatHideSuggest() { document.getElementById('aiChatSuggest').style.display = 'none'; }
+
+function _aiChatThinking() {
+  const area = document.getElementById('aiChatMessages');
+  const div = document.createElement('div');
+  div.id = 'aiChatThinking';
+  div.style.cssText = 'display:flex; gap:8px; align-items:flex-start;';
+  div.innerHTML = `<div style="width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;">&#129302;</div>
+    <div style="background:rgba(255,255,255,.1); border-radius:4px 16px 16px 16px; padding:10px 14px;">
+      <span style="font-size:14px; animation:vrBlink 1s infinite;">●●●</span>
+    </div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function _aiChatRemoveThinking() {
+  const el = document.getElementById('aiChatThinking');
+  if (el) el.remove();
+}
+
+async function sendAiChat() {
+  const input = document.getElementById('aiChatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  _aiChatHideSuggest();
+  _aiChatAddUser(text);
+  _aiChatThinking();
+  document.getElementById('aiChatStatus').textContent = '입력 중...';
+
+  const response = await _aiProcessChat(text);
+
+  _aiChatRemoveThinking();
+  document.getElementById('aiChatStatus').textContent = '온라인';
+  _aiChatAddBot(response.reply);
+  if (response.suggests) _aiChatShowSuggest(response.suggests);
+  if (response.learn) {
+    for (const [k, v] of Object.entries(response.learn)) _aiLearn(k, v);
+  }
+  if (response.action) response.action();
+}
+
+async function _aiProcessChat(input) {
+  const t = input.toLowerCase().trim();
+  const today = new Date().toISOString().split('T')[0];
+  const mem = _aiMemory();
+  const name = currentUser ? currentUser.name : '사용자';
+  _aiRecordTopic(_aiDetectTopic(t));
+
+  // --- 인사 ---
+  if (/^(안녕|하이|헬로|반가|ㅎㅇ)/.test(t)) {
+    const h = new Date().getHours();
+    const tg = h < 12 ? '좋은 오전이에요!' : h < 18 ? '좋은 오후예요!' : '좋은 저녁이에요!';
+    return { reply: tg + ' ' + name + '님, 무엇이든 물어보세요!', suggests: ['오늘 일정', '할 일 확인', '보고서 쓸래'] };
+  }
+
+  // --- 이름 기억 ---
+  const nameMatch = t.match(/(?:내\s*이름|제\s*이름)(?:은|는)\s*(.+?)(?:이야|야|입니다|이에요|예요|요|$)/);
+  if (nameMatch) {
+    return { reply: nameMatch[1].trim() + '님이시군요! 기억할게요 😊', learn: { userName: nameMatch[1].trim() } };
+  }
+
+  // --- 기억/학습 요청 ---
+  const rememberMatch = t.match(/(.+?)\s*(?:기억해|기억해줘|알아둬|메모해|저장해)/);
+  if (rememberMatch) {
+    const fact = rememberMatch[1].replace(/^(내가|제가|나는|저는)\s*/, '').trim();
+    return { reply: '"' + fact + '" 기억해둘게요! 📝', learn: { ['memo_' + Date.now()]: fact }, suggests: ['기억한 것 보여줘'] };
+  }
+
+  // --- 기억한 것 보기 ---
+  if (/기억한\s*것|기억\s*보여|메모\s*보여|뭐\s*기억/.test(t)) {
+    const facts = mem.facts || {};
+    const memos = Object.entries(facts).filter(([k]) => k.startsWith('memo_')).map(([, v]) => v);
+    const others = Object.entries(facts).filter(([k]) => !k.startsWith('memo_'));
+    let reply = '';
+    if (memos.length > 0) reply += '📝 메모:\n' + memos.map(m => '• ' + m).join('\n');
+    if (others.length > 0) reply += (reply ? '\n\n' : '') + '💡 학습 정보:\n' + others.map(([k, v]) => '• ' + k + ': ' + v).join('\n');
+    if (!reply) reply = '아직 기억한 것이 없어요. "OOO 기억해" 라고 말해보세요!';
+    return { reply, suggests: ['할 일 확인', '오늘 일정'] };
+  }
+
+  // --- 선호 학습 ---
+  const prefMatch = t.match(/(?:나는|저는|내가)\s*(.+?)\s*(?:좋아해|좋아|선호해|원해|싫어)/);
+  if (prefMatch) {
+    const pref = prefMatch[1].trim();
+    const like = t.includes('싫어') ? '싫어하시는' : '좋아하시는';
+    return { reply: name + '님이 ' + pref + '을(를) ' + like + ' 거 기억할게요!', learn: { ['pref_' + pref]: like === '싫어하시는' ? 'dislike' : 'like' } };
+  }
+
+  // --- 오늘 일정 ---
+  if (/일정|스케줄|오늘\s*뭐|할\s*일\s*있/.test(t) && !/할\s*일\s*(확인|보여|알려|목록|체크)/.test(t)) {
+    try {
+      const events = await api('/api/calendar-events?date=' + today);
+      if (events && events.length > 0) {
+        const list = events.map(e => (e.event_time ? e.event_time.substring(0, 5) : '--:--') + ' ' + e.title).join('\n');
+        return { reply: '📅 오늘 일정 ' + events.length + '건이에요:\n\n' + list, suggests: ['일정 등록할래', '할 일 확인', '다음 일정'] };
+      }
+      return { reply: '오늘은 등록된 일정이 없어요! 일정을 추가하시겠어요?', suggests: ['일정 등록할래', '할 일 확인'] };
+    } catch(_) { return { reply: '일정 조회 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.' }; }
+  }
+
+  // --- 할 일 ---
+  if (/할\s*일\s*(확인|보여|알려|목록|체크)|투두|todo|미완료/.test(t)) {
+    try {
+      const todos = await api('/api/todos');
+      const pending = (todos || []).filter(td => !td.completed);
+      const overdue = pending.filter(td => td.due_date && td.due_date.split('T')[0] < today);
+      if (pending.length === 0) return { reply: '할 일이 모두 완료됐어요! 깔끔하네요 ✨', suggests: ['오늘 일정', '보고서 쓸래'] };
+      let reply = '✅ 미완료 할 일 ' + pending.length + '건:\n\n';
+      reply += pending.slice(0, 5).map(td => (td.due_date && td.due_date.split('T')[0] < today ? '⚠️ ' : '• ') + td.title + (td.due_date ? ' (기한: ' + td.due_date.split('T')[0] + ')' : '')).join('\n');
+      if (pending.length > 5) reply += '\n... 외 ' + (pending.length - 5) + '건';
+      if (overdue.length > 0) reply += '\n\n⚠️ ' + overdue.length + '건이 기한을 넘겼어요!';
+      return { reply, suggests: ['할 일 관리 열기', '오늘 일정'], action: overdue.length > 0 ? undefined : undefined };
+    } catch(_) { return { reply: '할 일 조회 중 문제가 생겼어요.' }; }
+  }
+
+  // --- 할 일 관리 열기 ---
+  if (/할\s*일\s*(관리|열기|페이지|이동)/.test(t)) {
+    return { reply: '할 일 관리 페이지로 이동할게요!', action: () => { closeAiChat(); navigate('todos'); } };
+  }
+
+  // --- 보고서/일지 작성 ---
+  if (/보고서|일지|작성|업무\s*일지|쓸래|기록/.test(t) && !/확인|보여|몇/.test(t)) {
+    return { reply: '업무일지 작성 화면으로 이동할게요! ✏️\n음성으로 하시려면 "음성 기록"이라고 말씀해주세요.', suggests: ['음성으로 기록', '직접 작성'], action: undefined };
+  }
+  if (/직접\s*작성/.test(t)) {
+    return { reply: '업무일지 작성 화면을 열게요!', action: () => { closeAiChat(); openNewReport(); } };
+  }
+  if (/음성.*기록|말로.*기록/.test(t)) {
+    return { reply: '음성 기록 화면을 열게요! 🎤', action: () => { closeAiChat(); startVoiceReport(); } };
+  }
+
+  // --- 일정 등록 ---
+  if (/일정\s*(등록|추가|만들|넣)/.test(t)) {
+    return { reply: '캘린더로 이동해서 일정을 등록하세요!', action: () => { closeAiChat(); navigate('calendar'); } };
+  }
+
+  // --- 출근/퇴근 ---
+  if (/출근\s*(체크|처리|하자|할래|해줘)/.test(t)) {
+    return { reply: '출근 체크를 도와드릴게요! 근무 유형을 선택하세요.', suggests: ['내근', '외근', '출장'] };
+  }
+  if (/^(내근|외근|출장)$/.test(t)) {
+    try {
+      await api('/api/attendance/check-in', { method: 'POST', body: { work_type: t, work_summary: '' } });
+      const emoji = t === '외근' ? '🚗' : t === '출장' ? '✈️' : '🏢';
+      return { reply: emoji + ' ' + t + ' 출근 체크 완료! 오늘도 화이팅이에요!', learn: { lastWorkType: t }, suggests: ['오늘 일정', '보고서 쓸래'] };
+    } catch(e) {
+      return { reply: '출근 체크 중 문제가 발생했어요. 이미 출근 체크가 되어 있을 수 있어요.' };
+    }
+  }
+  if (/퇴근\s*(체크|처리|하자|할래|해줘)/.test(t)) {
+    return { reply: '퇴근 처리할게요! 오늘도 수고하셨어요 🌙', action: () => { closeAiChat(); doCheckOut(); } };
+  }
+
+  // --- 출퇴근 기록 ---
+  if (/출퇴근\s*(기록|현황|확인|보여)/.test(t)) {
+    return { reply: '출퇴근 기록 페이지로 이동할게요!', action: () => { closeAiChat(); showAttendancePage(); } };
+  }
+
+  // --- 보고서 확인 ---
+  if (/보고서\s*(확인|보여|몇|현황)|오늘\s*보고/.test(t)) {
+    try {
+      const rps = await api(`/api/reports?from=${today}&to=${today}`);
+      const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
+      if (myRps.length === 0) return { reply: '오늘 작성한 업무일지가 아직 없어요. 지금 작성하시겠어요?', suggests: ['보고서 쓸래', '음성으로 기록'] };
+      return { reply: '📝 오늘 작성한 업무일지 ' + myRps.length + '건이에요.\n\n' + myRps.slice(0, 3).map(r => '• ' + (r.what_task || r.content || '(제목 없음)').substring(0, 30)).join('\n'), suggests: ['업무일지 보기', '보고서 쓸래'] };
+    } catch(_) { return { reply: '보고서 조회 중 문제가 생겼어요.' }; }
+  }
+
+  // --- 업무일지 보기 ---
+  if (/업무\s*일지\s*(보기|열기|목록)/.test(t)) {
+    return { reply: '업무일지 목록으로 이동할게요!', action: () => { closeAiChat(); navigate('reports'); } };
+  }
+
+  // --- 내 정보 ---
+  if (/내\s*정보|프로필|내\s*이름/.test(t)) {
+    return { reply: '📋 ' + name + '님 정보:\n• 직책: ' + (currentUser.position || '-') + '\n• 부서: ' + (currentUser.department || '-') + '\n• 팀: ' + (currentUser.team_name || '-'), suggests: ['내 정보 수정', '오늘 일정'] };
+  }
+
+  // --- 시간/날짜 ---
+  if (/지금\s*몇\s*시|현재\s*시간|시간\s*알려|날짜|오늘\s*며칠/.test(t)) {
+    const now = new Date();
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    return { reply: '🕐 현재 시각: ' + now.getFullYear() + '년 ' + (now.getMonth()+1) + '월 ' + now.getDate() + '일 (' + days[now.getDay()] + '요일) ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') };
+  }
+
+  // --- 도움말 ---
+  if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
+    return { reply: '저는 이런 것들을 도와드릴 수 있어요!\n\n📅 일정 — "오늘 일정", "일정 등록"\n✅ 할 일 — "할 일 확인", "할 일 관리"\n📝 보고서 — "보고서 쓸래", "음성 기록"\n⏰ 출퇴근 — "출근 체크", "퇴근 처리"\n💬 대화 — "OOO 기억해", "기억한 것 보여줘"\n📊 현황 — "보고서 확인", "내 정보"\n\n무엇이든 편하게 물어보세요! 😊', suggests: ['오늘 일정', '할 일 확인', '보고서 쓸래'] };
+  }
+
+  // --- 감사/칭찬 ---
+  if (/고마워|감사|잘\s*했어|대단|최고/.test(t)) {
+    const replies = ['천만에요! 도움이 되어 기뻐요 😊', '항상 도와드릴게요! 💪', '별말씀을요! 더 필요한 거 있으세요?'];
+    return { reply: replies[Math.floor(Math.random() * replies.length)], suggests: ['오늘 일정', '할 일 확인'] };
+  }
+
+  // --- 날씨/기분 ---
+  if (/기분|컨디션|피곤|힘들/.test(t)) {
+    const isTired = /피곤|힘들|지치/.test(t);
+    if (isTired) return { reply: '힘드시군요... 잠깐 스트레칭 하시고, 물 한 잔 드세요! 💧\n' + name + '님은 할 수 있어요! 화이팅! 💪', learn: { lastMood: 'tired' } };
+    return { reply: '좋은 컨디션이시길 바라요! 오늘도 힘내세요! ✨' };
+  }
+
+  // --- 다음 일정 ---
+  if (/다음\s*일정|곧\s*있는|가까운\s*일정/.test(t)) {
+    try {
+      const events = await api('/api/calendar-events?date=' + today);
+      const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+      const next = (events || []).find(e => { if (!e.event_time) return false; const [eh,em] = e.event_time.split(':').map(Number); return (eh*60+em) > nowMin; });
+      if (next) {
+        const [nh, nm] = next.event_time.split(':').map(Number);
+        const diff = nh * 60 + nm - nowMin;
+        return { reply: '⏰ 다음 일정: ' + next.event_time.substring(0,5) + ' ' + next.title + '\n(' + diff + '분 후)', suggests: ['일정 전체 보기'] };
+      }
+      return { reply: '오늘 남은 일정이 없어요!', suggests: ['내일 일정', '할 일 확인'] };
+    } catch(_) { return { reply: '일정 조회 중 문제가 생겼어요.' }; }
+  }
+
+  // --- 대화 통계 ---
+  if (/대화\s*(통계|횟수|얼마나)|몇\s*번\s*대화/.test(t)) {
+    const cc = mem.chatCount || 0;
+    const topics = mem.topics || {};
+    const topTopics = Object.entries(topics).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    let reply = '📊 대화 통계:\n• 총 대화 ' + cc + '회';
+    if (mem.lastChat) reply += '\n• 마지막 대화: ' + mem.lastChat.split('T')[0];
+    if (topTopics.length > 0) reply += '\n• 자주 묻는 주제: ' + topTopics.map(([k, v]) => k + '(' + v + '회)').join(', ');
+    return { reply };
+  }
+
+  // --- 학습 초기화 ---
+  if (/기억\s*지워|학습\s*초기화|리셋|초기화/.test(t)) {
+    return { reply: '정말 모든 기억을 지울까요? 되돌릴 수 없어요.', suggests: ['네 지워줘', '아니 취소'] };
+  }
+  if (/^네\s*지워/.test(t)) {
+    localStorage.removeItem('aiMemory');
+    return { reply: '모든 기억을 초기화했어요. 새로 시작합니다! 🔄', suggests: ['도움말', '오늘 일정'] };
+  }
+
+  // --- 기본 응답 (매칭 안 됨) ---
+  const fallbacks = [
+    '아직 그 부분은 잘 모르겠어요. "도움말"을 입력해 제가 할 수 있는 일을 확인해보세요!',
+    '죄송해요, 이해하지 못했어요. 좀 더 구체적으로 말씀해주시면 도와드릴게요!',
+    '제가 도와드릴 수 있는 건 일정, 할 일, 보고서, 출퇴근 등이에요. "도움말"로 확인해보세요!'
+  ];
+  _aiLearn('unmatched_' + Date.now(), input);
+  return { reply: fallbacks[Math.floor(Math.random() * fallbacks.length)], suggests: ['도움말', '오늘 일정', '할 일 확인'] };
+}
+
+function _aiDetectTopic(t) {
+  if (/일정|스케줄|캘린더/.test(t)) return '일정';
+  if (/할\s*일|투두|todo/.test(t)) return '할일';
+  if (/보고서|일지|작성|기록/.test(t)) return '보고서';
+  if (/출근|퇴근|출퇴/.test(t)) return '출퇴근';
+  if (/기억|학습|메모/.test(t)) return '기억';
+  if (/도움|기능|사용/.test(t)) return '도움말';
+  return '기타';
+}
+
 // ─── AI 비서 꼼꼼 체크 시스템 ───
 let _alarmNotified = {};
 
