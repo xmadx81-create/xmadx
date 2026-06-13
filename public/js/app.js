@@ -5300,8 +5300,13 @@ async function showWeeklyReport() {
 
 // ─── 업무 캘린더 ───
 let workCalMonth = new Date().toISOString().substring(0, 7);
+let workCalViewMode = 'monthly';
+let workCalSelectedDate = new Date().toISOString().split('T')[0];
 
 async function showWorkCalendar() {
+  if (workCalViewMode === 'weekly') { showWeeklyCalView(); return; }
+  if (workCalViewMode === 'daily') { showDailyCalView(); return; }
+
   const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
   document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">캘린더 로딩 중...</p>';
 
@@ -5339,14 +5344,20 @@ async function showWorkCalendar() {
 
     calCells += `
       <div class="cal-cell ${isToday ? 'cal-today' : ''} ${info ? 'cal-has-data' : ''}"
-           onclick="showCalDay('${dateStr}')" style="cursor:${info ? 'pointer' : 'default'};">
+           onclick="workCalSelectedDate='${dateStr}'; workCalViewMode='daily'; showWorkCalendar();" style="cursor:pointer;">
         <span class="cal-day-num ${isSun ? 'cal-sun' : ''} ${isSat ? 'cal-sat' : ''}">${day}</span>
         <div class="cal-dots">${dots}</div>
       </div>`;
   }
 
   document.getElementById('mainContent').innerHTML = `
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+    <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--gray-100); border-radius:10px; padding:3px;">
+      <button onclick="workCalViewMode='monthly'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:var(--primary); color:#fff;">월간</button>
+      <button onclick="workCalViewMode='weekly'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:transparent; color:var(--gray-600);">주간</button>
+      <button onclick="workCalSelectedDate='${today}'; workCalViewMode='daily'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:transparent; color:var(--gray-600);">일간</button>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
       <button class="btn btn-outline btn-sm" onclick="workCalMonth=prevMonth(workCalMonth); showWorkCalendar();">&lsaquo;</button>
       <span style="font-size:18px; font-weight:800;">${year}년 ${monthNames[mon-1]}</span>
       <button class="btn btn-outline btn-sm" onclick="workCalMonth=nextMonth(workCalMonth); showWorkCalendar();">&rsaquo;</button>
@@ -5364,8 +5375,6 @@ async function showWorkCalendar() {
       ${calCells}
     </div>
 
-    <div id="calDayDetail"></div>
-
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; margin-bottom:10px;">
       <p class="section-title" style="margin:0;">&#128197; 이번 달 일정 (${monthEvents.length}건)</p>
       <button class="btn btn-primary btn-sm" onclick="showEventForm()">+ 일정 추가</button>
@@ -5376,7 +5385,7 @@ async function showWorkCalendar() {
         const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
         const color = typeColors[e.event_type] || '#6366f1';
         const isAuthor = currentUser && (e.author_id === currentUser.id || currentUser.isAdmin);
-        return '<div class="card" style="padding:10px; margin-bottom:6px; border-left:3px solid ' + color + ';">' +
+        return '<div class="card" style="padding:10px; margin-bottom:6px; border-left:3px solid ' + color + ';" onclick="workCalSelectedDate=\'' + eDate + '\'; workCalViewMode=\'daily\'; showWorkCalendar();" style="cursor:pointer;">' +
           '<div style="display:flex; justify-content:space-between; align-items:flex-start;">' +
             '<div style="flex:1;">' +
               '<div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">' +
@@ -5386,81 +5395,252 @@ async function showWorkCalendar() {
               '<div style="font-size:14px; font-weight:600;">' + escHtml(e.title) + '</div>' +
               (e.description ? '<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">' + escHtml(e.description) + '</div>' : '') +
             '</div>' +
-            (isAuthor ? '<button onclick="deleteEvent(\'' + e.id + '\')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px; padding:2px;">&times;</button>' : '') +
+            (isAuthor ? '<button onclick="event.stopPropagation(); deleteEvent(\'' + e.id + '\')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px; padding:2px;">&times;</button>' : '') +
           '</div>' +
         '</div>';
       }).join('')}
   `;
 }
 
-function showCalDay(dateStr) {
-  api(`/api/calendar?month=${dateStr.substring(0,7)}`).then(d => {
-    if (!d) return;
-    const info = d.days[dateStr];
-    const el = document.getElementById('calDayDetail');
-    if (!el) return;
+async function showWeeklyCalView() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">주간 캘린더 로딩 중...</p>';
 
-    if (!info) { el.innerHTML = ''; return; }
+  const sel = new Date(workCalSelectedDate);
+  const dayOfWeek = sel.getDay();
+  const weekStart = new Date(sel);
+  weekStart.setDate(sel.getDate() - dayOfWeek);
+  const weekDates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    weekDates.push(d.toISOString().split('T')[0]);
+  }
 
-    const [y, m, day] = dateStr.split('-');
-    let html = `
-      <div class="card" style="padding:14px; margin-top:16px;">
-        <div style="font-size:15px; font-weight:700; margin-bottom:12px;">
-          &#128197; ${parseInt(m)}월 ${parseInt(day)}일 활동
-        </div>`;
+  const month = weekDates[0].substring(0, 7);
+  const month2 = weekDates[6].substring(0, 7);
+  const fetches = [api(`/api/calendar?month=${month}`), api(`/api/events?month=${month}`)];
+  if (month2 !== month) { fetches.push(api(`/api/calendar?month=${month2}`)); fetches.push(api(`/api/events?month=${month2}`)); }
+  const results = await Promise.all(fetches);
+  const calData = results[0] || { days: {} };
+  const evts = results[1] || [];
+  if (results[2]) Object.assign(calData.days, results[2].days || {});
+  const allEvts = results[3] ? evts.concat(results[3]) : evts;
 
-    if (info.reports.length) {
-      html += `<div style="margin-bottom:12px;">
-        <div style="font-size:13px; font-weight:600; color:#2563eb; margin-bottom:6px;">&#128221; 업무일지 (${info.reports.length}건)</div>
-        ${info.reports.map(r => `
-          <div class="list-item" onclick="viewReport(${r.id})" style="cursor:pointer; padding:8px;">
-            <div class="list-item-content">
-              <div class="list-item-title">${escHtml(r.task || '업무')}</div>
-              <div class="list-item-sub">${escHtml(r.category || '')} ${r.result ? '| ' + escHtml(r.result) : ''}</div>
-            </div>
-          </div>
-        `).join('')}
-      </div>`;
+  const today = new Date().toISOString().split('T')[0];
+  const dayNames = ['일','월','화','수','목','금','토'];
+  const [wy, wm] = weekDates[0].split('-').map(Number);
+  const [wy2, wm2] = weekDates[6].split('-').map(Number);
+  const headerLabel = wm === wm2 ? `${wy}년 ${wm}월` : `${wy}년 ${wm}월 ~ ${wm2}월`;
+
+  let weekHtml = '';
+  for (let i = 0; i < 7; i++) {
+    const ds = weekDates[i];
+    const dayNum = parseInt(ds.split('-')[2]);
+    const info = calData.days[ds];
+    const isToday = ds === today;
+    const isSun = i === 0;
+    const isSat = i === 6;
+    const dayEvts = allEvts.filter(e => (e.event_date || '').split('T')[0] === ds);
+
+    let dots = '';
+    if (info) {
+      if (info.reports.length) dots += '<span class="cal-dot" style="background:#2563eb;"></span>';
+      if (info.attendance) dots += '<span class="cal-dot" style="background:#10b981;"></span>';
+      if (info.todos.length) dots += '<span class="cal-dot" style="background:#f59e0b;"></span>';
+    }
+    if (dayEvts.length) dots += '<span class="cal-dot" style="background:#ec4899;"></span>';
+
+    let evtList = '';
+    if (dayEvts.length > 0) {
+      evtList = dayEvts.map(e => {
+        const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
+        const color = typeColors[e.event_type] || '#6366f1';
+        return `<div style="font-size:11px; padding:2px 6px; margin-top:2px; border-radius:4px; background:${color}15; color:${color}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.event_time ? e.event_time.substring(0,5) + ' ' : ''}${escHtml(e.title)}</div>`;
+      }).join('');
+    }
+    if (info && info.reports.length) {
+      evtList += `<div style="font-size:11px; padding:2px 6px; margin-top:2px; border-radius:4px; background:#2563eb15; color:#2563eb;">&#128221; ${info.reports.length}건</div>`;
+    }
+    if (info && info.todos.length) {
+      evtList += `<div style="font-size:11px; padding:2px 6px; margin-top:2px; border-radius:4px; background:#f59e0b15; color:#f59e0b;">&#9745; ${info.todos.length}건</div>`;
     }
 
-    if (info.attendance) {
+    weekHtml += `
+      <div onclick="workCalSelectedDate='${ds}'; workCalViewMode='daily'; showWorkCalendar();"
+           style="flex:1; min-height:100px; padding:6px 4px; text-align:center; cursor:pointer; border-right:${i<6?'1px solid var(--gray-100)':'none'};
+           ${isToday ? 'background:var(--primary-light);' : ''}">
+        <div style="font-size:11px; color:${isSun?'#ea4335':isSat?'#1a73e8':'var(--gray-500)'}; margin-bottom:2px;">${dayNames[i]}</div>
+        <div style="font-size:15px; font-weight:${isToday?'800':'600'}; ${isToday?'color:var(--primary);':''} margin-bottom:4px;">${dayNum}</div>
+        <div style="display:flex; gap:2px; justify-content:center; margin-bottom:4px;">${dots}</div>
+        ${evtList || (!info && dayEvts.length === 0 ? '<div style="font-size:10px; color:var(--gray-300); margin-top:8px;">-</div>' : '')}
+      </div>`;
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--gray-100); border-radius:10px; padding:3px;">
+      <button onclick="workCalViewMode='monthly'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:transparent; color:var(--gray-600);">월간</button>
+      <button onclick="workCalViewMode='weekly'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:var(--primary); color:#fff;">주간</button>
+      <button onclick="workCalSelectedDate='${today}'; workCalViewMode='daily'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:transparent; color:var(--gray-600);">일간</button>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <button class="btn btn-outline btn-sm" onclick="var d=new Date(workCalSelectedDate); d.setDate(d.getDate()-7); workCalSelectedDate=d.toISOString().split('T')[0]; workCalMonth=workCalSelectedDate.substring(0,7); showWorkCalendar();">&lsaquo;</button>
+      <span style="font-size:16px; font-weight:800;">${headerLabel} ${parseInt(weekDates[0].split('-')[2])}~${parseInt(weekDates[6].split('-')[2])}일</span>
+      <button class="btn btn-outline btn-sm" onclick="var d=new Date(workCalSelectedDate); d.setDate(d.getDate()+7); workCalSelectedDate=d.toISOString().split('T')[0]; workCalMonth=workCalSelectedDate.substring(0,7); showWorkCalendar();">&rsaquo;</button>
+    </div>
+
+    <div style="display:flex; border:1px solid var(--gray-200); border-radius:10px; overflow:hidden; margin-bottom:16px;">
+      ${weekHtml}
+    </div>
+
+    <div style="margin-bottom:10px; display:flex; justify-content:center; gap:12px; font-size:11px; color:var(--gray-500);">
+      <span><span class="cal-dot-legend" style="background:#2563eb;"></span> 업무일지</span>
+      <span><span class="cal-dot-legend" style="background:#10b981;"></span> 출근</span>
+      <span><span class="cal-dot-legend" style="background:#f59e0b;"></span> 할 일</span>
+      <span><span class="cal-dot-legend" style="background:#ec4899;"></span> 일정</span>
+    </div>
+  `;
+}
+
+async function showDailyCalView() {
+  const fab = document.getElementById('fabBtn'); fab.style.display = 'none';
+  document.getElementById('mainContent').innerHTML = '<p style="text-align:center; padding:60px 0; color:var(--gray-500);">일간 캘린더 로딩 중...</p>';
+
+  const ds = workCalSelectedDate;
+  const month = ds.substring(0, 7);
+  workCalMonth = month;
+
+  const [calData, dayEvents] = await Promise.all([
+    api(`/api/calendar?month=${month}`),
+    api(`/api/events?from=${ds}&to=${ds}`).then(r => r || [])
+  ]);
+
+  const info = calData ? (calData.days[ds] || null) : null;
+  const [y, m, day] = ds.split('-').map(Number);
+  const dow = new Date(y, m - 1, day).getDay();
+  const dayNames = ['일요일','월요일','화요일','수요일','목요일','금요일','토요일'];
+  const today = new Date().toISOString().split('T')[0];
+  const isToday = ds === today;
+
+  const hasAny = info || dayEvents.length > 0;
+
+  let contentHtml = '';
+
+  if (!hasAny) {
+    contentHtml = `
+      <div style="text-align:center; padding:40px 20px;">
+        <div style="font-size:48px; margin-bottom:12px;">&#128197;</div>
+        <p style="font-size:16px; font-weight:600; color:var(--gray-500); margin-bottom:4px;">일정 없음</p>
+        <p style="font-size:13px; color:var(--gray-400); margin-bottom:16px;">이 날에 등록된 활동이 없습니다</p>
+        <div style="display:flex; gap:8px; justify-content:center;">
+          <button class="btn btn-primary btn-sm" onclick="showEventForm()">+ 일정 추가</button>
+          <button class="btn btn-outline btn-sm" onclick="openNewReport()">+ 업무일지</button>
+        </div>
+      </div>`;
+  } else {
+    if (info && info.attendance) {
       const a = info.attendance;
       const cin = a.check_in ? new Date(a.check_in).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}) : '-';
       const cout = a.check_out ? new Date(a.check_out).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}) : '-';
-      html += `<div style="margin-bottom:12px;">
-        <div style="font-size:13px; font-weight:600; color:#10b981; margin-bottom:6px;">&#128339; 출퇴근</div>
-        <div style="padding:8px; background:var(--gray-50); border-radius:8px; font-size:13px;">
-          출근: ${cin} &nbsp;|&nbsp; 퇴근: ${cout}
-          ${a.status === 'late' ? ' <span style="color:#dc2626; font-size:11px;">지각</span>' : ''}
-        </div>
-      </div>`;
-    }
-
-    if (info.todos.length) {
-      html += `<div style="margin-bottom:12px;">
-        <div style="font-size:13px; font-weight:600; color:#f59e0b; margin-bottom:6px;">&#9745; 할 일 (${info.todos.length}건)</div>
-        ${info.todos.map(t => `
-          <div style="padding:6px 8px; font-size:13px; ${t.done ? 'text-decoration:line-through; color:var(--gray-400);' : ''}">
-            ${t.done ? '&#9989;' : '&#11036;'} ${escHtml(t.title)}
+      contentHtml += `
+        <div class="card" style="padding:12px; margin-bottom:10px; border-left:3px solid #10b981;">
+          <div style="font-size:13px; font-weight:700; color:#10b981; margin-bottom:6px;">&#128339; 출퇴근</div>
+          <div style="font-size:13px; display:flex; gap:16px;">
+            <span>출근: <b>${cin}</b></span>
+            <span>퇴근: <b>${cout}</b></span>
+            ${a.status === 'late' ? '<span style="color:#dc2626; font-size:11px; font-weight:600;">지각</span>' : '<span style="color:#10b981; font-size:11px;">정상</span>'}
           </div>
-        `).join('')}
-      </div>`;
+        </div>`;
     }
 
-    if (info.events.length) {
-      html += `<div style="margin-bottom:12px;">
-        <div style="font-size:13px; font-weight:600; color:#ec4899; margin-bottom:6px;">&#128197; 팀 일정 (${info.events.length}건)</div>
-        ${info.events.map(e => `
-          <div style="padding:6px 8px; font-size:13px;">
-            &#128204; ${escHtml(e.title)} <span style="font-size:11px; color:var(--gray-400);">${escHtml(e.type || '')}</span>
-          </div>
-        `).join('')}
-      </div>`;
+    if (dayEvents.length > 0) {
+      contentHtml += `
+        <div class="card" style="padding:12px; margin-bottom:10px; border-left:3px solid #ec4899;">
+          <div style="font-size:13px; font-weight:700; color:#ec4899; margin-bottom:8px;">&#128197; 일정 (${dayEvents.length}건)</div>
+          ${dayEvents.map(e => {
+            const typeColors = { '회의': '#3b82f6', '마감': '#ef4444', '행사': '#10b981', '출장': '#f59e0b', '기타': '#6366f1' };
+            const color = typeColors[e.event_type] || '#6366f1';
+            const isAuthor = currentUser && (e.author_id === currentUser.id || currentUser.isAdmin);
+            return `<div style="padding:8px; margin-bottom:4px; border-radius:8px; background:${color}08; border:1px solid ${color}22;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <span style="font-size:10px; padding:1px 6px; border-radius:3px; background:${color}22; color:${color}; font-weight:600;">${escHtml(e.event_type)}</span>
+                  <span style="font-size:12px; color:var(--gray-500); margin-left:4px;">${e.event_time ? e.event_time.substring(0,5) : '종일'}</span>
+                </div>
+                ${isAuthor ? '<button onclick="deleteEvent(\'' + e.id + '\')" style="background:none; border:none; color:var(--gray-400); cursor:pointer; font-size:16px;">&times;</button>' : ''}
+              </div>
+              <div style="font-size:14px; font-weight:600; margin-top:4px;">${escHtml(e.title)}</div>
+              ${e.description ? '<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">' + escHtml(e.description) + '</div>' : ''}
+            </div>`;
+          }).join('')}
+        </div>`;
+    } else {
+      contentHtml += `
+        <div class="card" style="padding:12px; margin-bottom:10px; border-left:3px solid var(--gray-200);">
+          <div style="font-size:13px; font-weight:700; color:var(--gray-400); margin-bottom:4px;">&#128197; 일정</div>
+          <p style="font-size:13px; color:var(--gray-400);">등록된 일정 없음</p>
+        </div>`;
     }
 
-    html += '</div>';
-    el.innerHTML = html;
-  });
+    if (info && info.reports.length) {
+      contentHtml += `
+        <div class="card" style="padding:12px; margin-bottom:10px; border-left:3px solid #2563eb;">
+          <div style="font-size:13px; font-weight:700; color:#2563eb; margin-bottom:8px;">&#128221; 업무일지 (${info.reports.length}건)</div>
+          ${info.reports.map(r => `
+            <div class="list-item" onclick="viewReport(${r.id})" style="cursor:pointer; padding:8px;">
+              <div class="list-item-content">
+                <div class="list-item-title">${escHtml(r.task || '업무')}</div>
+                <div class="list-item-sub">${escHtml(r.category || '')} ${r.result ? '| ' + escHtml(r.result) : ''}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>`;
+    }
+
+    if (info && info.todos.length) {
+      contentHtml += `
+        <div class="card" style="padding:12px; margin-bottom:10px; border-left:3px solid #f59e0b;">
+          <div style="font-size:13px; font-weight:700; color:#f59e0b; margin-bottom:8px;">&#9745; 할 일 (${info.todos.length}건)</div>
+          ${info.todos.map(t => `
+            <div style="padding:6px 8px; font-size:13px; display:flex; align-items:center; gap:6px; ${t.done ? 'text-decoration:line-through; color:var(--gray-400);' : ''}">
+              ${t.done ? '&#9989;' : '&#11036;'} ${escHtml(t.title)}
+            </div>
+          `).join('')}
+        </div>`;
+    }
+
+    contentHtml += `
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn btn-primary btn-sm" onclick="showEventForm()" style="flex:1;">+ 일정 추가</button>
+        <button class="btn btn-outline btn-sm" onclick="openNewReport()" style="flex:1;">+ 업무일지</button>
+      </div>`;
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--gray-100); border-radius:10px; padding:3px;">
+      <button onclick="workCalViewMode='monthly'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:transparent; color:var(--gray-600);">월간</button>
+      <button onclick="workCalViewMode='weekly'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:transparent; color:var(--gray-600);">주간</button>
+      <button onclick="workCalViewMode='daily'; showWorkCalendar();" style="flex:1; padding:8px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; background:var(--primary); color:#fff;">일간</button>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <button class="btn btn-outline btn-sm" onclick="var d=new Date(workCalSelectedDate); d.setDate(d.getDate()-1); workCalSelectedDate=d.toISOString().split('T')[0]; workCalMonth=workCalSelectedDate.substring(0,7); showWorkCalendar();">&lsaquo;</button>
+      <div style="text-align:center;">
+        <div style="font-size:18px; font-weight:800;">${m}월 ${day}일 ${dayNames[dow]}</div>
+        <div style="font-size:12px; color:var(--gray-500);">${y}년${isToday ? ' · <span style="color:var(--primary); font-weight:700;">오늘</span>' : ''}</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="var d=new Date(workCalSelectedDate); d.setDate(d.getDate()+1); workCalSelectedDate=d.toISOString().split('T')[0]; workCalMonth=workCalSelectedDate.substring(0,7); showWorkCalendar();">&rsaquo;</button>
+    </div>
+
+    ${contentHtml}
+  `;
+}
+
+function showCalDay(dateStr) {
+  workCalSelectedDate = dateStr;
+  workCalViewMode = 'daily';
+  showWorkCalendar();
 }
 
 // ─── 업무 인수인계 ───
