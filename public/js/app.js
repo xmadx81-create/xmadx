@@ -9462,12 +9462,21 @@ async function _aiProcessChat(input, _detections) {
     return { reply: '어떤 방식으로 작성하시겠어요?', suggests: ['보고서 마법사', '음성으로 기록', '직접 작성'] };
   }
 
-  // --- 출퇴근 자연어 ---
-  if (/나\s*왔|도착했|나\s*출근|출근할[게래]|출근\s*체크|출근해/.test(t)) {
-    return { reply: '출근 처리할게요!', action: () => { closeAiChat(); doCheckIn(); } };
+  // --- 출퇴근 (확인 후 처리) ---
+  if (/^(출근|출근\s*체크|출근해|나\s*왔어|도착)$/.test(t)) {
+    return { reply: '출근 처리할까요?', suggests: ['네', '아니요'] , _pendingAction: 'checkin' };
   }
-  if (/퇴근할[게래]|퇴근\s*처리|퇴근해|나\s*간다|퇴근\s*체크/.test(t)) {
-    return { reply: '퇴근 처리할게요!', action: () => { closeAiChat(); doCheckOut(); } };
+  if (/^(퇴근|퇴근\s*체크|퇴근해|퇴근\s*처리)$/.test(t)) {
+    return { reply: '퇴근 처리할까요?', suggests: ['네', '아니요'], _pendingAction: 'checkout' };
+  }
+  if (/^네$/.test(t) && _aiChatHistory.length > 0) {
+    const prev = _aiChatHistory.filter(h => h.who === 'bot').slice(-1)[0];
+    if (prev && prev.text && prev.text.includes('출근 처리할까요')) {
+      return { reply: '출근 처리했어요! ⏰', action: () => { doCheckIn(); } };
+    }
+    if (prev && prev.text && prev.text.includes('퇴근 처리할까요')) {
+      return { reply: '퇴근 처리했어요! ⏰', action: () => { doCheckOut(); } };
+    }
   }
 
   // --- 검색 ---
