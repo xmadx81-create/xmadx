@@ -7753,6 +7753,24 @@ function openAiChat() {
 
   _aiChatAddBot(greeting + ' ' + name + '님! 무엇을 도와드릴까요? 😊');
 
+  // 프로액티브 팁 — 상황에 맞는 안내 자동 표시
+  setTimeout(async () => {
+    try {
+      const _td = new Date().toISOString().split('T')[0];
+      const h2 = new Date().getHours();
+      const [atd2, todos2, evts2] = await Promise.all([api('/api/attendance/today'), api('/api/todos'), api('/api/calendar-events?date=' + _td)]);
+      const pend2 = (todos2 || []).filter(td => !td.completed);
+      const od2 = pend2.filter(td => td.due_date && td.due_date.split('T')[0] < _td);
+      const tips = [];
+      if (!atd2 && h2 < 11) tips.push('출근 체크가 아직이에요');
+      if (od2.length > 0) tips.push('기한 지난 할 일 ' + od2.length + '건');
+      const nm = h2 * 60 + new Date().getMinutes();
+      const soonEvt = (evts2 || []).find(e => { if (!e.event_time) return false; const [eh,em] = e.event_time.split(':').map(Number); const d = eh*60+em-nm; return d > 0 && d <= 30; });
+      if (soonEvt) tips.push('곧 "' + soonEvt.title + '" 일정');
+      if (tips.length > 0) _aiChatAddBot('💡 ' + tips.join(' | '));
+    } catch(_) {}
+  }, 1500);
+
   // 스마트 추천: 시간대별 + 학습 기반
   let suggests = [];
   const topics = mem.topics || {};
@@ -8050,7 +8068,7 @@ async function _aiProcessChat(input) {
 
   // --- 도움말 ---
   if (/도움말|뭐\s*할\s*수|기능|메뉴|사용법/.test(t)) {
-    return { reply: '저는 이런 것들을 도와드릴 수 있어요!\n\n📅 일정 — "오늘 일정", "일정 추가 3시 회의"\n✅ 할 일 — "할 일 확인", "할 일 추가 OOO", "할 일 완료"\n📝 보고서 — "보고서 쓸래", "음성 기록"\n⏰ 출퇴근 — "출근 체크", "퇴근 처리"\n📊 브리핑 — "오늘 브리핑", "이번 주 요약"\n💬 대화 — "OOO 기억해", "기억한 것 보여줘"\n🍜 재미 — "점심 추천", "농담 해줘", "응원해줘"\n📢 소통 — "공지사항", "게시판"\n\n채팅으로 할 일 추가, 일정 등록, 완료 처리까지 가능해요! 😊', suggests: ['오늘 브리핑', '할 일 확인', '보고서 쓸래'] };
+    return { reply: '저는 이런 것들을 도와드릴 수 있어요!\n\n📅 일정 — "오늘 일정", "일정 추가 3시 회의"\n✅ 할 일 — "할 일 추가 OOO", "할 일 완료"\n📝 보고서 — "보고서 쓸래", "음성 기록"\n⏰ 출퇴근 — "출근 체크", "퇴근 처리"\n📊 브리핑 — "오늘 브리핑", "이번 주 요약", "오늘 마무리"\n🎯 생산성 — "목표 설정", "집중 모드", "업무 분석"\n😊 감정 — "기분 좋아/나빠", "기분 통계"\n🔍 검색 — "OOO 검색", "팀원 현황"\n🍜 재미 — "점심 추천", "농담", "명언", "D-day"\n🔢 계산 — "123 + 456"\n💬 기억 — "OOO 기억해", "말투 바꿔"\n\n무엇이든 편하게 물어보세요! 😊', suggests: ['오늘 브리핑', '집중 모드', '목표 확인'] };
   }
 
   // --- 감사/칭찬 ---
@@ -8235,13 +8253,276 @@ async function _aiProcessChat(input) {
     }
   }
 
+  // --- 통합 검색 ---
+  const searchMatch = input.match(/(?:검색|찾아|찾기|조회)[:\s]*(.+)/i) || input.match(/(.+?)\s*(?:검색|찾아줘|찾아봐)/);
+  if (searchMatch) {
+    const keyword = searchMatch[1].trim();
+    try {
+      const weekAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+      const [rps, todos, evts] = await Promise.all([
+        api(`/api/reports?from=${weekAgo}&to=${today}`),
+        api('/api/todos'),
+        api(`/api/events?from=${weekAgo}&to=${today}`)
+      ]);
+      const results = [];
+      (rps || []).filter(r => (r.what_task || r.content || '').includes(keyword)).slice(0, 3).forEach(r => results.push('📝 ' + (r.what_task || r.content || '').substring(0, 30) + ' (' + (r.report_date||'').split('T')[0] + ')'));
+      (todos || []).filter(td => td.title.includes(keyword)).slice(0, 3).forEach(td => results.push((td.completed ? '✅ ' : '⬜ ') + td.title));
+      (evts || []).filter(e => (e.title||'').includes(keyword)).slice(0, 3).forEach(e => results.push('📅 ' + e.title + ' (' + (e.event_date||'').split('T')[0] + ')'));
+      if (results.length === 0) return { reply: '"' + keyword + '"에 대한 검색 결과가 없어요.', suggests: ['다른 검색', '도움말'] };
+      return { reply: '🔍 "' + keyword + '" 검색 결과 ' + results.length + '건:\n\n' + results.join('\n'), suggests: ['통합 검색 열기'] };
+    } catch(_) { return { reply: '검색 중 오류가 생겼어요.' }; }
+  }
+  if (/통합\s*검색\s*열기/.test(t)) {
+    return { reply: '통합 검색을 열게요!', action: () => { closeAiChat(); showGlobalSearch(); } };
+  }
+
+  // --- 팀원 현황 ---
+  if (/팀원\s*(현황|상태|출근|누가)|누가\s*출근/.test(t)) {
+    try {
+      const atdBoard = await api('/api/attendance/board');
+      if (!atdBoard) return { reply: '팀원 현황을 불러올 수 없어요.' };
+      const checked = (atdBoard.members || []).filter(m => m.check_in);
+      const notChecked = (atdBoard.members || []).filter(m => !m.check_in);
+      let reply = '👥 팀원 출근 현황 (' + checked.length + '/' + atdBoard.total + '명)\n\n';
+      if (checked.length > 0) reply += '✅ 출근: ' + checked.map(m => m.name).join(', ') + '\n';
+      if (notChecked.length > 0) reply += '⏳ 미출근: ' + notChecked.map(m => m.name).join(', ');
+      return { reply, suggests: ['오늘 일정', '팀 보고서'] };
+    } catch(_) { return { reply: '팀원 현황을 조회할 수 없어요.' }; }
+  }
+
+  // --- 팀 보고서 ---
+  if (/팀\s*(보고서|일지|작성\s*현황)/.test(t)) {
+    try {
+      const rps = await api(`/api/reports?from=${today}&to=${today}`);
+      const others = (rps || []).filter(r => r.author_id !== currentUser.id);
+      if (others.length === 0) return { reply: '오늘 팀원이 작성한 일지가 아직 없어요.' };
+      return { reply: '📝 오늘 팀 업무일지 ' + others.length + '건:\n\n' + others.slice(0, 5).map(r => '• ' + (r.author_name||'') + ': ' + (r.what_task || r.content || '').substring(0, 25)).join('\n'), suggests: ['업무일지 보기', '팀원 현황'] };
+    } catch(_) { return { reply: '팀 보고서 조회 중 오류가 생겼어요.' }; }
+  }
+
+  // --- 감정 트래커 ---
+  if (/기분\s*(좋|최고|행복|신나|좋아)/.test(t)) {
+    _aiLearn('mood_' + today, 'good');
+    const replies = ['기분이 좋으시다니 저도 기뻐요! 🎉', '좋은 에너지가 느껴져요! 오늘 더 좋은 일이 생길 거예요 ✨', '행복한 하루 보내세요! 😊'];
+    return { reply: replies[Math.floor(Math.random() * replies.length)] + '\n(기분 기록됨 ✓)', suggests: ['기분 통계', '오늘 일정'] };
+  }
+  if (/기분\s*(나빠|별로|안\s*좋|우울|짜증|스트레스)/.test(t)) {
+    _aiLearn('mood_' + today, 'bad');
+    return { reply: '힘든 날이군요... 😢\n\n💡 비서 추천:\n• 5분간 깊은 호흡을 해보세요\n• 좋아하는 음료 한 잔 드세요\n• 잠깐 산책하면 기분이 나아져요\n\n' + name + '님 곁에 항상 있을게요! 💙', learn: { ['mood_' + today]: 'bad' }, suggests: ['농담 해줘', '응원해줘'] };
+  }
+  if (/기분\s*(통계|기록|추이|히스토리)/.test(t)) {
+    const facts = mem.facts || {};
+    const moods = Object.entries(facts).filter(([k]) => k.startsWith('mood_')).sort((a, b) => a[0].localeCompare(b[0]));
+    if (moods.length === 0) return { reply: '기분 기록이 아직 없어요. "기분 좋아" 또는 "기분 나빠"로 기록해보세요!' };
+    const good = moods.filter(([,v]) => v === 'good').length;
+    const bad = moods.filter(([,v]) => v === 'bad').length;
+    const recent = moods.slice(-5).map(([k,v]) => k.replace('mood_','') + ' ' + (v === 'good' ? '😊' : '😔')).join('\n');
+    return { reply: '📊 기분 통계:\n\n😊 좋은 날: ' + good + '일\n😔 안 좋은 날: ' + bad + '일\n\n최근 기록:\n' + recent };
+  }
+
+  // --- 주간 목표 ---
+  if (/목표\s*(설정|등록|추가|만들)[:\s]*(.+)/i.test(input)) {
+    const goalMatch = input.match(/목표\s*(?:설정|등록|추가|만들)[:\s]*(.+)/i);
+    if (goalMatch) {
+      const goal = goalMatch[1].trim();
+      const mGoals = JSON.parse(localStorage.getItem('aiGoals') || '[]');
+      mGoals.push({ text: goal, created: today, done: false });
+      localStorage.setItem('aiGoals', JSON.stringify(mGoals));
+      return { reply: '🎯 목표 등록 완료!\n"' + goal + '"\n\n달성하면 "목표 완료"라고 알려주세요!', suggests: ['목표 확인', '할 일 확인'] };
+    }
+  }
+  if (/목표\s*(설정|등록|세우)/.test(t) && !input.match(/목표\s*(?:설정|등록)[:\s]*.{2,}/i)) {
+    return { reply: '어떤 목표를 세우시겠어요?\n예: "목표 설정 이번 주 보고서 5개 작성"', suggests: [] };
+  }
+  if (/목표\s*(확인|보여|목록|현황)/.test(t)) {
+    const mGoals = JSON.parse(localStorage.getItem('aiGoals') || '[]');
+    const active = mGoals.filter(g => !g.done);
+    const done = mGoals.filter(g => g.done);
+    if (mGoals.length === 0) return { reply: '등록된 목표가 없어요. "목표 설정 OOO"으로 추가해보세요!', suggests: ['목표 설정'] };
+    let reply = '🎯 나의 목표:\n\n';
+    if (active.length > 0) reply += '진행 중:\n' + active.map((g, i) => '⬜ ' + (i+1) + '. ' + g.text).join('\n');
+    if (done.length > 0) reply += '\n\n완료:\n' + done.slice(-3).map(g => '✅ ' + g.text).join('\n');
+    return { reply, suggests: active.length > 0 ? ['1번 목표 완료', '목표 추가'] : ['목표 설정'] };
+  }
+  const goalDoneMatch = t.match(/(\d)번?\s*목표\s*완료/);
+  if (goalDoneMatch) {
+    const mGoals = JSON.parse(localStorage.getItem('aiGoals') || '[]');
+    const active = mGoals.filter(g => !g.done);
+    const idx = parseInt(goalDoneMatch[1]) - 1;
+    if (active[idx]) {
+      active[idx].done = true;
+      active[idx].doneDate = today;
+      localStorage.setItem('aiGoals', JSON.stringify(mGoals));
+      return { reply: '🎉 목표 달성! "' + active[idx].text + '"\n\n축하해요! 정말 대단하세요! 👏✨', suggests: ['목표 확인', '오늘 브리핑'] };
+    }
+    return { reply: '해당 번호의 목표를 찾을 수 없어요.', suggests: ['목표 확인'] };
+  }
+  if (/목표\s*(완료|달성)/.test(t) && !goalDoneMatch) {
+    return _aiProcessChat('목표 확인');
+  }
+
+  // --- 집중 모드 (포모도로) ---
+  if (/집중\s*모드|포모도로|타이머|집중\s*시작/.test(t)) {
+    return { reply: '🍅 집중 모드를 시작할게요!\n25분 집중 → 5분 휴식\n\n아래에 타이머가 시작됩니다.', suggests: ['25분', '15분', '50분'] };
+  }
+  if (/^(\d+)분$/.test(t) && _aiChatHistory.some(h => h.text && h.text.includes('집중 모드'))) {
+    const mins = parseInt(t);
+    const endTime = new Date(Date.now() + mins * 60000);
+    const endStr = String(endTime.getHours()).padStart(2,'0') + ':' + String(endTime.getMinutes()).padStart(2,'0');
+    setTimeout(() => {
+      if (document.getElementById('aiChatOverlay').style.display === 'flex') {
+        _aiChatAddBot('⏰ ' + mins + '분 집중 시간 종료! 잘하셨어요! 👏\n잠깐 스트레칭하고 물 한 잔 드세요 💧');
+        _aiChatShowSuggest(['한번 더', '오늘 브리핑']);
+      } else {
+        _showSecretaryAlert('focus', '🍅 집중 완료', mins + '분 집중 시간이 끝났어요!\n잘하셨어요! 잠깐 쉬어가세요.', '확인');
+      }
+    }, mins * 60000);
+    _aiLearn('focus_' + Date.now(), mins + '분');
+    return { reply: '🍅 ' + mins + '분 집중 타이머 시작!\n종료 시각: ' + endStr + '\n\n집중하는 동안 채팅을 닫아도 알림이 올 거예요.\n화이팅! 🔥', suggests: ['오늘 일정'] };
+  }
+  if (/^한번\s*더$/.test(t)) {
+    return _aiProcessChat('집중 모드');
+  }
+
+  // --- 일일 마무리 리포트 ---
+  if (/마무리|퇴근\s*요약|하루\s*정리|오늘\s*마무리|데일리\s*리포트/.test(t)) {
+    try {
+      const [rps, todos, evts, atd] = await Promise.all([
+        api(`/api/reports?from=${today}&to=${today}`),
+        api('/api/todos'),
+        api('/api/calendar-events?date=' + today),
+        api('/api/attendance/today')
+      ]);
+      const myRps = (rps || []).filter(r => r.author_id === currentUser.id);
+      const pend = (todos || []).filter(td => !td.completed);
+      const completedToday = (todos || []).filter(td => td.completed);
+      const mGoals = JSON.parse(localStorage.getItem('aiGoals') || '[]');
+      const activeGoals = mGoals.filter(g => !g.done);
+
+      let reply = '📋 오늘의 마무리 리포트\n━━━━━━━━━━━━━━\n\n';
+      reply += '⏰ 근무: ' + (atd && atd.check_in ? (atd.check_in||'').substring(11,16) + ' 출근' : '미출근');
+      if (atd && atd.check_out) reply += ' → ' + (atd.check_out||'').substring(11,16) + ' 퇴근';
+      reply += '\n📝 업무일지: ' + myRps.length + '건 작성';
+      reply += '\n📅 일정: ' + ((evts||[]).length) + '건 중 처리 완료';
+      reply += '\n✅ 할 일: ' + completedToday.length + '건 완료, ' + pend.length + '건 남음';
+      if (activeGoals.length > 0) reply += '\n🎯 진행 중 목표: ' + activeGoals.length + '건';
+
+      // 평가
+      const score = myRps.length * 20 + completedToday.length * 10 + ((evts||[]).length > 0 ? 20 : 0) + (atd && atd.check_in ? 10 : 0);
+      const grade = score >= 80 ? '🌟 최고의 하루!' : score >= 50 ? '👍 알찬 하루!' : score >= 30 ? '💪 수고하셨어요!' : '🌱 내일은 더 나아질 거예요!';
+      reply += '\n\n' + grade + ' (활동 점수: ' + Math.min(score, 100) + '/100)';
+
+      _aiLearn('dailyScore_' + today, Math.min(score, 100));
+      return { reply, suggests: ['퇴근 처리', '이번 주 요약'] };
+    } catch(_) { return { reply: '마무리 리포트를 만드는 중 오류가 생겼어요.' }; }
+  }
+
+  // --- 업무 패턴 분석 ---
+  if (/패턴|분석|내\s*업무\s*분석|인사이트|통계/.test(t) && !/대화/.test(t)) {
+    const facts = mem.facts || {};
+    const topics = mem.topics || {};
+    const scores = Object.entries(facts).filter(([k]) => k.startsWith('dailyScore_'));
+    const moods = Object.entries(facts).filter(([k]) => k.startsWith('mood_'));
+    const focuses = Object.entries(facts).filter(([k]) => k.startsWith('focus_'));
+
+    let reply = '🧠 AI 비서의 업무 분석\n━━━━━━━━━━━━━━\n\n';
+
+    // 대화 패턴
+    reply += '💬 대화 습관:\n';
+    reply += '• 총 대화 ' + (mem.chatCount || 0) + '회\n';
+    const topTopics = Object.entries(topics).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    if (topTopics.length > 0) reply += '• 관심 주제: ' + topTopics.map(([k, v]) => k + '(' + v + ')').join(', ') + '\n';
+
+    // 활동 점수
+    if (scores.length > 0) {
+      const avgScore = Math.round(scores.reduce((s, [, v]) => s + v, 0) / scores.length);
+      reply += '\n📊 활동 점수:\n';
+      reply += '• 평균 ' + avgScore + '/100 (' + scores.length + '일 기록)\n';
+      const best = scores.sort((a, b) => b[1] - a[1])[0];
+      reply += '• 최고 기록: ' + best[0].replace('dailyScore_', '') + ' (' + best[1] + '점)\n';
+    }
+
+    // 기분 패턴
+    if (moods.length > 0) {
+      const goodDays = moods.filter(([,v]) => v === 'good').length;
+      reply += '\n😊 기분:\n• 좋은 날 ' + goodDays + '일 / 전체 ' + moods.length + '일 (' + Math.round(goodDays/moods.length*100) + '%)\n';
+    }
+
+    // 집중 기록
+    if (focuses.length > 0) {
+      reply += '\n🍅 집중:\n• ' + focuses.length + '회 집중 모드 사용\n';
+    }
+
+    // AI 팁
+    reply += '\n💡 AI 팁: ';
+    if ((mem.chatCount || 0) < 5) reply += '더 자주 대화하면 맞춤 분석이 정확해져요!';
+    else if (topTopics[0] && topTopics[0][0] === '일정') reply += '일정 관리를 잘 하고 계세요! 목표도 설정해보시겠어요?';
+    else if (topTopics[0] && topTopics[0][0] === '할일') reply += '할 일 관리의 달인! 집중 모드로 효율을 높여보세요.';
+    else reply += '꾸준히 사용하면 점점 더 똑똑해질 거예요!';
+
+    return { reply, suggests: ['기분 통계', '목표 확인', '집중 모드'] };
+  }
+
+  // --- 말투 변경 ---
+  if (/말투\s*(바꿔|변경|바꾸|다르게)|반말|존댓말|격식|친근/.test(t)) {
+    const styles = { formal: '격식체 (존댓말)', casual: '친근체 (반말)', cute: '귀여운 말투' };
+    const curStyle = mem.facts && mem.facts.chatStyle || 'formal';
+    return { reply: '현재 말투: ' + (styles[curStyle] || '격식체') + '\n\n어떤 말투로 바꿀까요?', suggests: ['격식체', '친근체', '귀여운 말투'] };
+  }
+  if (/^격식체$/.test(t)) { return { reply: '네, 격식체로 말씀드릴게요. 무엇을 도와드릴까요?', learn: { chatStyle: 'formal' } }; }
+  if (/^친근체$/.test(t)) { return { reply: '알겠어~ 편하게 말할게! 뭐 도와줄까? 😄', learn: { chatStyle: 'casual' } }; }
+  if (/^귀여운\s*말투$/.test(t)) { return { reply: '네넹! 귀엽게 말해볼게용~ 뭐 도와드릴까용? 🐱', learn: { chatStyle: 'cute' } }; }
+
+  // --- 오늘의 명언 ---
+  if (/명언|격언|동기부여|좋은\s*말/.test(t)) {
+    const quotes = [
+      ['성공은 매일 반복하는 작은 노력의 합이다.', '로버트 콜리어'],
+      ['시작이 반이다.', '아리스토텔레스'],
+      ['오늘 할 수 있는 일을 내일로 미루지 마라.', '벤자민 프랭클린'],
+      ['실패는 성공의 어머니이다.', '토마스 에디슨'],
+      ['꿈을 크게 가져라. 작은 꿈에는 사람의 마음을 움직이는 힘이 없다.', '괴테'],
+      ['매일 조금씩 나아지면 큰 변화가 된다.', '존 우든'],
+      ['노력 없이 얻는 것은 없다.', '라틴 속담'],
+      ['최선을 다하면 후회는 없다.', '격언']
+    ];
+    const q = quotes[Math.floor(Math.random() * quotes.length)];
+    return { reply: '📜 오늘의 명언\n\n"' + q[0] + '"\n\n— ' + q[1], suggests: ['하나 더 보기', '오늘 일정'] };
+  }
+  if (/하나\s*더\s*보기/.test(t)) { return _aiProcessChat('명언'); }
+
+  // --- D-day 계산 ---
+  const ddayMatch = input.match(/(?:디데이|d-?day|남은\s*날)\s*(\d{1,2})월\s*(\d{1,2})일/i);
+  if (ddayMatch) {
+    const targetMonth = parseInt(ddayMatch[1]) - 1;
+    const targetDay = parseInt(ddayMatch[2]);
+    const target = new Date(new Date().getFullYear(), targetMonth, targetDay);
+    if (target < new Date()) target.setFullYear(target.getFullYear() + 1);
+    const diff = Math.ceil((target - new Date()) / 86400000);
+    return { reply: '📅 D-' + diff + '\n' + (targetMonth+1) + '월 ' + targetDay + '일까지 ' + diff + '일 남았어요!', suggests: ['오늘 일정'] };
+  }
+
+  // --- 계산기 ---
+  const calcMatch = input.match(/(\d+)\s*([+\-×÷*\/x])\s*(\d+)/);
+  if (calcMatch) {
+    const a = parseFloat(calcMatch[1]);
+    const op = calcMatch[2];
+    const b = parseFloat(calcMatch[3]);
+    let result;
+    if (op === '+') result = a + b;
+    else if (op === '-' || op === '−') result = a - b;
+    else if (op === '×' || op === '*' || op === 'x') result = a * b;
+    else if (op === '÷' || op === '/') result = b !== 0 ? a / b : '오류(0으로 나눌 수 없음)';
+    return { reply: '🔢 ' + a + ' ' + op + ' ' + b + ' = ' + result };
+  }
+
   // --- 학습 초기화 ---
   if (/기억\s*지워|학습\s*초기화|리셋|초기화/.test(t)) {
     return { reply: '정말 모든 기억을 지울까요? 되돌릴 수 없어요.', suggests: ['네 지워줘', '아니 취소'] };
   }
   if (/^네\s*지워/.test(t)) {
     localStorage.removeItem('aiMemory');
-    return { reply: '모든 기억을 초기화했어요. 새로 시작합니다! 🔄', suggests: ['도움말', '오늘 일정'] };
+    localStorage.removeItem('aiGoals');
+    return { reply: '모든 기억과 목표를 초기화했어요. 새로 시작합니다! 🔄', suggests: ['도움말', '오늘 일정'] };
   }
 
   // --- 기본 응답 (스마트 추천 포함) ---
@@ -8249,14 +8530,14 @@ async function _aiProcessChat(input) {
   let smartSuggests = ['도움말'];
   if (h2 < 10) smartSuggests.push('출근 체크', '오늘 브리핑');
   else if (h2 < 12) smartSuggests.push('오늘 일정', '할 일 확인');
-  else if (h2 < 14) smartSuggests.push('점심 추천', '오늘 일정');
-  else if (h2 < 18) smartSuggests.push('보고서 쓸래', '할 일 확인');
-  else smartSuggests.push('퇴근 처리', '오늘 브리핑');
+  else if (h2 < 14) smartSuggests.push('점심 추천', '명언');
+  else if (h2 < 18) smartSuggests.push('보고서 쓸래', '집중 모드');
+  else smartSuggests.push('오늘 마무리', '이번 주 요약');
 
   const fallbacks = [
-    '아직 그 부분은 잘 모르겠어요. 아래 추천 버튼을 눌러보세요!',
-    '죄송해요, 이해하지 못했어요. 좀 더 구체적으로 말씀해주세요!',
-    '이런 것도 해볼 수 있어요! 아래 버튼을 참고하세요.'
+    '아직 그건 어렵지만, 매일 배우고 있어요! 아래 버튼을 눌러보세요.',
+    '이해하기 어려웠어요. 좀 더 구체적으로 말씀해주세요!',
+    '이런 것도 가능해요! 아래에서 골라보세요.'
   ];
   _aiLearn('unmatched_' + Date.now(), input);
   return { reply: fallbacks[Math.floor(Math.random() * fallbacks.length)], suggests: smartSuggests };
@@ -8269,6 +8550,10 @@ function _aiDetectTopic(t) {
   if (/출근|퇴근|출퇴/.test(t)) return '출퇴근';
   if (/기억|학습|메모/.test(t)) return '기억';
   if (/도움|기능|사용/.test(t)) return '도움말';
+  if (/목표|집중|포모도로/.test(t)) return '생산성';
+  if (/기분|감정|컨디션/.test(t)) return '감정';
+  if (/검색|찾/.test(t)) return '검색';
+  if (/팀|팀원/.test(t)) return '팀';
   return '기타';
 }
 
