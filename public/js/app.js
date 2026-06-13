@@ -7963,15 +7963,17 @@ async function _aiProcessChat(input) {
     return { reply: '할 일 관리 페이지로 이동할게요!', action: () => { closeAiChat(); navigate('todos'); } };
   }
 
-  // --- 보고서/일지 작성 ---
-  if (/보고서|일지|작성|업무\s*일지|쓸래|기록/.test(t) && !/확인|보여|몇/.test(t)) {
-    return { reply: '업무일지 작성 화면으로 이동할게요! ✏️\n음성으로 하시려면 "음성 기록"이라고 말씀해주세요.', suggests: ['음성으로 기록', '직접 작성'], action: undefined };
+  // --- 음성 기록 (구체적 패턴 먼저) ---
+  if (/음성.*기록|말로.*기록|음성으로/.test(t)) {
+    return { reply: '음성 기록 화면을 열게요! 🎤', action: () => { closeAiChat(); startVoiceReport(); } };
   }
-  if (/직접\s*작성/.test(t)) {
+  // --- 직접 작성 (구체적 패턴 먼저) ---
+  if (/직접\s*작성|직접\s*입력/.test(t)) {
     return { reply: '업무일지 작성 화면을 열게요!', action: () => { closeAiChat(); openNewReport(); } };
   }
-  if (/음성.*기록|말로.*기록/.test(t)) {
-    return { reply: '음성 기록 화면을 열게요! 🎤', action: () => { closeAiChat(); startVoiceReport(); } };
+  // --- 보고서/일지 작성 (넓은 패턴) ---
+  if (/보고서|일지|업무\s*일지|쓸래/.test(t) && !/확인|보여|몇|팀/.test(t)) {
+    return { reply: '어떤 방식으로 작성하시겠어요?', suggests: ['음성으로 기록', '직접 작성'] };
   }
 
   // --- 채팅에서 할 일 직접 추가 ---
