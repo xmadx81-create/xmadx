@@ -7981,7 +7981,7 @@ function _aiAutoDetectPersonal(input) {
     detections.push({ type: 'mbti', value: mbtiMatch[1].toUpperCase() });
   }
 
-  const foodMatch = input.match(/(.{2,20}?)\s*(?:먹었|먹음|먹었다|먹고\s*왔|시켰|시켜서|주문했|배달시|배달했)/);
+  const foodMatch = input.match(/(.{2,20}?)\s*(?:먹었|먹음|먹었다|먹고\s*왔|시켰|시켜서|주문했|배달시|배달했|마셨|마심|마시고|마셔|한잔\s*했)/);
   if (foodMatch) {
     const food = foodMatch[1].replace(/^(오늘|어제|아까|방금|점심에|저녁에|아침에|나|내가|우리가?)\s*/g, '').replace(/를|을|에서/g, '').trim();
     if (food.length >= 2 && food.length <= 20) {
@@ -7996,6 +7996,16 @@ function _aiAutoDetectPersonal(input) {
     if (place.length >= 2 && place.length <= 15) {
       _aiLifeLogAdd({ type: 'place', where: place });
       detections.push({ type: 'place', value: place });
+    }
+  }
+
+  const activityVerbs = /(?:하고\s*왔|하러\s*갔|하고왔|하러갔|했어|했는데|했다|해봤|받았|받고\s*왔|받으러)/;
+  const activityMatch = input.match(/(.{2,15}?)\s*(?:하고\s*왔|하러\s*갔|하고왔|하러갔|받고\s*왔|받으러\s*갔)/);
+  if (activityMatch) {
+    const act = activityMatch[1].replace(/^(오늘|어제|아까|아침에|나|내가|거기서|가서)\s*/g, '').replace(/를|을|에서|에/g, '').trim();
+    if (act.length >= 2 && act.length <= 12) {
+      _aiLifeLogAdd({ type: 'activity', what: act });
+      detections.push({ type: 'activity', value: act });
     }
   }
 
@@ -9184,8 +9194,77 @@ async function _aiProcessChat(input, _detections) {
     return { reply: replies[Math.floor(Math.random() * replies.length)], suggests: ['오늘 일정', '할 일 확인'] };
   }
 
+  // --- 일상 대화 / 긴 이야기 공감 ---
+  const _storyVerbs = /갔어|했어|왔어|봤어|마시|먹었|갔다|다녀|하고\s*왔|갔다가|갔더니|왔는데|했는데|있었|됐어|됨|없었|받았|받고|시켰|올라가|내려가/;
+  const _storyCount = (t.match(_storyVerbs) || []).length;
+  if (t.length >= 50 && _storyCount >= 2) {
+    const acts = [];
+    if (/염색|커트|파마|머리|미용실|헤어/.test(t)) acts.push({ icon: '💇', name: '미용실/헤어' });
+    if (/헌혈/.test(t)) acts.push({ icon: '🩸', name: '헌혈' });
+    if (/커피|카페|라떼|아메리카노|카푸치노/.test(t)) acts.push({ icon: '☕', name: '커피' });
+    if (/운동|헬스|조깅|러닝|산책|등산|수영|필라테스|요가/.test(t)) acts.push({ icon: '🏃', name: '운동' });
+    if (/병원|치과|안과|의사|진료|검진|검사/.test(t)) acts.push({ icon: '🏥', name: '병원' });
+    if (/쇼핑|마트|백화점|시장|구매|샀|샀어/.test(t)) acts.push({ icon: '🛒', name: '쇼핑' });
+    if (/영화|드라마|넷플|극장|관람/.test(t)) acts.push({ icon: '🎬', name: '영화/관람' });
+    if (/여행|놀러|바다|산|관광/.test(t)) acts.push({ icon: '✈️', name: '여행' });
+    if (/공부|학원|강의|시험|자격증/.test(t)) acts.push({ icon: '📚', name: '공부' });
+    if (/밥|식사|점심|저녁|아침|맛집|외식/.test(t)) acts.push({ icon: '🍽️', name: '식사' });
+    if (/청소|빨래|정리|집안일/.test(t)) acts.push({ icon: '🧹', name: '집안일' });
+    if (/친구|만났|약속|모임/.test(t)) acts.push({ icon: '👫', name: '만남' });
+    if (acts.length === 0 && _storyCount >= 2) acts.push({ icon: '📝', name: '일상' });
+
+    acts.forEach(a => _aiLifeLogAdd({ type: 'activity', what: a.name }));
+
+    const hasLaugh = /ㅋ{2,}|ㅎ{2,}|😂|🤣|웃|재밌/.test(t);
+    const hasSatisfy = /좋았|좋은|만족|괜찮|깔끔|착착|바로바로|기다리지/.test(t);
+    const hasBad = /아쉽|별로|최악|짜증|실망|후회/.test(t);
+    const isLong = t.length >= 100;
+
+    let r = '';
+    if (acts.length > 0) {
+      r += acts.map(a => a.icon).join('') + ' 오~ ';
+      if (acts.length === 1) r += acts[0].name + '!';
+      else r += acts.map(a => a.name).join(', ') + '까지!';
+      r += ' 하루가 알차네요!\n\n';
+    }
+
+    if (acts.some(a => a.name === '헌혈')) {
+      r += '🩸 헌혈까지 하시다니 정말 멋있어요! 누군가의 생명을 살리는 일이잖아요 💪\n';
+    }
+    if (acts.some(a => a.name === '미용실/헤어')) {
+      r += '💇 머리도 하고 오셨군요! 기분 전환 최고죠~\n';
+    }
+    if (acts.some(a => a.name === '커피')) {
+      r += '☕ 커피 한 잔의 여유까지~ 완벽한 동선이네요!\n';
+    }
+    if (acts.some(a => a.name === '운동')) {
+      r += '🏃 운동까지! 자기관리 철저하시네요~\n';
+    }
+
+    if (hasSatisfy) r += '\n일이 착착 잘 진행됐다니 듣는 저도 기분 좋아요! 😊\n';
+    if (hasLaugh) r += '\n이야기 들으니 저까지 웃음이 나와요 ㅋㅋ\n';
+    if (hasBad) r += '\n아쉬운 부분도 있었군요... 다음엔 더 좋을 거예요!\n';
+
+    if (isLong) {
+      r += '\n이렇게 하루 이야기를 자세히 들려주시니 저도 같이 다녀온 것 같아서 좋아요! 🥰';
+    }
+
+    r += '\n\n📝 오늘 활동이 생활 로그에 기록됐어요!';
+    r += ' (' + acts.map(a => a.icon + a.name).join(', ') + ')';
+
+    const followUps = [];
+    if (acts.some(a => a.name === '헌혈')) followUps.push('헌혈 몇 번째예요?');
+    if (acts.some(a => a.name === '미용실/헤어')) followUps.push('어떤 스타일로 하셨어요?');
+    if (acts.some(a => a.name === '커피')) followUps.push('어떤 커피 드셨어요?');
+    if (followUps.length === 0) followUps.push('또 뭐 하셨어요?');
+    r += '\n\n' + followUps[Math.floor(Math.random() * followUps.length)] + ' 더 들려주세요! 😄';
+
+    return { reply: r, learn: { lastMood: 'good', ['mood_' + today]: 'good' }, suggests: ['오늘 일지', '추억 보여줘', '오늘 일정'] };
+  }
+
   // --- 날씨/기분 ---
-  if (/기분|컨디션|피곤|힘들|지치|짜증|열받|빡치|스트레스|답답/.test(t)) {
+  const _directMood = /^.{0,15}(기분|컨디션).{0,10}$/.test(t) || /피곤|힘들|지치|짜증|열받|빡치|스트레스|답답/.test(t);
+  if (_directMood) {
     const isTired = /피곤|지치/.test(t);
     const isStress = /스트레스|짜증|열받|빡치|답답/.test(t);
     const isHard = /힘들/.test(t);
@@ -11516,6 +11595,12 @@ function _aiReadBetweenLines(input, emotion) {
     intents.push({ type: 'wrapUp', conf: 0.8, msg: '하루를 마무리하려 해요' });
   }
 
+  const _storyVerbsR = /갔어|했어|왔어|봤어|마시|먹었|갔다|다녀|하고\s*왔|갔다가|왔는데|했는데|있었|됐어|받았|받고|올라가/;
+  const _stCnt = (t.match(_storyVerbsR) || []).length;
+  if (t.length >= 40 && _stCnt >= 2) {
+    intents.push({ type: 'sharingStory', conf: 0.85, msg: '하루 이야기를 들려주고 있어요' });
+  }
+
   return intents.sort((a, b) => b.conf - a.conf);
 }
 
@@ -11524,6 +11609,7 @@ function _aiInferIntent(input, emotion) {
   if (intents.length === 0) return null;
 
   const top = intents[0];
+  top._origInput = input;
   const prof = _aiPersonalProfile();
   const name = prof.nickname || (currentUser ? currentUser.name : '');
   const dp = _aiDeepProfile();
@@ -11587,7 +11673,18 @@ function _aiInferIntent(input, emotion) {
     hungry: () => ({
       reply: '🍽️ 배고프신 거 다 알아요~\n' + (prof.likes && prof.likes.length > 0 ? '혹시 오늘도 ' + prof.likes[Math.floor(Math.random() * prof.likes.length)] + ' 어때요? 😋' : '점심 메뉴 추천해드릴까요?'),
       suggests: ['점심 추천', '오늘 일정']
-    })
+    }),
+    sharingStory: () => {
+      const input = top._origInput || '';
+      const hasLaugh = /ㅋ{2,}|ㅎ{2,}|😂|🤣/.test(input);
+      const hasSatisfy = /좋았|좋은|만족|괜찮|깔끔|착착|바로바로/.test(input);
+      let r = '📖 오~ 이야기 들려주시는 거예요? 좋아요!\n\n';
+      r += '자세히 말씀해주시니 같이 경험하는 것 같아요 😊\n';
+      if (hasLaugh) r += '듣는 저까지 웃음이 나와요 ㅋㅋ\n';
+      if (hasSatisfy) r += '일이 잘 풀리셨나보네요! 듣기 좋아요~\n';
+      r += '\n더 들려주세요! 오늘 또 뭐 하셨어요? 🥰';
+      return { reply: r, learn: { lastMood: 'good' }, suggests: ['오늘 일지', '추억 보여줘', '오늘 일정'] };
+    }
   };
 
   const handler = responses[top.type];
