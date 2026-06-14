@@ -1430,6 +1430,7 @@ async function renderMore() {
     <div class="card">
       <p class="card-title" style="margin-bottom:8px;">시스템 정보</p>
       <p style="font-size:14px; color:var(--gray-500);">WorkFlow - Smart Work Manager v3.0</p>
+      <p style="font-size:11px; color:var(--gray-400); margin-top:4px;">Since 2026.06.08</p>
     </div>
   `;
 }

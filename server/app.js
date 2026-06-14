@@ -3846,11 +3846,11 @@ app.post('/api/changelog', adminMiddleware, async (req, res) => {
   res.json({ ok: true, entry });
 });
 
-app.post('/api/changelog/publish', adminMiddleware, async (req, res) => {
+async function _publishChangelog() {
   let log = [];
   try { log = JSON.parse(fs.readFileSync(changelogPath, 'utf-8')); } catch (e) {}
   const unpublished = log.filter(e => !e.published);
-  if (unpublished.length === 0) return res.json({ ok: true, message: '발행할 업데이트가 없습니다' });
+  if (unpublished.length === 0) return { ok: true, count: 0 };
 
   let content = '';
   unpublished.forEach(entry => {
@@ -3867,8 +3867,26 @@ app.post('/api/changelog/publish', adminMiddleware, async (req, res) => {
 
   log.forEach(e => { if (!e.published) e.published = true; });
   fs.writeFileSync(changelogPath, JSON.stringify(log, null, 2));
-  res.json({ ok: true, notice_id: id, count: unpublished.length });
+  return { ok: true, notice_id: id, count: unpublished.length };
+}
+
+app.post('/api/changelog/publish', adminMiddleware, async (req, res) => {
+  try {
+    const result = await _publishChangelog();
+    if (result.count === 0) return res.json({ ok: true, message: '발행할 업데이트가 없습니다' });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// 매주 금요일 자정(KST) 미발행 changelog → 자동 공지 게시
+setInterval(() => {
+  const now = new Date(Date.now() + 9 * 3600000);
+  if (now.getUTCDay() === 6 && now.getUTCHours() === 0 && now.getUTCMinutes() === 0) {
+    _publishChangelog().then(r => {
+      if (r.count > 0) console.log('[자동공지] 업데이트 공지 발행:', r.count, '건');
+    }).catch(e => console.error('[자동공지] 실패:', e.message));
+  }
+}, 60000);
 
 // ─── 가맹점 주문 현황 (call history) ───
 
