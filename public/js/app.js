@@ -1362,6 +1362,10 @@ async function renderMore() {
         <span class="qa-icon">&#128221;</span>
         <span class="qa-label" style="color:#d97706; font-weight:700;">빠른 메모</span>
       </button>
+      <button class="quick-action-btn" onclick="showJukebox()" style="border:2px solid #e11d48; background:#fff1f2;">
+        <span class="qa-icon">&#127925;</span>
+        <span class="qa-label" style="color:#e11d48; font-weight:700;">쥬크박스</span>
+      </button>
       <button class="quick-action-btn" onclick="showWorkTable()">
         <span class="qa-icon">&#128202;</span>
         <span class="qa-label">업무표 생성</span>
@@ -1607,6 +1611,130 @@ function showAppFAQ() {
     resultEl.style.display = 'block';
     listEl.style.display = 'none';
   };
+}
+
+// ─── 쥬크박스 ───
+function _detectPlatform(url) {
+  if (/suno\.(com|ai)/i.test(url)) return 'suno';
+  if (/soundcloud\.com/i.test(url)) return 'soundcloud';
+  if (/youtube\.com|youtu\.be/i.test(url)) return 'youtube';
+  return 'unknown';
+}
+
+function _getEmbedHtml(track) {
+  const url = track.url;
+  if (track.platform === 'suno') {
+    const match = url.match(/suno\.(com|ai)\/song\/([a-f0-9-]+)/i) || url.match(/suno\.(com|ai)\/([a-f0-9-]+)/i);
+    const songId = match ? match[2] : '';
+    if (songId) return `<iframe src="https://suno.com/embed/${songId}" style="width:100%;height:160px;border:none;border-radius:12px;" allow="autoplay"></iframe>`;
+    return `<a href="${url}" target="_blank" style="color:var(--primary);">▶ Suno에서 열기</a>`;
+  }
+  if (track.platform === 'soundcloud') {
+    const encoded = encodeURIComponent(url);
+    return `<iframe width="100%" height="166" scrolling="no" frameborder="no" allow="autoplay" src="https://w.soundcloud.com/player/?url=${encoded}&color=%23e11d48&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false" style="border-radius:12px;"></iframe>`;
+  }
+  if (track.platform === 'youtube') {
+    const m = url.match(/(?:youtu\.be\/|v=)([A-Za-z0-9_-]{11})/);
+    if (m) return `<iframe width="100%" height="160" src="https://www.youtube.com/embed/${m[1]}" frameborder="0" allow="autoplay;encrypted-media" allowfullscreen style="border-radius:12px;"></iframe>`;
+  }
+  return `<a href="${url}" target="_blank" style="color:var(--primary);">▶ 외부에서 열기</a>`;
+}
+
+async function showJukebox() {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '<div class="card"><p style="text-align:center;">불러오는 중...</p></div>';
+
+  let tracks = [];
+  try {
+    const resp = await fetch('/api/jukebox', { credentials: 'include' });
+    tracks = await resp.json();
+  } catch(e) {}
+
+  let expandedId = null;
+
+  function render() {
+    mc.innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <div class="card" style="margin-bottom:12px;">
+      <p class="card-title" style="margin-bottom:8px;">&#127925; 나만의 쥬크박스</p>
+      <p style="font-size:13px; color:var(--gray-500); margin-bottom:12px;">Suno · SoundCloud · YouTube 링크를 붙여넣어 나만의 플레이리스트를 만드세요.</p>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <input id="jbUrlInput" type="url" placeholder="음악 URL 붙여넣기" style="flex:1; padding:10px 12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px;">
+        <button onclick="window._jbAddTrack()" style="padding:10px 16px; border:none; border-radius:10px; background:#e11d48; color:#fff; font-weight:700; font-size:14px; cursor:pointer;">추가</button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <input id="jbTitleInput" type="text" placeholder="제목 (선택)" style="flex:1; padding:8px 12px; border:1px solid var(--gray-200); border-radius:8px; font-size:13px;">
+        <input id="jbArtistInput" type="text" placeholder="아티스트 (선택)" style="flex:1; padding:8px 12px; border:1px solid var(--gray-200); border-radius:8px; font-size:13px;">
+      </div>
+    </div>
+
+    ${tracks.length === 0 ? `
+    <div class="card" style="text-align:center; padding:32px;">
+      <p style="font-size:40px; margin-bottom:8px;">&#127926;</p>
+      <p style="color:var(--gray-400);">아직 트랙이 없어요</p>
+      <p style="font-size:13px; color:var(--gray-400);">좋아하는 음악 URL을 추가해보세요!</p>
+    </div>` : tracks.map((t, i) => `
+    <div class="card" style="margin-bottom:8px; padding:12px 16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="flex:1; cursor:pointer;" onclick="window._jbToggle('${t.id}')">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:18px;">${t.platform === 'suno' ? '&#127924;' : t.platform === 'soundcloud' ? '&#9729;' : t.platform === 'youtube' ? '&#9654;' : '&#127925;'}</span>
+            <div>
+              <p style="font-weight:600; font-size:14px; margin:0;">${t.title || '제목 없음'}</p>
+              <p style="font-size:12px; color:var(--gray-400); margin:0;">${t.artist || t.platform} · #${i+1}</p>
+            </div>
+          </div>
+        </div>
+        <button onclick="window._jbDelete('${t.id}')" style="border:none; background:none; font-size:18px; cursor:pointer; color:#ccc; padding:4px 8px;">&#128465;</button>
+      </div>
+      ${expandedId === t.id ? `<div style="margin-top:12px;">${_getEmbedHtml(t)}</div>` : ''}
+    </div>`).join('')}
+
+    <div style="text-align:center; margin-top:16px;">
+      <p style="font-size:11px; color:var(--gray-400);">총 ${tracks.length}곡</p>
+    </div>`;
+  }
+
+  window._jbToggle = function(id) {
+    expandedId = expandedId === id ? null : id;
+    render();
+  };
+
+  window._jbAddTrack = async function() {
+    const url = document.getElementById('jbUrlInput')?.value?.trim();
+    if (!url) { showToast('URL을 입력해주세요'); return; }
+    const title = document.getElementById('jbTitleInput')?.value?.trim() || '';
+    const artist = document.getElementById('jbArtistInput')?.value?.trim() || '';
+    const platform = _detectPlatform(url);
+    if (platform === 'unknown') {
+      showToast('Suno, SoundCloud, YouTube URL만 지원합니다');
+      return;
+    }
+    try {
+      await fetch('/api/jukebox', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title || (platform + ' 트랙'), artist, url, platform })
+      });
+      const resp = await fetch('/api/jukebox', { credentials: 'include' });
+      tracks = await resp.json();
+      showToast('트랙이 추가되었습니다!');
+      render();
+    } catch(e) { showToast('추가 실패: ' + e.message); }
+  };
+
+  window._jbDelete = async function(id) {
+    if (!confirm('이 트랙을 삭제할까요?')) return;
+    try {
+      await fetch('/api/jukebox/' + id, { method: 'DELETE', credentials: 'include' });
+      tracks = tracks.filter(t => t.id !== id);
+      if (expandedId === id) expandedId = null;
+      showToast('삭제되었습니다');
+      render();
+    } catch(e) { showToast('삭제 실패'); }
+  };
+
+  render();
 }
 
 // ─── 직무 프로필 ───
