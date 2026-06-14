@@ -420,25 +420,43 @@ app.get('/api/search', authMiddleware, async (req, res) => {
   const { q } = req.query;
   if (!q || q.trim().length < 2) return res.json({ results: [] });
   const kw = `%${q.trim()}%`;
+  const cid = req.session.companyId;
+  const cidFilter = cid ? ' AND company_id = ' : '';
 
   const [reports, tasks, branches, manuals, meetings, events, todos, notes, boards] = await Promise.all([
-    query(`SELECT r.id, r.what_task, r.content, r.work_category, r.report_date, u.name as author_name
+    cid ? query(`SELECT r.id, r.what_task, r.content, r.work_category, r.report_date, u.name as author_name
+      FROM work_reports r JOIN users u ON r.author_id = u.id
+      WHERE (r.what_task ILIKE $1 OR r.content ILIKE $1 OR r.where_place ILIKE $1 OR r.how_method ILIKE $1) AND (r.company_id = $2 OR u.company_id = $2)
+      ORDER BY r.report_date DESC LIMIT 10`, [kw, cid])
+    : query(`SELECT r.id, r.what_task, r.content, r.work_category, r.report_date, u.name as author_name
       FROM work_reports r JOIN users u ON r.author_id = u.id
       WHERE r.what_task ILIKE $1 OR r.content ILIKE $1 OR r.where_place ILIKE $1 OR r.how_method ILIKE $1
       ORDER BY r.report_date DESC LIMIT 10`, [kw]),
-    query(`SELECT id, task_detail, task_group, category1, assigned_to
+    cid ? query(`SELECT id, task_detail, task_group, category1, assigned_to
+      FROM task_master WHERE (task_detail ILIKE $1 OR task_group ILIKE $1 OR assigned_to ILIKE $1) AND company_id = $2
+      ORDER BY task_group LIMIT 10`, [kw, cid])
+    : query(`SELECT id, task_detail, task_group, category1, assigned_to
       FROM task_master WHERE task_detail ILIKE $1 OR task_group ILIKE $1 OR assigned_to ILIKE $1
       ORDER BY task_group LIMIT 10`, [kw]),
     query(`SELECT id, name, address, manager_name, manager_phone
       FROM branches WHERE name ILIKE $1 OR address ILIKE $1 OR manager_name ILIKE $1
       ORDER BY seq LIMIT 10`, [kw]),
-    query(`SELECT id, title, content, task_group
-      FROM personal_manual WHERE title ILIKE $1 OR content ILIKE $1
-      ORDER BY created_at DESC LIMIT 10`, [kw]),
-    query(`SELECT id, title, meeting_date
+    cid ? query(`SELECT id, title, content, task_group
+      FROM personal_manual WHERE (title ILIKE $1 OR content ILIKE $1) AND company_id = $2
+      ORDER BY created_at DESC LIMIT 10`, [kw, cid])
+    : query(`SELECT id, title, content, task_group
+      FROM personal_manual WHERE (title ILIKE $1 OR content ILIKE $1) AND user_id = $2
+      ORDER BY created_at DESC LIMIT 10`, [kw, req.session.userId]),
+    cid ? query(`SELECT id, title, meeting_date
+      FROM meeting_notes WHERE (title ILIKE $1 OR summary ILIKE $1) AND company_id = $2
+      ORDER BY meeting_date DESC LIMIT 10`, [kw, cid])
+    : query(`SELECT id, title, meeting_date
       FROM meeting_notes WHERE title ILIKE $1 OR summary ILIKE $1
       ORDER BY meeting_date DESC LIMIT 10`, [kw]),
-    query(`SELECT id, title, event_type, event_date, description
+    cid ? query(`SELECT id, title, event_type, event_date, description
+      FROM team_events WHERE (title ILIKE $1 OR description ILIKE $1) AND company_id = $2
+      ORDER BY event_date DESC LIMIT 10`, [kw, cid])
+    : query(`SELECT id, title, event_type, event_date, description
       FROM team_events WHERE title ILIKE $1 OR description ILIKE $1
       ORDER BY event_date DESC LIMIT 10`, [kw]),
     query(`SELECT id, title, due_date, completed FROM todos
@@ -447,7 +465,9 @@ app.get('/api/search', authMiddleware, async (req, res) => {
     query(`SELECT id, content, color, created_at FROM quick_notes
       WHERE user_id = $1 AND content ILIKE $2
       ORDER BY created_at DESC LIMIT 10`, [req.session.userId, kw]),
-    query(`SELECT id, title, created_at FROM board_posts
+    cid ? query(`SELECT id, title, created_at FROM board_posts
+      WHERE title ILIKE $1 AND company_id = $2 ORDER BY created_at DESC LIMIT 10`, [kw, cid])
+    : query(`SELECT id, title, created_at FROM board_posts
       WHERE title ILIKE $1 ORDER BY created_at DESC LIMIT 10`, [kw])
   ]);
 
@@ -804,6 +824,9 @@ app.get('/api/work-table', authMiddleware, async (req, res) => {
 
 // 전체 조직 업무매뉴얼 (모든 사람의 업무일지 기반)
 app.get('/api/manual/org', authMiddleware, async (req, res) => {
+  const cid = req.session.companyId;
+  const cidWhere = cid ? ' AND (r.company_id = $1 OR u.company_id = $1)' : '';
+  const cidParams = cid ? [cid] : [];
   const tasksResult = await query(`
     SELECT
       what_task,
@@ -819,10 +842,10 @@ app.get('/api/manual/org', authMiddleware, async (req, res) => {
       MIN(r.report_date) as first_date
     FROM work_reports r
     JOIN users u ON r.author_id = u.id
-    WHERE what_task IS NOT NULL AND what_task != ''
+    WHERE what_task IS NOT NULL AND what_task != ''${cidWhere}
     GROUP BY what_task, work_category, purpose, how_method, why_reason, where_place, who
     ORDER BY frequency DESC
-  `);
+  `, cidParams);
   const tasks = tasksResult.rows;
 
   const byCategory = {};
@@ -852,9 +875,13 @@ app.get('/api/manual/org', authMiddleware, async (req, res) => {
     }
   });
 
-  const totalReportsResult = await query('SELECT COUNT(*) as cnt FROM work_reports');
+  const totalReportsResult = cid
+    ? await query('SELECT COUNT(*) as cnt FROM work_reports WHERE company_id = $1', [cid])
+    : await query('SELECT COUNT(*) as cnt FROM work_reports');
   const totalReports = parseInt(totalReportsResult.rows[0].cnt);
-  const totalPeopleResult = await query('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports');
+  const totalPeopleResult = cid
+    ? await query('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports WHERE company_id = $1', [cid])
+    : await query('SELECT COUNT(DISTINCT author_id) as cnt FROM work_reports');
   const totalPeople = parseInt(totalPeopleResult.rows[0].cnt);
 
   res.json({ generated_at: new Date().toISOString(), total_reports: totalReports, total_people: totalPeople, categories: byCategory });
@@ -862,14 +889,17 @@ app.get('/api/manual/org', authMiddleware, async (req, res) => {
 
 // 자동 절차서 생성 (반복 업무 기반)
 app.get('/api/manual/procedures', authMiddleware, async (req, res) => {
+  const cid = req.session.companyId;
+  const cidWhere = cid ? ' AND (r.company_id = $1 OR u.company_id = $1)' : '';
+  const cidParams = cid ? [cid] : [];
   const tasksResult = await query(`
     SELECT r.what_task, r.work_category, r.purpose, r.how_method, r.why_reason,
       r.where_place, r.who, r.when_time, r.content, r.report_date,
       u.name as author_name, u.position as author_position
     FROM work_reports r JOIN users u ON r.author_id = u.id
-    WHERE r.what_task IS NOT NULL AND r.what_task != ''
+    WHERE r.what_task IS NOT NULL AND r.what_task != ''${cidWhere}
     ORDER BY r.what_task, r.report_date DESC
-  `);
+  `, cidParams);
 
   const taskGroups = {};
   tasksResult.rows.forEach(r => {
@@ -943,7 +973,7 @@ app.get('/api/manual/procedures', authMiddleware, async (req, res) => {
 
 // 개인 업무매뉴얼 (내 업무일지 기반)
 app.get('/api/manual', authMiddleware, async (req, res) => {
-  const userId = req.query.user_id || req.session.userId;
+  const userId = req.session.userId;
 
   const tasksResult = await query(`
     SELECT
@@ -997,8 +1027,8 @@ app.get('/api/manual', authMiddleware, async (req, res) => {
 app.post('/api/manual', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { task_group, title, content, steps, tips } = req.body;
-  await query(`INSERT INTO personal_manual (id, user_id, task_group, title, content, steps, tips)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)`, [id, req.session.userId, task_group, title, content, steps, tips]);
+  await query(`INSERT INTO personal_manual (id, user_id, task_group, title, content, steps, tips, company_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [id, req.session.userId, task_group, title, content, steps, tips, req.session.companyId || null]);
   res.json({ id });
 });
 
@@ -1184,9 +1214,11 @@ app.put('/api/job-profile', authMiddleware, async (req, res) => {
 // ─── 주요업무표 (task master) ───
 app.get('/api/tasks', authMiddleware, async (req, res) => {
   const { category, group, search } = req.query;
+  const cid = req.session.companyId;
   let sql = 'SELECT * FROM task_master WHERE 1=1';
   const params = [];
   let paramIdx = 1;
+  if (cid) { sql += ` AND company_id = $${paramIdx++}`; params.push(cid); }
   if (category) { sql += ` AND category1 = $${paramIdx++}`; params.push(category); }
   if (group) { sql += ` AND task_group = $${paramIdx++}`; params.push(group); }
   if (search) {
@@ -1199,29 +1231,39 @@ app.get('/api/tasks', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/tasks/categories', authMiddleware, async (req, res) => {
-  const categoriesResult = await query('SELECT DISTINCT category1 FROM task_master WHERE category1 IS NOT NULL ORDER BY category1');
-  const groupsResult = await query('SELECT DISTINCT task_group FROM task_master WHERE task_group IS NOT NULL ORDER BY task_group');
+  const cid = req.session.companyId;
+  const w = cid ? ' WHERE company_id = $1 AND category1 IS NOT NULL' : ' WHERE category1 IS NOT NULL';
+  const p = cid ? [cid] : [];
+  const categoriesResult = await query('SELECT DISTINCT category1 FROM task_master' + w + ' ORDER BY category1', p);
+  const gw = cid ? ' WHERE company_id = $1 AND task_group IS NOT NULL' : ' WHERE task_group IS NOT NULL';
+  const groupsResult = await query('SELECT DISTINCT task_group FROM task_master' + gw + ' ORDER BY task_group', p);
   res.json({ categories: categoriesResult.rows.map(c => c.category1), groups: groupsResult.rows.map(g => g.task_group) });
 });
 
 app.post('/api/tasks', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const { department, division, category1, task_group, task_detail, assigned_to, note } = req.body;
-  await query(`INSERT INTO task_master (id, department, division, category1, task_group, task_detail, assigned_to, note, is_custom, created_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9)`, [id, department, division, category1, task_group, task_detail, assigned_to, note, req.session.userId]);
+  await query(`INSERT INTO task_master (id, department, division, category1, task_group, task_detail, assigned_to, note, is_custom, created_by, company_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10)`, [id, department, division, category1, task_group, task_detail, assigned_to, note, req.session.userId, req.session.companyId || null]);
   res.json({ id });
 });
 
 app.put('/api/tasks/:id', authMiddleware, async (req, res) => {
   const { task_detail, assigned_to, note } = req.body;
-  await query(`UPDATE task_master SET task_detail=$1, assigned_to=$2, note=$3, updated_at=NOW() WHERE id=$4`, [
-    task_detail, assigned_to, note, req.params.id
-  ]);
+  const cid = req.session.companyId;
+  const sql = cid
+    ? 'UPDATE task_master SET task_detail=$1, assigned_to=$2, note=$3, updated_at=NOW() WHERE id=$4 AND company_id=$5'
+    : 'UPDATE task_master SET task_detail=$1, assigned_to=$2, note=$3, updated_at=NOW() WHERE id=$4';
+  const p = cid ? [task_detail, assigned_to, note, req.params.id, cid] : [task_detail, assigned_to, note, req.params.id];
+  await query(sql, p);
   res.json({ ok: true });
 });
 
 app.delete('/api/tasks/:id', authMiddleware, async (req, res) => {
-  const task = await query('SELECT * FROM task_master WHERE id = $1', [req.params.id]);
+  const cid = req.session.companyId;
+  const sql = cid ? 'SELECT * FROM task_master WHERE id = $1 AND company_id = $2' : 'SELECT * FROM task_master WHERE id = $1';
+  const p = cid ? [req.params.id, cid] : [req.params.id];
+  const task = await query(sql, p);
   if (task.rows.length === 0) return res.status(404).json({ error: '업무를 찾을 수 없습니다' });
   await query('DELETE FROM task_notes WHERE task_id = $1', [req.params.id]);
   await query('DELETE FROM task_master WHERE id = $1', [req.params.id]);
@@ -1247,9 +1289,11 @@ app.post('/api/tasks/:id/notes', authMiddleware, async (req, res) => {
 // ─── 개별 담당 업무표 ───
 app.get('/api/personal-tasks', authMiddleware, async (req, res) => {
   const { person, position } = req.query;
+  const cid = req.session.companyId;
   let sql = 'SELECT * FROM personal_task_table WHERE 1=1';
   const params = [];
   let paramIdx = 1;
+  if (cid) { sql += ` AND company_id = $${paramIdx++}`; params.push(cid); }
   if (person) { sql += ` AND person_name = $${paramIdx++}`; params.push(person); }
   if (position) { sql += ` AND position = $${paramIdx++}`; params.push(position); }
   sql += ' ORDER BY position, person_name, task_group';
@@ -1258,7 +1302,11 @@ app.get('/api/personal-tasks', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/personal-tasks/persons', authMiddleware, async (req, res) => {
-  const result = await query('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name');
+  const cid = req.session.companyId;
+  const sql = cid
+    ? 'SELECT DISTINCT person_name, position FROM personal_task_table WHERE company_id = $1 ORDER BY position, person_name'
+    : 'SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name';
+  const result = await query(sql, cid ? [cid] : []);
   res.json(result.rows);
 });
 
@@ -1278,7 +1326,10 @@ function applyExcelStyles(wb) {
 
 // ─── 엑셀 다운로드: 주요업무표 ───
 app.get('/api/export/tasks', authMiddleware, async (req, res) => {
-  const tasksResult = await query('SELECT * FROM task_master ORDER BY category1, task_group, created_at');
+  const cid = req.session.companyId;
+  const tasksResult = cid
+    ? await query('SELECT * FROM task_master WHERE company_id = $1 ORDER BY category1, task_group, created_at', [cid])
+    : await query('SELECT * FROM task_master ORDER BY category1, task_group, created_at');
   const tasks = tasksResult.rows;
   const wb = new ExcelJS.Workbook();
   const s = applyExcelStyles(wb);
@@ -1548,14 +1599,22 @@ app.get('/api/export/personal-tasks', authMiddleware, async (req, res) => {
     });
   };
 
+  const cid = req.session.companyId;
+  const cidAnd = cid ? ' AND company_id = $2' : '';
   if (person) {
-    const tasksResult = await query('SELECT * FROM personal_task_table WHERE person_name = $1 ORDER BY task_group', [person]);
+    const tasksResult = cid
+      ? await query('SELECT * FROM personal_task_table WHERE person_name = $1 AND company_id = $2 ORDER BY task_group', [person, cid])
+      : await query('SELECT * FROM personal_task_table WHERE person_name = $1 ORDER BY task_group', [person]);
     const ws = wb.addWorksheet(person.substring(0, 31));
     buildPersonSheet(person, tasksResult.rows, ws);
   } else {
-    const personsResult = await query('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name');
+    const personsResult = cid
+      ? await query('SELECT DISTINCT person_name, position FROM personal_task_table WHERE company_id = $1 ORDER BY position, person_name', [cid])
+      : await query('SELECT DISTINCT person_name, position FROM personal_task_table ORDER BY position, person_name');
     for (const p of personsResult.rows) {
-      const tasksResult = await query('SELECT * FROM personal_task_table WHERE person_name = $1 ORDER BY task_group', [p.person_name]);
+      const tasksResult = cid
+        ? await query('SELECT * FROM personal_task_table WHERE person_name = $1 AND company_id = $2 ORDER BY task_group', [p.person_name, cid])
+        : await query('SELECT * FROM personal_task_table WHERE person_name = $1 ORDER BY task_group', [p.person_name]);
       const ws = wb.addWorksheet(p.person_name.substring(0, 31));
       buildPersonSheet(p.person_name, tasksResult.rows, ws);
     }
@@ -1939,12 +1998,20 @@ app.get('/api/admin/insights', adminMiddleware, async (req, res) => { try {
 
 // ─── 회의록 ───
 app.get('/api/meeting-notes', authMiddleware, async (req, res) => {
-  const result = await query('SELECT id, title, meeting_date, notion_url, CASE WHEN summary IS NOT NULL THEN true ELSE false END as has_summary FROM meeting_notes ORDER BY meeting_date DESC');
+  const cid = req.session.companyId;
+  const sql = cid
+    ? 'SELECT id, title, meeting_date, notion_url, CASE WHEN summary IS NOT NULL THEN true ELSE false END as has_summary FROM meeting_notes WHERE company_id = $1 ORDER BY meeting_date DESC'
+    : 'SELECT id, title, meeting_date, notion_url, CASE WHEN summary IS NOT NULL THEN true ELSE false END as has_summary FROM meeting_notes ORDER BY meeting_date DESC';
+  const result = await query(sql, cid ? [cid] : []);
   res.json(result.rows);
 });
 
 app.get('/api/meeting-notes/:id', authMiddleware, async (req, res) => {
-  const result = await query('SELECT * FROM meeting_notes WHERE id = $1', [req.params.id]);
+  const cid = req.session.companyId;
+  const sql = cid
+    ? 'SELECT * FROM meeting_notes WHERE id = $1 AND company_id = $2'
+    : 'SELECT * FROM meeting_notes WHERE id = $1';
+  const result = await query(sql, cid ? [req.params.id, cid] : [req.params.id]);
   const note = result.rows[0];
   if (!note) return res.status(404).json({ error: '회의록을 찾을 수 없습니다' });
   res.json(note);
@@ -1952,23 +2019,32 @@ app.get('/api/meeting-notes/:id', authMiddleware, async (req, res) => {
 
 // ─── 업무 지식맵 ───
 app.get('/api/knowledge-map', authMiddleware, async (req, res) => {
-  const totalResult = await query('SELECT COUNT(*) as cnt FROM work_reports');
+  const cid = req.session.companyId;
+  const cw = cid ? ' WHERE r.company_id = $1' : '';
+  const cwAnd = cid ? ' AND company_id = $1' : '';
+  const cp = cid ? [cid] : [];
+
+  const totalResult = cid
+    ? await query('SELECT COUNT(*) as cnt FROM work_reports WHERE company_id = $1', [cid])
+    : await query('SELECT COUNT(*) as cnt FROM work_reports');
   const totalReports = parseInt(totalResult.rows[0].cnt);
 
   if (totalReports === 0) return res.json({ empty: true, total_reports: 0 });
 
   const peopleResult = await query(`
     SELECT u.id, u.name, u.position, COUNT(r.id) as report_count
-    FROM users u JOIN work_reports r ON u.id = r.author_id
+    FROM users u JOIN work_reports r ON u.id = r.author_id${cw}
     GROUP BY u.id, u.name, u.position ORDER BY report_count DESC
-  `);
+  `, cp);
 
-  const dateResult = await query('SELECT MIN(report_date) as first, MAX(report_date) as last FROM work_reports');
+  const dateResult = cid
+    ? await query('SELECT MIN(report_date) as first, MAX(report_date) as last FROM work_reports WHERE company_id = $1', [cid])
+    : await query('SELECT MIN(report_date) as first, MAX(report_date) as last FROM work_reports');
 
   const categoryResult = await query(`
     SELECT work_category, COUNT(*) as cnt FROM work_reports
-    WHERE work_category IS NOT NULL GROUP BY work_category ORDER BY cnt DESC
-  `);
+    WHERE work_category IS NOT NULL${cwAnd} GROUP BY work_category ORDER BY cnt DESC
+  `, cp);
 
   const tasksResult = await query(`
     SELECT what_task, work_category, purpose, how_method, where_place, who,
@@ -1976,18 +2052,18 @@ app.get('/api/knowledge-map', authMiddleware, async (req, res) => {
       STRING_AGG(DISTINCT u.name, ',') as people,
       MAX(r.report_date) as last_date
     FROM work_reports r JOIN users u ON r.author_id = u.id
-    WHERE what_task IS NOT NULL AND what_task != ''
+    WHERE what_task IS NOT NULL AND what_task != ''${cwAnd}
     GROUP BY what_task, work_category, purpose, how_method, where_place, who
     ORDER BY frequency DESC
-  `);
+  `, cp);
 
   const personTaskResult = await query(`
     SELECT u.name, r.work_category, r.what_task, COUNT(*) as cnt
     FROM work_reports r JOIN users u ON r.author_id = u.id
-    WHERE r.what_task IS NOT NULL AND r.what_task != ''
+    WHERE r.what_task IS NOT NULL AND r.what_task != ''${cwAnd}
     GROUP BY u.name, r.work_category, r.what_task
     ORDER BY u.name, cnt DESC
-  `);
+  `, cp);
 
   const consolidated = {};
   tasksResult.rows.forEach(t => {
@@ -3339,9 +3415,12 @@ app.delete('/api/events/:id', authMiddleware, async (req, res) => {
 // ─── 팀 게시판 ───
 app.get('/api/board', authMiddleware, async (req, res) => {
   const { category } = req.query;
-  let sql = 'SELECT * FROM board_posts';
+  const cid = req.session.companyId;
+  let sql = 'SELECT * FROM board_posts WHERE 1=1';
   const params = [];
-  if (category) { sql += ' WHERE category = $1'; params.push(category); }
+  let paramIdx = 1;
+  if (cid) { sql += ` AND company_id = $${paramIdx++}`; params.push(cid); }
+  if (category) { sql += ` AND category = $${paramIdx++}`; params.push(category); }
   sql += ' ORDER BY created_at DESC';
   const result = await query(sql, params);
   res.json(result.rows);
@@ -3364,8 +3443,8 @@ app.post('/api/board', authMiddleware, async (req, res) => {
     if (u.rows[0]) authorName = u.rows[0].name;
   }
   const id = uuidv4();
-  await query('INSERT INTO board_posts (id, author_id, author_name, category, title, content) VALUES ($1,$2,$3,$4,$5,$6)',
-    [id, req.session.userId, authorName, category || '자유', title, content]);
+  await query('INSERT INTO board_posts (id, author_id, author_name, category, title, content, company_id) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [id, req.session.userId, authorName, category || '자유', title, content, req.session.companyId || null]);
   res.json({ id });
 });
 
