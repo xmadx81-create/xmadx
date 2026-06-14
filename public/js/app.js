@@ -9312,6 +9312,18 @@ async function _aiExecuteActions(actions) {
         await api('/api/attendance/check-out', { method: 'POST', body: {} });
         resultMsg += '⏰ 퇴근 처리 ✓\n';
         successCount++;
+      } else if (a.type === 'jukebox_add') {
+        await _jbAddFromAI(a);
+        resultMsg += '🎵 쥬크박스: "' + (a.title || '트랙') + '" 추가 ✓\n';
+        successCount++;
+      } else if (a.type === 'jukebox_open') {
+        setTimeout(() => { closeAiChat(); showJukebox(); }, 300);
+        resultMsg += '🎵 쥬크박스 열기 ✓\n';
+        successCount++;
+      } else if (a.type === 'job_suggest') {
+        setTimeout(() => showJobSuggestConfirm(a), 300);
+        resultMsg += '💼 직무 프로필 추천 ✓\n';
+        successCount++;
       }
     } catch(e) {
       resultMsg += '❌ 실패: ' + (a.title || a.type) + '\n';
