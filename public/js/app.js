@@ -1671,15 +1671,13 @@ async function showJukebox() {
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
     <div class="card" style="margin-bottom:12px;">
       <p class="card-title" style="margin-bottom:8px;">&#127925; 나만의 쥬크박스</p>
-      <p style="font-size:13px; color:var(--gray-500); margin-bottom:12px;">Suno · SoundCloud · YouTube 링크를 붙여넣어 나만의 플레이리스트를 만드세요.</p>
-      <div style="display:flex; gap:8px; margin-bottom:8px;">
-        <input id="jbUrlInput" type="url" placeholder="음악 URL 붙여넣기" style="flex:1; padding:10px 12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px;">
-        <button onclick="window._jbAddTrack()" style="padding:10px 16px; border:none; border-radius:10px; background:#e11d48; color:#fff; font-weight:700; font-size:14px; cursor:pointer;">추가</button>
+      <p style="font-size:13px; color:var(--gray-500); margin-bottom:16px;">Suno · SoundCloud · YouTube 링크를 붙여넣어 나만의 플레이리스트를 만드세요.</p>
+      <input id="jbUrlInput" type="url" placeholder="음악 URL 붙여넣기" style="width:100%; padding:12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px; margin-bottom:8px; box-sizing:border-box;">
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input id="jbTitleInput" type="text" placeholder="제목" style="flex:1; padding:10px 12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px;">
+        <input id="jbArtistInput" type="text" placeholder="아티스트" style="flex:1; padding:10px 12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px;">
       </div>
-      <div style="display:flex; gap:8px;">
-        <input id="jbTitleInput" type="text" placeholder="제목 (선택)" style="flex:1; padding:8px 12px; border:1px solid var(--gray-200); border-radius:8px; font-size:13px;">
-        <input id="jbArtistInput" type="text" placeholder="아티스트 (선택)" style="flex:1; padding:8px 12px; border:1px solid var(--gray-200); border-radius:8px; font-size:13px;">
-      </div>
+      <button onclick="window._jbAddTrack()" style="width:100%; padding:14px; border:none; border-radius:12px; background:#e11d48; color:#fff; font-weight:700; font-size:16px; cursor:pointer;">&#127925; 노래 등록</button>
     </div>
 
     ${tracks.length === 0 ? `
