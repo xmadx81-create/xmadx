@@ -204,6 +204,18 @@ async function initDB() {
   await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS work_nature TEXT DEFAULT ''`).catch(() => {});
   await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS job_function TEXT DEFAULT ''`).catch(() => {});
 
+  // ─── 쥬크박스 ───
+  await query(`CREATE TABLE IF NOT EXISTS jukebox_tracks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    artist TEXT DEFAULT '',
+    url TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'unknown',
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
   try {
     await query(`ALTER TABLE bookmarks ALTER COLUMN report_id TYPE TEXT USING report_id::TEXT`);
   } catch(e) {}

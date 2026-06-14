@@ -3825,6 +3825,46 @@ function findMaxGap(sortedDates) {
   return maxGap;
 }
 
+// ─── 쥬크박스 ───
+app.get('/api/jukebox', authMiddleware, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM jukebox_tracks WHERE user_id = $1 ORDER BY sort_order, created_at DESC', [req.session.userId]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/jukebox', authMiddleware, async (req, res) => {
+  try {
+    const { title, artist, url, platform } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL이 필요합니다' });
+    const id = uuidv4();
+    const maxOrder = await query('SELECT COALESCE(MAX(sort_order),0)+1 as next FROM jukebox_tracks WHERE user_id = $1', [req.session.userId]);
+    await query(
+      'INSERT INTO jukebox_tracks (id, user_id, title, artist, url, platform, sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [id, req.session.userId, title || '', artist || '', url, platform || 'unknown', maxOrder.rows[0].next]
+    );
+    res.json({ ok: true, id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/jukebox/:id', authMiddleware, async (req, res) => {
+  try {
+    const { title, artist, sort_order } = req.body;
+    await query(
+      'UPDATE jukebox_tracks SET title = COALESCE($1, title), artist = COALESCE($2, artist), sort_order = COALESCE($3, sort_order) WHERE id = $4 AND user_id = $5',
+      [title, artist, sort_order, req.params.id, req.session.userId]
+    );
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/jukebox/:id', authMiddleware, async (req, res) => {
+  try {
+    await query('DELETE FROM jukebox_tracks WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── 업데이트 변경이력 ───
 const changelogPath = path.join(__dirname, '..', 'data', 'changelog.json');
 
