@@ -10,11 +10,3 @@ services:
         value: production
       - key: PORT
         value: 3000
-      # Notion 연동 (앱→노션 회의록 쓰기). 값은 Render 대시보드 시크릿으로 설정.
-      # 미설정 시 회의록은 DB에만 저장되고 Notion 쓰기는 건너뜀.
-      - key: NOTION_TOKEN
-        sync: false
-      - key: NOTION_PARENT_PAGE_ID
-        sync: false
-      - key: NOTION_DB_ID
-        sync: false

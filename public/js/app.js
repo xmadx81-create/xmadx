@@ -72,8 +72,7 @@ const FEATURE_REGISTRY = [
   { id: 'personaltasks', name: '개별 업무표', icon: '&#128221;', fn: 'showPersonalTasks', section: 'reference' },
   { id: 'manual', name: '업무 매뉴얼', icon: '&#128214;', fn: 'showManual', section: 'reference' },
   { id: 'branches', name: '전국 지국', icon: '&#127970;', fn: 'showBranches', section: 'reference' },
-  { id: 'meetingnotes', name: '회의록', icon: '&#128466;', fn: 'showMeetingNotes', section: 'reference', aiNav: ['회의록'],
-    faq: { q: '회의록을 작성하면 Notion에도 저장되나요?', a: '회의록 페이지 우측 상단 "＋ 작성" 버튼으로 제목·날짜·요약을 입력해 저장하면 앱에 기록되고, Notion 연동이 설정돼 있으면 자동으로 Notion 페이지로도 저장돼요. "### 제목", "- 항목" 형식을 쓰면 Notion에서 제목·목록으로 변환돼요.' } },
+  { id: 'meetingnotes', name: '회의록', icon: '&#128466;', fn: 'showMeetingNotes', section: 'reference' },
   { id: 'knowledgemap', name: '업무 지식맵', icon: '&#129504;', fn: 'showKnowledgeMap', section: 'reference', border: 'var(--primary)' },
   { id: 'workflowdiagram', name: '업무 흐름도', icon: '&#128200;', fn: 'showWorkflowDiagrams', section: 'reference', border: '#43a047' },
   { id: 'onboarding', name: '신입 가이드', icon: '&#127891;', fn: 'showOnboarding', section: 'reference', border: '#e65100', bg: '#fff3e0' },
@@ -2005,44 +2004,6 @@ async function showMeetingNotes(pg) {
   renderMeetingNotesPage(pg || 1);
 }
 
-// ─── 회의록 작성 (앱→Notion 쓰기) ───
-function showMeetingNoteForm() {
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('mainContent').innerHTML = `
-    <button class="btn btn-outline btn-sm" onclick="showMeetingNotes()" style="margin-bottom:12px;">&larr; 목록</button>
-    <p class="section-title">&#128466; 회의록 작성</p>
-    <div class="card" style="padding:16px;">
-      <div class="form-group">
-        <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">제목</label>
-        <input type="text" id="mnTitle" class="form-control" placeholder="회의 제목">
-      </div>
-      <div class="form-group">
-        <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">회의 날짜</label>
-        <input type="date" id="mnDate" class="form-control" value="${today}">
-      </div>
-      <div class="form-group">
-        <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">요약 / 내용</label>
-        <textarea id="mnSummary" class="form-control" rows="10" placeholder="### 안건&#10;- 논의 내용&#10;- 결정 사항"></textarea>
-        <small style="color:var(--gray-500);">&#34;### 제목&#34;, &#34;- 항목&#34; 형식을 쓰면 Notion에서도 제목·목록으로 변환돼요.</small>
-      </div>
-      <button class="btn btn-primary" style="width:100%;" onclick="saveMeetingNote()">저장 (+ Notion 기록)</button>
-    </div>
-  `;
-}
-
-async function saveMeetingNote() {
-  const title = (document.getElementById('mnTitle').value || '').trim();
-  const meeting_date = document.getElementById('mnDate').value;
-  const summary = (document.getElementById('mnSummary').value || '').trim();
-  if (!title) { toast('제목을 입력해주세요'); return; }
-  if (!meeting_date) { toast('회의 날짜를 선택해주세요'); return; }
-  const result = await api('/api/meeting-notes', { method: 'POST', body: { title, meeting_date, summary } });
-  if (result) {
-    toast(result.notion_synced ? '저장 완료! Notion에도 기록했어요 📝' : '저장 완료! (Notion 미연동)');
-    showMeetingNotes();
-  }
-}
-
 function renderMeetingNotesPage(pg) {
   const notes = window._filteredMeetingNotes || [];
   const { data, page, totalPages, total } = paginate(notes, pg);
@@ -2051,10 +2012,7 @@ function renderMeetingNotesPage(pg) {
 
   document.getElementById('mainContent').innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 뒤로</button>
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <p class="section-title">&#128466; 회의록 (${total}건)</p>
-      <button class="btn btn-primary btn-sm" onclick="showMeetingNoteForm()">&#65291; 작성</button>
-    </div>
+    <p class="section-title">&#128466; 회의록 (${total}건)</p>
     <div class="form-group">
       <input type="text" id="mnSearch" class="form-control" placeholder="회의 제목 검색..."
         oninput="searchMeetingNotes()">
@@ -9247,9 +9205,6 @@ async function _aiProcessChat(input, _detections) {
   }
   if (/직접\s*작성|직접\s*입력/.test(t)) {
     return { reply: '업무일지 작성 화면을 열게요!', action: () => { closeAiChat(); openNewReport(); } };
-  }
-  if (/회의록\s*(작성|쓸래|쓸게|써줘|기록|등록)/.test(t)) {
-    return { reply: '📄 회의록 작성 화면을 열게요! 저장하면 Notion에도 기록돼요.', action: () => { closeAiChat(); showMeetingNoteForm(); } };
   }
   // ── 레지스트리 aiNav 자동 매칭 ──
   const _navMatch = FEATURE_REGISTRY.find(f => f.aiNav && f.fn && f.aiNav.some(kw => t.includes(kw.toLowerCase())));
