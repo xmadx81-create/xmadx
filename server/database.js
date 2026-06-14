@@ -192,6 +192,12 @@ async function initDB() {
   await query(`ALTER TABLE quick_notes ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
   await query(`ALTER TABLE approved_staff ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
 
+  // ─── 데이터 격리: 누락 테이블에 company_id 추가 ───
+  await query(`ALTER TABLE task_master ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE personal_task_table ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+  await query(`ALTER TABLE personal_manual ADD COLUMN IF NOT EXISTS company_id TEXT`).catch(() => {});
+
   await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS issues TEXT DEFAULT ''`).catch(() => {});
   await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`).catch(() => {});
 
