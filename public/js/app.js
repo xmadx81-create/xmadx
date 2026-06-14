@@ -48,30 +48,74 @@ function _showSundayNotice(banner) {
 setInterval(_checkMaintenance, 30000);
 setTimeout(_checkMaintenance, 2000);
 
-// ─── 네비게이터 커스텀 설정 ───
-const NAV_ITEMS = [
-  { id: 'home', icon: '&#127968;', label: '홈' },
-  { id: 'reports', icon: '&#128221;', label: '업무일지' },
-  { id: 'weekly', icon: '&#128197;', label: '주간계획' },
-  { id: 'notices', icon: '&#128227;', label: '공지사항', action: 'showNoticesList' },
-  { id: 'board', icon: '&#128172;', label: '게시판', action: 'showBoard' },
-  { id: 'todo', icon: '&#9745;', label: '할 일', action: 'showTodoPage' },
-  { id: 'volunteer', icon: '&#129309;', label: '봉사활동', action: 'showVolunteerPage' },
-  { id: 'attendance', icon: '&#128339;', label: '출퇴근', action: 'showAttendancePage' },
-  { id: 'schedule', icon: '&#128197;', label: '팀 일정', action: 'showSchedulePage' },
-  { id: 'bookmarks', icon: '&#11088;', label: '즐겨찾기', action: 'showBookmarks' },
-  { id: 'calendar', icon: '&#128467;', label: '캘린더', action: 'showWorkCalendar' },
-  { id: 'timeline', icon: '&#128337;', label: '타임라인', action: 'showTimeline' },
-  { id: 'notes', icon: '&#128221;', label: '메모', action: 'showNotes' },
-  { id: 'insight', icon: '&#129504;', label: 'AI 분석', action: 'showSmartInsight' },
-  { id: 'monthly', icon: '&#128202;', label: '월간요약', action: 'showMonthlySummary' },
-  { id: 'handover', icon: '&#128196;', label: '인수인계', action: 'showHandover' },
-  { id: 'jukebox', icon: '&#127925;', label: '쥬크박스', action: 'showJukebox' },
-  { id: 'jobprofile', icon: '&#128188;', label: '직무프로필', action: 'showJobProfile' },
-  { id: 'weeklyreport', icon: '&#128203;', label: '주간보고서', action: 'showWeeklyReport' },
-  { id: 'direction', icon: '&#127919;', label: '목표&방향', action: 'showDirection' },
-  { id: 'personalinsight', icon: '&#128161;', label: '내 업무분석', action: 'showPersonalInsight' },
+// ─── Feature Registry (기능 등록부) ───
+// 신규 기능 = 여기에 한 줄 추가 → 네비/더보기/AI/FAQ 자동 연결
+const MENU_SECTIONS = [
+  { id: 'comm', title: '&#128227; 소통' },
+  { id: 'reference', title: '&#128203; 업무 참조' },
+  { id: 'analysis', title: '&#128161; 분석 & 인사이트' },
+  { id: 'tool', title: '&#9881; 도구' },
+  { id: 'devtool', title: '&#128295; 개발자 도구', requireAdmin: true },
+  { id: 'settings', title: '&#9881; 설정' },
 ];
+
+const FEATURE_REGISTRY = [
+  // ── Core (네비 전용, 더보기 X) ──
+  { id: 'home', name: '홈', icon: '&#127968;', section: 'core', nav: true },
+  { id: 'reports', name: '업무일지', icon: '&#128221;', section: 'core', nav: true },
+  { id: 'weekly', name: '주간계획', icon: '&#128197;', section: 'core', nav: true },
+  // ── 소통 ──
+  { id: 'notices', name: '공지사항', icon: '&#128227;', fn: 'showNoticesList', section: 'comm', nav: true, border: '#f59e0b', bg: '#fffbeb', labelColor: '#92400e', aiNav: ['공지사항','공지'] },
+  { id: 'board', name: '팀 게시판', icon: '&#128172;', fn: 'showBoard', section: 'comm', nav: true, border: '#6366f1', aiNav: ['게시판'] },
+  // ── 업무 참조 ──
+  { id: 'taskmaster', name: '주요업무표', icon: '&#128203;', fn: 'showTaskMaster', section: 'reference' },
+  { id: 'personaltasks', name: '개별 업무표', icon: '&#128221;', fn: 'showPersonalTasks', section: 'reference' },
+  { id: 'manual', name: '업무 매뉴얼', icon: '&#128214;', fn: 'showManual', section: 'reference' },
+  { id: 'branches', name: '전국 지국', icon: '&#127970;', fn: 'showBranches', section: 'reference' },
+  { id: 'meetingnotes', name: '회의록', icon: '&#128466;', fn: 'showMeetingNotes', section: 'reference' },
+  { id: 'knowledgemap', name: '업무 지식맵', icon: '&#129504;', fn: 'showKnowledgeMap', section: 'reference', border: 'var(--primary)' },
+  { id: 'workflowdiagram', name: '업무 흐름도', icon: '&#128200;', fn: 'showWorkflowDiagrams', section: 'reference', border: '#43a047' },
+  { id: 'onboarding', name: '신입 가이드', icon: '&#127891;', fn: 'showOnboarding', section: 'reference', border: '#e65100', bg: '#fff3e0' },
+  // ── 분석 & 인사이트 ──
+  { id: 'direction', name: '목표 & 방향', icon: '&#127919;', fn: 'showDirection', section: 'analysis', nav: true, border: '#7c3aed', aiNav: ['목표','방향'] },
+  { id: 'personalinsight', name: '내 업무 분석', icon: '&#128161;', fn: 'showPersonalInsight', section: 'analysis', nav: true, border: '#0891b2', aiNav: ['업무 분석','내 분석'] },
+  { id: 'monthly', name: '월간 요약', icon: '&#128202;', fn: 'showMonthlySummary', section: 'analysis', nav: true, border: '#ea580c', aiNav: ['월간 요약','월간요약'] },
+  { id: 'handover', name: '인수인계', icon: '&#128196;', fn: 'showHandover', section: 'analysis', nav: true, border: '#1e3a5f', aiNav: ['인수인계'] },
+  { id: 'weeklyreport', name: '주간 보고서', icon: '&#128203;', fn: 'showWeeklyReport', section: 'analysis', nav: true, border: '#0f766e', aiNav: ['주간 보고','주간보고서'] },
+  { id: 'smartinsight', name: 'AI 인사이트', icon: '&#129504;', fn: 'showSmartInsight', section: 'analysis', nav: true, border: '#dc2626', bg: '#fef2f2', aiNav: ['AI 인사이트','인사이트'] },
+  // ── 도구 ──
+  { id: 'todo', name: '할 일 관리', icon: '&#9745;', fn: 'showTodoPage', section: 'tool', nav: true, border: '#10b981', aiNav: ['할 일 관리','할일'] },
+  { id: 'volunteer', name: '봉사활동', icon: '&#129309;', fn: 'showVolunteerPage', section: 'tool', nav: true, border: '#db2777', help: '참여한 봉사활동을 기록하고 누적 봉사시간을 관리합니다. (본인만 봅니다)', aiNav: ['봉사활동','봉사'] },
+  { id: 'attendance', name: '출퇴근 기록', icon: '&#128339;', fn: 'showAttendancePage', section: 'tool', nav: true, border: '#6366f1', aiNav: ['출퇴근 기록','출퇴근'] },
+  { id: 'schedule', name: '팀 일정', icon: '&#128197;', fn: 'showSchedulePage', section: 'tool', nav: true, border: '#0ea5e9', aiNav: ['팀 일정','팀일정'] },
+  { id: 'bookmarks', name: '즐겨찾기', icon: '&#11088;', fn: 'showBookmarks', section: 'tool', nav: true, border: '#eab308', aiNav: ['즐겨찾기'] },
+  { id: 'calendar', name: '업무 캘린더', icon: '&#128467;', fn: 'showWorkCalendar', section: 'tool', nav: true, border: '#8b5cf6', aiNav: ['캘린더','달력'] },
+  { id: 'timeline', name: '타임라인', icon: '&#128337;', fn: 'showTimeline', section: 'tool', nav: true, border: '#64748b', aiNav: ['타임라인'] },
+  { id: 'notes', name: '빠른 메모', icon: '&#128221;', fn: 'showNotes', section: 'tool', nav: true, border: '#d97706', aiNav: ['메모','빠른 메모'] },
+  { id: 'jukebox', name: '쥬크박스', icon: '&#127925;', fn: 'showJukebox', section: 'tool', nav: true, border: '#e11d48', bg: '#fff1f2', aiNav: ['쥬크박스','플레이리스트','음악'],
+    faq: { q: '쥬크박스는 뭔가요?', a: '더보기 → 쥬크박스에서 Suno, SoundCloud, YouTube 음악 URL을 등록해 나만의 플레이리스트를 만들 수 있어요. AI 비서에게 "이 노래 추가해줘"라고 말해도 돼요!' } },
+  { id: 'worktable', name: '업무표 생성', icon: '&#128202;', fn: 'showWorkTable', section: 'tool' },
+  { id: 'templates', name: '템플릿 관리', icon: '&#128196;', fn: 'manageTemplates', section: 'tool' },
+  { id: 'userinfo', name: '내 정보', icon: '&#128100;', fn: 'showUserInfo', section: 'tool' },
+  { id: 'regionmembers', name: '소속 관리', icon: '&#128100;', fn: 'showRegionMembers', section: 'tool', border: '#0d9488', requireRegion: true, help: '관리담당자의 부서·직책·팀(소속)을 대신 수정합니다. 지역장 전용 기능입니다.' },
+  { id: 'volunteerreview', name: '봉사 승인·감사', icon: '&#9989;', fn: 'showVolunteerReview', section: 'tool', border: '#0284c7', requireRegion: true, help: '지국이 요청한 봉사 계획을 승인하고, 완료건을 감사확인합니다.' },
+  { id: 'teamdashboard', name: '팀 실적', icon: '&#128101;', fn: 'showTeamDashboard', section: 'tool', border: '#4338ca', requireAdmin: true },
+  { id: 'adminpanel', name: '시스템 관리', icon: '&#128272;', fn: 'showAdminPanel', section: 'tool', border: 'var(--danger)', requireAdmin: true },
+  // ── 개발자 도구 ──
+  { id: 'workshoproster', name: '워크샵 명단', icon: '&#128203;', fn: 'showWorkshopRoster', section: 'devtool', border: '#c2410c', requireAdmin: true, help: '워크숍 참석 명단을 작성합니다.' },
+  { id: 'volunteeraudit', name: '봉사 감사확인', icon: '&#128270;', fn: 'showVolunteerReview', section: 'devtool', border: '#7c3aed', requireAdmin: true, help: '완료된 봉사활동을 감사확인 처리합니다.' },
+  // ── 설정 ──
+  { id: 'navsettings', name: '네비 설정', icon: '&#128295;', fn: 'showNavSettings', section: 'settings', border: 'var(--primary)', bg: '#fff7ed' },
+  { id: 'appfaq', name: '사용 도움말', icon: '&#10068;', fn: 'showAppFAQ', section: 'settings', border: '#6366f1', bg: '#eef2ff' },
+  { id: 'installapp', name: '홈 화면에 추가', icon: '&#128241;', fn: 'installApp', section: 'settings', border: '#10b981', bg: '#ecfdf5' },
+  { id: 'jobprofile', name: '직무 프로필', icon: '&#128188;', fn: 'showJobProfile', section: 'settings', nav: true, border: '#0891b2', bg: '#ecfeff', aiNav: ['직무 프로필','직무프로필'],
+    faq: { q: '직무 프로필은 어떻게 설정하나요?', a: '더보기 → 직무 프로필에서 업종/직종/직무를 선택하면 AI 비서가 맞춤형 도움을 줘요. AI 대화에서 자동으로 추천받을 수도 있어요.' } },
+];
+
+// ─── NAV_ITEMS: 레지스트리에서 자동 생성 ───
+const NAV_ITEMS = FEATURE_REGISTRY.filter(f => f.nav).map(f => ({
+  id: f.id, icon: f.icon, label: f.name, action: f.fn || undefined
+}));
 const DEFAULT_NAV = ['home', 'reports', 'weekly'];
 
 function getNavConfig() {
@@ -1251,197 +1295,41 @@ async function viewWeeklyPlan(id) {
   `;
 }
 
-// ─── 더보기 ───
+// ─── 더보기 (레지스트리 자동 렌더링) ───
+function _renderMenuBtn(f) {
+  const st = [];
+  if (f.border) st.push('border:2px solid ' + f.border);
+  if (f.bg) st.push('background:' + f.bg);
+  const lc = f.labelColor || (f.border ? f.border : '');
+  const ls = lc ? 'color:' + lc + '; font-weight:700;' : '';
+  return `<button class="quick-action-btn" onclick="${f.fn}()"${st.length ? ' style="' + st.join(';') + '"' : ''}${f.help ? ' data-help="' + f.help + '"' : ''}>
+    <span class="qa-icon">${f.icon}</span>
+    <span class="qa-label"${ls ? ' style="' + ls + '"' : ''}>${f.name}</span>
+  </button>`;
+}
+
 async function renderMore() {
   const fab = document.getElementById('fabBtn');
   fab.style.display = 'none';
-
-  document.getElementById('mainContent').innerHTML = `
-    <p class="section-title">&#128227; 소통</p>
-    <div class="quick-actions">
-      <button class="quick-action-btn" onclick="showNoticesList()" style="border:2px solid #f59e0b; background:#fffbeb;">
-        <span class="qa-icon">&#128227;</span>
-        <span class="qa-label" style="color:#92400e; font-weight:700;">공지사항</span>
-      </button>
-      <button class="quick-action-btn" onclick="showBoard()" style="border:2px solid #6366f1;">
-        <span class="qa-icon">&#128172;</span>
-        <span class="qa-label" style="color:#6366f1; font-weight:700;">팀 게시판</span>
-      </button>
-    </div>
-
-    <p class="section-title">&#128203; 업무 참조</p>
-    <div class="quick-actions">
-      <button class="quick-action-btn" onclick="showTaskMaster()">
-        <span class="qa-icon">&#128203;</span>
-        <span class="qa-label">주요업무표</span>
-      </button>
-      <button class="quick-action-btn" onclick="showPersonalTasks()">
-        <span class="qa-icon">&#128221;</span>
-        <span class="qa-label">개별 업무표</span>
-      </button>
-      <button class="quick-action-btn" onclick="showManual()">
-        <span class="qa-icon">&#128214;</span>
-        <span class="qa-label">업무 매뉴얼</span>
-      </button>
-      <button class="quick-action-btn" onclick="showBranches()">
-        <span class="qa-icon">&#127970;</span>
-        <span class="qa-label">전국 지국</span>
-      </button>
-      <button class="quick-action-btn" onclick="showMeetingNotes()">
-        <span class="qa-icon">&#128466;</span>
-        <span class="qa-label">회의록</span>
-      </button>
-      <button class="quick-action-btn" onclick="showKnowledgeMap()" style="border:2px solid var(--primary);">
-        <span class="qa-icon">&#129504;</span>
-        <span class="qa-label" style="color:var(--primary); font-weight:700;">업무 지식맵</span>
-      </button>
-      <button class="quick-action-btn" onclick="showWorkflowDiagrams()" style="border:2px solid #43a047;">
-        <span class="qa-icon">&#128200;</span>
-        <span class="qa-label" style="color:#43a047; font-weight:700;">업무 흐름도</span>
-      </button>
-      <button class="quick-action-btn" onclick="showOnboarding()" style="border:2px solid #e65100; background:#fff3e0;">
-        <span class="qa-icon">&#127891;</span>
-        <span class="qa-label" style="color:#e65100; font-weight:700;">신입 가이드</span>
-      </button>
-    </div>
-
-    <p class="section-title">&#128161; 분석 & 인사이트</p>
-    <div class="quick-actions">
-      <button class="quick-action-btn" onclick="showDirection()" style="border:2px solid #7c3aed;">
-        <span class="qa-icon">&#127919;</span>
-        <span class="qa-label" style="color:#7c3aed; font-weight:700;">목표 & 방향</span>
-      </button>
-      <button class="quick-action-btn" onclick="showPersonalInsight()" style="border:2px solid #0891b2;">
-        <span class="qa-icon">&#128161;</span>
-        <span class="qa-label" style="color:#0891b2; font-weight:700;">내 업무 분석</span>
-      </button>
-      <button class="quick-action-btn" onclick="showMonthlySummary()" style="border:2px solid #ea580c;">
-        <span class="qa-icon">&#128202;</span>
-        <span class="qa-label" style="color:#ea580c; font-weight:700;">월간 요약</span>
-      </button>
-      <button class="quick-action-btn" onclick="showHandover()" style="border:2px solid #1e3a5f;">
-        <span class="qa-icon">&#128196;</span>
-        <span class="qa-label" style="color:#1e3a5f; font-weight:700;">인수인계</span>
-      </button>
-      <button class="quick-action-btn" onclick="showWeeklyReport()" style="border:2px solid #0f766e;">
-        <span class="qa-icon">&#128203;</span>
-        <span class="qa-label" style="color:#0f766e; font-weight:700;">주간 보고서</span>
-      </button>
-      <button class="quick-action-btn" onclick="showSmartInsight()" style="border:2px solid #dc2626; background:#fef2f2;">
-        <span class="qa-icon">&#129504;</span>
-        <span class="qa-label" style="color:#dc2626; font-weight:700;">AI 인사이트</span>
-      </button>
-    </div>
-
-    <p class="section-title">&#9881; 도구</p>
-    <div class="quick-actions">
-      <button class="quick-action-btn" onclick="showTodoPage()" style="border:2px solid #10b981;">
-        <span class="qa-icon">&#9745;</span>
-        <span class="qa-label" style="color:#10b981; font-weight:700;">할 일 관리</span>
-      </button>
-      <button class="quick-action-btn" onclick="showVolunteerPage()" style="border:2px solid #db2777;" data-help="참여한 봉사활동을 기록하고 누적 봉사시간을 관리합니다. (본인만 봅니다)">
-        <span class="qa-icon">&#129309;</span>
-        <span class="qa-label" style="color:#db2777; font-weight:700;">봉사활동</span>
-      </button>
-      <button class="quick-action-btn" onclick="showAttendancePage()" style="border:2px solid #6366f1;">
-        <span class="qa-icon">&#128339;</span>
-        <span class="qa-label" style="color:#6366f1; font-weight:700;">출퇴근 기록</span>
-      </button>
-      <button class="quick-action-btn" onclick="showSchedulePage()" style="border:2px solid #0ea5e9;">
-        <span class="qa-icon">&#128197;</span>
-        <span class="qa-label" style="color:#0ea5e9; font-weight:700;">팀 일정</span>
-      </button>
-      <button class="quick-action-btn" onclick="showBookmarks()" style="border:2px solid #eab308;">
-        <span class="qa-icon">&#11088;</span>
-        <span class="qa-label" style="color:#eab308; font-weight:700;">즐겨찾기</span>
-      </button>
-      <button class="quick-action-btn" onclick="showWorkCalendar()" style="border:2px solid #8b5cf6;">
-        <span class="qa-icon">&#128467;</span>
-        <span class="qa-label" style="color:#8b5cf6; font-weight:700;">업무 캘린더</span>
-      </button>
-      <button class="quick-action-btn" onclick="showTimeline()" style="border:2px solid #64748b;">
-        <span class="qa-icon">&#128337;</span>
-        <span class="qa-label" style="color:#64748b; font-weight:700;">타임라인</span>
-      </button>
-      <button class="quick-action-btn" onclick="showNotes()" style="border:2px solid #d97706;">
-        <span class="qa-icon">&#128221;</span>
-        <span class="qa-label" style="color:#d97706; font-weight:700;">빠른 메모</span>
-      </button>
-      <button class="quick-action-btn" onclick="showJukebox()" style="border:2px solid #e11d48; background:#fff1f2;">
-        <span class="qa-icon">&#127925;</span>
-        <span class="qa-label" style="color:#e11d48; font-weight:700;">쥬크박스</span>
-      </button>
-      <button class="quick-action-btn" onclick="showWorkTable()">
-        <span class="qa-icon">&#128202;</span>
-        <span class="qa-label">업무표 생성</span>
-      </button>
-      <button class="quick-action-btn" onclick="manageTemplates()">
-        <span class="qa-icon">&#128196;</span>
-        <span class="qa-label">템플릿 관리</span>
-      </button>
-      <button class="quick-action-btn" onclick="showUserInfo()">
-        <span class="qa-icon">&#128100;</span>
-        <span class="qa-label">내 정보</span>
-      </button>
-      ${currentUser && (currentUser.position === '지역장' || currentUser.isAdmin) ? `
-      <button class="quick-action-btn" onclick="showRegionMembers()" style="border:2px solid #0d9488;" data-help="관리담당자의 부서·직책·팀(소속)을 대신 수정합니다. 지역장 전용 기능입니다.">
-        <span class="qa-icon">&#128100;</span>
-        <span class="qa-label" style="color:#0d9488; font-weight:700;">소속 관리</span>
-      </button>
-      <button class="quick-action-btn" onclick="showVolunteerReview()" style="border:2px solid #0284c7;" data-help="지국이 요청한 봉사 계획을 승인하고, 완료건을 감사확인합니다.">
-        <span class="qa-icon">&#9989;</span>
-        <span class="qa-label" style="color:#0284c7; font-weight:700;">봉사 승인·감사</span>
-      </button>` : ''}
-      ${currentUser && currentUser.isAdmin ? `
-      <button class="quick-action-btn" onclick="showTeamDashboard()" style="border:2px solid #4338ca;">
-        <span class="qa-icon">&#128101;</span>
-        <span class="qa-label" style="color:#4338ca; font-weight:700;">팀 실적</span>
-      </button>
-      <button class="quick-action-btn" onclick="showAdminPanel()" style="border:2px solid var(--danger);">
-        <span class="qa-icon">&#128272;</span>
-        <span class="qa-label" style="color:var(--danger); font-weight:700;">시스템 관리</span>
-      </button>` : ''}
-    </div>
-
-    ${currentUser && currentUser.isAdmin ? `
-    <p class="section-title">&#128295; 개발자 도구</p>
-    <div class="quick-actions">
-      <button class="quick-action-btn" onclick="showWorkshopRoster()" style="border:2px solid #c2410c;" data-help="워크숍 참석 명단을 작성합니다. 앱의 관리담당자를 불러오고 추가 인원을 더해 엑셀 양식으로 내려받습니다.">
-        <span class="qa-icon">&#128203;</span>
-        <span class="qa-label" style="color:#c2410c; font-weight:700;">워크샵 명단</span>
-      </button>
-      <button class="quick-action-btn" onclick="showVolunteerReview()" style="border:2px solid #7c3aed;" data-help="완료된 봉사활동을 감사확인 처리합니다. 감사실/개발자 전용.">
-        <span class="qa-icon">&#128270;</span>
-        <span class="qa-label" style="color:#7c3aed; font-weight:700;">봉사 감사확인</span>
-      </button>
-    </div>` : ''}
-
-    <p class="section-title">&#9881; 설정</p>
-    <div class="quick-actions">
-      <button class="quick-action-btn" onclick="showNavSettings()" style="border:2px solid var(--primary); background:#fff7ed;">
-        <span class="qa-icon">&#128295;</span>
-        <span class="qa-label" style="color:var(--primary); font-weight:700;">네비 설정</span>
-      </button>
-      <button class="quick-action-btn" onclick="showAppFAQ()" style="border:2px solid #6366f1; background:#eef2ff;">
-        <span class="qa-icon">&#10068;</span>
-        <span class="qa-label" style="color:#6366f1; font-weight:700;">사용 도움말</span>
-      </button>
-      <button class="quick-action-btn" onclick="installApp()" style="border:2px solid #10b981; background:#ecfdf5;">
-        <span class="qa-icon">&#128241;</span>
-        <span class="qa-label" style="color:#10b981; font-weight:700;">홈 화면에 추가</span>
-      </button>
-      <button class="quick-action-btn" onclick="showJobProfile()" style="border:2px solid #0891b2; background:#ecfeff;">
-        <span class="qa-icon">&#128188;</span>
-        <span class="qa-label" style="color:#0891b2; font-weight:700;">직무 프로필</span>
-      </button>
-    </div>
-
-    <div class="card">
-      <p class="card-title" style="margin-bottom:8px;">시스템 정보</p>
-      <p style="font-size:14px; color:var(--gray-500);">WorkFlow - Smart Work Manager v3.0</p>
-      <p style="font-size:11px; color:var(--gray-400); margin-top:4px;">Since 2026.06.08</p>
-    </div>
-  `;
+  let html = '';
+  MENU_SECTIONS.forEach(sec => {
+    if (sec.requireAdmin && !(currentUser && currentUser.isAdmin)) return;
+    const items = FEATURE_REGISTRY.filter(f => f.section === sec.id).filter(f => {
+      if (f.requireAdmin && !(currentUser && currentUser.isAdmin)) return false;
+      if (f.requireRegion && !(currentUser && (currentUser.position === '지역장' || currentUser.isAdmin))) return false;
+      return true;
+    });
+    if (items.length === 0) return;
+    html += '<p class="section-title">' + sec.title + '</p><div class="quick-actions">';
+    items.forEach(f => { html += _renderMenuBtn(f); });
+    html += '</div>';
+  });
+  html += `<div class="card">
+    <p class="card-title" style="margin-bottom:8px;">시스템 정보</p>
+    <p style="font-size:14px; color:var(--gray-500);">WorkFlow - Smart Work Manager v3.0</p>
+    <p style="font-size:11px; color:var(--gray-400); margin-top:4px;">Since 2026.06.08</p>
+  </div>`;
+  document.getElementById('mainContent').innerHTML = html;
 }
 
 // ─── 홈 화면 추가 ───
@@ -1528,10 +1416,14 @@ function showAppFAQ() {
       { q: '통합 검색은 어떻게 하나요?', a: '상단 돋보기(🔍) 아이콘을 누르면 업무일지, 일정, 할 일, 게시글 등 모든 내용을 한번에 검색할 수 있어요.' },
       { q: '빠른 메모 기능이 있나요?', a: '더보기 → 빠른 메모에서 간단한 메모를 작성할 수 있어요. 업무일지로 변환하기 전 아이디어를 빠르게 기록할 때 유용해요.' },
       { q: '주간 보고서/월간 요약은 뭔가요?', a: '이번 주 또는 이번 달 작성한 업무일지를 자동으로 요약 정리해주는 기능이에요. 더보기 → 분석 & 인사이트에서 확인하세요.' },
-      { q: '쥬크박스는 뭔가요?', a: '더보기 → 쥬크박스에서 Suno, SoundCloud, YouTube 음악 URL을 등록해 나만의 플레이리스트를 만들 수 있어요. AI 비서에게 "이 노래 추가해줘"라고 말해도 돼요! 프로필 URL을 등록하면 채널 바로가기도 생겨요.' },
-      { q: '직무 프로필은 어떻게 설정하나요?', a: '더보기 → 직무 프로필에서 업종/직종/직무를 선택하면 AI 비서가 맞춤형 도움을 줘요. AI 대화에서 자동으로 추천받을 수도 있어요.' },
     ]},
   ];
+  // 레지스트리 faq 자동 병합
+  const _regFaqs = FEATURE_REGISTRY.filter(f => f.faq).map(f => f.faq);
+  if (_regFaqs.length) {
+    const lastCat = faqData[faqData.length - 1];
+    _regFaqs.forEach(fq => { if (!lastCat.items.some(x => x.q === fq.q)) lastCat.items.push(fq); });
+  }
 
   let openCat = 0;
   let openQ = -1;
@@ -9229,11 +9121,11 @@ async function _aiProcessChat(input, _detections) {
   if (/직접\s*작성|직접\s*입력/.test(t)) {
     return { reply: '업무일지 작성 화면을 열게요!', action: () => { closeAiChat(); openNewReport(); } };
   }
-  if (/할\s*일\s*(관리|열기|페이지|이동)/.test(t)) {
-    return { reply: '할 일 관리 페이지로 이동할게요!', action: () => { closeAiChat(); navigate('todo'); } };
-  }
-  if (/쥬크박스\s*(열어|보여|이동|켜)/.test(t) || /플레이리스트\s*(열어|보여)/.test(t)) {
-    return { reply: '🎵 쥬크박스를 열게요!', action: () => { closeAiChat(); showJukebox(); } };
+  // ── 레지스트리 aiNav 자동 매칭 ──
+  const _navMatch = FEATURE_REGISTRY.find(f => f.aiNav && f.fn && f.aiNav.some(kw => t.includes(kw.toLowerCase())));
+  if (_navMatch && /(열어|보여|이동|켜|열기|페이지|가자|가줘|실행)/.test(t)) {
+    const fn = _navMatch.fn;
+    return { reply: _navMatch.icon + ' ' + _navMatch.name + ' 페이지를 열게요!', action: () => { closeAiChat(); window[fn](); } };
   }
   if (/^검색\s+(.+)/.test(t)) {
     const q = t.match(/^검색\s+(.+)/)[1];
