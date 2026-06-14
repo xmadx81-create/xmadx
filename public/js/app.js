@@ -9258,6 +9258,11 @@ async function _aiProcessChat(input, _detections) {
   const _geminiResult = await _aiCallGemini(input);
 
   if (_geminiResult && typeof _geminiResult === 'object' && _geminiResult.actions) {
+    if (!_aiIsWorkRelated(t) && !_geminiResult.actions.some(a => a.type === 'job_suggest')) {
+      const h2 = new Date().getHours();
+      const _gSugg = h2 < 10 ? ['출근', '오늘 브리핑'] : h2 < 14 ? ['오늘 일정', '할 일 확인'] : h2 < 18 ? ['보고서 쓸래', '브리핑'] : ['오늘 마무리', '이번 주 요약'];
+      return { reply: _geminiResult.reply || _geminiResult, suggests: _gSugg };
+    }
     const actions = _geminiResult.actions;
     const jobSuggest = actions.find(a => a.type === 'job_suggest');
     if (jobSuggest) {
