@@ -195,6 +195,15 @@ async function initDB() {
   await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS issues TEXT DEFAULT ''`).catch(() => {});
   await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`).catch(() => {});
 
+  // ─── 직무 프로필 컬럼 (users) ───
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS industry_type TEXT DEFAULT ''`).catch(() => {});
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS occupation_type TEXT DEFAULT ''`).catch(() => {});
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS job_functions TEXT DEFAULT '[]'`).catch(() => {});
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS job_confirmed BOOLEAN DEFAULT FALSE`).catch(() => {});
+  // ─── 업무 성격 분류 컬럼 (work_reports) ───
+  await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS work_nature TEXT DEFAULT ''`).catch(() => {});
+  await query(`ALTER TABLE work_reports ADD COLUMN IF NOT EXISTS job_function TEXT DEFAULT ''`).catch(() => {});
+
   try {
     await query(`ALTER TABLE bookmarks ALTER COLUMN report_id TYPE TEXT USING report_id::TEXT`);
   } catch(e) {}

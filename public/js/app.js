@@ -1421,6 +1421,10 @@ async function renderMore() {
         <span class="qa-icon">&#128241;</span>
         <span class="qa-label" style="color:#10b981; font-weight:700;">홈 화면에 추가</span>
       </button>
+      <button class="quick-action-btn" onclick="showJobProfile()" style="border:2px solid #0891b2; background:#ecfeff;">
+        <span class="qa-icon">&#128188;</span>
+        <span class="qa-label" style="color:#0891b2; font-weight:700;">직무 프로필</span>
+      </button>
     </div>
 
     <div class="card">
@@ -1602,6 +1606,108 @@ function showAppFAQ() {
     resultEl.style.display = 'block';
     listEl.style.display = 'none';
   };
+}
+
+// ─── 직무 프로필 ───
+async function showJobProfile() {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '<div class="card"><p style="text-align:center;">불러오는 중...</p></div>';
+  try {
+    const [taxRes, profRes] = await Promise.all([
+      fetch('/api/job-taxonomy', { credentials: 'include' }).then(r => r.json()),
+      fetch('/api/job-profile', { credentials: 'include' }).then(r => r.json())
+    ]);
+    const tax = taxRes;
+    const prof = profRes;
+    let selIndustry = prof.industry || '';
+    let selOccupation = prof.occupation || '';
+    let selFunctions = prof.functions || [];
+
+    function getOccupations() {
+      const ind = tax.industries.find(i => i.name === selIndustry);
+      const specific = ind ? ind.occupations : [];
+      return [...tax.commonOccupations, ...specific];
+    }
+    function getTasks() {
+      const occs = getOccupations();
+      const occ = occs.find(o => o.name === selOccupation);
+      const specific = occ ? occ.tasks : [];
+      return [...new Set([...tax.commonTasks, ...specific])];
+    }
+
+    function render() {
+      const occs = getOccupations();
+      const tasks = getTasks();
+      mc.innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <div class="card">
+      <p class="card-title" style="margin-bottom:12px;">&#128188; 직무 프로필 설정</p>
+      <p style="font-size:13px; color:var(--gray-500); margin-bottom:16px;">업종·직종·직무를 설정하면 AI 비서가 맞춤형 도움을 줍니다.</p>
+      ${prof.confirmed ? '<p style="font-size:12px; color:#10b981; margin-bottom:12px;">✅ 프로필 확정됨</p>' : '<p style="font-size:12px; color:#f59e0b; margin-bottom:12px;">⚠️ 미확정 — AI 대화에서 자동 추천받을 수 있어요</p>'}
+
+      <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">업종</label>
+      <select id="jpIndustry" style="width:100%; padding:10px; border:1px solid var(--gray-200); border-radius:8px; margin-bottom:12px; font-size:14px;" onchange="window._jpChangeIndustry(this.value)">
+        <option value="">선택하세요</option>
+        ${tax.industries.map(i => `<option value="${i.name}"${i.name === selIndustry ? ' selected' : ''}>${i.name}</option>`).join('')}
+      </select>
+
+      <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">직종</label>
+      <select id="jpOccupation" style="width:100%; padding:10px; border:1px solid var(--gray-200); border-radius:8px; margin-bottom:12px; font-size:14px;" onchange="window._jpChangeOccupation(this.value)">
+        <option value="">선택하세요</option>
+        ${occs.map(o => `<option value="${o.name}"${o.name === selOccupation ? ' selected' : ''}>${o.name}</option>`).join('')}
+      </select>
+
+      <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">직무 (복수 선택)</label>
+      <div id="jpFunctions" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px;">
+        ${tasks.map(t => `<button class="btn btn-sm${selFunctions.includes(t) ? '' : ' btn-outline'}" style="font-size:12px; padding:4px 10px;${selFunctions.includes(t) ? ' background:var(--primary); color:#fff;' : ''}" onclick="window._jpToggleFunc('${t}')">${t}</button>`).join('')}
+      </div>
+      <div style="font-size:12px; color:var(--gray-400); margin-bottom:12px;">선택: ${selFunctions.length > 0 ? selFunctions.join(', ') : '없음'}</div>
+
+      <button class="btn btn-primary" style="width:100%; padding:12px;" onclick="window._jpSave()">저장</button>
+    </div>`;
+    }
+
+    window._jpChangeIndustry = function(v) { selIndustry = v; selOccupation = ''; selFunctions = []; render(); };
+    window._jpChangeOccupation = function(v) { selOccupation = v; selFunctions = []; render(); };
+    window._jpToggleFunc = function(t) {
+      if (selFunctions.includes(t)) selFunctions = selFunctions.filter(f => f !== t);
+      else selFunctions.push(t);
+      render();
+    };
+    window._jpSave = async function() {
+      if (!selIndustry || !selOccupation) { showToast('업종과 직종을 선택해주세요'); return; }
+      try {
+        await fetch('/api/job-profile', {
+          method: 'PUT', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ industry: selIndustry, occupation: selOccupation, functions: selFunctions })
+        });
+        showToast('직무 프로필이 저장되었습니다!');
+        prof.confirmed = true;
+        render();
+      } catch(e) { showToast('저장 실패: ' + e.message); }
+    };
+    render();
+  } catch(e) { mc.innerHTML = `<div class="card"><p style="color:red;">로드 실패: ${e.message}</p></div>`; }
+}
+
+function showJobSuggestConfirm(action) {
+  const { industry, occupation, functions } = action;
+  const funcStr = (functions || []).join(', ');
+  window._jpConfirmSave = async function() {
+    try {
+      await fetch('/api/job-profile', {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ industry, occupation, functions: functions || [] })
+      });
+      showToast('직무 프로필이 저장되었습니다!');
+    } catch(e) { showToast('저장 실패'); }
+  };
+  showResultModal('info', '💼 직무 프로필 추천',
+    'AI가 대화에서 추론한 프로필:<br><br>업종: ' + industry + '<br>직종: ' + occupation + '<br>직무: ' + funcStr + '<br><br>맞으면 확인, 아니면 더보기 → 직무 프로필에서 직접 설정해주세요!',
+    '확인 (저장)', 'window._jpConfirmSave'
+  );
 }
 
 // ─── 네비 설정 ───
@@ -8968,6 +9074,14 @@ async function _aiProcessChat(input, _detections) {
 
   if (_geminiResult && typeof _geminiResult === 'object' && _geminiResult.actions) {
     const actions = _geminiResult.actions;
+    const jobSuggest = actions.find(a => a.type === 'job_suggest');
+    if (jobSuggest) {
+      setTimeout(() => showJobSuggestConfirm(jobSuggest), 500);
+      const otherActions = actions.filter(a => a.type !== 'job_suggest');
+      if (otherActions.length === 0) {
+        return { reply: _geminiResult.reply || '', suggests: ['직무 프로필 직접 설정', '괜찮아요'] };
+      }
+    }
     const hasCheckAction = actions.some(a => a.type === 'checkin' || a.type === 'checkout');
     if (hasCheckAction && actions.length === 1) {
       const a = actions[0];
