@@ -1669,60 +1669,96 @@ async function showJukebox() {
 
   let expandedId = null;
 
+  const _jbColors = ['#e11d48','#7c3aed','#0891b2','#ea580c','#16a34a','#2563eb','#c026d3','#0d9488'];
+  function _jbColor(i) { return _jbColors[i % _jbColors.length]; }
+  function _jbPlatIcon(p) { return p === 'suno' ? '&#9836;' : p === 'soundcloud' ? '&#9729;' : p === 'youtube' ? '&#9654;' : '&#9835;'; }
+  function _jbPlatName(p) { return p === 'suno' ? 'Suno' : p === 'soundcloud' ? 'SoundCloud' : p === 'youtube' ? 'YouTube' : p; }
+
   function render() {
     const profiles = tracks.filter(t => t.platform.endsWith('_profile'));
     const songs = tracks.filter(t => !t.platform.endsWith('_profile'));
 
     mc.innerHTML = `
-    <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+    <style>
+      .jb-wrap{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);min-height:100vh;margin:-16px;padding:16px;color:#fff;}
+      .jb-back{color:rgba(255,255,255,0.6);border-color:rgba(255,255,255,0.2);font-size:13px;margin-bottom:16px;}
+      .jb-back:hover{color:#fff;border-color:rgba(255,255,255,0.5);}
+      .jb-header{text-align:center;padding:20px 0 24px;}
+      .jb-title{font-size:24px;font-weight:800;background:linear-gradient(90deg,#e11d48,#7c3aed,#0891b2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0;}
+      .jb-sub{font-size:12px;color:rgba(255,255,255,0.4);margin-top:4px;letter-spacing:1px;}
+      .jb-channels{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+      .jb-ch-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:#fff;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s;}
+      .jb-ch-btn:hover{background:rgba(255,255,255,0.15);}
+      .jb-ch-del{border:none;background:none;color:rgba(255,255,255,0.3);font-size:12px;cursor:pointer;padding:0 4px;margin-left:-4px;}
+      .jb-form{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-bottom:20px;backdrop-filter:blur(10px);}
+      .jb-input{width:100%;padding:11px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;font-size:14px;background:rgba(255,255,255,0.05);color:#fff;box-sizing:border-box;outline:none;transition:border-color 0.2s;}
+      .jb-input::placeholder{color:rgba(255,255,255,0.3);}
+      .jb-input:focus{border-color:rgba(225,29,72,0.5);}
+      .jb-row{display:flex;gap:8px;}
+      .jb-addbtn{width:100%;padding:13px;border:none;border-radius:12px;background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;font-weight:700;font-size:15px;cursor:pointer;transition:transform 0.1s,box-shadow 0.2s;box-shadow:0 4px 15px rgba(225,29,72,0.3);}
+      .jb-addbtn:active{transform:scale(0.98);}
+      .jb-empty{text-align:center;padding:40px 20px;color:rgba(255,255,255,0.3);}
+      .jb-track{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;margin-bottom:10px;overflow:hidden;transition:all 0.2s;}
+      .jb-track:active{transform:scale(0.99);}
+      .jb-track-row{display:flex;align-items:center;padding:14px 12px;cursor:pointer;gap:12px;}
+      .jb-track-num{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;}
+      .jb-track-info{flex:1;min-width:0;}
+      .jb-track-title{font-size:14px;font-weight:600;color:#fff;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .jb-track-meta{font-size:11px;color:rgba(255,255,255,0.4);margin:2px 0 0;}
+      .jb-track-play{width:32px;height:32px;border-radius:50%;border:none;background:rgba(255,255,255,0.1);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.2s;}
+      .jb-track-play:hover{background:rgba(255,255,255,0.2);}
+      .jb-track-del{border:none;background:none;color:rgba(255,255,255,0.2);font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;}
+      .jb-track-del:hover{color:rgba(255,255,255,0.5);}
+      .jb-embed{padding:0 12px 14px;animation:jbSlideIn 0.25s ease;}
+      .jb-count{text-align:center;padding:16px;font-size:11px;color:rgba(255,255,255,0.25);letter-spacing:1px;}
+      @keyframes jbSlideIn{from{opacity:0;max-height:0}to{opacity:1;max-height:300px}}
+    </style>
 
-    ${profiles.length > 0 ? `
-    <div class="card" style="margin-bottom:12px; padding:12px 16px;">
-      <p style="font-size:13px; font-weight:600; margin-bottom:8px;">&#127911; 내 채널</p>
-      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+    <div class="jb-wrap">
+      <button class="btn btn-outline btn-sm jb-back" onclick="navigate('more')">&larr; 더보기</button>
+
+      <div class="jb-header">
+        <p class="jb-title">&#127925; MY JUKEBOX</p>
+        <p class="jb-sub">YOUR PERSONAL PLAYLIST</p>
+      </div>
+
+      ${profiles.length > 0 ? `
+      <div class="jb-channels">
         ${profiles.map(p => {
-          const icon = p.platform === 'suno_profile' ? '&#127924; Suno' : p.platform === 'soundcloud_profile' ? '&#9729; SoundCloud' : p.platform === 'youtube_profile' ? '&#9654; YouTube' : '&#127925; 채널';
-          return `<a href="${p.url}" target="_blank" style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:10px; background:#f8f8f8; border:1px solid var(--gray-200); text-decoration:none; color:#333; font-size:13px; font-weight:600;">${icon}${p.title ? ' · ' + p.title : ''}</a>
-          <button onclick="window._jbDelete('${p.id}')" style="border:none; background:none; font-size:14px; cursor:pointer; color:#ccc; padding:2px;">&#10005;</button>`;
+          const lbl = p.platform === 'suno_profile' ? '&#9836; Suno' : p.platform === 'soundcloud_profile' ? '&#9729; SoundCloud' : p.platform === 'youtube_profile' ? '&#9654; YouTube' : '&#9835; 채널';
+          return `<a href="${p.url}" target="_blank" class="jb-ch-btn">${lbl}${p.title && p.title !== '내 채널' ? ' · ' + p.title : ''}</a><button class="jb-ch-del" onclick="window._jbDelete('${p.id}')">&#10005;</button>`;
         }).join('')}
-      </div>
-    </div>` : ''}
+      </div>` : ''}
 
-    <div class="card" style="margin-bottom:12px;">
-      <p class="card-title" style="margin-bottom:8px;">&#127925; 나만의 쥬크박스</p>
-      <p style="font-size:13px; color:var(--gray-500); margin-bottom:16px;">Suno · SoundCloud · YouTube 링크를 붙여넣어 나만의 플레이리스트를 만드세요.</p>
-      <input id="jbUrlInput" type="url" placeholder="음악 URL 또는 프로필 URL 붙여넣기" style="width:100%; padding:12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px; margin-bottom:8px; box-sizing:border-box;">
-      <div style="display:flex; gap:8px; margin-bottom:12px;">
-        <input id="jbTitleInput" type="text" placeholder="제목" style="flex:1; padding:10px 12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px;">
-        <input id="jbArtistInput" type="text" placeholder="아티스트" style="flex:1; padding:10px 12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px;">
-      </div>
-      <button onclick="window._jbAddTrack()" style="width:100%; padding:14px; border:none; border-radius:12px; background:#e11d48; color:#fff; font-weight:700; font-size:16px; cursor:pointer;">&#127925; 노래 등록</button>
-    </div>
-
-    ${songs.length === 0 ? `
-    <div class="card" style="text-align:center; padding:32px;">
-      <p style="font-size:40px; margin-bottom:8px;">&#127926;</p>
-      <p style="color:var(--gray-400);">아직 트랙이 없어요</p>
-      <p style="font-size:13px; color:var(--gray-400);">좋아하는 음악 URL을 추가해보세요!</p>
-    </div>` : songs.map((t, i) => `
-    <div class="card" style="margin-bottom:8px; padding:12px 16px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="flex:1; cursor:pointer;" onclick="window._jbToggle('${t.id}')">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:18px;">${t.platform === 'suno' ? '&#127924;' : t.platform === 'soundcloud' ? '&#9729;' : t.platform === 'youtube' ? '&#9654;' : '&#127925;'}</span>
-            <div>
-              <p style="font-weight:600; font-size:14px; margin:0;">${t.title || '제목 없음'}</p>
-              <p style="font-size:12px; color:var(--gray-400); margin:0;">${t.artist || t.platform} · #${i+1}</p>
-            </div>
-          </div>
+      <div class="jb-form">
+        <input id="jbUrlInput" class="jb-input" type="url" placeholder="&#127911; 음악 URL 또는 프로필 URL" style="margin-bottom:8px;">
+        <div class="jb-row" style="margin-bottom:10px;">
+          <input id="jbTitleInput" class="jb-input" type="text" placeholder="제목">
+          <input id="jbArtistInput" class="jb-input" type="text" placeholder="아티스트">
         </div>
-        <button onclick="window._jbDelete('${t.id}')" style="border:none; background:none; font-size:18px; cursor:pointer; color:#ccc; padding:4px 8px;">&#128465;</button>
+        <button class="jb-addbtn" onclick="window._jbAddTrack()">&#127925; 노래 등록</button>
       </div>
-      ${expandedId === t.id ? `<div style="margin-top:12px;">${_getEmbedHtml(t)}</div>` : ''}
-    </div>`).join('')}
 
-    <div style="text-align:center; margin-top:16px;">
-      <p style="font-size:11px; color:var(--gray-400);">총 ${songs.length}곡</p>
+      ${songs.length === 0 ? `
+      <div class="jb-empty">
+        <p style="font-size:48px;margin-bottom:8px;opacity:0.5;">&#127926;</p>
+        <p style="font-size:14px;">아직 트랙이 없어요</p>
+        <p style="font-size:12px;margin-top:4px;">좋아하는 음악 URL을 추가해보세요</p>
+      </div>` : songs.map((t, i) => `
+      <div class="jb-track" style="border-left:3px solid ${_jbColor(i)};">
+        <div class="jb-track-row" onclick="window._jbToggle('${t.id}')">
+          <div class="jb-track-num" style="background:${_jbColor(i)};">${i+1}</div>
+          <div class="jb-track-info">
+            <p class="jb-track-title">${t.title || '제목 없음'}</p>
+            <p class="jb-track-meta">${t.artist || _jbPlatName(t.platform)} · ${_jbPlatName(t.platform)}</p>
+          </div>
+          <button class="jb-track-play">${expandedId === t.id ? '&#9646;&#9646;' : '&#9654;'}</button>
+          <button class="jb-track-del" onclick="event.stopPropagation();window._jbDelete('${t.id}')">&#10005;</button>
+        </div>
+        ${expandedId === t.id ? `<div class="jb-embed">${_getEmbedHtml(t)}</div>` : ''}
+      </div>`).join('')}
+
+      <div class="jb-count">${songs.length} TRACKS</div>
     </div>`;
   }
 
