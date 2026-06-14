@@ -104,6 +104,7 @@ const FEATURE_REGISTRY = [
   // ── 개발자 도구 ──
   { id: 'workshoproster', name: '워크샵 명단', icon: '&#128203;', fn: 'showWorkshopRoster', section: 'devtool', border: '#c2410c', requireAdmin: true, help: '워크숍 참석 명단을 작성합니다.' },
   { id: 'volunteeraudit', name: '봉사 감사확인', icon: '&#128270;', fn: 'showVolunteerReview', section: 'devtool', border: '#7c3aed', requireAdmin: true, help: '완료된 봉사활동을 감사확인 처리합니다.' },
+  { id: 'systemdoc', name: '시스템 관리 문서', icon: '&#128214;', fn: 'openSystemDoc', section: 'devtool', border: '#1e40af', bg: '#eff6ff', requireAdmin: true, help: '앱 데이터 저장 위치, 연동 서비스, 업데이트 이력을 Notion에서 확인합니다.' },
   // ── 설정 ──
   { id: 'navsettings', name: '네비 설정', icon: '&#128295;', fn: 'showNavSettings', section: 'settings', border: 'var(--primary)', bg: '#fff7ed' },
   { id: 'appfaq', name: '사용 도움말', icon: '&#10068;', fn: 'showAppFAQ', section: 'settings', border: '#6366f1', bg: '#eef2ff' },
@@ -1330,6 +1331,90 @@ async function renderMore() {
     <p style="font-size:11px; color:var(--gray-400); margin-top:4px;">Since 2026.06.08</p>
   </div>`;
   document.getElementById('mainContent').innerHTML = html;
+}
+
+// ─── 시스템 관리 문서 (Notion) ───
+function openSystemDoc() {
+  const NOTION_DOC_URL = window._SYSTEM_DOC_URL || '';
+  if (NOTION_DOC_URL) {
+    window.open(NOTION_DOC_URL, '_blank');
+  } else {
+    showSystemDocInline();
+  }
+}
+
+function showSystemDocInline() {
+  const html = `
+<div style="max-height:70vh; overflow-y:auto; font-size:13px; line-height:1.7;">
+
+<details open><summary style="font-weight:700; font-size:15px; cursor:pointer; padding:8px 0;">1. 앱 개요</summary>
+<table style="width:100%; border-collapse:collapse; margin:8px 0;">
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600; width:35%;">앱 이름</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">WorkFlow - Smart Work Manager</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">호스팅</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">Render (Free)</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">도메인</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">xmadx.onrender.com</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">버전</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">v107 · Since 2026.06.08</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">저장소</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">GitHub xmadx81-create/xmadx</td></tr>
+</table>
+</details>
+
+<details><summary style="font-weight:700; font-size:15px; cursor:pointer; padding:8px 0;">2. 데이터 저장 위치</summary>
+<p><b>메인 DB:</b> PostgreSQL 16 (Neon Serverless, ap-southeast-1)</p>
+<p><b>파일:</b> data/changelog.json, data/meeting_notes.json</p>
+<p><b>세션:</b> 서버 메모리 (express-session, 7일 유지)</p>
+</details>
+
+<details><summary style="font-weight:700; font-size:15px; cursor:pointer; padding:8px 0;">3. 전체 테이블 (27개)</summary>
+<p><b>사용자/조직:</b> companies, teams, users, approved_staff</p>
+<p><b>업무일지:</b> work_reports, weekly_plans, weekly_plan_items, templates, frequent_items, comments, approval_lines</p>
+<p><b>업무표:</b> task_master, task_notes, personal_task_table, personal_manual, meeting_notes</p>
+<p><b>소통:</b> notices, board_posts, board_comments</p>
+<p><b>도구:</b> todos, attendance, team_events, bookmarks, quick_notes, jukebox_tracks</p>
+<p><b>기타:</b> branches (89개 전국 지국), call_orders, volunteer_activities, volunteer_scores</p>
+</details>
+
+<details><summary style="font-weight:700; font-size:15px; cursor:pointer; padding:8px 0;">4. 연동 서비스</summary>
+<table style="width:100%; border-collapse:collapse; margin:8px 0;">
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">Render</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">웹 서버 호스팅 (Free)</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">Neon</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">PostgreSQL DB (Free, Singapore)</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">GitHub</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">소스코드 관리</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">Groq</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">AI 비서 (llama-3.3-70b-versatile)</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">Suno/SoundCloud/YouTube</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">쥬크박스 음악 임베드</td></tr>
+<tr><td style="padding:4px 8px; border:1px solid #e5e7eb; font-weight:600;">Web Speech API</td><td style="padding:4px 8px; border:1px solid #e5e7eb;">브라우저 음성 인식</td></tr>
+</table>
+</details>
+
+<details><summary style="font-weight:700; font-size:15px; cursor:pointer; padding:8px 0;">5. 데이터 격리 정책</summary>
+<p>모든 테이블 <b>company_id</b> 기반 회사별 격리 완료 (2026-06-14)</p>
+<p>할 일/메모: <b>user_id</b> 기반 개인 데이터</p>
+<p>전국 지국: 공용 데이터 (의도적)</p>
+</details>
+
+<details><summary style="font-weight:700; font-size:15px; cursor:pointer; padding:8px 0;">6. 자동화</summary>
+<p>· changelog → 공지 발행: 매주 금요일 자정 KST</p>
+<p>· staging → main 머지: 매주 금요일 23:50 KST (GitHub Actions)</p>
+<p>· 서버 점검 모드: 관리자 수동 on/off</p>
+</details>
+
+<details><summary style="font-weight:700; font-size:15px; cursor:pointer; padding:8px 0;">7. 기술 스택</summary>
+<p><b>Backend:</b> Node.js + Express 5</p>
+<p><b>DB:</b> PostgreSQL 16 (Neon Serverless)</p>
+<p><b>Frontend:</b> Vanilla JS (단일 SPA, app.js ~11,500줄)</p>
+<p><b>AI:</b> Groq API (llama-3.3-70b)</p>
+<p><b>엑셀:</b> ExcelJS</p>
+<p><b>배포:</b> Render (auto-deploy from GitHub main)</p>
+</details>
+
+<details><summary style="font-weight:700; font-size:15px; cursor:pointer; padding:8px 0;">8. 업데이트 이력</summary>
+<p><b>v107</b> (06-14): Feature Registry, 데이터 격리 전면 적용, AI auto-nav</p>
+<p><b>v106</b> (06-13): 쥬크박스, 직무 프로필, 다크 음악 UI</p>
+<p><b>v3.0</b> (06-10): 멀티 기업 지원, 팀 관리</p>
+<p><b>v2.1</b> (06-10): 출퇴근 체크, 자동 공지 발행</p>
+<p><b>v2.0</b> (06-09): 음성 업무일지, 캘린더, 주간보고서</p>
+<p><b>v1.0</b> (06-08): 최초 배포</p>
+</details>
+
+</div>`;
+  showResultModal('info', '📖 시스템 관리 문서', html, '닫기');
 }
 
 // ─── 홈 화면 추가 ───
