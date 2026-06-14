@@ -66,6 +66,11 @@ const NAV_ITEMS = [
   { id: 'insight', icon: '&#129504;', label: 'AI 분석', action: 'showSmartInsight' },
   { id: 'monthly', icon: '&#128202;', label: '월간요약', action: 'showMonthlySummary' },
   { id: 'handover', icon: '&#128196;', label: '인수인계', action: 'showHandover' },
+  { id: 'jukebox', icon: '&#127925;', label: '쥬크박스', action: 'showJukebox' },
+  { id: 'jobprofile', icon: '&#128188;', label: '직무프로필', action: 'showJobProfile' },
+  { id: 'weeklyreport', icon: '&#128203;', label: '주간보고서', action: 'showWeeklyReport' },
+  { id: 'direction', icon: '&#127919;', label: '목표&방향', action: 'showDirection' },
+  { id: 'personalinsight', icon: '&#128161;', label: '내 업무분석', action: 'showPersonalInsight' },
 ];
 const DEFAULT_NAV = ['home', 'reports', 'weekly'];
 
@@ -1523,6 +1528,8 @@ function showAppFAQ() {
       { q: '통합 검색은 어떻게 하나요?', a: '상단 돋보기(🔍) 아이콘을 누르면 업무일지, 일정, 할 일, 게시글 등 모든 내용을 한번에 검색할 수 있어요.' },
       { q: '빠른 메모 기능이 있나요?', a: '더보기 → 빠른 메모에서 간단한 메모를 작성할 수 있어요. 업무일지로 변환하기 전 아이디어를 빠르게 기록할 때 유용해요.' },
       { q: '주간 보고서/월간 요약은 뭔가요?', a: '이번 주 또는 이번 달 작성한 업무일지를 자동으로 요약 정리해주는 기능이에요. 더보기 → 분석 & 인사이트에서 확인하세요.' },
+      { q: '쥬크박스는 뭔가요?', a: '더보기 → 쥬크박스에서 Suno, SoundCloud, YouTube 음악 URL을 등록해 나만의 플레이리스트를 만들 수 있어요. AI 비서에게 "이 노래 추가해줘"라고 말해도 돼요! 프로필 URL을 등록하면 채널 바로가기도 생겨요.' },
+      { q: '직무 프로필은 어떻게 설정하나요?', a: '더보기 → 직무 프로필에서 업종/직종/직무를 선택하면 AI 비서가 맞춤형 도움을 줘요. AI 대화에서 자동으로 추천받을 수도 있어요.' },
     ]},
   ];
 
