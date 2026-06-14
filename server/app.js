@@ -1086,6 +1086,101 @@ app.get('/api/branches/:id', authMiddleware, async (req, res) => {
   res.json(branch);
 });
 
+// ─── 업종→직종→직무 분류 체계 ───
+const JOB_TAXONOMY = {
+  industries: [
+    { code: 'MANUFACTURE', name: '제조업', occupations: [
+      { code: 'PROD', name: '생산/제조', tasks: ['공정관리','품질검사','설비보전','원자재관리','생산계획','안전관리'] },
+      { code: 'RND', name: '연구개발', tasks: ['제품개발','시험분석','특허관리','기술문서작성'] },
+      { code: 'QC', name: '품질관리', tasks: ['입고검사','공정검사','출하검사','불량분석','ISO관리'] }
+    ]},
+    { code: 'CONSTRUCT', name: '건설업', occupations: [
+      { code: 'SITE', name: '현장관리', tasks: ['공정관리','안전관리','자재관리','하도급관리','준공검사'] },
+      { code: 'DESIGN', name: '설계', tasks: ['도면작성','구조계산','인허가','설계변경'] },
+      { code: 'ESTIMATE', name: '적산/견적', tasks: ['물량산출','단가분석','견적서작성','입찰'] }
+    ]},
+    { code: 'RETAIL', name: '도소매업', occupations: [
+      { code: 'PURCHASE', name: '구매/매입', tasks: ['발주','입고검수','재고관리','거래처관리'] },
+      { code: 'STORE', name: '매장운영', tasks: ['진열/디스플레이','재고관리','POS관리','고객응대'] },
+      { code: 'LOGISTICS', name: '물류/배송', tasks: ['입출고관리','배송관리','반품처리','창고관리'] }
+    ]},
+    { code: 'FOOD', name: '음식/숙박업', occupations: [
+      { code: 'KITCHEN', name: '조리/주방', tasks: ['조리','식자재관리','메뉴개발','위생관리'] },
+      { code: 'HALL', name: '홀/서비스', tasks: ['주문접수','서빙','고객응대','매장청소'] },
+      { code: 'FRANCHISE', name: '가맹관리', tasks: ['가맹점검','교육','매출분석','신규개설'] }
+    ]},
+    { code: 'IT', name: '정보통신업', occupations: [
+      { code: 'DEV', name: '개발', tasks: ['프론트엔드','백엔드','앱개발','DB관리','코드리뷰','배포'] },
+      { code: 'PLAN', name: '기획', tasks: ['서비스기획','UI/UX','요구사항분석','와이어프레임'] },
+      { code: 'INFRA', name: '인프라/보안', tasks: ['서버관리','네트워크','보안점검','모니터링'] },
+      { code: 'DATA', name: '데이터', tasks: ['데이터분석','BI리포트','ETL','ML모델링'] }
+    ]},
+    { code: 'FINANCE', name: '금융/보험업', occupations: [
+      { code: 'LOAN', name: '여신/심사', tasks: ['대출심사','담보평가','사후관리','연체관리'] },
+      { code: 'INVEST', name: '투자/운용', tasks: ['포트폴리오관리','리스크분석','시장분석'] },
+      { code: 'INSURANCE', name: '보험', tasks: ['언더라이팅','보험금심사','계약관리','설계'] }
+    ]},
+    { code: 'REALESTATE', name: '부동산업', occupations: [
+      { code: 'BROKERAGE', name: '중개', tasks: ['매물확보','고객매칭','계약서작성','등기'] },
+      { code: 'MGMT_RE', name: '관리', tasks: ['입주자관리','시설관리','관리비정산','민원처리'] }
+    ]},
+    { code: 'SERVICE', name: '서비스업', occupations: [
+      { code: 'CONSULT', name: '컨설팅', tasks: ['현황분석','전략수립','보고서작성','프레젠테이션'] },
+      { code: 'LEGAL', name: '법률/세무', tasks: ['계약검토','소송관리','세무신고','자문'] },
+      { code: 'MEDICAL', name: '의료', tasks: ['진료','간호','접수/수납','의무기록','원무'] }
+    ]},
+    { code: 'EDUCATION', name: '교육서비스업', occupations: [
+      { code: 'TEACH', name: '교육/강의', tasks: ['수업','교재개발','학생관리','성적관리'] },
+      { code: 'ACADEMY', name: '학원운영', tasks: ['수강관리','상담','커리큘럼','학부모소통'] }
+    ]},
+    { code: 'TRANSPORT', name: '운수/물류업', occupations: [
+      { code: 'DRIVING', name: '운송', tasks: ['배차','운행','화물관리','차량점검'] },
+      { code: 'WAREHOUSE', name: '창고/물류', tasks: ['입출고','재고관리','피킹/패킹','배송추적'] }
+    ]},
+    { code: 'PUBLIC', name: '공공/비영리', occupations: [
+      { code: 'WELFARE', name: '복지/봉사', tasks: ['대상자관리','프로그램운영','실적보고','현장방문'] },
+      { code: 'ADMIN_PUB', name: '행정', tasks: ['민원처리','서류관리','예산집행','감사대응'] }
+    ]},
+    { code: 'ENERGY', name: '에너지/자원', occupations: [
+      { code: 'FIELD_E', name: '현장운영', tasks: ['설비점검','안전관리','품질관리','계량관리'] },
+      { code: 'SALES_E', name: '영업', tasks: ['거래처관리','가격협상','수주','납품관리'] }
+    ]},
+    { code: 'OTHER', name: '기타', occupations: [] }
+  ],
+  commonOccupations: [
+    { code: 'CEO', name: '경영/대표', tasks: ['전략수립','의사결정','성과관리','예산관리','대외협력'] },
+    { code: 'ACCT', name: '회계/경리', tasks: ['전표처리','급여관리','세금신고','결산','자금관리','매출정산'] },
+    { code: 'HR', name: '인사/총무', tasks: ['채용','교육','복리후생','시설관리','비품관리','문서관리'] },
+    { code: 'SALES', name: '영업/마케팅', tasks: ['고객방문','견적/계약','거래처관리','시장조사','홍보','실적보고'] },
+    { code: 'CS', name: '고객서비스', tasks: ['고객상담','클레임처리','만족도조사','AS접수'] },
+    { code: 'OFFICE', name: '일반사무', tasks: ['문서작성','데이터입력','일정관리','회의준비','전화응대'] },
+    { code: 'PARTTIME', name: '아르바이트/계약직', tasks: ['지정업무수행','보조업무','정리정돈'] }
+  ],
+  commonTasks: ['보고서작성','회의참석','이메일/연락','출장','교육/연수','팀미팅','업무인수인계'],
+  workNatures: ['루틴','프로젝트','이벤트','일회성','긴급'],
+  workRarities: ['일상','전문','희귀','최초']
+};
+
+app.get('/api/job-taxonomy', authMiddleware, (req, res) => {
+  res.json(JOB_TAXONOMY);
+});
+
+app.get('/api/job-profile', authMiddleware, async (req, res) => {
+  const row = await query('SELECT industry_type, occupation_type, job_functions, job_confirmed FROM users WHERE id = $1', [req.session.userId]);
+  if (row.rows.length === 0) return res.json({});
+  const u = row.rows[0];
+  let funcs = [];
+  try { funcs = JSON.parse(u.job_functions || '[]'); } catch(_) {}
+  res.json({ industry: u.industry_type || '', occupation: u.occupation_type || '', functions: funcs, confirmed: u.job_confirmed || false });
+});
+
+app.put('/api/job-profile', authMiddleware, async (req, res) => {
+  const { industry, occupation, functions } = req.body;
+  await query('UPDATE users SET industry_type = $1, occupation_type = $2, job_functions = $3, job_confirmed = TRUE WHERE id = $4',
+    [industry || '', occupation || '', JSON.stringify(functions || []), req.session.userId]);
+  res.json({ ok: true });
+});
+
 // ─── 주요업무표 (task master) ───
 app.get('/api/tasks', authMiddleware, async (req, res) => {
   const { category, group, search } = req.query;
@@ -3949,14 +4044,15 @@ app.post('/api/ai-chat', authMiddleware, async (req, res) => {
     userContext = cached.ctx;
   } else try {
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-    const [todoRes, todoDoneRes, eventRes, attRes, attWeekRes, reportRes, userRes] = await Promise.all([
+    const [todoRes, todoDoneRes, eventRes, attRes, attWeekRes, reportRes, userRes, jobRes] = await Promise.all([
       query('SELECT title, due_date, completed, priority FROM todos WHERE user_id = $1 AND completed = FALSE ORDER BY priority DESC, due_date ASC NULLS LAST LIMIT 10', [userId]),
       query('SELECT COUNT(*) as done FROM todos WHERE user_id = $1 AND completed = TRUE AND updated_at >= $2', [userId, weekAgo]),
       query('SELECT title, event_type, event_date, event_time FROM team_events WHERE event_date >= $1 AND event_date <= $2 ORDER BY event_date, event_time LIMIT 10', [today, tomorrow]),
       query('SELECT check_in, check_out, status FROM attendance WHERE user_id = $1 AND work_date = $2', [userId, today]),
       query('SELECT work_date, check_in, check_out, status FROM attendance WHERE user_id = $1 AND work_date >= $2 ORDER BY work_date', [userId, weekAgo]),
       query('SELECT what_task, work_category, created_at FROM reports WHERE user_id = $1 AND created_at >= $2 ORDER BY created_at DESC LIMIT 5', [userId, weekAgo]),
-      query('SELECT name FROM users WHERE id = $1', [userId])
+      query('SELECT name FROM users WHERE id = $1', [userId]),
+      query('SELECT industry_type, occupation_type, job_functions, job_confirmed FROM users WHERE id = $1', [userId])
     ]);
     const userName = userRes.rows[0] ? userRes.rows[0].name : '사용자';
     const todoList = todoRes.rows.map(t => `- ${t.title}${t.due_date ? ' (마감:' + (t.due_date+'').split('T')[0] + ')' : ''}${t.priority === 'high' ? ' ⚡긴급' : ''}`).join('\n');
@@ -3972,8 +4068,18 @@ app.post('/api/ai-chat', authMiddleware, async (req, res) => {
     const todosLeft = todoRes.rows.length;
     const reportTopics = reportRes.rows.map(r => r.what_task).filter(Boolean).join(', ');
 
+    const jobRow = jobRes.rows[0];
+    const jobConfirmed = jobRow?.job_confirmed || false;
+    const jobIndustry = jobRow?.industry_type || '';
+    const jobOccupation = jobRow?.occupation_type || '';
+    let jobFunctions = [];
+    try { jobFunctions = JSON.parse(jobRow?.job_functions || '[]'); } catch(_) {}
+    const jobProfileStr = jobConfirmed
+      ? `직무 프로필(확정): 업종=${jobIndustry} | 직종=${jobOccupation} | 직무=[${jobFunctions.join(',')}]`
+      : '직무 프로필: 미설정';
+
     userContext = `\n\n[사용자 실시간 정보 — ${today}]
-이름: ${userName} | 오늘 상태: ${attStatus}
+이름: ${userName} | 오늘 상태: ${attStatus} | ${jobProfileStr}
 ${todoList ? '미완료 할일:\n' + todoList : '미완료 할일: 없음'}
 ${eventList ? '오늘/내일 일정:\n' + eventList : '예정 일정: 없음'}
 
@@ -4046,6 +4152,22 @@ ${hour < 9 ? '→ 아침 시간대: 하루 시작 응원' : hour < 12 ? '→ 오
 
 ■ 정보 부족 시 5W1H 유도 (뭘, 언제 필수. 부족하면 질문만, JSON 없이)
 ■ 복수 요청 → actions 배열에 모두
+
+[직무 프로필 귀납 추론]
+사용자의 직무 프로필이 "미설정"이면, 대화 속 단서에서 업종/직종/직무를 귀납적으로 추론해.
+- "코드 리뷰했어", "배포" → IT/개발
+- "거래처 방문", "견적" → 영업
+- "전표 처리", "결산" → 회계/경리
+- "수업", "학생" → 교육
+- "환자", "진료" → 의료
+3개 이상 단서가 모이면 추론 결과를 자연스럽게 확인해:
+"혹시 IT 쪽에서 개발 업무 하시는 건가요? 맞으면 직무 프로필을 세팅해드릴게요!"
+사용자가 긍정하면 actions에 job_suggest를 추가:
+\`\`\`json
+{"actions":[{"type":"job_suggest","industry":"정보통신업","occupation":"개발","functions":["백엔드","배포"]}]}
+\`\`\`
+■ 이미 확정된 프로필이 있으면 추론하지 마. 사용자가 직접 변경 요청할 때만.
+■ 추론이 애매하면 질문으로 좁혀. 틀린 추론보다 질문이 낫다.
 
 [금지]
 - 영어 금지, 자기비하 금지, 5문장 초과 금지, 거짓 금지
