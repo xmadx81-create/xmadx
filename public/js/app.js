@@ -1629,6 +1629,9 @@ async function _jbAddFromAI(action) {
 }
 
 function _detectPlatform(url) {
+  if (/suno\.(com|ai)\/@/i.test(url)) return 'suno_profile';
+  if (/soundcloud\.com\/[^/]+\/?$/i.test(url) && !/soundcloud\.com\/.+\/.+/i.test(url)) return 'soundcloud_profile';
+  if (/youtube\.com\/(channel|c|@)/i.test(url)) return 'youtube_profile';
   if (/suno\.(com|ai)/i.test(url)) return 'suno';
   if (/soundcloud\.com/i.test(url)) return 'soundcloud';
   if (/youtube\.com|youtu\.be/i.test(url)) return 'youtube';
@@ -1667,12 +1670,28 @@ async function showJukebox() {
   let expandedId = null;
 
   function render() {
+    const profiles = tracks.filter(t => t.platform.endsWith('_profile'));
+    const songs = tracks.filter(t => !t.platform.endsWith('_profile'));
+
     mc.innerHTML = `
     <button class="btn btn-outline btn-sm" onclick="navigate('more')" style="margin-bottom:12px;">&larr; 더보기</button>
+
+    ${profiles.length > 0 ? `
+    <div class="card" style="margin-bottom:12px; padding:12px 16px;">
+      <p style="font-size:13px; font-weight:600; margin-bottom:8px;">&#127911; 내 채널</p>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${profiles.map(p => {
+          const icon = p.platform === 'suno_profile' ? '&#127924; Suno' : p.platform === 'soundcloud_profile' ? '&#9729; SoundCloud' : p.platform === 'youtube_profile' ? '&#9654; YouTube' : '&#127925; 채널';
+          return `<a href="${p.url}" target="_blank" style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:10px; background:#f8f8f8; border:1px solid var(--gray-200); text-decoration:none; color:#333; font-size:13px; font-weight:600;">${icon}${p.title ? ' · ' + p.title : ''}</a>
+          <button onclick="window._jbDelete('${p.id}')" style="border:none; background:none; font-size:14px; cursor:pointer; color:#ccc; padding:2px;">&#10005;</button>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
     <div class="card" style="margin-bottom:12px;">
       <p class="card-title" style="margin-bottom:8px;">&#127925; 나만의 쥬크박스</p>
       <p style="font-size:13px; color:var(--gray-500); margin-bottom:16px;">Suno · SoundCloud · YouTube 링크를 붙여넣어 나만의 플레이리스트를 만드세요.</p>
-      <input id="jbUrlInput" type="url" placeholder="음악 URL 붙여넣기" style="width:100%; padding:12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px; margin-bottom:8px; box-sizing:border-box;">
+      <input id="jbUrlInput" type="url" placeholder="음악 URL 또는 프로필 URL 붙여넣기" style="width:100%; padding:12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px; margin-bottom:8px; box-sizing:border-box;">
       <div style="display:flex; gap:8px; margin-bottom:12px;">
         <input id="jbTitleInput" type="text" placeholder="제목" style="flex:1; padding:10px 12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px;">
         <input id="jbArtistInput" type="text" placeholder="아티스트" style="flex:1; padding:10px 12px; border:1px solid var(--gray-200); border-radius:10px; font-size:14px;">
@@ -1680,12 +1699,12 @@ async function showJukebox() {
       <button onclick="window._jbAddTrack()" style="width:100%; padding:14px; border:none; border-radius:12px; background:#e11d48; color:#fff; font-weight:700; font-size:16px; cursor:pointer;">&#127925; 노래 등록</button>
     </div>
 
-    ${tracks.length === 0 ? `
+    ${songs.length === 0 ? `
     <div class="card" style="text-align:center; padding:32px;">
       <p style="font-size:40px; margin-bottom:8px;">&#127926;</p>
       <p style="color:var(--gray-400);">아직 트랙이 없어요</p>
       <p style="font-size:13px; color:var(--gray-400);">좋아하는 음악 URL을 추가해보세요!</p>
-    </div>` : tracks.map((t, i) => `
+    </div>` : songs.map((t, i) => `
     <div class="card" style="margin-bottom:8px; padding:12px 16px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div style="flex:1; cursor:pointer;" onclick="window._jbToggle('${t.id}')">
@@ -1703,7 +1722,7 @@ async function showJukebox() {
     </div>`).join('')}
 
     <div style="text-align:center; margin-top:16px;">
-      <p style="font-size:11px; color:var(--gray-400);">총 ${tracks.length}곡</p>
+      <p style="font-size:11px; color:var(--gray-400);">총 ${songs.length}곡</p>
     </div>`;
   }
 
@@ -1722,15 +1741,17 @@ async function showJukebox() {
       showToast('Suno, SoundCloud, YouTube URL만 지원합니다');
       return;
     }
+    const isProfile = platform.endsWith('_profile');
+    const defaultTitle = isProfile ? (title || '내 채널') : (title || platform + ' 트랙');
     try {
       await fetch('/api/jukebox', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title || (platform + ' 트랙'), artist, url, platform })
+        body: JSON.stringify({ title: defaultTitle, artist, url, platform })
       });
       const resp = await fetch('/api/jukebox', { credentials: 'include' });
       tracks = await resp.json();
-      showToast('트랙이 추가되었습니다!');
+      showToast(isProfile ? '채널이 등록되었습니다!' : '트랙이 추가되었습니다!');
       render();
     } catch(e) { showToast('추가 실패: ' + e.message); }
   };
