@@ -1614,6 +1614,20 @@ function showAppFAQ() {
 }
 
 // ─── 쥬크박스 ───
+async function _jbAddFromAI(action) {
+  const { title, artist, url, platform } = action;
+  if (!url) return;
+  const plat = platform || _detectPlatform(url);
+  try {
+    await fetch('/api/jukebox', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title || (plat + ' 트랙'), artist: artist || '', url, platform: plat })
+    });
+    showToast('🎵 쥬크박스에 추가했어요!');
+  } catch(e) { showToast('트랙 추가 실패'); }
+}
+
 function _detectPlatform(url) {
   if (/suno\.(com|ai)/i.test(url)) return 'suno';
   if (/soundcloud\.com/i.test(url)) return 'soundcloud';
@@ -9156,6 +9170,9 @@ async function _aiProcessChat(input, _detections) {
   if (/할\s*일\s*(관리|열기|페이지|이동)/.test(t)) {
     return { reply: '할 일 관리 페이지로 이동할게요!', action: () => { closeAiChat(); navigate('todo'); } };
   }
+  if (/쥬크박스\s*(열어|보여|이동|켜)/.test(t) || /플레이리스트\s*(열어|보여)/.test(t)) {
+    return { reply: '🎵 쥬크박스를 열게요!', action: () => { closeAiChat(); showJukebox(); } };
+  }
   if (/^검색\s+(.+)/.test(t)) {
     const q = t.match(/^검색\s+(.+)/)[1];
     return { reply: '🔍 "' + q + '" 검색할게요!', action: () => { closeAiChat(); showGlobalSearch(); setTimeout(() => { const el = document.getElementById('searchInput'); if (el) { el.value = q; doGlobalSearch(); } }, 300); } };
@@ -9211,15 +9228,33 @@ async function _aiProcessChat(input, _detections) {
         return { reply: _geminiResult.reply || '', suggests: ['직무 프로필 직접 설정', '괜찮아요'] };
       }
     }
+    const jbOpen = actions.find(a => a.type === 'jukebox_open');
+    if (jbOpen) {
+      setTimeout(() => { closeAiChat(); showJukebox(); }, 500);
+      const rest = actions.filter(a => a.type !== 'jukebox_open');
+      if (rest.length === 0) return { reply: _geminiResult.reply || '🎵 쥬크박스를 열게요!', suggests: [] };
+    }
+    const jbAdds = actions.filter(a => a.type === 'jukebox_add');
+    if (jbAdds.length > 0) {
+      for (const jb of jbAdds) {
+        setTimeout(() => _jbAddFromAI(jb), 500);
+      }
+      const rest = actions.filter(a => a.type !== 'jukebox_add' && a.type !== 'jukebox_open');
+      if (rest.length === 0) return { reply: _geminiResult.reply || '', suggests: ['쥬크박스 열기', '한 곡 더 추가'] };
+    }
     const hasCheckAction = actions.some(a => a.type === 'checkin' || a.type === 'checkout');
     if (hasCheckAction && actions.length === 1) {
       const a = actions[0];
       return { reply: (a.type === 'checkin' ? '출근' : '퇴근') + ' 처리할까요?', suggests: ['네', '아니요'] };
     }
-    window._aiPendingActions = actions;
+    const standardActions = actions.filter(a => !['job_suggest','jukebox_add','jukebox_open'].includes(a.type));
+    if (standardActions.length === 0) {
+      return { reply: _geminiResult.reply || '', suggests: [] };
+    }
+    window._aiPendingActions = standardActions;
     let preview = _geminiResult.reply ? _geminiResult.reply + '\n\n' : '';
     preview += '📋 처리할 항목:\n';
-    actions.forEach((a, i) => {
+    standardActions.forEach((a, i) => {
       const icon = a.type === 'report' ? '📝' : a.type === 'event' ? '📅' : a.type === 'todo' ? '✅' : '📌';
       const label = a.type === 'report' ? '업무일지' : a.type === 'event' ? '일정' : a.type === 'todo' ? '할 일' : a.type;
       preview += icon + ' ' + (i+1) + '. ' + label + ': ' + (a.title || '') + '\n';
