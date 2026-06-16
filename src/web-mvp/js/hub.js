@@ -1,11 +1,16 @@
 import { CHARACTERS } from './cards.js';
-import { createGameState, runFullTurn, PHASE_NAMES } from './engine.js';
+import {
+  createGameState, drawCards, playCharacter, collectBlood,
+  activateNextRequest, fulfillRequest, processEvent, settleTurn,
+  checkGameEnd, advanceTurn, runFullTurn, PHASE_NAMES,
+} from './engine.js';
 
 let gameState = null;
+let mode = 'manual';
 
 function initGallery() {
   const gallery = document.getElementById('card-gallery');
-  renderCards(gallery, CHARACTERS);
+  renderGalleryCards(gallery, CHARACTERS);
 
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -13,18 +18,16 @@ function initGallery() {
       btn.classList.add('active');
       const filter = btn.dataset.filter;
       const filtered = filter === 'all' ? CHARACTERS : CHARACTERS.filter(c => c.faction === filter);
-      renderCards(gallery, filtered);
+      renderGalleryCards(gallery, filtered);
     });
   });
 }
 
-function renderCards(container, cards) {
+function renderGalleryCards(container, cards) {
   container.innerHTML = cards.map(card => `
     <div class="card" data-rarity="${card.rarity}" data-id="${card.id}">
       <div class="card-portrait">
-        <img src="${card.portrait}" alt="${card.name}"
-             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-        <div class="placeholder" style="display:none">${factionIcon(card.faction)}</div>
+        <img src="${card.portrait}" alt="${card.name}" />
       </div>
       <div class="card-info">
         <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
@@ -39,10 +42,6 @@ function renderCards(container, cards) {
       </div>
     </div>
   `).join('');
-}
-
-function factionIcon(f) {
-  return f === 'center' ? '🏥' : f === 'kartein' ? '🦇' : '⚖️';
 }
 
 function factionLabel(f) {
@@ -62,35 +61,141 @@ function initTabs() {
 
 function initGame() {
   document.getElementById('btn-start-game').addEventListener('click', startGame);
-  document.getElementById('btn-next-turn').addEventListener('click', nextTurn);
+  document.getElementById('btn-next-phase').addEventListener('click', advancePhase);
+  document.getElementById('btn-fulfill').addEventListener('click', tryFulfill);
   document.getElementById('btn-auto-play').addEventListener('click', autoPlay);
 }
 
 function startGame() {
   gameState = createGameState();
+  mode = 'manual';
   document.getElementById('btn-start-game').disabled = true;
-  document.getElementById('btn-next-turn').disabled = false;
+  document.getElementById('btn-next-phase').disabled = false;
+  document.getElementById('btn-fulfill').disabled = true;
+
   appendLog('=== 게임 시작 ===');
   appendLog('백십자재단 혈연센터에 오신 것을 환영합니다.');
   appendLog('카르테인 가문의 5개 의뢰를 완수하세요.');
+
+  gameState.phase = 'dawn';
+  gameState.log = [];
+  drawCards(gameState, 5);
+  gameState.log.forEach(msg => appendLog(msg));
+  gameState.phase = 'morning';
+  appendLog('── 오전 단계: 패에서 인물 카드를 클릭하여 배치하세요 ──');
   updateUI();
 }
 
-function nextTurn() {
+function advancePhase() {
   if (!gameState || gameState.gameOver) return;
   gameState.log = [];
-  const result = runFullTurn(gameState);
+
+  switch (gameState.phase) {
+    case 'morning':
+      gameState.phase = 'afternoon';
+      collectBlood(gameState);
+      gameState.log.forEach(msg => appendLog(msg));
+      appendLog('── 오후 수집 완료 ──');
+      updateUI();
+      break;
+
+    case 'afternoon':
+      gameState.phase = 'night';
+      activateNextRequest(gameState);
+      gameState.log.forEach(msg => appendLog(msg));
+      if (gameState.activeRequest) {
+        document.getElementById('btn-fulfill').disabled = false;
+        appendLog('── 야간 단계: [의뢰 이행] 버튼으로 이행하거나, [다음] 으로 넘기세요 ──');
+      } else {
+        appendLog('── 야간 단계: 활성 의뢰 없음 ──');
+      }
+      if (Math.random() < 0.4) {
+        gameState.log = [];
+        processEvent(gameState);
+        gameState.log.forEach(msg => appendLog(msg));
+      }
+      updateUI();
+      break;
+
+    case 'night':
+      gameState.phase = 'settlement';
+      document.getElementById('btn-fulfill').disabled = true;
+      settleTurn(gameState);
+      gameState.log.forEach(msg => appendLog(msg));
+
+      const endResult = checkGameEnd(gameState);
+      if (endResult) {
+        updateUI();
+        showGameOver(endResult);
+        return;
+      }
+
+      advanceTurn(gameState);
+      gameState.log = [];
+      gameState.phase = 'dawn';
+      drawCards(gameState, 5);
+      gameState.log.forEach(msg => appendLog(msg));
+      gameState.phase = 'morning';
+      appendLog(`── 턴 ${gameState.turn} 오전: 인물 카드를 클릭하여 배치하세요 ──`);
+      updateUI();
+      break;
+
+    default:
+      break;
+  }
+}
+
+function tryFulfill() {
+  if (!gameState || !gameState.activeRequest) return;
+  gameState.log = [];
+  const result = fulfillRequest(gameState);
   gameState.log.forEach(msg => appendLog(msg));
+  if (result.ok) {
+    document.getElementById('btn-fulfill').disabled = true;
+    appendLog(`의뢰 완료! (${gameState.completedRequests}/5)`);
+  } else {
+    appendLog(`이행 불가: ${result.reason}`);
+  }
   updateUI();
-  if (result) showGameOver(result);
+}
+
+function onHandCardClick(index) {
+  if (!gameState || gameState.phase !== 'morning') return;
+  const card = gameState.hand[index];
+  if (!card) return;
+
+  if (card.type === 'character') {
+    gameState.log = [];
+    const result = playCharacter(gameState, index);
+    gameState.log.forEach(msg => appendLog(msg));
+    if (!result.ok) appendLog(result.reason);
+  } else {
+    appendLog(`${card.type === 'blood' ? card.bloodType + '형 혈액' : card.name}: 오전엔 인물 카드만 배치 가능`);
+  }
+  updateUI();
 }
 
 function autoPlay() {
   if (!gameState) startGame();
+  mode = 'auto';
+  appendLog('=== 자동 플레이 시작 ===');
+
   const interval = setInterval(() => {
-    if (!gameState || gameState.gameOver) { clearInterval(interval); return; }
-    nextTurn();
-  }, 800);
+    if (!gameState || gameState.gameOver) {
+      clearInterval(interval);
+      mode = 'manual';
+      return;
+    }
+    gameState.log = [];
+    const result = runFullTurn(gameState);
+    gameState.log.forEach(msg => appendLog(msg));
+    updateUI();
+    if (result) {
+      clearInterval(interval);
+      mode = 'manual';
+      showGameOver(result);
+    }
+  }, 600);
 }
 
 function updateUI() {
@@ -101,20 +206,41 @@ function updateUI() {
   document.getElementById('res-sus').textContent = `SUS: ${gameState.resources.sus}`;
   document.getElementById('res-turn').textContent = `턴: ${gameState.turn}`;
   document.getElementById('res-phase').textContent = PHASE_NAMES[gameState.phase] || gameState.phase;
+  document.getElementById('res-requests').textContent = `의뢰: ${gameState.completedRequests}/5`;
 
-  renderMiniCards('hand-cards', gameState.hand);
-  renderMiniCards('field-cards', gameState.field);
+  renderHandCards();
+  renderFieldCards();
   renderBloodPool();
   renderRequest();
+
+  const phaseBtn = document.getElementById('btn-next-phase');
+  switch (gameState.phase) {
+    case 'morning': phaseBtn.textContent = '오전 종료 →'; break;
+    case 'afternoon': phaseBtn.textContent = '야간 →'; break;
+    case 'night': phaseBtn.textContent = '정산 → 다음 턴'; break;
+    default: phaseBtn.textContent = '다음'; break;
+  }
 }
 
-function renderMiniCards(containerId, cards) {
-  const el = document.getElementById(containerId);
-  el.innerHTML = cards.map(c => {
+function renderHandCards() {
+  const el = document.getElementById('hand-cards');
+  el.innerHTML = gameState.hand.map((c, i) => {
     const type = c.type || 'character';
-    const label = type === 'blood' ? `${c.bloodType}형` : `${c.name} (${c.cost})`;
-    return `<div class="mini-card ${type}">${label}</div>`;
-  }).join('');
+    const label = type === 'blood' ? `${c.bloodType}형` : `${c.name}`;
+    const cost = type === 'character' ? ` [${c.cost}]` : '';
+    const playable = gameState.phase === 'morning' && type === 'character' && c.cost <= gameState.resources.bp;
+    return `<div class="mini-card ${type} ${playable ? 'playable' : ''}"
+                onclick="window.__onHandClick(${i})"
+                title="${type === 'character' ? c.ability.description : c.description || ''}"
+            >${label}${cost}</div>`;
+  }).join('') || '<span class="empty-hint">패 비어 있음</span>';
+}
+
+function renderFieldCards() {
+  const el = document.getElementById('field-cards');
+  el.innerHTML = gameState.field.map(c =>
+    `<div class="mini-card character field-card" title="${c.ability.description}">${c.name} [${c.power}]</div>`
+  ).join('') || '<span class="empty-hint">배치된 카드 없음</span>';
 }
 
 function renderBloodPool() {
@@ -123,14 +249,14 @@ function renderBloodPool() {
   gameState.bloodPool.forEach(b => { counts[b.bloodType] = (counts[b.bloodType] || 0) + 1; });
   el.innerHTML = Object.entries(counts).map(([bt, n]) =>
     `<div class="mini-card blood">${bt}형 x${n}</div>`
-  ).join('') || '<span style="color:var(--text-secondary);font-size:0.8rem">비어 있음</span>';
+  ).join('') || '<span class="empty-hint">비어 있음</span>';
 }
 
 function renderRequest() {
   const el = document.getElementById('active-request');
   const req = gameState.activeRequest;
   if (!req) {
-    el.innerHTML = '<span style="color:var(--text-secondary);font-size:0.85rem">대기 중...</span>';
+    el.innerHTML = '<span class="empty-hint">대기 중...</span>';
     return;
   }
   const needs = Object.entries(req.requirements).map(([bt, n]) => `${bt}형 x${n}`).join(', ');
@@ -162,12 +288,16 @@ function showGameOver(result) {
           ? '평판이 바닥나 센터가 폐쇄되었습니다.'
           : '뱀파이어 활동이 적발되었습니다.'
       }</p>
-      <p style="margin-top:0.5rem;color:var(--text-secondary)">턴 ${gameState.turn} | BP ${gameState.resources.bp} | REP ${gameState.resources.rep} | SUS ${gameState.resources.sus}</p>
+      <p style="margin-top:0.5rem;color:var(--text-secondary)">
+        턴 ${gameState.turn} | BP ${gameState.resources.bp} | REP ${gameState.resources.rep} | SUS ${gameState.resources.sus}
+      </p>
       <button class="btn-primary" style="margin-top:1rem" onclick="location.reload()">다시 시작</button>
     </div>
   `;
   document.body.appendChild(overlay);
 }
+
+window.__onHandClick = onHandCardClick;
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();

@@ -358,3 +358,44 @@ body {
 .game-over-box h2 { font-size: 2rem; margin-bottom: 1rem; }
 .game-over-box.win h2 { color: var(--accent-gold); }
 .game-over-box.lose h2 { color: var(--accent-red); }
+
+/* Interactive card styles */
+.mini-card.playable {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 8px rgba(212, 168, 67, 0.4);
+  cursor: pointer;
+}
+
+.mini-card.playable:hover {
+  background: var(--accent-gold);
+  color: var(--bg-primary);
+  transform: translateY(-2px);
+}
+
+.mini-card.field-card {
+  border-left: 3px solid var(--accent-green);
+  background: rgba(75, 155, 110, 0.15);
+}
+
+.empty-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.btn-accent {
+  background: var(--accent-gold);
+  color: var(--bg-primary);
+  border: none;
+  padding: 0.7rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-accent:hover { opacity: 0.85; }
+.btn-accent:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#res-requests { color: var(--accent-green); }
