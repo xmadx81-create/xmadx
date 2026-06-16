@@ -4699,6 +4699,15 @@ document.addEventListener('DOMContentLoaded', () => {
     showAttendancePopup(gameSave.quests.attendance, rewardedCards, attend);
   }
 
+  const touchIcon = document.createElement('link');
+  touchIcon.rel = 'apple-touch-icon';
+  touchIcon.href = base + 'icons/icon-192.png';
+  document.head.appendChild(touchIcon);
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register(base + 'sw.js').catch(() => {});
+  }
+
   function closeCardPopup() {
     const popup = document.getElementById('card-popup');
     popup.classList.remove('open');
