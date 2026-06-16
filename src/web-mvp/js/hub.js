@@ -37,44 +37,20 @@ function portraitSrc(base) { return `${base}.png`; }
 function renderGalleryCards(container, cards) {
   container.innerHTML = cards.map(card => `
     <div class="card" data-rarity="${card.rarity}" data-id="${card.id}">
-      <div class="card-inner">
-        <div class="card-front">
-          <div class="card-portrait">
-            <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
-                 onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none';this.nextElementSibling.style.display='flex'}" />
-            <div class="placeholder" style="display:none">${card.name[0]}</div>
-          </div>
-          <div class="card-info">
-            <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
-            <div class="card-name">${card.name}</div>
-            <div class="card-title">${card.title}</div>
-          </div>
-        </div>
-        <div class="card-back">
-          <div class="back-name">${card.name}</div>
-          <div class="back-ability">${card.ability.description}</div>
-          <div class="card-stats">
-            <span class="stat">비용 ${card.cost}</span>
-            <span class="stat">위력 ${card.power}</span>
-            <span class="stat">${card.rarity}</span>
-          </div>
-          <div class="back-desc">"${card.flavor}"</div>
-        </div>
+      <div class="card-portrait">
+        <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
+             onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none';this.nextElementSibling.style.display='flex'}" />
+        <div class="placeholder" style="display:none">${card.name[0]}</div>
+      </div>
+      <div class="card-info">
+        <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
+        <div class="card-name">${card.name}</div>
+        <div class="card-title">${card.title}</div>
       </div>
     </div>
   `).join('');
   container.querySelectorAll('.card').forEach(el => {
-    let flipped = false;
-    el.addEventListener('click', () => {
-      if (!flipped) {
-        el.classList.add('flipped');
-        flipped = true;
-      } else {
-        window.__showCardPopup(el.dataset.id);
-        el.classList.remove('flipped');
-        flipped = false;
-      }
-    });
+    el.addEventListener('click', () => window.__showCardPopup(el.dataset.id));
   });
 }
 
@@ -87,23 +63,42 @@ function factionLabel(f) {
 function showCardPopup(cardId) {
   const card = CHARACTERS.find(c => c.id === cardId);
   if (!card) return;
+  const overlay = document.getElementById('card-popup');
   document.getElementById('popup-portrait').innerHTML = `
     <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
          onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none'}" />
   `;
+  const rarityKo = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
   document.getElementById('popup-details').innerHTML = `
-    <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
-    <span class="rarity-badge ${card.rarity}">${card.rarity.toUpperCase()}</span>
-    <h2>${card.name}</h2>
-    <p class="popup-title">${card.title}</p>
-    <div class="popup-stats">
-      <div class="popup-stat"><span>비용</span><strong>${card.cost}</strong></div>
-      <div class="popup-stat"><span>위력</span><strong>${card.power}</strong></div>
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-badges">
+        <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
+        <span class="rarity-badge ${card.rarity}">${(rarityKo[card.rarity] || card.rarity).toUpperCase()}</span>
+      </div>
+      <h2>${card.name}</h2>
+      <p class="popup-title">${card.title}</p>
     </div>
-    <div class="popup-ability"><h4>능력</h4><p>${card.ability.description}</p></div>
+    <div class="sheet-stats">
+      <div class="sheet-stat"><span class="stat-icon">⚔</span><span class="stat-val">${card.cost}</span><span class="stat-lbl">비용</span></div>
+      <div class="sheet-stat"><span class="stat-icon">💪</span><span class="stat-val">${card.power}</span><span class="stat-lbl">위력</span></div>
+    </div>
+    <div class="sheet-ability">
+      <div class="ability-label">능력</div>
+      <p>${card.ability.description}</p>
+    </div>
     <p class="popup-flavor">"${card.flavor}"</p>
   `;
-  document.getElementById('card-popup').style.display = 'flex';
+  overlay.style.display = 'flex';
+  requestAnimationFrame(() => overlay.classList.add('open'));
+}
+function hideCardPopup() {
+  const overlay = document.getElementById('card-popup');
+  overlay.classList.remove('open');
+  overlay.addEventListener('transitionend', function onEnd() {
+    overlay.removeEventListener('transitionend', onEnd);
+    overlay.style.display = 'none';
+  });
 }
 window.__showCardPopup = showCardPopup;
 
@@ -153,11 +148,9 @@ function initGame() {
   document.getElementById('btn-promote').addEventListener('click', doPromote);
   document.getElementById('btn-auto-play').addEventListener('click', autoPlay);
   document.getElementById('btn-sound').addEventListener('click', onSoundToggle);
-  document.getElementById('popup-close').addEventListener('click', () => {
-    document.getElementById('card-popup').style.display = 'none';
-  });
+  document.getElementById('popup-close').addEventListener('click', hideCardPopup);
   document.getElementById('card-popup').addEventListener('click', (e) => {
-    if (e.target.id === 'card-popup') e.target.style.display = 'none';
+    if (e.target.id === 'card-popup') hideCardPopup();
   });
 
   if (hasSave()) {
