@@ -361,6 +361,37 @@ body {
 .vcard.field-card { border-left: 3px solid var(--accent-green); background: rgba(75, 155, 110, 0.08); cursor: default; }
 .vcard.field-card:hover { transform: none; }
 
+.convert-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  flex-shrink: 0;
+}
+
+.convert-label {
+  font-size: 0.7rem;
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+
+.btn-convert {
+  background: var(--bg-card);
+  border: 1px solid var(--accent-red);
+  color: var(--accent-red);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+
+.btn-convert:hover {
+  background: var(--accent-red);
+  color: white;
+}
+
 .rarity-dot { font-size: 0.6rem; text-transform: uppercase; font-weight: 700; }
 .rarity-dot.common { color: #888; }
 .rarity-dot.uncommon { color: var(--accent-green); }
