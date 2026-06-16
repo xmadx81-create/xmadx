@@ -786,6 +786,96 @@ body {
 .btn-night:hover:not(:disabled) { border-color: var(--accent-blue); background: rgba(74, 127, 181, 0.15); }
 .btn-night:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Dilemma card */
+.dilemma-card {
+  background: linear-gradient(135deg, var(--bg-secondary), rgba(196, 55, 75, 0.08));
+  border: 2px solid var(--accent-red);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 0.75rem;
+  animation: dilemmaAppear 0.5s ease-out;
+}
+
+@keyframes dilemmaAppear {
+  0% { opacity: 0; transform: translateY(20px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dilemma-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.dilemma-badge {
+  background: var(--accent-red);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.dilemma-header h3 {
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.dilemma-narration {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 1rem;
+  border-left: 2px solid var(--accent-red);
+  padding-left: 0.75rem;
+}
+
+.dilemma-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dilemma-choice {
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dilemma-choice:hover {
+  border-color: var(--accent-gold);
+  background: rgba(212, 168, 67, 0.1);
+  transform: translateX(4px);
+}
+
+.dilemma-choice:active {
+  transform: scale(0.98);
+}
+
+.choice-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.choice-effect {
+  font-size: 0.75rem;
+  color: var(--accent-gold);
+  font-weight: 600;
+}
+
 /* Stats */
 .stats-content {
   max-width: 600px;
