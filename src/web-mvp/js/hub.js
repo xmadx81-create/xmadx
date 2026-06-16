@@ -662,4 +662,19 @@ document.addEventListener('DOMContentLoaded', () => {
   initGallery();
   initDifficulty();
   initGame();
+
+  const base = document.querySelector('script[src]')?.src.replace(/assets\/.*/, '') || '/';
+  const manifestLink = document.createElement('link');
+  manifestLink.rel = 'manifest';
+  manifestLink.href = base + 'manifest.webmanifest';
+  document.head.appendChild(manifestLink);
+
+  const touchIcon = document.createElement('link');
+  touchIcon.rel = 'apple-touch-icon';
+  touchIcon.href = base + 'icons/icon-192.svg';
+  document.head.appendChild(touchIcon);
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register(base + 'sw.js').catch(() => {});
+  }
 });
