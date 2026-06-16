@@ -3,9 +3,10 @@ import {
   createGameState, drawCards, playCharacter, collectBlood,
   activateNextRequest, fulfillRequest, failRequest, checkGameEnd,
   settleTurn, advanceTurn, shuffle, runFullTurn, buyEquipment,
+  recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
   DIFFICULTIES,
 } from '../src/web-mvp/js/engine.js';
-import { CHARACTERS, createBloodCard, STARTER_REQUESTS } from '../src/web-mvp/js/cards.js';
+import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest } from '../src/web-mvp/js/cards.js';
 
 describe('createGameState', () => {
   it('초기 상태가 올바르게 생성된다', () => {
@@ -213,6 +214,90 @@ describe('buyEquipment', () => {
     state.shopEquipment.push({ ...eq });
     const result = buyEquipment(state, eq.id);
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('recruitCharacter', () => {
+  it('캐릭터를 영입하고 덱에 추가한다', () => {
+    const state = createGameState();
+    refreshRecruitShop(state);
+    state.resources.bp = 50;
+    const char = state.recruitShop[0];
+    const deckBefore = state.deck.length;
+    const result = recruitCharacter(state, char.id);
+    expect(result.ok).toBe(true);
+    expect(state.deck.length).toBe(deckBefore + 1);
+    expect(state.recruitShop.find(c => c.id === char.id)).toBeUndefined();
+  });
+
+  it('BP 부족 시 영입 실패', () => {
+    const state = createGameState();
+    refreshRecruitShop(state);
+    state.resources.bp = 0;
+    const result = recruitCharacter(state, state.recruitShop[0].id);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('nightInvestigate / nightPromote', () => {
+  it('조사로 SUS를 감소시킨다', () => {
+    const state = createGameState();
+    state.resources.sus = 30;
+    const result = nightInvestigate(state);
+    expect(result.ok).toBe(true);
+    expect(state.resources.sus).toBeLessThan(30);
+    expect(state.nightActionTaken).toBe(true);
+  });
+
+  it('홍보로 REP를 증가시킨다', () => {
+    const state = createGameState();
+    const repBefore = state.resources.rep;
+    const result = nightPromote(state);
+    expect(result.ok).toBe(true);
+    expect(state.resources.rep).toBeGreaterThan(repBefore);
+  });
+
+  it('야간 행동은 1턴에 1회만 가능', () => {
+    const state = createGameState();
+    nightInvestigate(state);
+    const result = nightPromote(state);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('generateRandomRequest', () => {
+  it('랜덤 의뢰를 생성한다', () => {
+    const req = generateRandomRequest(1, 1);
+    expect(req.id).toBeDefined();
+    expect(req.requirements).toBeDefined();
+    expect(Object.keys(req.requirements).length).toBeGreaterThan(0);
+    expect(req.reward.bp).toBeGreaterThan(0);
+    expect(req.penalty.sus).toBeGreaterThan(0);
+    expect(req.turnsLeft).toBeGreaterThanOrEqual(2);
+  });
+
+  it('후반 의뢰는 요구량이 더 많다', () => {
+    const early = generateRandomRequest(1, 1);
+    const late = generateRandomRequest(5, 20);
+    const earlyTotal = Object.values(early.requirements).reduce((a, b) => a + b, 0);
+    const lateTotal = Object.values(late.requirements).reduce((a, b) => a + b, 0);
+    expect(lateTotal).toBeGreaterThanOrEqual(earlyTotal);
+  });
+});
+
+describe('activateNextRequest (random)', () => {
+  it('의뢰를 랜덤 생성한다', () => {
+    const state = createGameState();
+    activateNextRequest(state);
+    expect(state.activeRequest).not.toBeNull();
+    expect(state.activeRequest.requirements).toBeDefined();
+  });
+
+  it('5개 완료 후 더 이상 의뢰가 생성되지 않는다', () => {
+    const state = createGameState();
+    state.completedRequests = 5;
+    activateNextRequest(state);
+    expect(state.activeRequest).toBeNull();
   });
 });
 

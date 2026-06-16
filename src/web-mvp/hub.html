@@ -17,6 +17,7 @@
       <button class="nav-btn active" data-tab="gallery">카드 도감</button>
       <button class="nav-btn" data-tab="play">게임 시작</button>
       <button class="nav-btn" data-tab="rules">규칙서</button>
+      <button class="nav-btn" data-tab="stats">전적</button>
     </nav>
 
     <main class="hub-content">
@@ -72,9 +73,22 @@
             <div id="installed-equip" class="card-row"></div>
           </div>
 
+          <div id="recruit-zone" class="zone">
+            <h3>인물 모집 (오전에 BP로 영입→덱 추가)</h3>
+            <div id="recruit-cards" class="card-row"></div>
+          </div>
+
           <div id="shop-zone" class="zone">
             <h3>장비 상점 (오전에 구매 가능)</h3>
             <div id="shop-cards" class="card-row"></div>
+          </div>
+
+          <div id="night-actions" class="zone" style="display:none">
+            <h3>야간 행동 선택</h3>
+            <div class="night-btns">
+              <button id="btn-investigate" class="btn-night">조사 (SUS 감소)</button>
+              <button id="btn-promote" class="btn-night">홍보 (REP 증가)</button>
+            </div>
           </div>
 
           <div id="field-zone" class="zone">
@@ -94,6 +108,7 @@
 
           <div class="game-controls">
             <button id="btn-start-game" class="btn-primary">게임 시작</button>
+            <button id="btn-load-game" class="btn-secondary" style="display:none">이어하기</button>
             <button id="btn-next-phase" class="btn-primary" disabled>다음</button>
             <button id="btn-fulfill" class="btn-accent" disabled>의뢰 이행</button>
             <button id="btn-auto-play" class="btn-secondary">자동 플레이</button>
@@ -141,6 +156,16 @@
         </div>
       </section>
     </main>
+
+      <!-- 전적 -->
+      <section id="tab-stats" class="tab-panel">
+        <div class="stats-content">
+          <h2>전적 기록</h2>
+          <div id="stats-summary"></div>
+          <h3>최근 기록</h3>
+          <div id="stats-history"></div>
+        </div>
+      </section>
 
     <!-- 카드 상세 팝업 -->
     <div id="card-popup" class="card-popup-overlay" style="display:none">

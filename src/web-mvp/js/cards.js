@@ -59,7 +59,7 @@ export const CHARACTERS = [
     rarity: RARITIES.COMMON,
     cost: 1,
     power: 1,
-    ability: { type: 'donate', value: 3, description: '혈액 카드 3장 생성' },
+    ability: { type: 'donate', value: 2, description: '혈액 카드 2장 생성' },
     flavor: '헌혈 300회의 사나이',
     portrait: 'assets/portraits/choi-minseo',
   },
@@ -169,5 +169,34 @@ export const EQUIPMENT = [
   { id: 'eq-centrifuge', name: '고속 원심분리기', cost: 4, effect: { collectBonus: 1 }, description: '매 턴 BP 수집량 +1' },
   { id: 'eq-fridge', name: '특수 냉장고', cost: 3, effect: { bloodCapacity: 2 }, description: '혈액 보관 한도 +2' },
   { id: 'eq-lounge', name: '프리미엄 대기실', cost: 5, effect: { repBonus: 2 }, description: '매 턴 REP +2' },
-  { id: 'eq-cctv', name: '위장 CCTV', cost: 3, effect: { susReduction: 2 }, description: '매 턴 SUS -2' },
+  { id: 'eq-cctv', name: '위장 CCTV', cost: 4, effect: { susReduction: 1 }, description: '매 턴 SUS -1' },
 ];
+
+export function generateRandomRequest(requestNum, turn) {
+  const types = [...BLOOD_TYPES];
+  const unitCount = 1 + requestNum;
+  const typeCount = Math.min(1 + Math.floor(requestNum / 2), 3);
+  const shuffledTypes = types.sort(() => Math.random() - 0.5);
+  const requirements = {};
+  for (let t = 0; t < typeCount; t++) {
+    requirements[shuffledTypes[t]] = 0;
+  }
+  const keys = Object.keys(requirements);
+  for (let i = 0; i < unitCount; i++) {
+    requirements[keys[i % keys.length]]++;
+  }
+  const totalNeeded = Object.values(requirements).reduce((a, b) => a + b, 0);
+  const bpReward = 3 + totalNeeded * 2 + Math.floor(requestNum * 1.5);
+  const repReward = requestNum >= 3 ? Math.floor(requestNum * 2) : 0;
+  const susPenalty = 5 + requestNum * 3;
+
+  return {
+    id: `req-${requestNum}-t${turn}`,
+    type: 'request',
+    name: `카르테인 의뢰 #${requestNum}`,
+    requirements,
+    reward: { bp: bpReward, ...(repReward > 0 ? { rep: repReward } : {}) },
+    penalty: { sus: susPenalty },
+    turnsLeft: Math.max(2, 4 - Math.floor(requestNum / 3)),
+  };
+}

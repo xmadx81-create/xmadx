@@ -1,4 +1,4 @@
-import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, EQUIPMENT, createBloodCard } from './cards.js';
+import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, EQUIPMENT, createBloodCard, generateRandomRequest } from './cards.js';
 
 export const PHASES = ['dawn', 'morning', 'afternoon', 'night', 'settlement'];
 export const PHASE_NAMES = { dawn: '새벽', morning: '오전', afternoon: '오후', night: '야간', settlement: '정산' };
@@ -27,13 +27,59 @@ export function createGameState(difficulty = 'normal') {
     shopEquipment: shuffle([...EQUIPMENT]),
     bloodPool: [],
     discardPile: [],
-    requestQueue: [...STARTER_REQUESTS],
+    requestQueue: [],
     activeRequest: null,
     completedRequests: 0,
+    nextRequestNum: 1,
+    recruitShop: [],
+    nightActionTaken: false,
     gameOver: false,
     winner: false,
     log: [],
   };
+}
+
+export function refreshRecruitShop(state) {
+  const pool = CHARACTERS.filter(c => c.rarity !== 'common');
+  const picks = [];
+  const shuffled = shuffle([...pool]);
+  for (let i = 0; i < Math.min(3, shuffled.length); i++) {
+    picks.push({ ...shuffled[i], recruitCost: shuffled[i].cost + 2 });
+  }
+  state.recruitShop = picks;
+}
+
+export function recruitCharacter(state, charId) {
+  const idx = state.recruitShop.findIndex(c => c.id === charId);
+  if (idx < 0) return { ok: false, reason: '모집 대상을 찾을 수 없습니다' };
+  const char = state.recruitShop[idx];
+  if (state.resources.bp < char.recruitCost) return { ok: false, reason: `BP 부족 (필요: ${char.recruitCost})` };
+
+  state.resources.bp -= char.recruitCost;
+  const instance = { ...char, type: 'character', instanceId: `${char.id}-${Math.random().toString(36).slice(2, 6)}` };
+  delete instance.recruitCost;
+  state.deck.push(instance);
+  state.recruitShop.splice(idx, 1);
+  state.log.push(`${char.name} 영입! (BP -${char.recruitCost}) → 덱에 추가됨`);
+  return { ok: true };
+}
+
+export function nightInvestigate(state) {
+  if (state.nightActionTaken) return { ok: false, reason: '이미 야간 행동을 수행했습니다' };
+  const reduction = 4 + Math.floor(Math.random() * 4);
+  state.resources.sus = Math.max(0, state.resources.sus - reduction);
+  state.nightActionTaken = true;
+  state.log.push(`야간 조사 수행: SUS -${reduction} (현재: ${state.resources.sus})`);
+  return { ok: true, value: reduction };
+}
+
+export function nightPromote(state) {
+  if (state.nightActionTaken) return { ok: false, reason: '이미 야간 행동을 수행했습니다' };
+  const boost = 3 + Math.floor(Math.random() * 3);
+  state.resources.rep += boost;
+  state.nightActionTaken = true;
+  state.log.push(`야간 홍보 활동: REP +${boost} (현재: ${state.resources.rep})`);
+  return { ok: true, value: boost };
 }
 
 export function buyEquipment(state, equipId) {
@@ -59,7 +105,7 @@ function buildStarterDeck() {
     }
   });
   BLOOD_TYPES.forEach(bt => {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 2; i++) {
       deck.push(createBloodCard(bt));
     }
   });
@@ -146,8 +192,9 @@ export function collectBlood(state) {
 
 export function activateNextRequest(state) {
   if (state.activeRequest) return state.activeRequest;
-  if (state.requestQueue.length === 0) return null;
-  state.activeRequest = state.requestQueue.shift();
+  if (state.completedRequests >= 5) return null;
+  state.activeRequest = generateRandomRequest(state.nextRequestNum, state.turn);
+  state.nextRequestNum++;
   state.log.push(`새 의뢰 도착: ${state.activeRequest.name}`);
   return state.activeRequest;
 }
@@ -172,7 +219,8 @@ export function fulfillRequest(state) {
 
   if (req.reward.bp) state.resources.bp += req.reward.bp;
   if (req.reward.rep) state.resources.rep += req.reward.rep;
-  state.resources.sus += 2;
+  const susCost = 3 + state.completedRequests * 3;
+  state.resources.sus += susCost;
 
   state.completedRequests++;
   state.log.push(`의뢰 이행 완료: ${req.name} (완료: ${state.completedRequests}/5)`);
@@ -224,6 +272,8 @@ export function settleTurn(state) {
 
   state.field.forEach(card => state.discardPile.push(card));
   state.field = [];
+  state.nightActionTaken = false;
+  refreshRecruitShop(state);
 
   state.log.push(`턴 ${state.turn} 정산 완료 — BP:${state.resources.bp} REP:${state.resources.rep} SUS:${state.resources.sus}`);
 }
