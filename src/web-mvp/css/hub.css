@@ -680,6 +680,141 @@ body {
 
 .req-reward { font-size: 0.8rem; color: var(--accent-green); margin-top: 0.25rem; }
 
+/* ── A4: Combo indicator ── */
+.combo-indicator {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.combo-tag {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--accent-gold), #b8860b);
+  color: var(--bg-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  animation: comboGlow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes comboGlow {
+  0% { box-shadow: 0 0 4px rgba(212, 168, 67, 0.4); }
+  100% { box-shadow: 0 0 12px rgba(212, 168, 67, 0.8); }
+}
+
+/* ── C3: Achievement styles ── */
+.achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.achieve-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.achieve-card.unlocked {
+  border-color: var(--accent-gold);
+  background: rgba(212, 168, 67, 0.1);
+}
+
+.achieve-card.locked {
+  opacity: 0.45;
+}
+
+.achieve-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 0.2rem;
+}
+
+.achieve-card.unlocked .achieve-name { color: var(--accent-gold); }
+.achieve-card.locked .achieve-name { color: var(--text-secondary); }
+
+.achieve-desc {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.achieve-toast {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  background: var(--bg-secondary);
+  border: 2px solid var(--accent-gold);
+  border-radius: 12px;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  z-index: 300;
+  animation: toastSlideIn 0.4s ease-out, toastFadeOut 0.5s ease-in 3s forwards;
+  box-shadow: 0 4px 20px rgba(212, 168, 67, 0.3);
+}
+
+.achieve-toast-label {
+  font-size: 0.65rem;
+  color: var(--accent-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.achieve-toast strong {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.achieve-toast span:last-child {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+@keyframes toastSlideIn {
+  0% { transform: translateX(120%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toastFadeOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
+
+.game-over-achievements {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.achieve-badge {
+  display: inline-block;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-gold);
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--accent-gold);
+}
+
+.achieve-badge.new {
+  animation: achievePop 0.5s ease-out;
+}
+
+@keyframes achievePop {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
 /* ── B1: Card flip animation ── */
 .card-flip-inner {
   perspective: 600px;
@@ -897,5 +1032,17 @@ body {
   .filter-btn {
     font-size: 0.75rem;
     padding: 0.3rem 0.7rem;
+  }
+
+  /* Achievements */
+  .achievements-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+  }
+
+  .achieve-toast {
+    top: 0.5rem;
+    right: 0.5rem;
+    left: 0.5rem;
   }
 }

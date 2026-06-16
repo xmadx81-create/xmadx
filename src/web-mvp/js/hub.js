@@ -4,13 +4,13 @@ import {
   activateNextRequest, fulfillRequest, processEvent, settleTurn,
   checkGameEnd, advanceTurn, runFullTurn, buyEquipment,
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
-  PHASE_NAMES, DIFFICULTIES,
+  calculateComboBonuses, PHASE_NAMES, DIFFICULTIES,
 } from './engine.js';
 import {
   initAudio, toggleMute, isMuted, startBGM, stopBGM,
   sfxCardPlay, sfxCollect, sfxFulfill, sfxEvent, sfxEquip, sfxWin, sfxLose,
 } from './sound.js';
-import { saveGame, loadGame, deleteSave, hasSave, recordGame, loadStats } from './storage.js';
+import { saveGame, loadGame, deleteSave, hasSave, recordGame, loadStats, ACHIEVEMENT_DEFS, loadAchievements, checkAchievements } from './storage.js';
 
 let gameState = null;
 let selectedDifficulty = 'normal';
@@ -418,9 +418,16 @@ function renderHandCards() {
 
 function renderFieldCards() {
   const el = document.getElementById('field-cards');
-  el.innerHTML = gameState.field.map(c =>
+  const cards = gameState.field.map(c =>
     `<div class="mini-card character field-card" title="${c.ability.description}">${c.name} [${c.power}]</div>`
-  ).join('') || '<span class="empty-hint">배치된 카드 없음</span>';
+  ).join('');
+
+  const combos = calculateComboBonuses(gameState);
+  const comboHtml = combos.active.length > 0
+    ? `<div class="combo-indicator">${combos.active.map(c => `<span class="combo-tag">${c.label}</span>`).join('')}</div>`
+    : '';
+
+  el.innerHTML = (cards || '<span class="empty-hint">배치된 카드 없음</span>') + comboHtml;
 }
 
 function renderBloodPool() {
@@ -508,6 +515,18 @@ function renderStats() {
     </div>
   `;
 
+  const achieveEl = document.getElementById('achievements-grid');
+  if (achieveEl) {
+    const unlocked = loadAchievements();
+    achieveEl.innerHTML = ACHIEVEMENT_DEFS.map(def => {
+      const done = unlocked.includes(def.id);
+      return `<div class="achieve-card ${done ? 'unlocked' : 'locked'}">
+        <div class="achieve-name">${def.name}</div>
+        <div class="achieve-desc">${def.description}</div>
+      </div>`;
+    }).join('');
+  }
+
   const history = document.getElementById('stats-history');
   if (!stats.history.length) {
     history.innerHTML = '<span class="empty-hint">기록 없음</span>';
@@ -532,7 +551,20 @@ function appendLog(msg) {
   log.scrollTop = log.scrollHeight;
 }
 
+function showAchievementToast(achieveId) {
+  const def = ACHIEVEMENT_DEFS.find(a => a.id === achieveId);
+  if (!def) return;
+  const toast = document.createElement('div');
+  toast.className = 'achieve-toast';
+  toast.innerHTML = `<span class="achieve-toast-label">업적 달성!</span><strong>${def.name}</strong><span>${def.description}</span>`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3500);
+}
+
 function showGameOver(result) {
+  const newAchievements = checkAchievements(gameState, result);
+  newAchievements.forEach((id, i) => setTimeout(() => showAchievementToast(id), i * 800));
+
   const isWin = result === 'win';
   const overlay = document.createElement('div');
   overlay.className = 'game-over-overlay';
@@ -546,6 +578,10 @@ function showGameOver(result) {
       <p style="margin-top:0.5rem;color:var(--text-secondary)">
         ${DIFFICULTIES[gameState.difficulty]?.label || '보통'} · 턴 ${gameState.turn} · BP ${gameState.resources.bp} · REP ${gameState.resources.rep} · SUS ${gameState.resources.sus}
       </p>
+      ${newAchievements.length > 0 ? `<div class="game-over-achievements">${newAchievements.map(id => {
+        const def = ACHIEVEMENT_DEFS.find(a => a.id === id);
+        return `<span class="achieve-badge new">${def.name}</span>`;
+      }).join('')}</div>` : ''}
       <button class="btn-primary" style="margin-top:1rem" onclick="location.reload()">다시 시작</button>
     </div>
   `;

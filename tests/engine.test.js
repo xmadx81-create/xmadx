@@ -4,9 +4,9 @@ import {
   activateNextRequest, fulfillRequest, failRequest, checkGameEnd,
   settleTurn, advanceTurn, shuffle, runFullTurn, buyEquipment,
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
-  DIFFICULTIES,
+  calculateComboBonuses, DIFFICULTIES,
 } from '../src/web-mvp/js/engine.js';
-import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest } from '../src/web-mvp/js/cards.js';
+import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest, COMBO_BONUSES } from '../src/web-mvp/js/cards.js';
 
 describe('createGameState', () => {
   it('초기 상태가 올바르게 생성된다', () => {
@@ -324,5 +324,92 @@ describe('shuffle', () => {
     shuffle(arr);
     expect(arr.length).toBe(5);
     expect(arr.sort()).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe('calculateComboBonuses', () => {
+  it('같은 팩션이 threshold 이상이면 콤보가 발동한다', () => {
+    const state = createGameState();
+    const karteinChars = CHARACTERS.filter(c => c.faction === 'kartein');
+    state.field = [
+      { ...karteinChars[0], type: 'character', instanceId: 'a' },
+      { ...karteinChars[1], type: 'character', instanceId: 'b' },
+    ];
+    const combos = calculateComboBonuses(state);
+    expect(combos.active.length).toBeGreaterThan(0);
+    expect(combos.susReduction).toBeGreaterThan(0);
+  });
+
+  it('threshold 미만이면 콤보가 발동하지 않는다', () => {
+    const state = createGameState();
+    const center = CHARACTERS.find(c => c.faction === 'center');
+    const kartein = CHARACTERS.find(c => c.faction === 'kartein');
+    const neutral = CHARACTERS.find(c => c.faction === 'neutral');
+    state.field = [
+      { ...center, type: 'character', instanceId: 'a' },
+      { ...kartein, type: 'character', instanceId: 'b' },
+      { ...neutral, type: 'character', instanceId: 'c' },
+    ];
+    const combos = calculateComboBonuses(state);
+    expect(combos.active.length).toBe(0);
+  });
+
+  it('필드가 비면 콤보 없음', () => {
+    const state = createGameState();
+    state.field = [];
+    const combos = calculateComboBonuses(state);
+    expect(combos.active.length).toBe(0);
+    expect(combos.bpBonus).toBe(0);
+  });
+
+  it('여러 threshold를 넘으면 콤보가 중첩 발동된다', () => {
+    const state = createGameState();
+    const karteinChars = CHARACTERS.filter(c => c.faction === 'kartein');
+    state.field = [
+      { ...karteinChars[0], type: 'character', instanceId: 'a' },
+      { ...karteinChars[1], type: 'character', instanceId: 'b' },
+      { ...karteinChars[2], type: 'character', instanceId: 'c' },
+    ];
+    const combos = calculateComboBonuses(state);
+    expect(combos.active.length).toBe(2);
+  });
+
+  it('collectBlood에서 콤보 보너스가 적용된다', () => {
+    const state = createGameState();
+    const karteinCollectors = CHARACTERS.filter(c => c.faction === 'kartein' && c.ability.type === 'collect');
+    state.field = [
+      { ...karteinCollectors[0], type: 'character', instanceId: 'a' },
+      { ...karteinCollectors[1], type: 'character', instanceId: 'b' },
+    ];
+    state.resources.sus = 20;
+    const prevSUS = state.resources.sus;
+    collectBlood(state);
+    expect(state.resources.sus).toBeLessThan(prevSUS);
+    expect(state.comboActivations).toBeGreaterThan(0);
+  });
+});
+
+describe('gameState tracking fields', () => {
+  it('maxCollect와 comboActivations가 초기화된다', () => {
+    const state = createGameState();
+    expect(state.maxCollect).toBe(0);
+    expect(state.comboActivations).toBe(0);
+  });
+});
+
+describe('expanded characters', () => {
+  it('20명의 캐릭터가 정의되어 있다', () => {
+    expect(CHARACTERS.length).toBe(20);
+  });
+
+  it('모든 팩션에 캐릭터가 있다', () => {
+    const factions = [...new Set(CHARACTERS.map(c => c.faction))];
+    expect(factions).toContain('center');
+    expect(factions).toContain('kartein');
+    expect(factions).toContain('neutral');
+  });
+
+  it('COMBO_BONUSES에 3개 팩션이 정의되어 있다', () => {
+    expect(Object.keys(COMBO_BONUSES)).toEqual(['center', 'kartein', 'neutral']);
   });
 });

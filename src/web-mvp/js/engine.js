@@ -1,4 +1,4 @@
-import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, EQUIPMENT, createBloodCard, generateRandomRequest } from './cards.js';
+import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, EQUIPMENT, COMBO_BONUSES, createBloodCard, generateRandomRequest } from './cards.js';
 
 export const PHASES = ['dawn', 'morning', 'afternoon', 'night', 'settlement'];
 export const PHASE_NAMES = { dawn: '새벽', morning: '오전', afternoon: '오후', night: '야간', settlement: '정산' };
@@ -35,6 +35,8 @@ export function createGameState(difficulty = 'normal') {
     nightActionTaken: false,
     gameOver: false,
     winner: false,
+    maxCollect: 0,
+    comboActivations: 0,
     log: [],
   };
 }
@@ -120,6 +122,31 @@ export function shuffle(arr) {
   return arr;
 }
 
+export function calculateComboBonuses(state) {
+  const factionCounts = {};
+  state.field.forEach(card => {
+    if (card.faction) factionCounts[card.faction] = (factionCounts[card.faction] || 0) + 1;
+  });
+
+  const result = { bpBonus: 0, repBonus: 0, susReduction: 0, bloodCards: 0, active: [] };
+
+  for (const [faction, count] of Object.entries(factionCounts)) {
+    const combos = COMBO_BONUSES[faction];
+    if (!combos) continue;
+    for (const combo of combos) {
+      if (count >= combo.threshold) {
+        result.bpBonus += combo.effects.bpBonus || 0;
+        result.repBonus += combo.effects.repBonus || 0;
+        result.susReduction += combo.effects.susReduction || 0;
+        result.bloodCards += combo.effects.bloodCards || 0;
+        result.active.push(combo);
+      }
+    }
+  }
+
+  return result;
+}
+
 export function drawCards(state, count = 5) {
   const drawn = [];
   for (let i = 0; i < count; i++) {
@@ -178,7 +205,21 @@ export function collectBlood(state) {
     }
   });
 
+  const combos = calculateComboBonuses(state);
+  totalCollected += combos.bpBonus;
+  state.resources.rep += combos.repBonus;
+  state.resources.sus = Math.max(0, state.resources.sus - combos.susReduction);
+  for (let i = 0; i < combos.bloodCards; i++) {
+    const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
+    state.bloodPool.push(createBloodCard(bt));
+  }
+  if (combos.active.length > 0) {
+    state.comboActivations += combos.active.length;
+    state.log.push(`콤보 발동: ${combos.active.map(c => c.label).join(', ')}`);
+  }
+
   state.resources.bp += totalCollected;
+  if (totalCollected > state.maxCollect) state.maxCollect = totalCollected;
 
   for (let i = state.hand.length - 1; i >= 0; i--) {
     if (state.hand[i].type === 'blood') {

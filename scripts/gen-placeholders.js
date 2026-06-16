@@ -9,6 +9,16 @@ const CHARACTERS = [
   { id: 'han-soyul', name: '한소율', title: '대학생 봉사자', faction: 'center', rarity: 'common', initial: '소' },
   { id: 'nigel-crowe', name: '나이젤 크로우', title: '야간 감사관', faction: 'kartein', rarity: 'rare', initial: 'N' },
   { id: 'yun-chaea', name: '윤채아', title: '혈액연구원', faction: 'center', rarity: 'uncommon', initial: '채' },
+  { id: 'shin-yujin', name: '신유진', title: '접수 담당자', faction: 'center', rarity: 'uncommon', initial: '유' },
+  { id: 'oh-taehyun', name: '오태현', title: '혈액분석사', faction: 'center', rarity: 'uncommon', initial: '태' },
+  { id: 'yang-mira', name: '양미라', title: '헌혈 홍보대사', faction: 'center', rarity: 'rare', initial: '미' },
+  { id: 'elena-morgan', name: '엘레나 모르간', title: '야행성 수습생', faction: 'kartein', rarity: 'uncommon', initial: 'E' },
+  { id: 'sergei-volkov', name: '세르게이 볼코프', title: '동유럽 연락관', faction: 'kartein', rarity: 'uncommon', initial: 'S' },
+  { id: 'isadora-kartein', name: '이사도라 카르테인', title: '가문 장녀', faction: 'kartein', rarity: 'legendary', initial: 'I' },
+  { id: 'dimitri-rad', name: '디미트리 라드', title: '혈액 감정사', faction: 'kartein', rarity: 'rare', initial: 'D' },
+  { id: 'park-eunji', name: '박은지', title: '의대생 실습생', faction: 'neutral', rarity: 'uncommon', initial: '은' },
+  { id: 'jang-hyunwoo', name: '장현우', title: '보건복지부 조사관', faction: 'neutral', rarity: 'uncommon', initial: '현' },
+  { id: 'kim-seoha', name: '김서하', title: '의료 전문기자', faction: 'neutral', rarity: 'rare', initial: '서' },
 ];
 
 const COLORS = {
