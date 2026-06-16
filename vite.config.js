@@ -4,7 +4,7 @@ import { resolve } from 'path';
 export default defineConfig({
   root: 'src/web-mvp',
   publicDir: false,
-  base: process.env.NETLIFY ? '/' : '/xmadx/',
+  base: process.env.NETLIFY ? '/' : (process.env.BASE_URL || '/xmadx/'),
   build: {
     outDir: '../../dist',
     emptyOutDir: true,
