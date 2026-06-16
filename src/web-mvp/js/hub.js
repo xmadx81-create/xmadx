@@ -5,7 +5,7 @@ import {
   checkGameEnd, advanceTurn, runFullTurn, buyEquipment,
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
   calculateComboBonuses, PHASE_NAMES, DIFFICULTIES,
-  generateDilemma, resolveDilemma,
+  generateDilemma, resolveDilemma, convertBlood,
 } from './engine.js';
 import {
   initAudio, toggleMute, isMuted, startBGM, stopBGM,
@@ -519,12 +519,33 @@ function renderFieldCards() {
 
 function renderBloodPool() {
   const el = document.getElementById('blood-cards');
+  const hasConverter = gameState.field.some(c => c.ability.type === 'convert');
   const counts = {};
   gameState.bloodPool.forEach(b => { counts[b.bloodType] = (counts[b.bloodType] || 0) + 1; });
-  el.innerHTML = Object.entries(counts).map(([bt, n]) =>
+  let html = Object.entries(counts).map(([bt, n]) =>
     `<div class="vcard blood"><div class="vcard-icon">🩸</div><div class="vcard-name">${bt}형 x${n}</div></div>`
-  ).join('') || '<span class="empty-hint">비어 있음</span>';
+  ).join('');
+  if (hasConverter && gameState.bloodPool.length > 0 && gameState.phase === 'morning') {
+    html += `<div class="convert-panel">
+      <span class="convert-label">변환:</span>
+      ${['A', 'B', 'O', 'AB'].map(bt => `<button class="btn-convert" onclick="window.__convertBlood('${bt}')">${bt}형</button>`).join('')}
+    </div>`;
+  }
+  el.innerHTML = html || '<span class="empty-hint">비어 있음</span>';
 }
+
+function onConvertBlood(targetType) {
+  if (!gameState || gameState.bloodPool.length === 0) return;
+  const poolTypes = gameState.bloodPool.map(b => b.bloodType);
+  const convertFrom = poolTypes.findIndex(bt => bt !== targetType);
+  if (convertFrom < 0) { appendLog('변환할 다른 혈액형이 없습니다'); return; }
+  gameState.log = [];
+  const result = convertBlood(gameState, convertFrom, targetType);
+  gameState.log.forEach(msg => appendLog(msg));
+  if (!result.ok) appendLog(result.reason);
+  updateUI();
+}
+window.__convertBlood = onConvertBlood;
 
 function renderRequest() {
   const el = document.getElementById('active-request');

@@ -4,7 +4,7 @@ import {
   activateNextRequest, fulfillRequest, failRequest, checkGameEnd,
   settleTurn, advanceTurn, shuffle, runFullTurn, buyEquipment,
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
-  calculateComboBonuses, DIFFICULTIES, generateDilemma, resolveDilemma,
+  calculateComboBonuses, DIFFICULTIES, generateDilemma, resolveDilemma, convertBlood,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest, COMBO_BONUSES, DILEMMA_EVENTS } from '../src/web-mvp/js/cards.js';
 
@@ -439,6 +439,106 @@ describe('dilemma system', () => {
       seen.add(d.id);
       resolveDilemma(state, d, 0);
     }
+  });
+});
+
+describe('ability types', () => {
+  it('request_discount는 의뢰 이행 시 SUS 비용을 줄인다', () => {
+    const state = createGameState();
+    const duke = CHARACTERS.find(c => c.ability.type === 'request_discount');
+    state.field = [{ ...duke, type: 'character', instanceId: 'a' }];
+    state.bloodPool = [createBloodCard('A'), createBloodCard('B')];
+    activateNextRequest(state);
+    const susBefore = state.resources.sus;
+    const req = state.activeRequest;
+    if (req) {
+      const needed = Object.entries(req.requirements);
+      state.bloodPool = [];
+      for (const [bt, count] of needed) {
+        for (let i = 0; i < count; i++) state.bloodPool.push(createBloodCard(bt));
+      }
+      fulfillRequest(state);
+    }
+    expect(state.log.some(l => l.includes('할인'))).toBe(true);
+  });
+
+  it('transport는 의뢰 이행 시 BP 보너스를 준다', () => {
+    const state = createGameState();
+    const driver = CHARACTERS.find(c => c.ability.type === 'transport');
+    state.field = [{ ...driver, type: 'character', instanceId: 'a' }];
+    activateNextRequest(state);
+    const req = state.activeRequest;
+    if (req) {
+      const needed = Object.entries(req.requirements);
+      state.bloodPool = [];
+      for (const [bt, count] of needed) {
+        for (let i = 0; i < count; i++) state.bloodPool.push(createBloodCard(bt));
+      }
+      const bpBefore = state.resources.bp;
+      fulfillRequest(state);
+      expect(state.log.some(l => l.includes('운송 보너스'))).toBe(true);
+    }
+  });
+
+  it('convert로 혈액형을 변환할 수 있다', () => {
+    const state = createGameState();
+    const butler = CHARACTERS.find(c => c.ability.type === 'convert');
+    state.field = [{ ...butler, type: 'character', instanceId: 'a' }];
+    state.bloodPool = [createBloodCard('A')];
+    const result = convertBlood(state, 0, 'O');
+    expect(result.ok).toBe(true);
+    expect(state.bloodPool[0].bloodType).toBe('O');
+  });
+
+  it('convert는 필드에 변환자가 없으면 실패한다', () => {
+    const state = createGameState();
+    state.bloodPool = [createBloodCard('A')];
+    const result = convertBlood(state, 0, 'O');
+    expect(result.ok).toBe(false);
+  });
+
+  it('audit는 배치 시 SUS를 감소시킨다', () => {
+    const state = createGameState();
+    state.resources.sus = 20;
+    const auditor = CHARACTERS.find(c => c.ability.type === 'audit');
+    state.hand = [{ ...auditor, type: 'character', instanceId: 'a' }];
+    playCharacter(state, 0);
+    expect(state.resources.sus).toBeLessThan(20);
+  });
+
+  it('research는 donate 혈액 생성을 증가시킨다', () => {
+    const state = createGameState();
+    const researcher = CHARACTERS.find(c => c.ability.type === 'research');
+    const donor = CHARACTERS.find(c => c.ability.type === 'donate');
+    state.field = [
+      { ...researcher, type: 'character', instanceId: 'a' },
+      { ...donor, type: 'character', instanceId: 'b' },
+    ];
+    state.bloodPool = [];
+    collectBlood(state);
+    expect(state.bloodPool.length).toBe(donor.ability.value + researcher.ability.value);
+  });
+
+  it('onField 효과가 정산 시 적용된다', () => {
+    const state = createGameState();
+    const duke = CHARACTERS.find(c => c.ability.onField);
+    if (duke) {
+      state.field = [{ ...duke, type: 'character', instanceId: 'a' }];
+      const susBefore = state.resources.sus;
+      settleTurn(state);
+      if (duke.ability.onField.sus > 0) {
+        expect(state.resources.sus).toBeGreaterThan(susBefore);
+      }
+    }
+  });
+
+  it('onCollect 효과가 수집 시 적용된다', () => {
+    const state = createGameState();
+    const seoyeon = CHARACTERS.find(c => c.id === 'lee-seoyeon');
+    state.field = [{ ...seoyeon, type: 'character', instanceId: 'a' }];
+    state.resources.sus = 20;
+    collectBlood(state);
+    expect(state.resources.sus).toBeLessThan(20);
   });
 });
 

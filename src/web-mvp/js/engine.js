@@ -179,30 +179,50 @@ export function playCharacter(state, handIndex) {
     state.log.push(`${card.name} 효과: REP +${card.ability.value}`);
   }
 
+  if (card.ability.type === 'audit') {
+    state.resources.sus = Math.max(0, state.resources.sus - card.ability.value);
+    const nextEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+    state.log.push(`${card.name} 감사: SUS -${card.ability.value}. 다음 이벤트 정보: "${nextEvent.name}"`);
+  }
+
+  if (card.ability.onPlay) {
+    for (const [key, val] of Object.entries(card.ability.onPlay)) {
+      state.resources[key] = (state.resources[key] || 0) + val;
+    }
+  }
+
   return { ok: true };
 }
 
 export function collectBlood(state) {
   let totalCollected = 0;
   const equipBonus = state.equipment.reduce((sum, eq) => sum + (eq.effect.collectBonus || 0), 0);
+  const researchBonus = state.field.filter(c => c.ability.type === 'research').reduce((sum, c) => sum + c.ability.value, 0);
 
   state.field.forEach(card => {
     if (card.ability.type === 'collect') {
       const amount = card.ability.value + equipBonus;
       totalCollected += amount;
 
-      if (card.ability.description.includes('SUS')) {
-        state.resources.sus = Math.max(0, state.resources.sus - 2);
-      }
-      if (card.ability.description.includes('REP')) {
-        state.resources.rep += 5;
+      if (card.ability.onCollect) {
+        for (const [key, val] of Object.entries(card.ability.onCollect)) {
+          state.resources[key] = (state.resources[key] || 0) + val;
+          if (val < 0) state.resources[key] = Math.max(0, state.resources[key]);
+        }
       }
     }
     if (card.ability.type === 'donate') {
-      for (let i = 0; i < card.ability.value; i++) {
+      const donateCount = card.ability.value + researchBonus;
+      for (let i = 0; i < donateCount; i++) {
         const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
         state.bloodPool.push(createBloodCard(bt));
       }
+      if (researchBonus > 0) {
+        state.log.push(`연구 보너스: 혈액 생성 +${researchBonus}`);
+      }
+    }
+    if (card.ability.type === 'research') {
+      state.log.push(`${card.name}: 혈액 효율 +${card.ability.value} 적용 중`);
     }
   });
 
@@ -259,10 +279,17 @@ export function fulfillRequest(state) {
     }
   }
 
-  if (req.reward.bp) state.resources.bp += req.reward.bp;
+  const discount = state.field.filter(c => c.ability.type === 'request_discount').reduce((sum, c) => sum + c.ability.value, 0);
+  const transportBonus = state.field.filter(c => c.ability.type === 'transport').reduce((sum, c) => sum + c.ability.value, 0);
+
+  const bpReward = (req.reward.bp || 0) + transportBonus;
+  if (bpReward) state.resources.bp += bpReward;
   if (req.reward.rep) state.resources.rep += req.reward.rep;
-  const susCost = 3 + state.completedRequests * 3;
+  const susCost = Math.max(0, 3 + state.completedRequests * 3 - discount);
   state.resources.sus += susCost;
+
+  if (discount > 0) state.log.push(`의뢰 할인: SUS 비용 -${discount}`);
+  if (transportBonus > 0) state.log.push(`운송 보너스: BP +${transportBonus}`);
 
   state.completedRequests++;
   state.log.push(`의뢰 이행 완료: ${req.name} (완료: ${state.completedRequests}/5)`);
@@ -293,6 +320,17 @@ export function processEvent(state) {
   return event;
 }
 
+export function convertBlood(state, fromIndex, targetType) {
+  if (fromIndex < 0 || fromIndex >= state.bloodPool.length) return { ok: false, reason: '변환할 혈액이 없습니다' };
+  if (!BLOOD_TYPES.includes(targetType)) return { ok: false, reason: '잘못된 혈액형입니다' };
+  const hasConverter = state.field.some(c => c.ability.type === 'convert');
+  if (!hasConverter) return { ok: false, reason: '변환 능력 보유 캐릭터가 필드에 없습니다' };
+  const old = state.bloodPool[fromIndex].bloodType;
+  state.bloodPool[fromIndex].bloodType = targetType;
+  state.log.push(`혈액 변환: ${old}형 → ${targetType}형`);
+  return { ok: true };
+}
+
 export function generateDilemma(state) {
   const usedIds = state.usedDilemmas || [];
   const available = DILEMMA_EVENTS.filter(d => !usedIds.includes(d.id));
@@ -321,6 +359,15 @@ export function resolveDilemma(state, dilemma, choiceIndex) {
 export function settleTurn(state) {
   const equipRepBonus = state.equipment.reduce((sum, eq) => sum + (eq.effect.repBonus || 0), 0);
   const equipSusReduction = state.equipment.reduce((sum, eq) => sum + (eq.effect.susReduction || 0), 0);
+
+  state.field.forEach(card => {
+    if (card.ability.onField) {
+      for (const [key, val] of Object.entries(card.ability.onField)) {
+        state.resources[key] = (state.resources[key] || 0) + val;
+      }
+      state.log.push(`${card.name} 필드 효과: ${Object.entries(card.ability.onField).map(([k, v]) => `${k.toUpperCase()} ${v > 0 ? '+' : ''}${v}`).join(', ')}`);
+    }
+  });
 
   state.resources.rep += equipRepBonus;
   state.resources.sus += (state.diffSettings?.susPerTurn ?? 2);
