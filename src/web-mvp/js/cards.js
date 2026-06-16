@@ -299,6 +299,105 @@ export const EVENTS = [
   { id: 'evt-blackout', name: '정전 사고', effect: { bp: -2, sus: 3 }, description: '냉장고 일시 정지. BP-2, SUS+3' },
 ];
 
+export const DILEMMA_EVENTS = [
+  {
+    id: 'dil-reporter', name: '기자의 취재 요청',
+    narration: '김서하 기자가 센터의 야간 운영에 대해 취재를 요청한다. 거절하면 의심을 살 수 있고, 수락하면 비밀이 노출될 위험이 있다.',
+    choices: [
+      { label: '취재 수락 — 투명성 어필', desc: 'REP +8, SUS +6', effect: { rep: 8, sus: 6 } },
+      { label: '정중히 거절 — 비밀 유지', desc: 'SUS -3, REP -4', effect: { sus: -3, rep: -4 } },
+    ],
+  },
+  {
+    id: 'dil-bribe', name: '보건 조사관의 암시',
+    narration: '장현우 조사관이 점검 중 수상한 냉장고를 발견했다. 그는 미묘하게 "해결 방법"을 암시한다.',
+    choices: [
+      { label: '뇌물 제공 — 눈 감아달라', desc: 'BP -5, SUS -10', effect: { bp: -5, sus: -10 } },
+      { label: '정면 돌파 — 규정대로', desc: 'REP +5, SUS +8', effect: { rep: 5, sus: 8 } },
+    ],
+  },
+  {
+    id: 'dil-overtime', name: '야근 헌혈자 발견',
+    narration: '최민서가 센터 폐장 후에도 남아있다. 추가 헌혈을 받으면 혈액을 확보할 수 있지만, 건강 문제가 생기면...',
+    choices: [
+      { label: '추가 채혈 — 혈액 확보 우선', desc: 'BP +6, REP -5', effect: { bp: 6, rep: -5 } },
+      { label: '귀가 권유 — 안전 우선', desc: 'REP +4, BP -2', effect: { rep: 4, bp: -2 } },
+    ],
+  },
+  {
+    id: 'dil-night-delivery', name: '새벽 특별 배송',
+    narration: '정우진이 새벽 4시에 카르테인 가문용 "특별 혈액"을 배송해야 한다. 경로가 두 곳이다.',
+    choices: [
+      { label: '지름길 — 빠르지만 CCTV 구간', desc: 'BP +4, SUS +5', effect: { bp: 4, sus: 5 } },
+      { label: '우회로 — 안전하지만 손실 있음', desc: 'BP +1, SUS -2', effect: { bp: 1, sus: -2 } },
+    ],
+  },
+  {
+    id: 'dil-intern', name: '실습생의 질문',
+    narration: '박은지 실습생이 야간 혈액 처리량이 비정상적으로 많다며 질문한다. 호기심 많은 눈이 날카롭다.',
+    choices: [
+      { label: '비밀에 끌어들이기', desc: 'SUS -5, REP -3 (동료 확보)', effect: { sus: -5, rep: -3 } },
+      { label: '모른 척 넘어가기', desc: 'SUS +4 (의심 증가)', effect: { sus: 4 } },
+    ],
+  },
+  {
+    id: 'dil-blood-expire', name: '혈액 유통기한 임박',
+    narration: '냉장고 속 혈액 팩 다수가 유통기한이 내일이다. 폐기하면 손실이 크고, 라벨을 바꾸면...',
+    choices: [
+      { label: '라벨 교체 — 혈액 보존', desc: 'BP +5, SUS +7, REP -3', effect: { bp: 5, sus: 7, rep: -3 } },
+      { label: '정규 폐기 — 원칙 준수', desc: 'BP -4, REP +3', effect: { bp: -4, rep: 3 } },
+    ],
+  },
+  {
+    id: 'dil-kartein-order', name: '카르테인의 긴급 요청',
+    narration: '카르테인 듀크가 "특별한 혈액"을 긴급 요청한다. 공식 절차를 무시해야 빠르게 전달할 수 있다.',
+    choices: [
+      { label: '즉시 전달 — 가문의 신뢰', desc: 'BP +8, SUS +10', effect: { bp: 8, sus: 10 } },
+      { label: '공식 절차 고수', desc: 'REP +3, SUS +3', effect: { rep: 3, sus: 3 } },
+    ],
+  },
+  {
+    id: 'dil-volunteer', name: '봉사자의 SNS',
+    narration: '한소율이 센터에서 찍은 셀카를 SNS에 올리려 한다. 배경에 야간 작업 장면이 살짝 보인다.',
+    choices: [
+      { label: '허용 — 홍보 효과 기대', desc: 'REP +6, SUS +5', effect: { rep: 6, sus: 5 } },
+      { label: '삭제 요청 — 리스크 차단', desc: 'SUS -2, REP -2', effect: { sus: -2, rep: -2 } },
+    ],
+  },
+  {
+    id: 'dil-anonymous-tip', name: '익명 제보 전화',
+    narration: '보건당국에 "혈연센터의 야간 활동이 수상하다"는 익명 제보가 접수되었다는 소식이 들어온다.',
+    choices: [
+      { label: '선제 대응 — 자진 점검 요청', desc: 'SUS -8, BP -3, REP +2', effect: { sus: -8, bp: -3, rep: 2 } },
+      { label: '무시하고 잠적', desc: 'SUS +3', effect: { sus: 3 } },
+    ],
+  },
+  {
+    id: 'dil-research', name: '윤채아의 연구 제안',
+    narration: '윤채아가 특이한 혈액 패턴을 발견했다며 심층 연구를 제안한다. 연구 결과가 밖으로 새면 위험할 수 있다.',
+    choices: [
+      { label: '연구 승인 — 데이터 확보', desc: 'BP +4, SUS +6', effect: { bp: 4, sus: 6 } },
+      { label: '연구 보류 — 안전 우선', desc: 'REP +2, SUS -2', effect: { rep: 2, sus: -2 } },
+    ],
+  },
+  {
+    id: 'dil-police', name: '순찰 경찰의 방문',
+    narration: '심야에 센터 불빛을 보고 순찰 경관이 방문했다. 문을 열어야 하나?',
+    choices: [
+      { label: '문을 열고 응대', desc: 'SUS +5, REP +3 (협조적)', effect: { sus: 5, rep: 3 } },
+      { label: '불을 끄고 숨기', desc: 'SUS -3, REP -2', effect: { sus: -3, rep: -2 } },
+    ],
+  },
+  {
+    id: 'dil-competitor', name: '경쟁 센터의 제안',
+    narration: '인근 혈액원에서 "혈액 교환 협정"을 제안한다. 거래하면 혈액을 얻지만, 우리의 운영 방식이 노출될 수 있다.',
+    choices: [
+      { label: '협정 체결 — 혈액 확보', desc: 'BP +6, SUS +4', effect: { bp: 6, sus: 4 } },
+      { label: '거절 — 독립 운영', desc: 'REP +2', effect: { rep: 2 } },
+    ],
+  },
+];
+
 export const EQUIPMENT = [
   { id: 'eq-centrifuge', name: '고속 원심분리기', cost: 4, effect: { collectBonus: 1 }, description: '매 턴 BP 수집량 +1' },
   { id: 'eq-fridge', name: '특수 냉장고', cost: 3, effect: { bloodCapacity: 2 }, description: '혈액 보관 한도 +2' },

@@ -1,4 +1,4 @@
-import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, EQUIPMENT, COMBO_BONUSES, createBloodCard, generateRandomRequest } from './cards.js';
+import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, DILEMMA_EVENTS, EQUIPMENT, COMBO_BONUSES, createBloodCard, generateRandomRequest } from './cards.js';
 
 export const PHASES = ['dawn', 'morning', 'afternoon', 'night', 'settlement'];
 export const PHASE_NAMES = { dawn: '새벽', morning: '오전', afternoon: '오후', night: '야간', settlement: '정산' };
@@ -33,6 +33,7 @@ export function createGameState(difficulty = 'normal') {
     nextRequestNum: 1,
     recruitShop: [],
     nightActionTaken: false,
+    usedDilemmas: [],
     gameOver: false,
     winner: false,
     maxCollect: 0,
@@ -290,6 +291,31 @@ export function processEvent(state) {
   state.resources.sus = Math.max(0, state.resources.sus);
   state.log.push(`이벤트: ${event.name} — ${event.description}`);
   return event;
+}
+
+export function generateDilemma(state) {
+  const usedIds = state.usedDilemmas || [];
+  const available = DILEMMA_EVENTS.filter(d => !usedIds.includes(d.id));
+  if (available.length === 0) {
+    state.usedDilemmas = [];
+    return DILEMMA_EVENTS[Math.floor(Math.random() * DILEMMA_EVENTS.length)];
+  }
+  return available[Math.floor(Math.random() * available.length)];
+}
+
+export function resolveDilemma(state, dilemma, choiceIndex) {
+  const choice = dilemma.choices[choiceIndex];
+  if (!choice) return { ok: false };
+  for (const [key, val] of Object.entries(choice.effect)) {
+    state.resources[key] = (state.resources[key] || 0) + val;
+  }
+  state.resources.rep = Math.max(0, state.resources.rep);
+  state.resources.sus = Math.max(0, state.resources.sus);
+  if (!state.usedDilemmas) state.usedDilemmas = [];
+  state.usedDilemmas.push(dilemma.id);
+  state.nightActionTaken = true;
+  state.log.push(`딜레마: ${dilemma.name} → "${choice.label}"`);
+  return { ok: true, choice };
 }
 
 export function settleTurn(state) {

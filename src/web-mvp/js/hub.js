@@ -5,6 +5,7 @@ import {
   checkGameEnd, advanceTurn, runFullTurn, buyEquipment,
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
   calculateComboBonuses, PHASE_NAMES, DIFFICULTIES,
+  generateDilemma, resolveDilemma,
 } from './engine.js';
 import {
   initAudio, toggleMute, isMuted, startBGM, stopBGM,
@@ -224,10 +225,9 @@ function advancePhase() {
       document.getElementById('night-actions').style.display = '';
       if (gameState.activeRequest) {
         document.getElementById('btn-fulfill').disabled = false;
-        appendLog('── 야간: 의뢰 이행 / 조사 / 홍보 중 택1 ──');
-      } else {
-        appendLog('── 야간: 조사 / 홍보 선택 가능 ──');
       }
+
+      showDilemma();
 
       if (Math.random() < (gameState.diffSettings?.eventChance ?? 0.4)) {
         gameState.log = [];
@@ -307,6 +307,48 @@ function doPromote() {
   gameState.log.forEach(msg => appendLog(msg));
   if (result.ok) disableNightBtns();
   updateUI();
+}
+
+let currentDilemma = null;
+
+function showDilemma() {
+  currentDilemma = generateDilemma(gameState);
+  const el = document.getElementById('dilemma-panel');
+  el.innerHTML = `
+    <div class="dilemma-card">
+      <div class="dilemma-header">
+        <span class="dilemma-badge">딜레마</span>
+        <h3>${currentDilemma.name}</h3>
+      </div>
+      <p class="dilemma-narration">${currentDilemma.narration}</p>
+      <div class="dilemma-choices">
+        ${currentDilemma.choices.map((c, i) => `
+          <button class="dilemma-choice" onclick="window.__resolveDilemma(${i})">
+            <span class="choice-label">${c.label}</span>
+            <span class="choice-effect">${c.desc}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  el.style.display = '';
+  appendLog(`── 야간: 딜레마 발생 — ${currentDilemma.name} ──`);
+}
+
+function onResolveDilemma(choiceIndex) {
+  if (!currentDilemma || !gameState) return;
+  gameState.log = [];
+  const result = resolveDilemma(gameState, currentDilemma, choiceIndex);
+  if (result.ok) {
+    sfxEvent();
+    gameState.log.forEach(msg => appendLog(msg));
+    disableNightBtns();
+    document.getElementById('dilemma-panel').style.display = 'none';
+    currentDilemma = null;
+  }
+  updateUI();
+}
+window.__resolveDilemma = onResolveDilemma;
 }
 
 function disableNightBtns() {

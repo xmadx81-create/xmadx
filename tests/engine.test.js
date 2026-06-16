@@ -4,9 +4,9 @@ import {
   activateNextRequest, fulfillRequest, failRequest, checkGameEnd,
   settleTurn, advanceTurn, shuffle, runFullTurn, buyEquipment,
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
-  calculateComboBonuses, DIFFICULTIES,
+  calculateComboBonuses, DIFFICULTIES, generateDilemma, resolveDilemma,
 } from '../src/web-mvp/js/engine.js';
-import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest, COMBO_BONUSES } from '../src/web-mvp/js/cards.js';
+import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest, COMBO_BONUSES, DILEMMA_EVENTS } from '../src/web-mvp/js/cards.js';
 
 describe('createGameState', () => {
   it('초기 상태가 올바르게 생성된다', () => {
@@ -394,6 +394,51 @@ describe('gameState tracking fields', () => {
     const state = createGameState();
     expect(state.maxCollect).toBe(0);
     expect(state.comboActivations).toBe(0);
+  });
+});
+
+describe('dilemma system', () => {
+  it('딜레마 이벤트가 12개 이상 정의되어 있다', () => {
+    expect(DILEMMA_EVENTS.length).toBeGreaterThanOrEqual(12);
+  });
+
+  it('딜레마를 생성한다', () => {
+    const state = createGameState();
+    const dilemma = generateDilemma(state);
+    expect(dilemma).toBeDefined();
+    expect(dilemma.choices.length).toBe(2);
+    expect(dilemma.narration).toBeDefined();
+  });
+
+  it('딜레마 선택이 자원을 변경한다', () => {
+    const state = createGameState();
+    const dilemma = generateDilemma(state);
+    const repBefore = state.resources.rep;
+    const bpBefore = state.resources.bp;
+    const susBefore = state.resources.sus;
+    const result = resolveDilemma(state, dilemma, 0);
+    expect(result.ok).toBe(true);
+    expect(state.nightActionTaken).toBe(true);
+    const changed = state.resources.rep !== repBefore || state.resources.bp !== bpBefore || state.resources.sus !== susBefore;
+    expect(changed).toBe(true);
+  });
+
+  it('사용된 딜레마를 추적한다', () => {
+    const state = createGameState();
+    const dilemma = generateDilemma(state);
+    resolveDilemma(state, dilemma, 0);
+    expect(state.usedDilemmas).toContain(dilemma.id);
+  });
+
+  it('딜레마가 중복되지 않는다', () => {
+    const state = createGameState();
+    const seen = new Set();
+    for (let i = 0; i < DILEMMA_EVENTS.length; i++) {
+      const d = generateDilemma(state);
+      expect(seen.has(d.id)).toBe(false);
+      seen.add(d.id);
+      resolveDilemma(state, d, 0);
+    }
   });
 });
 
