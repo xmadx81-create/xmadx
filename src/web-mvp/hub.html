@@ -34,6 +34,25 @@
       <!-- 게임 -->
       <section id="tab-play" class="tab-panel">
         <div id="game-board">
+          <!-- 난이도 선택 (게임 시작 전) -->
+          <div id="difficulty-select" class="difficulty-panel">
+            <h3>난이도 선택</h3>
+            <div class="diff-options">
+              <button class="diff-btn" data-diff="easy">
+                <span class="diff-label">쉬움</span>
+                <span class="diff-desc">BP 15 · REP 70 · SUS +1/턴</span>
+              </button>
+              <button class="diff-btn active" data-diff="normal">
+                <span class="diff-label">보통</span>
+                <span class="diff-desc">BP 10 · REP 50 · SUS +2/턴</span>
+              </button>
+              <button class="diff-btn" data-diff="hard">
+                <span class="diff-label">어려움</span>
+                <span class="diff-desc">BP 7 · REP 35 · SUS +3/턴</span>
+              </button>
+            </div>
+          </div>
+
           <div class="resource-bar">
             <span class="res" id="res-bp">BP: 10</span>
             <span class="res" id="res-rep">REP: 50</span>
@@ -42,28 +61,45 @@
             <span class="res" id="res-phase">새벽</span>
             <span class="res" id="res-requests">의뢰: 0/5</span>
           </div>
+
           <div id="request-zone" class="zone">
             <h3>활성 의뢰</h3>
             <div id="active-request"></div>
           </div>
+
+          <div id="equip-zone" class="zone">
+            <h3>설치된 장비 <span id="equip-count"></span></h3>
+            <div id="installed-equip" class="card-row"></div>
+          </div>
+
+          <div id="shop-zone" class="zone">
+            <h3>장비 상점 (오전에 구매 가능)</h3>
+            <div id="shop-cards" class="card-row"></div>
+          </div>
+
           <div id="field-zone" class="zone">
             <h3>필드</h3>
             <div id="field-cards" class="card-row"></div>
           </div>
+
           <div id="blood-zone" class="zone">
             <h3>혈액 풀</h3>
             <div id="blood-cards" class="card-row"></div>
           </div>
+
           <div id="hand-zone" class="zone">
             <h3>패</h3>
             <div id="hand-cards" class="card-row"></div>
           </div>
+
           <div class="game-controls">
             <button id="btn-start-game" class="btn-primary">게임 시작</button>
             <button id="btn-next-phase" class="btn-primary" disabled>다음</button>
             <button id="btn-fulfill" class="btn-accent" disabled>의뢰 이행</button>
             <button id="btn-auto-play" class="btn-secondary">자동 플레이</button>
+            <button id="btn-sound" class="btn-secondary">BGM ON</button>
           </div>
+
           <div id="game-log" class="log-box"></div>
         </div>
       </section>
@@ -77,7 +113,7 @@
 
           <h3>자원</h3>
           <ul>
-            <li><strong>BP (혈점)</strong> — 수집한 혈액량. 카드 배치 및 의뢰 이행에 사용</li>
+            <li><strong>BP (혈점)</strong> — 수집한 혈액량. 카드 배치·장비 구매·의뢰 이행에 사용</li>
             <li><strong>REP (평판)</strong> — 센터 평판. 0이 되면 폐쇄 (패배)</li>
             <li><strong>SUS (의심도)</strong> — 뱀파이어 의심 수준. 100 도달 시 적발 (패배)</li>
           </ul>
@@ -85,11 +121,14 @@
           <h3>턴 구조</h3>
           <ol>
             <li><strong>새벽</strong> — 카드 5장 드로우</li>
-            <li><strong>오전</strong> — 인물·장비 카드 배치 (BP 비용 지불)</li>
+            <li><strong>오전</strong> — 인물 카드 배치 + 장비 구매 (BP 비용 지불)</li>
             <li><strong>오후</strong> — 헌혈 수집 (배치된 인물 능력 발동)</li>
             <li><strong>야간</strong> — 의뢰 이행 / 이벤트 해결</li>
             <li><strong>정산</strong> — 자원 계산, 핸드 정리 (최대 3장)</li>
           </ol>
+
+          <h3>장비</h3>
+          <p>오전 단계에 장비 상점에서 BP를 지불하고 장비를 설치할 수 있습니다. 장비는 영구적으로 매 턴 효과를 발휘합니다.</p>
 
           <h3>승리 조건</h3>
           <p>카르테인 의뢰 <strong>5개</strong>를 성공적으로 이행하면 승리!</p>
@@ -102,6 +141,15 @@
         </div>
       </section>
     </main>
+
+    <!-- 카드 상세 팝업 -->
+    <div id="card-popup" class="card-popup-overlay" style="display:none">
+      <div class="card-popup-box">
+        <button class="popup-close" id="popup-close">&times;</button>
+        <div class="popup-portrait" id="popup-portrait"></div>
+        <div class="popup-details" id="popup-details"></div>
+      </div>
+    </div>
 
     <footer class="hub-footer">
       <p>백십자재단 &copy; 2026 — 모든 헌혈은 자발적입니다</p>

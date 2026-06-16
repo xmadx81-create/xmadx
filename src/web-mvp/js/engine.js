@@ -3,18 +3,28 @@ import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, EQUIPMENT, createBlo
 export const PHASES = ['dawn', 'morning', 'afternoon', 'night', 'settlement'];
 export const PHASE_NAMES = { dawn: '새벽', morning: '오전', afternoon: '오후', night: '야간', settlement: '정산' };
 
-export function createGameState() {
+export const DIFFICULTIES = {
+  easy:   { label: '쉬움', bp: 15, rep: 70, sus: 0, susPerTurn: 1, eventChance: 0.25 },
+  normal: { label: '보통', bp: 10, rep: 50, sus: 0, susPerTurn: 2, eventChance: 0.4 },
+  hard:   { label: '어려움', bp: 7, rep: 35, sus: 10, susPerTurn: 3, eventChance: 0.55 },
+};
+
+export function createGameState(difficulty = 'normal') {
+  const diff = DIFFICULTIES[difficulty] || DIFFICULTIES.normal;
   const deck = buildStarterDeck();
   shuffle(deck);
 
   return {
     turn: 1,
     phase: 'dawn',
-    resources: { bp: 10, rep: 50, sus: 0 },
+    difficulty,
+    diffSettings: diff,
+    resources: { bp: diff.bp, rep: diff.rep, sus: diff.sus },
     deck,
     hand: [],
     field: [],
     equipment: [],
+    shopEquipment: shuffle([...EQUIPMENT]),
     bloodPool: [],
     discardPile: [],
     requestQueue: [...STARTER_REQUESTS],
@@ -24,6 +34,20 @@ export function createGameState() {
     winner: false,
     log: [],
   };
+}
+
+export function buyEquipment(state, equipId) {
+  const idx = state.shopEquipment.findIndex(e => e.id === equipId);
+  if (idx < 0) return { ok: false, reason: '장비를 찾을 수 없습니다' };
+  const eq = state.shopEquipment[idx];
+  if (state.resources.bp < eq.cost) return { ok: false, reason: `BP 부족 (필요: ${eq.cost}, 보유: ${state.resources.bp})` };
+  if (state.equipment.find(e => e.id === equipId)) return { ok: false, reason: '이미 설치된 장비입니다' };
+
+  state.resources.bp -= eq.cost;
+  state.equipment.push(eq);
+  state.shopEquipment.splice(idx, 1);
+  state.log.push(`장비 설치: ${eq.name} (BP -${eq.cost}) — ${eq.description}`);
+  return { ok: true };
 }
 
 function buildStarterDeck() {
@@ -184,7 +208,7 @@ export function settleTurn(state) {
   const equipSusReduction = state.equipment.reduce((sum, eq) => sum + (eq.effect.susReduction || 0), 0);
 
   state.resources.rep += equipRepBonus;
-  state.resources.sus += 2;
+  state.resources.sus += (state.diffSettings?.susPerTurn ?? 2);
   state.resources.sus = Math.max(0, state.resources.sus - equipSusReduction);
 
   if (state.activeRequest) {
@@ -249,6 +273,11 @@ export function runFullTurn(state) {
     }
   }
 
+  const affordable = state.shopEquipment
+    .filter(eq => eq.cost <= state.resources.bp && !state.equipment.find(e => e.id === eq.id))
+    .sort((a, b) => a.cost - b.cost);
+  if (affordable.length > 0) buyEquipment(state, affordable[0].id);
+
   state.phase = 'afternoon';
   collectBlood(state);
 
@@ -260,7 +289,7 @@ export function runFullTurn(state) {
       state.log.push(`의뢰 이행 불가: ${result.reason}`);
     }
   }
-  if (Math.random() < 0.4) processEvent(state);
+  if (Math.random() < (state.diffSettings?.eventChance ?? 0.4)) processEvent(state);
 
   state.phase = 'settlement';
   settleTurn(state);

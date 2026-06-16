@@ -1,12 +1,17 @@
-import { CHARACTERS } from './cards.js';
+import { CHARACTERS, EQUIPMENT } from './cards.js';
 import {
   createGameState, drawCards, playCharacter, collectBlood,
   activateNextRequest, fulfillRequest, processEvent, settleTurn,
-  checkGameEnd, advanceTurn, runFullTurn, PHASE_NAMES,
+  checkGameEnd, advanceTurn, runFullTurn, buyEquipment,
+  PHASE_NAMES, DIFFICULTIES,
 } from './engine.js';
+import {
+  initAudio, toggleMute, isMuted, startBGM, stopBGM,
+  sfxCardPlay, sfxCollect, sfxFulfill, sfxEvent, sfxEquip, sfxWin, sfxLose,
+} from './sound.js';
 
 let gameState = null;
-let mode = 'manual';
+let selectedDifficulty = 'normal';
 
 function initGallery() {
   const gallery = document.getElementById('card-gallery');
@@ -23,13 +28,11 @@ function initGallery() {
   });
 }
 
-function portraitSrc(base) {
-  return `${base}.png`;
-}
+function portraitSrc(base) { return `${base}.png`; }
 
 function renderGalleryCards(container, cards) {
   container.innerHTML = cards.map(card => `
-    <div class="card" data-rarity="${card.rarity}" data-id="${card.id}">
+    <div class="card" data-rarity="${card.rarity}" data-id="${card.id}" onclick="window.__showCardPopup('${card.id}')">
       <div class="card-portrait">
         <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
              onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none';this.nextElementSibling.style.display='flex'}" />
@@ -54,6 +57,39 @@ function factionLabel(f) {
   return f === 'center' ? '혈연센터' : f === 'kartein' ? '카르테인' : '비소속';
 }
 
+// ── Card Popup ──
+
+function showCardPopup(cardId) {
+  const card = CHARACTERS.find(c => c.id === cardId);
+  if (!card) return;
+
+  const popup = document.getElementById('card-popup');
+  document.getElementById('popup-portrait').innerHTML = `
+    <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
+         onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none'}" />
+  `;
+  document.getElementById('popup-details').innerHTML = `
+    <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
+    <span class="rarity-badge ${card.rarity}">${card.rarity.toUpperCase()}</span>
+    <h2>${card.name}</h2>
+    <p class="popup-title">${card.title}</p>
+    <div class="popup-stats">
+      <div class="popup-stat"><span>비용</span><strong>${card.cost}</strong></div>
+      <div class="popup-stat"><span>위력</span><strong>${card.power}</strong></div>
+    </div>
+    <div class="popup-ability">
+      <h4>능력</h4>
+      <p>${card.ability.description}</p>
+    </div>
+    <p class="popup-flavor">"${card.flavor}"</p>
+  `;
+  popup.style.display = 'flex';
+}
+
+window.__showCardPopup = showCardPopup;
+
+// ── Tabs ──
+
 function initTabs() {
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -65,21 +101,43 @@ function initTabs() {
   });
 }
 
+// ── Difficulty ──
+
+function initDifficulty() {
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedDifficulty = btn.dataset.diff;
+    });
+  });
+}
+
+// ── Game Logic ──
+
 function initGame() {
   document.getElementById('btn-start-game').addEventListener('click', startGame);
   document.getElementById('btn-next-phase').addEventListener('click', advancePhase);
   document.getElementById('btn-fulfill').addEventListener('click', tryFulfill);
   document.getElementById('btn-auto-play').addEventListener('click', autoPlay);
+  document.getElementById('btn-sound').addEventListener('click', onSoundToggle);
+  document.getElementById('popup-close').addEventListener('click', () => {
+    document.getElementById('card-popup').style.display = 'none';
+  });
+  document.getElementById('card-popup').addEventListener('click', (e) => {
+    if (e.target.id === 'card-popup') e.target.style.display = 'none';
+  });
 }
 
 function startGame() {
-  gameState = createGameState();
-  mode = 'manual';
+  initAudio();
+  gameState = createGameState(selectedDifficulty);
   document.getElementById('btn-start-game').disabled = true;
   document.getElementById('btn-next-phase').disabled = false;
-  document.getElementById('btn-fulfill').disabled = true;
+  document.getElementById('difficulty-select').style.display = 'none';
 
-  appendLog('=== 게임 시작 ===');
+  const diff = DIFFICULTIES[selectedDifficulty];
+  appendLog(`=== 게임 시작 (${diff.label}) ===`);
   appendLog('백십자재단 혈연센터에 오신 것을 환영합니다.');
   appendLog('카르테인 가문의 5개 의뢰를 완수하세요.');
 
@@ -88,7 +146,7 @@ function startGame() {
   drawCards(gameState, 5);
   gameState.log.forEach(msg => appendLog(msg));
   gameState.phase = 'morning';
-  appendLog('── 오전 단계: 패에서 인물 카드를 클릭하여 배치하세요 ──');
+  appendLog('── 오전: 패에서 인물 카드 클릭→배치 / 장비 상점에서 구매 ──');
   updateUI();
 }
 
@@ -100,6 +158,7 @@ function advancePhase() {
     case 'morning':
       gameState.phase = 'afternoon';
       collectBlood(gameState);
+      sfxCollect();
       gameState.log.forEach(msg => appendLog(msg));
       appendLog('── 오후 수집 완료 ──');
       updateUI();
@@ -111,13 +170,14 @@ function advancePhase() {
       gameState.log.forEach(msg => appendLog(msg));
       if (gameState.activeRequest) {
         document.getElementById('btn-fulfill').disabled = false;
-        appendLog('── 야간 단계: [의뢰 이행] 버튼으로 이행하거나, [다음] 으로 넘기세요 ──');
+        appendLog('── 야간: [의뢰 이행] 또는 [다음]으로 넘기기 ──');
       } else {
-        appendLog('── 야간 단계: 활성 의뢰 없음 ──');
+        appendLog('── 야간: 활성 의뢰 없음 ──');
       }
-      if (Math.random() < 0.4) {
+      if (Math.random() < (gameState.diffSettings?.eventChance ?? 0.4)) {
         gameState.log = [];
         processEvent(gameState);
+        sfxEvent();
         gameState.log.forEach(msg => appendLog(msg));
       }
       updateUI();
@@ -131,6 +191,7 @@ function advancePhase() {
 
       const endResult = checkGameEnd(gameState);
       if (endResult) {
+        endResult === 'win' ? sfxWin() : sfxLose();
         updateUI();
         showGameOver(endResult);
         return;
@@ -142,11 +203,8 @@ function advancePhase() {
       drawCards(gameState, 5);
       gameState.log.forEach(msg => appendLog(msg));
       gameState.phase = 'morning';
-      appendLog(`── 턴 ${gameState.turn} 오전: 인물 카드를 클릭하여 배치하세요 ──`);
+      appendLog(`── 턴 ${gameState.turn} 오전: 인물 배치 / 장비 구매 ──`);
       updateUI();
-      break;
-
-    default:
       break;
   }
 }
@@ -157,6 +215,7 @@ function tryFulfill() {
   const result = fulfillRequest(gameState);
   gameState.log.forEach(msg => appendLog(msg));
   if (result.ok) {
+    sfxFulfill();
     document.getElementById('btn-fulfill').disabled = true;
     appendLog(`의뢰 완료! (${gameState.completedRequests}/5)`);
   } else {
@@ -174,35 +233,57 @@ function onHandCardClick(index) {
     gameState.log = [];
     const result = playCharacter(gameState, index);
     gameState.log.forEach(msg => appendLog(msg));
-    if (!result.ok) appendLog(result.reason);
+    if (result.ok) sfxCardPlay();
+    else appendLog(result.reason);
   } else {
-    appendLog(`${card.type === 'blood' ? card.bloodType + '형 혈액' : card.name}: 오전엔 인물 카드만 배치 가능`);
+    appendLog(`오전엔 인물 카드만 배치 가능`);
   }
+  updateUI();
+}
+
+function onBuyEquip(equipId) {
+  if (!gameState || gameState.phase !== 'morning') return;
+  gameState.log = [];
+  const result = buyEquipment(gameState, equipId);
+  gameState.log.forEach(msg => appendLog(msg));
+  if (result.ok) sfxEquip();
+  else appendLog(result.reason);
   updateUI();
 }
 
 function autoPlay() {
   if (!gameState) startGame();
-  mode = 'auto';
-  appendLog('=== 자동 플레이 시작 ===');
+  appendLog('=== 자동 플레이 ===');
 
   const interval = setInterval(() => {
-    if (!gameState || gameState.gameOver) {
-      clearInterval(interval);
-      mode = 'manual';
-      return;
-    }
+    if (!gameState || gameState.gameOver) { clearInterval(interval); return; }
     gameState.log = [];
     const result = runFullTurn(gameState);
     gameState.log.forEach(msg => appendLog(msg));
     updateUI();
     if (result) {
       clearInterval(interval);
-      mode = 'manual';
+      result === 'win' ? sfxWin() : sfxLose();
       showGameOver(result);
     }
   }, 600);
 }
+
+function onSoundToggle() {
+  initAudio();
+  const wasMuted = isMuted();
+  toggleMute();
+  const btn = document.getElementById('btn-sound');
+  if (wasMuted) {
+    startBGM();
+    btn.textContent = 'BGM OFF';
+  } else {
+    stopBGM();
+    btn.textContent = 'BGM ON';
+  }
+}
+
+// ── UI Rendering ──
 
 function updateUI() {
   if (!gameState) return;
@@ -218,6 +299,8 @@ function updateUI() {
   renderFieldCards();
   renderBloodPool();
   renderRequest();
+  renderShop();
+  renderInstalledEquip();
 
   const phaseBtn = document.getElementById('btn-next-phase');
   switch (gameState.phase) {
@@ -275,6 +358,30 @@ function renderRequest() {
   `;
 }
 
+function renderShop() {
+  const el = document.getElementById('shop-cards');
+  if (!gameState.shopEquipment.length) {
+    el.innerHTML = '<span class="empty-hint">품절</span>';
+    return;
+  }
+  el.innerHTML = gameState.shopEquipment.map(eq => {
+    const canBuy = gameState.phase === 'morning' && eq.cost <= gameState.resources.bp;
+    return `<div class="mini-card equip ${canBuy ? 'buyable' : ''}"
+                onclick="window.__onBuyEquip('${eq.id}')"
+                title="${eq.description}">
+              ${eq.name} [${eq.cost}]
+            </div>`;
+  }).join('');
+}
+
+function renderInstalledEquip() {
+  const el = document.getElementById('installed-equip');
+  document.getElementById('equip-count').textContent = gameState.equipment.length ? `(${gameState.equipment.length})` : '';
+  el.innerHTML = gameState.equipment.map(eq =>
+    `<div class="mini-card equip installed" title="${eq.description}">${eq.name}</div>`
+  ).join('') || '<span class="empty-hint">설치된 장비 없음</span>';
+}
+
 function appendLog(msg) {
   const log = document.getElementById('game-log');
   log.innerHTML += msg + '<br>';
@@ -295,7 +402,7 @@ function showGameOver(result) {
           : '뱀파이어 활동이 적발되었습니다.'
       }</p>
       <p style="margin-top:0.5rem;color:var(--text-secondary)">
-        턴 ${gameState.turn} | BP ${gameState.resources.bp} | REP ${gameState.resources.rep} | SUS ${gameState.resources.sus}
+        ${DIFFICULTIES[gameState.difficulty].label} · 턴 ${gameState.turn} · BP ${gameState.resources.bp} · REP ${gameState.resources.rep} · SUS ${gameState.resources.sus}
       </p>
       <button class="btn-primary" style="margin-top:1rem" onclick="location.reload()">다시 시작</button>
     </div>
@@ -304,9 +411,11 @@ function showGameOver(result) {
 }
 
 window.__onHandClick = onHandCardClick;
+window.__onBuyEquip = onBuyEquip;
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initGallery();
+  initDifficulty();
   initGame();
 });

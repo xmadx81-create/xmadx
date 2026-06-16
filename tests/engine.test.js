@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   createGameState, drawCards, playCharacter, collectBlood,
   activateNextRequest, fulfillRequest, failRequest, checkGameEnd,
-  settleTurn, advanceTurn, shuffle, runFullTurn,
+  settleTurn, advanceTurn, shuffle, runFullTurn, buyEquipment,
+  DIFFICULTIES,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, createBloodCard, STARTER_REQUESTS } from '../src/web-mvp/js/cards.js';
 
@@ -183,6 +184,52 @@ describe('runFullTurn', () => {
     state.gameOver = true;
     runFullTurn(state);
     expect(state.log.length).toBe(0);
+  });
+});
+
+describe('buyEquipment', () => {
+  it('장비를 구매하고 설치한다', () => {
+    const state = createGameState();
+    state.resources.bp = 20;
+    const equipId = state.shopEquipment[0].id;
+    const result = buyEquipment(state, equipId);
+    expect(result.ok).toBe(true);
+    expect(state.equipment.length).toBe(1);
+    expect(state.shopEquipment.find(e => e.id === equipId)).toBeUndefined();
+  });
+
+  it('BP 부족 시 구매 실패', () => {
+    const state = createGameState();
+    state.resources.bp = 0;
+    const result = buyEquipment(state, state.shopEquipment[0].id);
+    expect(result.ok).toBe(false);
+  });
+
+  it('이미 설치된 장비는 재구매 불가', () => {
+    const state = createGameState();
+    state.resources.bp = 50;
+    const eq = state.shopEquipment[0];
+    buyEquipment(state, eq.id);
+    state.shopEquipment.push({ ...eq });
+    const result = buyEquipment(state, eq.id);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('createGameState with difficulty', () => {
+  it('쉬움 난이도는 BP 15, REP 70으로 시작', () => {
+    const state = createGameState('easy');
+    expect(state.resources.bp).toBe(15);
+    expect(state.resources.rep).toBe(70);
+    expect(state.diffSettings.susPerTurn).toBe(1);
+  });
+
+  it('어려움 난이도는 BP 7, REP 35, SUS 10으로 시작', () => {
+    const state = createGameState('hard');
+    expect(state.resources.bp).toBe(7);
+    expect(state.resources.rep).toBe(35);
+    expect(state.resources.sus).toBe(10);
+    expect(state.diffSettings.susPerTurn).toBe(3);
   });
 });
 
