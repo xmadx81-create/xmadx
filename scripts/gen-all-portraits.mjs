@@ -19,7 +19,7 @@ if (!API_KEY) {
 const OUTPUT_DIR = './portraits';
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
-const BASE_STYLE = `Korean mobile gacha game character portrait, 512x512, for a blood donation center card game "헌혈의 집". HIGH QUALITY Korean manhwa illustration. Clean lines, vibrant warm colors, polished rendering. Warm golden bokeh background with sparkle particles and amber-cream gradient. Premium gacha card feel. Bust-up portrait, 3/4 angle.`;
+const BASE_STYLE = `PURE CHARACTER ILLUSTRATION ONLY. No card frame, no text, no stats, no UI elements, no borders, no name labels. 512x512 square image. Korean mobile gacha game character portrait for "헌혈의 집". HIGH QUALITY Korean manhwa/webtoon illustration. Clean lines, vibrant warm colors, polished rendering. Warm golden bokeh background with sparkle particles and amber-cream gradient. Bust-up portrait, 3/4 angle. The image must contain ONLY the character artwork and background — nothing else.`;
 
 const CHARACTERS = [
   {
