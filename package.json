@@ -34,6 +34,7 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "sharp": "^0.35.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.9"
   }

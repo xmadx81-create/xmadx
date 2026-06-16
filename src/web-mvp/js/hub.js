@@ -671,7 +671,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const touchIcon = document.createElement('link');
   touchIcon.rel = 'apple-touch-icon';
-  touchIcon.href = base + 'icons/icon-192.svg';
+  touchIcon.href = base + 'icons/icon-192.png';
   document.head.appendChild(touchIcon);
 
   if ('serviceWorker' in navigator) {
