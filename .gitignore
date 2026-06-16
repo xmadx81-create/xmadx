@@ -1,5 +1,7 @@
 # Node
 node_modules/
+dist/
+.vite/
 data/*.db
 data/*.db-shm
 data/*.db-wal
