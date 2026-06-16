@@ -258,6 +258,115 @@ body {
 .mini-card.character { border-left: 3px solid var(--accent-blue); }
 .mini-card.blood { border-left: 3px solid var(--accent-red); }
 
+/* Visual mini-cards (vcard) */
+.vcard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem;
+  min-width: 140px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.vcard:hover { background: var(--bg-primary); transform: translateY(-1px); }
+
+.vcard[data-rarity="common"] { border-left: 3px solid #888; }
+.vcard[data-rarity="uncommon"] { border-left: 3px solid var(--accent-green); }
+.vcard[data-rarity="rare"] { border-left: 3px solid var(--accent-blue); }
+.vcard[data-rarity="legendary"] { border-left: 3px solid var(--accent-gold); box-shadow: 0 0 6px rgba(212, 168, 67, 0.2); }
+
+.vcard-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.vcard-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+.vcard-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.vcard-body {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.vcard-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vcard-stats {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.vcard-ability {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.1rem;
+}
+
+.vcard.playable {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 8px rgba(212, 168, 67, 0.4);
+}
+
+.vcard.playable:hover {
+  background: rgba(212, 168, 67, 0.15);
+  transform: translateY(-2px);
+}
+
+.vcard.blood { border-left: 3px solid var(--accent-red); min-width: 80px; }
+.vcard.equip { border-left: 3px solid var(--accent-gold); }
+.vcard.equip.buyable { box-shadow: 0 0 8px rgba(212, 168, 67, 0.3); }
+.vcard.equip.buyable:hover { background: rgba(212, 168, 67, 0.15); }
+.vcard.equip.installed { border-left: 3px solid var(--accent-green); cursor: default; opacity: 0.85; }
+.vcard.equip.installed:hover { transform: none; }
+.vcard.recruit { border-left: 3px solid #a479e2; }
+.vcard.recruit.recruitable { box-shadow: 0 0 8px rgba(164, 121, 226, 0.4); }
+.vcard.recruit.recruitable:hover { background: rgba(164, 121, 226, 0.15); }
+.vcard.recruit.locked { opacity: 0.4; cursor: not-allowed; }
+.vcard.recruit.locked:hover { transform: none; }
+
+.vcard.field-card { border-left: 3px solid var(--accent-green); background: rgba(75, 155, 110, 0.08); cursor: default; }
+.vcard.field-card:hover { transform: none; }
+
+.rarity-dot { font-size: 0.6rem; text-transform: uppercase; font-weight: 700; }
+.rarity-dot.common { color: #888; }
+.rarity-dot.uncommon { color: var(--accent-green); }
+.rarity-dot.rare { color: var(--accent-blue); }
+.rarity-dot.legendary { color: var(--accent-gold); }
+
 .game-controls {
   display: flex;
   gap: 0.5rem;
@@ -1087,6 +1196,16 @@ body {
     padding: 0.3rem 0.5rem;
     scroll-snap-align: start;
   }
+
+  .vcard {
+    min-width: 130px;
+    scroll-snap-align: start;
+  }
+
+  .vcard-thumb { width: 30px; height: 30px; }
+  .vcard-icon { width: 30px; height: 30px; font-size: 1rem; }
+  .vcard-name { font-size: 0.75rem; }
+  .vcard-ability { font-size: 0.6rem; }
 
   /* Game controls */
   .game-controls {
