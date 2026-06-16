@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: petroleum-work-system
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server/app.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000

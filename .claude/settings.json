@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm test 2>&1 && echo '✓ 테스트 통과' || echo '✗ 테스트 실패'"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm test*)",
+      "Bash(npm run sim*)",
+      "Bash(npm run prompts*)",
+      "Bash(npm run play*)",
+      "Bash(npx vite*)",
+      "Bash(git *)",
+      "Bash(node *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)"
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "xmadx",
+  "version": "1.0.0",
+  "description": "석유사업본부 업무공유 시스템",
+  "type": "module",
+  "main": "server/app.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server/app.js",
+    "dev": "node server/app.js",
+    "play": "vite --config vite.config.js",
+    "build": "vite build --config vite.config.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim": "node tests/sim.js",
+    "prompts": "node tests/prompts.js",
+    "gen:portraits": "node scripts/gen-portraits.js",
+    "gen:placeholders": "node scripts/gen-placeholders.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:36641/git/xmadx81-create/xmadx"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "pg": "^8.21.0",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
+  }
+}
