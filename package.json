@@ -11,7 +11,7 @@
     "start": "node server/app.js",
     "dev": "node server/app.js",
     "play": "vite --config vite.config.js",
-    "build": "vite build --config vite.config.js",
+    "build": "vite build --config vite.config.js && cp dist/hub.html dist/index.html && cp -r src/web-mvp/assets/portraits dist/assets/portraits",
     "test": "vitest run",
     "test:watch": "vitest",
     "sim": "node tests/sim.js",
