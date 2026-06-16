@@ -14,6 +14,7 @@ import { saveGame, loadGame, deleteSave, hasSave, recordGame, loadStats } from '
 
 let gameState = null;
 let selectedDifficulty = 'normal';
+let prevResources = { bp: null, rep: null, sus: null };
 
 // ── Gallery ──
 
@@ -347,6 +348,17 @@ function onSoundToggle() {
 
 // ── UI Rendering ──
 
+function pulseResource(elId, oldVal, newVal) {
+  if (oldVal === null || oldVal === newVal) return;
+  const el = document.getElementById(elId);
+  const cls = newVal > oldVal ? 'res-pulse-up' : 'res-pulse-down';
+  el.classList.remove('res-pulse-up', 'res-pulse-down');
+  // Force reflow to restart animation if same class re-applied
+  void el.offsetWidth;
+  el.classList.add(cls);
+  el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+}
+
 function updateUI() {
   if (!gameState) return;
   document.getElementById('res-bp').textContent = `BP: ${gameState.resources.bp}`;
@@ -355,6 +367,12 @@ function updateUI() {
   document.getElementById('res-turn').textContent = `턴: ${gameState.turn}`;
   document.getElementById('res-phase').textContent = PHASE_NAMES[gameState.phase] || gameState.phase;
   document.getElementById('res-requests').textContent = `의뢰: ${gameState.completedRequests}/5`;
+
+  // B2: Resource pulse animation
+  pulseResource('res-bp', prevResources.bp, gameState.resources.bp);
+  pulseResource('res-rep', prevResources.rep, gameState.resources.rep);
+  pulseResource('res-sus', prevResources.sus, gameState.resources.sus);
+  prevResources = { bp: gameState.resources.bp, rep: gameState.resources.rep, sus: gameState.resources.sus };
 
   renderHandCards();
   renderFieldCards();
@@ -378,16 +396,24 @@ function updateUI() {
 
 function renderHandCards() {
   const el = document.getElementById('hand-cards');
+  const shouldFlip = gameState.phase === 'morning' || gameState.phase === 'dawn';
   el.innerHTML = gameState.hand.map((c, i) => {
     const type = c.type || 'character';
     const label = type === 'blood' ? `${c.bloodType}형` : `${c.name}`;
     const cost = type === 'character' ? ` [${c.cost}]` : '';
     const playable = gameState.phase === 'morning' && type === 'character' && c.cost <= gameState.resources.bp;
-    return `<div class="mini-card ${type} ${playable ? 'playable' : ''}"
+    const flipClass = shouldFlip ? ' card-flip' : '';
+    return `<div class="mini-card ${type} ${playable ? 'playable' : ''}${flipClass}"
                 onclick="window.__onHandClick(${i})"
                 title="${type === 'character' ? c.ability.description : c.description || ''}"
             >${label}${cost}</div>`;
   }).join('') || '<span class="empty-hint">패 비어 있음</span>';
+  // Remove flip class after animation completes so it doesn't replay on hover
+  if (shouldFlip) {
+    el.querySelectorAll('.card-flip').forEach(card => {
+      card.addEventListener('animationend', () => card.classList.remove('card-flip'), { once: true });
+    });
+  }
 }
 
 function renderFieldCards() {
