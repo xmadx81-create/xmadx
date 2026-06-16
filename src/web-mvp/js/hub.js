@@ -23,11 +23,17 @@ function initGallery() {
   });
 }
 
+function portraitSrc(base) {
+  return `${base}.png`;
+}
+
 function renderGalleryCards(container, cards) {
   container.innerHTML = cards.map(card => `
     <div class="card" data-rarity="${card.rarity}" data-id="${card.id}">
       <div class="card-portrait">
-        <img src="${card.portrait}" alt="${card.name}" />
+        <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
+             onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none';this.nextElementSibling.style.display='flex'}" />
+        <div class="placeholder" style="display:none">${card.name[0]}</div>
       </div>
       <div class="card-info">
         <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>

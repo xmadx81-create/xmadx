@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sim": "node tests/sim.js",
-    "prompts": "node tests/prompts.js"
+    "prompts": "node tests/prompts.js",
+    "gen:portraits": "node scripts/gen-portraits.js",
+    "gen:placeholders": "node scripts/gen-placeholders.js"
   },
   "repository": {
     "type": "git",

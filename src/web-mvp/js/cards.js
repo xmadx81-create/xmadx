@@ -13,7 +13,7 @@ export const CHARACTERS = [
     power: 3,
     ability: { type: 'collect', value: 2, description: 'BP +2 수집. 배치 시 REP +5' },
     flavor: '밝은 미소 뒤의 차가운 계산',
-    portrait: 'assets/portraits/park-harin.svg',
+    portrait: 'assets/portraits/park-harin',
   },
   {
     id: 'kim-doyun',
@@ -25,7 +25,7 @@ export const CHARACTERS = [
     power: 1,
     ability: { type: 'collect', value: 1, description: 'BP +1 수집' },
     flavor: '순수한 열정, 위험한 무지',
-    portrait: 'assets/portraits/kim-doyun.svg',
+    portrait: 'assets/portraits/kim-doyun',
   },
   {
     id: 'lee-seoyeon',
@@ -37,7 +37,7 @@ export const CHARACTERS = [
     power: 2,
     ability: { type: 'collect', value: 3, description: 'BP +3 수집. SUS -2' },
     flavor: '의심의 눈초리, 완벽한 기술',
-    portrait: 'assets/portraits/lee-seoyeon.svg',
+    portrait: 'assets/portraits/lee-seoyeon',
   },
   {
     id: 'kartein-duke',
@@ -49,7 +49,7 @@ export const CHARACTERS = [
     power: 5,
     ability: { type: 'request_discount', value: 2, description: '의뢰 이행 비용 -2. SUS +5' },
     flavor: '우아한 포식자',
-    portrait: 'assets/portraits/kartein-duke.svg',
+    portrait: 'assets/portraits/kartein-duke',
   },
   {
     id: 'choi-minseo',
@@ -61,7 +61,7 @@ export const CHARACTERS = [
     power: 1,
     ability: { type: 'donate', value: 3, description: '혈액 카드 3장 생성' },
     flavor: '헌혈 300회의 사나이',
-    portrait: 'assets/portraits/choi-minseo.svg',
+    portrait: 'assets/portraits/choi-minseo',
   },
   {
     id: 'jung-woojin',
@@ -73,7 +73,7 @@ export const CHARACTERS = [
     power: 2,
     ability: { type: 'transport', value: 1, description: '의뢰 이행 시 BP 보너스 +1' },
     flavor: '새벽 4시의 특별 배송',
-    portrait: 'assets/portraits/jung-woojin.svg',
+    portrait: 'assets/portraits/jung-woojin',
   },
   {
     id: 'viktor-hessen',
@@ -85,7 +85,7 @@ export const CHARACTERS = [
     power: 3,
     ability: { type: 'convert', value: 1, description: '혈액 카드 1장을 아무 혈액형으로 변환' },
     flavor: '300년의 충성',
-    portrait: 'assets/portraits/viktor-hessen.svg',
+    portrait: 'assets/portraits/viktor-hessen',
   },
   {
     id: 'han-soyul',
@@ -97,7 +97,7 @@ export const CHARACTERS = [
     power: 1,
     ability: { type: 'reputation', value: 3, description: 'REP +3' },
     flavor: 'SNS 좋아요의 힘',
-    portrait: 'assets/portraits/han-soyul.svg',
+    portrait: 'assets/portraits/han-soyul',
   },
   {
     id: 'nigel-crowe',
@@ -109,7 +109,7 @@ export const CHARACTERS = [
     power: 3,
     ability: { type: 'audit', value: 3, description: 'SUS -3. 이벤트 카드 1장 확인' },
     flavor: '장부에 숨긴 진실',
-    portrait: 'assets/portraits/nigel-crowe.svg',
+    portrait: 'assets/portraits/nigel-crowe',
   },
   {
     id: 'yun-chaea',
@@ -121,7 +121,7 @@ export const CHARACTERS = [
     power: 2,
     ability: { type: 'research', value: 1, description: '혈액 카드 효율 +1 (이번 턴)' },
     flavor: '데이터는 거짓말하지 않는다',
-    portrait: 'assets/portraits/yun-chaea.svg',
+    portrait: 'assets/portraits/yun-chaea',
   },
 ];
 
