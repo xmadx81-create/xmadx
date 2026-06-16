@@ -429,16 +429,24 @@ function renderHandCards() {
   const shouldFlip = gameState.phase === 'morning' || gameState.phase === 'dawn';
   el.innerHTML = gameState.hand.map((c, i) => {
     const type = c.type || 'character';
-    const label = type === 'blood' ? `${c.bloodType}형` : `${c.name}`;
-    const cost = type === 'character' ? ` [${c.cost}]` : '';
     const playable = gameState.phase === 'morning' && type === 'character' && c.cost <= gameState.resources.bp;
     const flipClass = shouldFlip ? ' card-flip' : '';
-    return `<div class="mini-card ${type} ${playable ? 'playable' : ''}${flipClass}"
-                onclick="window.__onHandClick(${i})"
-                title="${type === 'character' ? c.ability.description : c.description || ''}"
-            >${label}${cost}</div>`;
+    if (type === 'blood') {
+      return `<div class="vcard blood${flipClass}" onclick="window.__onHandClick(${i})">
+        <div class="vcard-icon">🩸</div>
+        <div class="vcard-name">${c.bloodType}형</div>
+      </div>`;
+    }
+    return `<div class="vcard ${playable ? 'playable' : ''}${flipClass}" data-rarity="${c.rarity}"
+                onclick="window.__onHandClick(${i})">
+      <div class="vcard-thumb"><img src="${portraitSrc(c.portrait)}" alt="" onerror="this.style.display='none'"/></div>
+      <div class="vcard-body">
+        <div class="vcard-name">${c.name}</div>
+        <div class="vcard-stats"><span>⚔${c.cost}</span><span>💪${c.power}</span></div>
+        <div class="vcard-ability">${c.ability.description}</div>
+      </div>
+    </div>`;
   }).join('') || '<span class="empty-hint">패 비어 있음</span>';
-  // Remove flip class after animation completes so it doesn't replay on hover
   if (shouldFlip) {
     el.querySelectorAll('.card-flip').forEach(card => {
       card.addEventListener('animationend', () => card.classList.remove('card-flip'), { once: true });
@@ -449,7 +457,14 @@ function renderHandCards() {
 function renderFieldCards() {
   const el = document.getElementById('field-cards');
   const cards = gameState.field.map(c =>
-    `<div class="mini-card character field-card" title="${c.ability.description}">${c.name} [${c.power}]</div>`
+    `<div class="vcard field-card" data-rarity="${c.rarity}">
+      <div class="vcard-thumb"><img src="${portraitSrc(c.portrait)}" alt="" onerror="this.style.display='none'"/></div>
+      <div class="vcard-body">
+        <div class="vcard-name">${c.name}</div>
+        <div class="vcard-stats"><span>💪${c.power}</span></div>
+        <div class="vcard-ability">${c.ability.description}</div>
+      </div>
+    </div>`
   ).join('');
 
   const combos = calculateComboBonuses(gameState);
@@ -465,7 +480,7 @@ function renderBloodPool() {
   const counts = {};
   gameState.bloodPool.forEach(b => { counts[b.bloodType] = (counts[b.bloodType] || 0) + 1; });
   el.innerHTML = Object.entries(counts).map(([bt, n]) =>
-    `<div class="mini-card blood">${bt}형 x${n}</div>`
+    `<div class="vcard blood"><div class="vcard-icon">🩸</div><div class="vcard-name">${bt}형 x${n}</div></div>`
   ).join('') || '<span class="empty-hint">비어 있음</span>';
 }
 
@@ -489,9 +504,14 @@ function renderShop() {
   if (!gameState.shopEquipment?.length) { el.innerHTML = '<span class="empty-hint">품절</span>'; return; }
   el.innerHTML = gameState.shopEquipment.map(eq => {
     const canBuy = gameState.phase === 'morning' && eq.cost <= gameState.resources.bp;
-    return `<div class="mini-card equip ${canBuy ? 'buyable' : ''}"
-                onclick="window.__onBuyEquip('${eq.id}')" title="${eq.description}">
-              ${eq.name} [${eq.cost}]</div>`;
+    return `<div class="vcard equip ${canBuy ? 'buyable' : ''}" onclick="window.__onBuyEquip('${eq.id}')">
+      <div class="vcard-icon">🔧</div>
+      <div class="vcard-body">
+        <div class="vcard-name">${eq.name}</div>
+        <div class="vcard-stats"><span>⚔${eq.cost}</span></div>
+        <div class="vcard-ability">${eq.description}</div>
+      </div>
+    </div>`;
   }).join('');
 }
 
@@ -499,7 +519,13 @@ function renderInstalledEquip() {
   const el = document.getElementById('installed-equip');
   document.getElementById('equip-count').textContent = gameState.equipment.length ? `(${gameState.equipment.length})` : '';
   el.innerHTML = gameState.equipment.map(eq =>
-    `<div class="mini-card equip installed" title="${eq.description}">${eq.name}</div>`
+    `<div class="vcard equip installed">
+      <div class="vcard-icon">✅</div>
+      <div class="vcard-body">
+        <div class="vcard-name">${eq.name}</div>
+        <div class="vcard-ability">${eq.description}</div>
+      </div>
+    </div>`
   ).join('') || '<span class="empty-hint">설치된 장비 없음</span>';
 }
 
@@ -510,13 +536,17 @@ function renderRecruitShop() {
   el.innerHTML = gameState.recruitShop.map(c => {
     const rarityLocked = (c.rarity === 'rare' && tier < 2) || (c.rarity === 'legendary' && tier < 4);
     if (rarityLocked) {
-      return `<div class="mini-card recruit locked" title="언락 필요: ${c.rarity === 'rare' ? '3승' : '5승'} 이상">??? [잠김]</div>`;
+      return `<div class="vcard recruit locked"><div class="vcard-icon">🔒</div><div class="vcard-body"><div class="vcard-name">??? [잠김]</div><div class="vcard-ability">${c.rarity === 'rare' ? '3승' : '5승'} 이상 필요</div></div></div>`;
     }
     const canRecruit = gameState.phase === 'morning' && c.recruitCost <= gameState.resources.bp;
-    return `<div class="mini-card recruit ${canRecruit ? 'recruitable' : ''}"
-                onclick="window.__onRecruit('${c.id}')"
-                title="${c.title} — ${c.ability.description} (${c.rarity})">
-              ${c.name} [${c.recruitCost}]</div>`;
+    return `<div class="vcard recruit ${canRecruit ? 'recruitable' : ''}" data-rarity="${c.rarity}" onclick="window.__onRecruit('${c.id}')">
+      <div class="vcard-thumb"><img src="${portraitSrc(c.portrait)}" alt="" onerror="this.style.display='none'"/></div>
+      <div class="vcard-body">
+        <div class="vcard-name">${c.name}</div>
+        <div class="vcard-stats"><span>⚔${c.recruitCost}</span><span class="rarity-dot ${c.rarity}">${c.rarity}</span></div>
+        <div class="vcard-ability">${c.ability.description}</div>
+      </div>
+    </div>`;
   }).join('');
 }
 
