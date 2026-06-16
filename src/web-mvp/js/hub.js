@@ -36,25 +36,46 @@ function portraitSrc(base) { return `${base}.png`; }
 
 function renderGalleryCards(container, cards) {
   container.innerHTML = cards.map(card => `
-    <div class="card" data-rarity="${card.rarity}" data-id="${card.id}" onclick="window.__showCardPopup('${card.id}')">
-      <div class="card-portrait">
-        <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
-             onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none';this.nextElementSibling.style.display='flex'}" />
-        <div class="placeholder" style="display:none">${card.name[0]}</div>
-      </div>
-      <div class="card-info">
-        <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
-        <div class="card-name">${card.name}</div>
-        <div class="card-title">${card.title}</div>
-        <div class="card-stats">
-          <span class="stat">비용 ${card.cost}</span>
-          <span class="stat">위력 ${card.power}</span>
-          <span class="stat">${card.rarity}</span>
+    <div class="card" data-rarity="${card.rarity}" data-id="${card.id}">
+      <div class="card-inner">
+        <div class="card-front">
+          <div class="card-portrait">
+            <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
+                 onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none';this.nextElementSibling.style.display='flex'}" />
+            <div class="placeholder" style="display:none">${card.name[0]}</div>
+          </div>
+          <div class="card-info">
+            <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
+            <div class="card-name">${card.name}</div>
+            <div class="card-title">${card.title}</div>
+          </div>
         </div>
-        <div class="card-flavor">"${card.flavor}"</div>
+        <div class="card-back">
+          <div class="back-name">${card.name}</div>
+          <div class="back-ability">${card.ability.description}</div>
+          <div class="card-stats">
+            <span class="stat">비용 ${card.cost}</span>
+            <span class="stat">위력 ${card.power}</span>
+            <span class="stat">${card.rarity}</span>
+          </div>
+          <div class="back-desc">"${card.flavor}"</div>
+        </div>
       </div>
     </div>
   `).join('');
+  container.querySelectorAll('.card').forEach(el => {
+    let flipped = false;
+    el.addEventListener('click', () => {
+      if (!flipped) {
+        el.classList.add('flipped');
+        flipped = true;
+      } else {
+        window.__showCardPopup(el.dataset.id);
+        el.classList.remove('flipped');
+        flipped = false;
+      }
+    });
+  });
 }
 
 function factionLabel(f) {
