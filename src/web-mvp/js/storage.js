@@ -107,6 +107,28 @@ function unlockAchievement(id) {
   return true;
 }
 
+export const UNLOCK_TIERS = [
+  { tier: 0, label: '초보 관리자', description: '기본 캐릭터 · 쉬움/보통 난이도' },
+  { tier: 1, winsNeeded: 1, label: '경험된 관리자', description: '어려움 난이도 해금' },
+  { tier: 2, winsNeeded: 3, label: '숙련된 관리자', description: 'RARE 캐릭터 영입 해금' },
+  { tier: 3, winsNeeded: 3, achievementsNeeded: 3, label: '전문 관리자', description: '전체 장비 해금' },
+  { tier: 4, winsNeeded: 5, label: '카르테인의 동맹', description: 'LEGENDARY 캐릭터 영입 해금' },
+];
+
+export function getUnlockTier() {
+  const stats = loadStats();
+  const achievements = loadAchievements();
+  const totalWins = (stats.wins.easy || 0) + (stats.wins.normal || 0) + (stats.wins.hard || 0);
+
+  let tier = 0;
+  if (totalWins >= 1) tier = 1;
+  if (totalWins >= 3) tier = 2;
+  if (totalWins >= 3 && achievements.length >= 3) tier = 3;
+  if (totalWins >= 5) tier = 4;
+
+  return tier;
+}
+
 export function checkAchievements(state, result) {
   const newly = [];
   const stats = loadStats();

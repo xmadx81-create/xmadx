@@ -680,6 +680,85 @@ body {
 
 .req-reward { font-size: 0.8rem; color: var(--accent-green); margin-top: 0.25rem; }
 
+/* ── C1: Story narration ── */
+.story-text {
+  color: var(--accent-gold);
+  font-style: italic;
+  padding: 0.25rem 0;
+  border-left: 2px solid var(--accent-gold);
+  padding-left: 0.5rem;
+  display: inline-block;
+  margin: 0.15rem 0;
+}
+
+/* ── C4: Unlock tree ── */
+.unlock-tree {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 0.75rem 0;
+  margin-bottom: 1rem;
+}
+
+.unlock-node {
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  text-align: center;
+  min-width: 120px;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.unlock-node.reached {
+  border-color: var(--accent-gold);
+  background: rgba(212, 168, 67, 0.1);
+}
+
+.unlock-node.locked {
+  opacity: 0.4;
+}
+
+.unlock-tier {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.unlock-node.reached .unlock-tier { color: var(--accent-gold); }
+
+.unlock-label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin: 0.2rem 0;
+}
+
+.unlock-desc {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.unlock-connector {
+  width: 20px;
+  height: 2px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.mini-card.recruit.locked {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-left-color: var(--border);
+}
+
+.diff-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ── A4: Combo indicator ── */
 .combo-indicator {
   display: flex;
@@ -1032,6 +1111,17 @@ body {
   .filter-btn {
     font-size: 0.75rem;
     padding: 0.3rem 0.7rem;
+  }
+
+  /* Unlock tree */
+  .unlock-tree {
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .unlock-node {
+    min-width: 100px;
+    padding: 0.4rem 0.6rem;
   }
 
   /* Achievements */

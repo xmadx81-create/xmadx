@@ -1,4 +1,4 @@
-import { CHARACTERS, EQUIPMENT } from './cards.js';
+import { CHARACTERS, EQUIPMENT, STORY_BEATS } from './cards.js';
 import {
   createGameState, drawCards, playCharacter, collectBlood,
   activateNextRequest, fulfillRequest, processEvent, settleTurn,
@@ -10,11 +10,12 @@ import {
   initAudio, toggleMute, isMuted, startBGM, stopBGM,
   sfxCardPlay, sfxCollect, sfxFulfill, sfxEvent, sfxEquip, sfxWin, sfxLose,
 } from './sound.js';
-import { saveGame, loadGame, deleteSave, hasSave, recordGame, loadStats, ACHIEVEMENT_DEFS, loadAchievements, checkAchievements } from './storage.js';
+import { saveGame, loadGame, deleteSave, hasSave, recordGame, loadStats, ACHIEVEMENT_DEFS, loadAchievements, checkAchievements, UNLOCK_TIERS, getUnlockTier } from './storage.js';
 
 let gameState = null;
 let selectedDifficulty = 'normal';
 let prevResources = { bp: null, rep: null, sus: null };
+let storyTriggered = new Set();
 
 // ── Gallery ──
 
@@ -102,8 +103,17 @@ function initTabs() {
 // ── Difficulty ──
 
 function initDifficulty() {
+  const tier = getUnlockTier();
+  const hardBtn = document.querySelector('.diff-btn[data-diff="hard"]');
+  if (hardBtn && tier < 1) {
+    hardBtn.disabled = true;
+    hardBtn.title = '1승 이상 달성 시 해금';
+    hardBtn.querySelector('.diff-desc').textContent = '1승 이상 시 해금';
+  }
+
   document.querySelectorAll('.diff-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (btn.disabled) return;
       document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       selectedDifficulty = btn.dataset.diff;
@@ -137,6 +147,7 @@ function initGame() {
 function startGame() {
   initAudio();
   deleteSave();
+  storyTriggered = new Set();
   gameState = createGameState(selectedDifficulty);
   refreshRecruitShop(gameState);
   onGameStarted();
@@ -169,6 +180,7 @@ function onGameStarted() {
     gameState.phase = 'morning';
   }
   appendLog('── 오전: 인물 배치 / 장비 구매 / 인물 모집 ──');
+  checkStoryBeats();
   updateUI();
 }
 
@@ -185,6 +197,7 @@ function advancePhase() {
       sfxCollect();
       gameState.log.forEach(msg => appendLog(msg));
       appendLog('── 오후 수집 완료 ──');
+      checkStoryBeats();
       updateUI();
       break;
 
@@ -208,6 +221,7 @@ function advancePhase() {
         sfxEvent();
         gameState.log.forEach(msg => appendLog(msg));
       }
+      checkStoryBeats();
       updateUI();
       break;
 
@@ -236,6 +250,7 @@ function advancePhase() {
       gameState.log.forEach(msg => appendLog(msg));
       gameState.phase = 'morning';
       appendLog(`── 턴 ${gameState.turn} 오전: 인물 배치 / 장비 구매 / 인물 모집 ──`);
+      checkStoryBeats();
       updateUI();
       break;
   }
@@ -255,6 +270,7 @@ function tryFulfill() {
     document.getElementById('btn-fulfill').disabled = true;
     disableNightBtns();
     appendLog(`의뢰 완료! (${gameState.completedRequests}/5)`);
+    checkStoryBeats();
   } else {
     appendLog(`이행 불가: ${result.reason}`);
   }
@@ -476,7 +492,12 @@ function renderInstalledEquip() {
 function renderRecruitShop() {
   const el = document.getElementById('recruit-cards');
   if (!gameState.recruitShop?.length) { el.innerHTML = '<span class="empty-hint">대기 중</span>'; return; }
+  const tier = getUnlockTier();
   el.innerHTML = gameState.recruitShop.map(c => {
+    const rarityLocked = (c.rarity === 'rare' && tier < 2) || (c.rarity === 'legendary' && tier < 4);
+    if (rarityLocked) {
+      return `<div class="mini-card recruit locked" title="언락 필요: ${c.rarity === 'rare' ? '3승' : '5승'} 이상">??? [잠김]</div>`;
+    }
     const canRecruit = gameState.phase === 'morning' && c.recruitCost <= gameState.resources.bp;
     return `<div class="mini-card recruit ${canRecruit ? 'recruitable' : ''}"
                 onclick="window.__onRecruit('${c.id}')"
@@ -527,6 +548,19 @@ function renderStats() {
     }).join('');
   }
 
+  const unlockEl = document.getElementById('unlock-tree');
+  if (unlockEl) {
+    const currentTier = getUnlockTier();
+    unlockEl.innerHTML = UNLOCK_TIERS.map(t => {
+      const reached = currentTier >= t.tier;
+      return `<div class="unlock-node ${reached ? 'reached' : 'locked'}">
+        <div class="unlock-tier">Tier ${t.tier}</div>
+        <div class="unlock-label">${t.label}</div>
+        <div class="unlock-desc">${t.description}</div>
+      </div>`;
+    }).join('<div class="unlock-connector"></div>');
+  }
+
   const history = document.getElementById('stats-history');
   if (!stats.history.length) {
     history.innerHTML = '<span class="empty-hint">기록 없음</span>';
@@ -551,6 +585,34 @@ function appendLog(msg) {
   log.scrollTop = log.scrollHeight;
 }
 
+function appendStory(text) {
+  const log = document.getElementById('game-log');
+  log.innerHTML += `<span class="story-text">${text}</span><br>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function checkStoryBeats() {
+  if (!gameState) return;
+
+  function fire(trigger) {
+    if (storyTriggered.has(trigger)) return;
+    const beat = STORY_BEATS.find(b => b.trigger === trigger);
+    if (beat) {
+      storyTriggered.add(trigger);
+      appendStory(beat.text);
+    }
+  }
+
+  if (gameState.turn === 1) fire('turn-1');
+  if (gameState.turn === 5) fire('turn-5');
+  if (gameState.completedRequests === 1 && !storyTriggered.has('first-complete')) fire('first-complete');
+  if (gameState.completedRequests === 4 && gameState.activeRequest) fire('final-request');
+  if (gameState.activeRequest && !storyTriggered.has('first-request') && gameState.nextRequestNum === 2) fire('first-request');
+  if (gameState.resources.sus >= 50) fire('sus-50');
+  if (gameState.resources.sus >= 80) fire('sus-80');
+  if (gameState.resources.rep <= 20 && gameState.resources.rep > 0) fire('rep-low');
+}
+
 function showAchievementToast(achieveId) {
   const def = ACHIEVEMENT_DEFS.find(a => a.id === achieveId);
   if (!def) return;
@@ -562,6 +624,9 @@ function showAchievementToast(achieveId) {
 }
 
 function showGameOver(result) {
+  const endBeat = STORY_BEATS.find(b => b.trigger === result);
+  if (endBeat) appendStory(endBeat.text);
+
   const newAchievements = checkAchievements(gameState, result);
   newAchievements.forEach((id, i) => setTimeout(() => showAchievementToast(id), i * 800));
 

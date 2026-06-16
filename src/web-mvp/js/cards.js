@@ -245,6 +245,20 @@ export const CHARACTERS = [
   },
 ];
 
+export const STORY_BEATS = [
+  { trigger: 'turn-1', text: '백십자재단 혈연센터에 첫 출근하는 날. 밝은 형광등 아래, 모든 것이 정상적으로 보인다... 아직은.' },
+  { trigger: 'first-request', text: '비밀 연락망을 통해 첫 의뢰서가 도착했다. 카르테인 가문의 혈액관리국, 그 이름만으로도 무게가 느껴진다.' },
+  { trigger: 'first-complete', text: '"훌륭하군." 짧은 메모가 도착했다. 카르테인 집사 빅토르의 필체.' },
+  { trigger: 'turn-5', text: '센터 운영이 안정궤도에 올랐다. 하지만 밤이 되면 다른 일이 시작된다.' },
+  { trigger: 'sus-50', text: '보건당국에서 "야간 혈액 사용량 이상"을 문의해왔다. 서류를 조작해야 할지도 모른다.' },
+  { trigger: 'sus-80', text: '기자가 센터 주변을 어슬렁거린다. 누군가 제보한 걸까? 시간이 얼마 남지 않았다.' },
+  { trigger: 'rep-low', text: '헌혈자 수가 급감하고 있다. 센터의 평판이 흔들리면 모든 것이 무너질 수 있다.' },
+  { trigger: 'final-request', text: '마지막 의뢰. 이것만 완수하면 카르테인과의 거래가 끝난다. 아니, 정말로 끝날까?' },
+  { trigger: 'win', text: '카르테인 가문의 의뢰를 모두 완수했다. 듀크가 보낸 봉인된 편지: "당신은 가문의 친구입니다. 영원히."' },
+  { trigger: 'lose-sus', text: '새벽 4시, 특수수사대가 센터에 도착했다. 냉장고 뒤의 비밀 통로가 발견되었다...' },
+  { trigger: 'lose-rep', text: '마지막 헌혈자가 떠났다. 텅 빈 대기실에 형광등만 깜빡인다.' },
+];
+
 export function createBloodCard(bloodType) {
   return {
     id: `blood-${bloodType}-${Date.now()}`,
