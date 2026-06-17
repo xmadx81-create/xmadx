@@ -4375,6 +4375,21 @@ body {
   font-weight: bold;
 }
 
+/* ── Stage Clear Info ── */
+.stage-cleared {
+  border-color: rgba(75, 155, 110, 0.4) !important;
+}
+.stage-cleared .stage-num {
+  background: rgba(75, 155, 110, 0.3);
+  color: #4b9b6e;
+}
+.stage-clear-info {
+  display: block;
+  font-size: 0.7rem;
+  color: #ffd700;
+  margin-top: 4px;
+}
+
 /* ── Reinforce Warning in Deploy ── */
 .intel-reinforce {
   background: rgba(255, 60, 60, 0.15);

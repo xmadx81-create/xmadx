@@ -8,7 +8,7 @@ import {
   getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate, useItem,
   spawnReinforcements, getDangerZone,
 } from './engine.js';
-import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard } from './save.js';
+import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear } from './save.js';
 
 let gameSave = loadGame();
 refreshQuests(gameSave);
@@ -134,7 +134,10 @@ function renderStageSelect() {
     const difficulty = Math.min(5, Math.ceil((s.enemyLevel || 1) / 2));
     const stars = '★'.repeat(difficulty) + '☆'.repeat(5 - difficulty);
     const hasReinforce = s.reinforcements ? `<span class="stage-reinforce">⚠증원</span>` : '';
-    return `<div class="stage-card" data-stage="${s.id}">
+    const clearData = gameSave.stageClears?.[s.id];
+    const clearStars = clearData ? '⭐'.repeat(clearData.stars) + '☆'.repeat(3 - clearData.stars) : '';
+    const clearInfo = clearData ? `<span class="stage-clear-info">${clearStars} ${clearData.bestTurns}턴 (${clearData.clears}회)</span>` : '';
+    return `<div class="stage-card ${clearData ? 'stage-cleared' : ''}" data-stage="${s.id}">
       <div class="stage-num">${i + 1}</div>
       <div class="stage-info">
         <div class="stage-name">${s.name} <span class="stage-lv">Lv.${s.enemyLevel || 1}</span></div>
@@ -145,6 +148,7 @@ function renderStageSelect() {
           <span class="stage-deploy-count">출전 ${maxDeploy}명</span>
           ${hasReinforce}
         </div>
+        ${clearInfo}
       </div>
     </div>`;
   }).join('');
@@ -450,6 +454,19 @@ function showDeployDetail(charId) {
   if (!c) return;
 
   const unit = cardToUnit(c, 0, 0);
+  const cardData = gameSave.cards[c.id];
+  if (cardData && cardData.level > 1) {
+    for (let lv = 1; lv < cardData.level; lv++) {
+      unit.level++;
+      unit.maxHp += Math.floor(unit.maxHp * 0.05);
+      unit.atk += 2;
+      unit.def += 1;
+      unit.maxMp += 1;
+    }
+    unit.hp = unit.maxHp;
+    unit.xp = cardData.xp || 0;
+    unit.xpToNext = unit.level * 50;
+  }
   const cp = getCombatPower(unit);
   const mbti = CHARACTER_MBTI[c.id] || '????';
   const roleLabel = { tank:'탱커', melee_dps:'근접 딜러', ranged_dps:'원거리 딜러', support:'서포터', bruiser:'브루저', battle_support:'전투 지원', evasive_dps:'암살자', breaker:'브레이커' };
@@ -527,9 +544,32 @@ function startBattle() {
   const teamData = units.length >= 2 ? getTeamCP(units) : null;
   const synergyMult = teamData ? teamData.synergy.teamMult : 1.0;
   battleState = createBattleState(currentStageId, deploySelected, centerBuff, synergyMult);
+
+  battleState.units.filter(u => u.team === 'player').forEach(u => {
+    const charId = u.charId || u.id;
+    const cardData = gameSave.cards[charId];
+    if (cardData && cardData.level > 1) {
+      for (let lv = 1; lv < cardData.level; lv++) {
+        u.level++;
+        const hpGain = Math.floor(u.maxHp * 0.05);
+        u.maxHp += hpGain;
+        u.atk += 2;
+        u.def += 1;
+        u.maxMp += 1;
+        u.xpToNext = u.level * 50;
+      }
+      u.hp = u.maxHp;
+      u.mp = u.maxMp;
+      u.xp = cardData.xp || 0;
+    }
+  });
+
   document.getElementById('deploy-screen').style.display = 'none';
   document.getElementById('battle-screen').style.display = '';
   document.getElementById('battle-log').innerHTML = '';
+  dangerZoneActive = false;
+  undoMoveData = null;
+  document.getElementById('btn-danger-zone').classList.remove('active');
 
   showStory(battleState.stage.storyIntro, () => {
     showPhaseBanner('아군 턴', 'player');
@@ -1322,6 +1362,12 @@ function endTurn() {
         appendLog(`적 ${unit?.name || '?'} 이동`);
       } else if (a.type === 'sense') {
         appendLog(`✦ 적 스킬: ${a.skillName}`);
+      } else if (a.type === 'ultimate') {
+        appendLog(`🌟 적 궁극기: ${a.name}`);
+        a.effects?.forEach(e => appendLog(`  → ${e}`));
+      } else if (a.type === 'enrage') {
+        const unit = getUnitByUid(battleState, a.unit);
+        appendLog(`🔥 ${unit?.name || '?'} 분노! ATK +${a.atkBoost}`);
       }
     });
 
@@ -1353,10 +1399,15 @@ function handleBattleEnd(result) {
   gameSave.stats.totalBattles++;
   progressQuest(gameSave, 'battle');
 
+  saveCharProgress(gameSave, battleState.units);
+
   if (result === 'win') {
     title.textContent = '승리!';
     box.className = 'battle-result-box win';
-    text.textContent = battleState.stage.storyOutro || '모든 적을 제압했습니다!';
+    const turns = battleState.turnNumber;
+    const stars = turns <= 5 ? 3 : turns <= 8 ? 2 : 1;
+    recordStageClear(gameSave, battleState.stageId, turns);
+    text.textContent = `${battleState.stage.storyOutro || '모든 적을 제압했습니다!'}\n${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)} (${turns}턴)`;
     gameSave.stats.wins++;
     progressQuest(gameSave, 'win');
     addCard(gameSave, CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id, 'common');
