@@ -4,7 +4,7 @@ import {
   getAttackTargets, activateSense, endPlayerPhase, endEnemyPhase,
   runEnemyPhase, checkVictory, allPlayerUnitsActed, cardToUnit,
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, createMap,
-  tickCooldowns,
+  tickCooldowns, ROLE_MODIFIERS,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, SENSE_TYPES } from '../src/web-mvp/js/cards.js';
 
@@ -26,28 +26,31 @@ describe('cardToUnit', () => {
     expect(unit.name).toBe('박하린');
     expect(unit.x).toBe(3);
     expect(unit.y).toBe(4);
-    expect(unit.hp).toBe(char.power * 12 + 35); // rare bonus
+    expect(unit.role).toBe('support');
+    expect(unit.hp).toBe(71);
     expect(unit.maxHp).toBe(unit.hp);
-    expect(unit.atk).toBe(char.power * 4 + 6);
-    expect(unit.def).toBe(Math.floor(char.cost / 2) + 3);
-    expect(unit.mov).toBe(2); // rare
+    expect(unit.atk).toBe(10);
+    expect(unit.def).toBe(5);
+    expect(unit.mov).toBe(3);
     expect(unit.acted).toBe(false);
   });
 
-  it('연구/감사 타입은 원거리(rng=2)를 가진다', () => {
-    const researcher = CHARACTERS.find(c => c.ability?.type === 'research');
-    if (researcher) {
-      const unit = cardToUnit(researcher, 0, 0);
-      expect(unit.rng).toBe(2);
-    }
+  it('원거리 역할(ranged_dps)은 rng=2를 가진다', () => {
+    const rangedChar = CHARACTERS.find(c => c.role === 'ranged_dps');
+    const unit = cardToUnit(rangedChar, 0, 0);
+    expect(unit.rng).toBe(2);
   });
 
-  it('일반 타입은 근접(rng=1)을 가진다', () => {
-    const collector = CHARACTERS.find(c => c.ability?.type === 'collect');
-    if (collector) {
-      const unit = cardToUnit(collector, 0, 0);
-      expect(unit.rng).toBe(1);
-    }
+  it('근접 역할(melee_dps)은 rng=1을 가진다', () => {
+    const meleeChar = CHARACTERS.find(c => c.role === 'melee_dps');
+    const unit = cardToUnit(meleeChar, 0, 0);
+    expect(unit.rng).toBe(1);
+  });
+
+  it('역할별 스탯 보정이 적용된다', () => {
+    expect(Object.keys(ROLE_MODIFIERS).length).toBe(8);
+    expect(ROLE_MODIFIERS.tank.hp).toBe(1.5);
+    expect(ROLE_MODIFIERS.breaker.rng).toBeNull();
   });
 
   it('sense 스킬 데이터가 변환된다', () => {
@@ -181,7 +184,7 @@ describe('moveUnit', () => {
 
 describe('getAttackRange', () => {
   it('근접 유닛(rng=1)은 인접 4칸을 공격한다', () => {
-    const state = createBattleState('stage-1', ['park-harin']);
+    const state = createBattleState('stage-1', ['jung-woojin']);
     const player = state.units.find(u => u.team === 'player' && u.rng === 1);
     if (player) {
       player.x = 3; player.y = 3;

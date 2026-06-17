@@ -26,18 +26,40 @@ const RARITY_ATK_BONUS  = { common: 2,  uncommon: 4,  rare: 6,  legendary: 10 };
 const RARITY_DEF_BONUS  = { common: 1,  uncommon: 2,  rare: 3,  legendary: 5 };
 const RARITY_MOV        = { common: 3,  uncommon: 3,  rare: 2,  legendary: 2 };
 
+// ── Role Modifiers ─────────────────────────────────────────────────────
+
+export const ROLE_MODIFIERS = {
+  tank:           { hp: 1.5,  atk: 0.7, def: 1.5, mov: 2, rng: 1 },
+  melee_dps:      { hp: 0.9,  atk: 1.4, def: 0.8, mov: 3, rng: 1 },
+  ranged_dps:     { hp: 0.8,  atk: 1.3, def: 0.7, mov: 2, rng: 2 },
+  support:        { hp: 1.0,  atk: 0.6, def: 1.0, mov: 3, rng: 2 },
+  bruiser:        { hp: 1.3,  atk: 1.1, def: 1.2, mov: 2, rng: 1 },
+  battle_support: { hp: 1.0,  atk: 1.0, def: 0.9, mov: 3, rng: 2 },
+  evasive_dps:    { hp: 0.85, atk: 1.2, def: 1.1, mov: 3, rng: 1 },
+  breaker:        { hp: 1.3,  atk: 1.4, def: 1.2, mov: 3, rng: null },
+};
+
 // ── Stat Conversion: Card → SRPG Unit ───────────────────────────────────
 
 export function cardToUnit(charData, x, y) {
   const r = charData.rarity;
-  const hp = charData.power * 12 + (RARITY_HP_BONUS[r] || 0);
-  const atk = charData.power * 4 + (RARITY_ATK_BONUS[r] || 0);
-  const def = Math.floor(charData.cost / 2) + (RARITY_DEF_BONUS[r] || 0);
-  const mov = RARITY_MOV[r] || 3;
+  let hp = charData.power * 12 + (RARITY_HP_BONUS[r] || 0);
+  let atk = charData.power * 4 + (RARITY_ATK_BONUS[r] || 0);
+  let def = Math.floor(charData.cost / 2) + (RARITY_DEF_BONUS[r] || 0);
+  let mov = RARITY_MOV[r] || 3;
 
-  // Range: research or audit ability types get ranged (2), else melee (1)
   const abilityType = charData.ability?.type || '';
-  const rng = (abilityType === 'research' || abilityType === 'audit') ? 2 : 1;
+  let rng = (abilityType === 'research' || abilityType === 'audit') ? 2 : 1;
+
+  const role = charData.role;
+  const mod = ROLE_MODIFIERS[role];
+  if (mod) {
+    hp = Math.floor(hp * mod.hp);
+    atk = Math.floor(atk * mod.atk);
+    def = Math.floor(def * mod.def);
+    mov = mod.mov;
+    if (mod.rng !== null) rng = mod.rng;
+  }
 
   return {
     id: charData.id,
@@ -46,6 +68,7 @@ export function cardToUnit(charData, x, y) {
     title: charData.title,
     faction: charData.faction,
     rarity: charData.rarity,
+    role: role || null,
 
     hp,
     maxHp: hp,
