@@ -530,6 +530,74 @@ export function tickBuffs(state) {
   });
 }
 
+// 🔴 사마의: DOT 시스템 (독/출혈)
+export function applyDOT(unit, type, damage, turns) {
+  if (!unit.dots) unit.dots = [];
+  const existing = unit.dots.find(d => d.type === type);
+  if (existing) {
+    existing.damage = Math.max(existing.damage, damage);
+    existing.turns = Math.max(existing.turns, turns);
+  } else {
+    unit.dots.push({ type, damage, turns });
+  }
+}
+
+export function tickDOTs(state) {
+  const dotDamage = [];
+  state.units.forEach(u => {
+    if (u.hp <= 0 || !u.dots || u.dots.length === 0) return;
+    u.dots = u.dots.filter(d => {
+      u.hp = Math.max(1, u.hp - d.damage);
+      dotDamage.push({ uid: u.uid, name: u.name, type: d.type, damage: d.damage });
+      d.turns--;
+      return d.turns > 0;
+    });
+  });
+  return dotDamage;
+}
+
+export function cleanseDOT(unit, type) {
+  if (!unit.dots) return false;
+  const before = unit.dots.length;
+  if (type) {
+    unit.dots = unit.dots.filter(d => d.type !== type);
+  } else {
+    unit.dots.shift();
+  }
+  return unit.dots.length < before;
+}
+
+// 🔵 제갈량: 스킬 타겟 시스템
+export function getSkillTargetType(unit) {
+  if (!unit.senseSkill) return null;
+  const t = unit.senseSkill.baseType;
+  if (['직감', '혈압', '혈기', '혈유'].includes(t)) return 'enemy_single';
+  if (t === '감응') return 'ally_single';
+  if (t === '투지') return 'self';
+  return 'auto';
+}
+
+export function getSkillTargets(state, unit) {
+  if (!unit.senseSkill) return [];
+  const type = getSkillTargetType(unit);
+  if (type === 'self') return [unit];
+  if (type === 'auto') return [];
+
+  const senseRange = unit.senseSkill.baseType === '혈유' || unit.senseSkill.baseType === '혈각' ? 3 : 2;
+
+  if (type === 'enemy_single') {
+    return state.units.filter(u => u.team !== unit.team && u.hp > 0 &&
+      manhattanDist(u, unit) <= senseRange);
+  }
+  if (type === 'ally_single') {
+    const allies = state.units.filter(u => u.team === unit.team && u.hp > 0 && u.uid !== unit.uid &&
+      u.hp < u.maxHp);
+    if (allies.length === 0) return [unit];
+    return allies;
+  }
+  return [];
+}
+
 // ── Loot System ────────────────────────────────────────────────────────
 
 const LOOT_TABLE = [
@@ -608,6 +676,7 @@ export function cardToUnit(charData, x, y) {
     shield: 0,
     invuln: false,
     buffs: [],
+    dots: [],
 
     senseSkill: charData.sense ? {
       name: charData.sense.name,
@@ -946,6 +1015,14 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
   // Auto-equip all units with default loadout
   units.forEach(u => autoEquip(u));
 
+  // 🔴 사마의: 보스(레전더리) 적에게 유물 자동 장비
+  const BOSS_RELICS = ['duke-wine', 'survivor-will', 'blood-pact', 'first-resolve', 'director-glasses'];
+  let relicIdx = 0;
+  units.filter(u => u.team === 'enemy' && u.rarity === 'legendary').forEach(u => {
+    equipRelic(u, BOSS_RELICS[relicIdx % BOSS_RELICS.length]);
+    relicIdx++;
+  });
+
   return {
     stageId,
     stage,
@@ -984,6 +1061,13 @@ export function endEnemyPhase(state) {
   applyTerrainHealing(state);
   tickCooldowns(state);
   tickBuffs(state);
+  const dotResults = tickDOTs(state);
+  if (dotResults.length > 0) {
+    dotResults.forEach(d => {
+      const label = d.type === 'poison' ? '🟢독' : '🔴출혈';
+      state.log.push(`${label} ${d.name} -${d.damage} HP`);
+    });
+  }
   state.turnNumber++;
   state.phase = 'player_phase';
   state.log.push(`── 턴 ${state.turnNumber}: 플레이어 페이즈 ──`);
@@ -1410,7 +1494,7 @@ export function previewSkillDamage(unit) {
 
 // ── Sense Skills (촉/혈 Special Abilities) ──────────────────────────────
 
-export function activateSense(state, unit) {
+export function activateSense(state, unit, chosenTarget) {
   if (!unit || unit.hp <= 0) return { ok: false, reason: '유닛이 유효하지 않습니다' };
   if (!unit.senseSkill) return { ok: false, reason: '촉/혈 스킬이 없는 유닛입니다' };
   if (unit.senseSkill.cooldown > 0) return { ok: false, reason: `쿨다운 중 (${unit.senseSkill.cooldown}턴 남음)` };
@@ -1449,11 +1533,7 @@ export function activateSense(state, unit) {
         break;
       }
       case '직감': {
-        // Direct damage to one adjacent enemy
-        const target = enemyUnits.find(e => {
-          const dist = Math.abs(e.x - unit.x) + Math.abs(e.y - unit.y);
-          return dist <= 2;
-        });
+        const target = chosenTarget || enemyUnits.find(e => manhattanDist(e, unit) <= 2);
         if (target) {
           const dmg = sense.power + Math.floor(Math.random() * 3);
           target.hp -= dmg;
@@ -1467,27 +1547,16 @@ export function activateSense(state, unit) {
         break;
       }
       case '감응': {
-        // Heal nearest ally
-        const injured = allyUnits
-          .filter(a => a.hp < a.maxHp)
-          .sort((a, b) => {
-            const da = Math.abs(a.x - unit.x) + Math.abs(a.y - unit.y);
-            const db = Math.abs(b.x - unit.x) + Math.abs(b.y - unit.y);
-            return da - db;
-          });
-        if (injured.length > 0) {
-          const target = injured[0];
-          const heal = sense.power + Math.floor(Math.random() * 4);
-          target.hp = Math.min(target.maxHp, target.hp + heal);
-          result.effects.push(`${target.name} HP +${heal} 회복`);
-          state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name} HP +${heal} 회복`);
-        } else {
-          // Heal self if no injured allies
-          const selfHeal = Math.floor(sense.power * 0.5);
-          unit.hp = Math.min(unit.maxHp, unit.hp + selfHeal);
-          result.effects.push(`자가 회복 HP +${selfHeal}`);
-          state.log.push(`${unit.name}의 「${sense.name}」 — 자가 회복 HP +${selfHeal}`);
+        const target = chosenTarget || allyUnits.filter(a => a.hp < a.maxHp)
+          .sort((a, b) => manhattanDist(a, unit) - manhattanDist(b, unit))[0] || unit;
+        const heal = sense.power + Math.floor(Math.random() * 4);
+        target.hp = Math.min(target.maxHp, target.hp + heal);
+        if (target.dots && target.dots.length > 0) {
+          cleanseDOT(target);
+          result.effects.push(`${target.name} 상태이상 해제`);
         }
+        result.effects.push(`${target.name} HP +${heal} 회복`);
+        state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name} HP +${heal} 회복`);
         break;
       }
       case '혈각': {
@@ -1514,13 +1583,17 @@ export function activateSense(state, unit) {
         break;
       }
       case '공감': {
-        // Heal all allies in range 3
         const healAmount = Math.floor(sense.power * 0.7);
         allyUnits.forEach(ally => {
-          const dist = Math.abs(ally.x - unit.x) + Math.abs(ally.y - unit.y);
+          const dist = manhattanDist(ally, unit);
           if (dist <= 3 && ally.hp < ally.maxHp) {
             ally.hp = Math.min(ally.maxHp, ally.hp + healAmount);
-            result.effects.push(`${ally.name} HP +${healAmount}`);
+            if (ally.dots && ally.dots.length > 0) {
+              cleanseDOT(ally);
+              result.effects.push(`${ally.name} HP +${healAmount} + 상태이상 해제`);
+            } else {
+              result.effects.push(`${ally.name} HP +${healAmount}`);
+            }
           }
         });
         state.log.push(`${unit.name}의 「${sense.name}」 발동 — 광역 회복`);
@@ -1531,36 +1604,30 @@ export function activateSense(state, unit) {
     // 혈 skills (vampire)
     switch (sense.baseType) {
       case '혈압': {
-        // Direct damage to one enemy in range 2
-        const target = enemyUnits
-          .sort((a, b) => {
-            const da = Math.abs(a.x - unit.x) + Math.abs(a.y - unit.y);
-            const db = Math.abs(b.x - unit.x) + Math.abs(b.y - unit.y);
-            return da - db;
-          })[0];
+        const target = chosenTarget || enemyUnits
+          .filter(e => manhattanDist(e, unit) <= 2)
+          .sort((a, b) => manhattanDist(a, unit) - manhattanDist(b, unit))[0];
         if (target) {
-          const dist = Math.abs(target.x - unit.x) + Math.abs(target.y - unit.y);
-          if (dist <= 2) {
-            const dmg = sense.power + Math.floor(Math.random() * 4);
-            target.hp -= dmg;
-            if (target.hp <= 0) target.hp = 0;
-            result.effects.push(`${target.name}에게 ${dmg} 데미지`);
-            state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name}에게 ${dmg} 데미지!`);
-          }
+          const dmg = sense.power + Math.floor(Math.random() * 4);
+          target.hp -= dmg;
+          if (target.hp <= 0) target.hp = 0;
+          result.effects.push(`${target.name}에게 ${dmg} 데미지`);
+          state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name}에게 ${dmg} 데미지!`);
         }
         break;
       }
       case '혈향': {
-        // Debuff: reduce all enemies' DEF in range
         const debuffDef = Math.floor(sense.power * 0.4);
+        const poisonDmg = Math.floor(sense.power * 0.3);
         enemyUnits.forEach(enemy => {
-          const dist = Math.abs(enemy.x - unit.x) + Math.abs(enemy.y - unit.y);
+          const dist = manhattanDist(enemy, unit);
           if (dist <= 3) {
             enemy.def = Math.max(0, enemy.def - debuffDef);
-            result.effects.push(`${enemy.name} DEF -${debuffDef}`);
+            applyDOT(enemy, 'poison', poisonDmg, 3);
+            result.effects.push(`${enemy.name} DEF -${debuffDef} + 독 ${poisonDmg}/턴`);
           }
         });
-        state.log.push(`${unit.name}의 「${sense.name}」 발동 — 적 방어력 약화`);
+        state.log.push(`${unit.name}의 「${sense.name}」 발동 — 적 방어력 약화 + 중독`);
         break;
       }
       case '혈맹': {
@@ -1590,24 +1657,22 @@ export function activateSense(state, unit) {
         break;
       }
       case '혈기': {
-        // Lifesteal: damage one enemy, heal self
-        const target = enemyUnits
-          .sort((a, b) => a.hp - b.hp)[0]; // target lowest HP
+        const target = chosenTarget || enemyUnits.sort((a, b) => a.hp - b.hp)[0];
         if (target) {
           const dmg = sense.power + Math.floor(Math.random() * 3);
           target.hp -= dmg;
           if (target.hp <= 0) target.hp = 0;
+          applyDOT(target, 'bleed', Math.floor(sense.power * 0.25), 2);
           const heal = Math.floor(dmg * 0.5);
           unit.hp = Math.min(unit.maxHp, unit.hp + heal);
-          result.effects.push(`${target.name}에게 ${dmg} 데미지, 자신 HP +${heal} 흡혈`);
-          state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name}에게 ${dmg} 데미지, 흡혈 +${heal}`);
+          const bleedDmg = Math.floor(sense.power * 0.25);
+          result.effects.push(`${target.name}에게 ${dmg} 데미지 + 출혈 ${bleedDmg}/턴, 흡혈 +${heal}`);
+          state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name}에게 ${dmg} 데미지, 출혈, 흡혈 +${heal}`);
         }
         break;
       }
       case '혈유': {
-        // Charm/debuff: reduce target MOV and ATK
-        const target = enemyUnits
-          .sort((a, b) => b.atk - a.atk)[0]; // target highest ATK
+        const target = chosenTarget || enemyUnits.sort((a, b) => b.atk - a.atk)[0];
         if (target) {
           const atkReduce = Math.floor(sense.power * 0.5);
           const movReduce = 1;
