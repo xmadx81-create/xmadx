@@ -470,9 +470,12 @@ function onWaitBtn() {
 
 // ── Combat ──
 
-function doAttack(attacker, defender) {
+async function doAttack(attacker, defender) {
   const result = attackUnit(battleState, attacker, defender);
   if (!result.ok) return;
+
+  renderBattle();
+  await showCombatWidget(attacker, defender, result);
 
   const defTile = document.querySelector(`.tile[data-x="${defender.x}"][data-y="${defender.y}"]`);
   const atkTile = document.querySelector(`.tile[data-x="${attacker.x}"][data-y="${attacker.y}"]`);
@@ -517,6 +520,59 @@ function showFloatingText(tileEl, text, type) {
   ft.textContent = text;
   tileEl.appendChild(ft);
   setTimeout(() => ft.remove(), 1000);
+}
+
+function showCombatWidget(attacker, defender, result) {
+  const w = document.getElementById('combat-widget');
+
+  const setPortrait = (id, unit) => {
+    const el = document.getElementById(id);
+    el.innerHTML = `<img src="${portraitSrc(`assets/portraits/${unit.id}`)}"
+      onerror="this.style.display='none';this.parentElement.innerHTML='<span class=cw-initial>${unit.name[0]}</span>'" />`;
+  };
+  setPortrait('cw-atk-portrait', attacker);
+  setPortrait('cw-def-portrait', defender);
+
+  document.getElementById('cw-atk-name').textContent = attacker.name;
+  document.getElementById('cw-def-name').textContent = defender.name;
+  document.getElementById('cw-atk-stats').textContent = `ATK ${attacker.atk}  DEF ${attacker.def}`;
+
+  const typeMap = { physical: '⚔️', mental: '🧠', blood: '🩸' };
+  document.getElementById('cw-type-icon').textContent = typeMap[attacker.attackType] || '⚔️';
+
+  const dmgEl = document.getElementById('cw-damage');
+  const resultEl = document.getElementById('cw-result');
+  const subEl = document.getElementById('cw-sub');
+  const hpEl = document.getElementById('cw-def-hp');
+
+  if (result.evaded) {
+    dmgEl.textContent = '회피!';
+    dmgEl.className = 'cw-damage evaded';
+    resultEl.textContent = '';
+    hpEl.textContent = '';
+  } else {
+    dmgEl.textContent = `-${result.damage}`;
+    dmgEl.className = 'cw-damage';
+    const tags = [];
+    if (result.penetrated) tags.push('관통');
+    if (result.critical) tags.push('크리티컬!');
+    resultEl.textContent = tags.join(' ');
+    if (result.defenderDied) {
+      hpEl.textContent = '💀 전사';
+      hpEl.className = 'cw-hp-change ko';
+    } else {
+      hpEl.textContent = `HP ${defender.hp}/${defender.maxHp}`;
+      hpEl.className = 'cw-hp-change';
+    }
+  }
+  subEl.textContent = result.counterDamage ? `반격 -${result.counterDamage}` : '';
+
+  w.style.display = 'flex';
+  return new Promise(resolve => {
+    const dismiss = () => { w.style.display = 'none'; resolve(); };
+    w.onclick = dismiss;
+    setTimeout(dismiss, 2000);
+  });
 }
 
 function showSkillOverlay(name, category) {
