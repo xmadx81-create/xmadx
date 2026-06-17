@@ -6,6 +6,7 @@ import {
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, getCombatPower,
   previewDamage, previewSkillDamage, getFlankingBonus,
   getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate, useItem,
+  spawnReinforcements, getDangerZone,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard } from './save.js';
 
@@ -20,6 +21,8 @@ let highlightedTiles = [];
 let deploySelected = [];
 let currentStageId = null;
 let commandTarget = null;
+let dangerZoneActive = false;
+let undoMoveData = null;
 
 // ── Gallery ──
 
@@ -130,6 +133,7 @@ function renderStageSelect() {
     const maxDeploy = s.playerSpawns.length;
     const difficulty = Math.min(5, Math.ceil((s.enemyLevel || 1) / 2));
     const stars = '★'.repeat(difficulty) + '☆'.repeat(5 - difficulty);
+    const hasReinforce = s.reinforcements ? `<span class="stage-reinforce">⚠증원</span>` : '';
     return `<div class="stage-card" data-stage="${s.id}">
       <div class="stage-num">${i + 1}</div>
       <div class="stage-info">
@@ -139,6 +143,7 @@ function renderStageSelect() {
           <span class="stage-stars">${stars}</span>
           <span class="stage-enemy-count">적 ${enemyCount}명</span>
           <span class="stage-deploy-count">출전 ${maxDeploy}명</span>
+          ${hasReinforce}
         </div>
       </div>
     </div>`;
@@ -250,11 +255,16 @@ function renderEnemyIntel(stage) {
 
   const roleLabel = { tank:'탱커', melee_dps:'근딜', ranged_dps:'원딜', support:'서포터', bruiser:'브루저', battle_support:'전술', evasive_dps:'암살', breaker:'브레이커' };
 
+  const reinforceInfo = stage.reinforcements
+    ? `<div class="intel-reinforce">⚠ 증원 경고: ${stage.reinforcements.map(r => `턴${r.turn} +${r.units.length}명`).join(', ')}</div>`
+    : '';
+
   panel.innerHTML = `
     <div class="intel-header">
       <span class="intel-title">적 정보</span>
       <span class="intel-count">${enemies.length}명 · Lv.${eLv}</span>
     </div>
+    ${reinforceInfo}
     <div class="intel-list">${enemies.map(e => `
       <div class="intel-unit">
         <div class="intel-portrait"><img src="${portraitSrc(`assets/portraits/${e.id}`)}" onerror="this.style.display='none'" /></div>
@@ -560,6 +570,8 @@ function renderBattle() {
   grid.style.gridTemplateColumns = `repeat(${map.cols}, 48px)`;
   grid.style.gridTemplateRows = `repeat(${map.rows}, 48px)`;
 
+  const dangerTiles = dangerZoneActive ? getDangerZone(battleState) : [];
+
   let html = '';
   for (let r = 0; r < map.rows; r++) {
     for (let c = 0; c < map.cols; c++) {
@@ -567,6 +579,8 @@ function renderBattle() {
       const tileType = tile.type;
       const highlight = highlightedTiles.find(t => t.x === c && t.y === r);
       const highlightClass = highlight ? ` ${highlight.cls}` : '';
+      const isDanger = dangerZoneActive && dangerTiles.some(d => d.x === c && d.y === r);
+      const dangerClass = isDanger ? ' danger-zone' : '';
       const unit = units.find(u => u.hp > 0 && u.x === c && u.y === r);
       const selectedClass = (selectedUid && unit && unit.uid === selectedUid) ? ' selected' : '';
 
@@ -601,7 +615,7 @@ function renderBattle() {
           </div>`;
       }
 
-      html += `<div class="tile ${tileType}${highlightClass}${selectedClass}" data-x="${c}" data-y="${r}">${unitHtml}</div>`;
+      html += `<div class="tile ${tileType}${highlightClass}${dangerClass}${selectedClass}" data-x="${c}" data-y="${r}">${unitHtml}</div>`;
     }
   }
   grid.innerHTML = html;
@@ -708,6 +722,11 @@ function showActionMenu(unit) {
 
   const hasItems = gameSave.inventory && gameSave.inventory.length > 0;
   document.getElementById('btn-item').disabled = !hasItems;
+
+  const undoBtn = document.getElementById('btn-undo');
+  if (undoBtn) {
+    undoBtn.style.display = (undoMoveData && undoMoveData.uid === unit.uid) ? '' : 'none';
+  }
 }
 
 function hideActionMenu() {
@@ -725,6 +744,7 @@ function onTileClick(x, y) {
     const valid = highlightedTiles.find(t => t.x === x && t.y === y && t.cls === 'move-range');
     if (valid) {
       const unit = getUnitByUid(battleState, selectedUid);
+      undoMoveData = { uid: unit.uid, fromX: unit.x, fromY: unit.y };
       const result = moveUnit(battleState, unit, x, y);
       if (result.ok) {
         appendLog(`${unit.name} → (${x},${y}) 이동`);
@@ -788,6 +808,7 @@ function cancelSelection() {
   hideActionMenu();
   hideCommandPanel();
   showUnitDetail(null);
+  if (document.getElementById('item-panel')) document.getElementById('item-panel').style.display = 'none';
   renderBattle();
 }
 
@@ -818,6 +839,7 @@ function onSkillBtn() {
   const unit = getUnitByUid(battleState, selectedUid);
   if (!unit || !unit.senseSkill || unit.senseSkill.cooldown > 0) return;
 
+  undoMoveData = null;
   const result = activateSense(battleState, unit);
   if (result.ok) {
     showSkillOverlay(unit.senseSkill.name, SENSE_TYPES[unit.senseSkill.baseType]?.category);
@@ -861,6 +883,7 @@ function onItemBtn() {
       if (!item) return;
       const result = useItem(battleState, unit, item);
       if (result.ok) {
+        undoMoveData = null;
         gameSave.inventory.splice(idx, 1);
         saveGame(gameSave);
         appendLog(`🧪 ${unit.name}: ${result.name} 사용`);
@@ -874,6 +897,17 @@ function onItemBtn() {
   panel.style.display = 'flex';
 }
 
+function onUndoMove() {
+  if (!undoMoveData) return;
+  const unit = getUnitByUid(battleState, undoMoveData.uid);
+  if (!unit || unit.acted) return;
+  unit.x = undoMoveData.fromX;
+  unit.y = undoMoveData.fromY;
+  appendLog(`↩ ${unit.name} 이동 취소`);
+  undoMoveData = null;
+  cancelSelection();
+}
+
 function onWaitBtn() {
   if (!selectedUid) return;
   const unit = getUnitByUid(battleState, selectedUid);
@@ -881,6 +915,7 @@ function onWaitBtn() {
     unit.acted = true;
     appendLog(`${unit.name} 대기`);
   }
+  undoMoveData = null;
   cancelSelection();
   checkAutoEndTurn();
 }
@@ -1009,6 +1044,7 @@ function onCommandSelect(cmd, attacker, defender) {
 }
 
 async function doSkillAttack(attacker, defender) {
+  undoMoveData = null;
   if (!attacker.senseSkill || attacker.senseSkill.cooldown > 0) return;
 
   const result = activateSense(battleState, attacker);
@@ -1031,6 +1067,7 @@ async function doSkillAttack(attacker, defender) {
 }
 
 async function doUltimate(unit, ultIndex) {
+  undoMoveData = null;
   const result = executeUltimate(battleState, unit, ultIndex);
   if (!result.ok) return;
 
@@ -1053,6 +1090,7 @@ async function doUltimate(unit, ultIndex) {
 // ── Combat ──
 
 async function doAttack(attacker, defender) {
+  undoMoveData = null;
   const result = attackUnit(battleState, attacker, defender);
   if (!result.ok) return;
 
@@ -1212,6 +1250,51 @@ function showLevelUp(name, level) {
   setTimeout(() => { el.style.display = 'none'; }, 2500);
 }
 
+// 🔴 사마의: 증원 배너
+function showReinforceBanner(msg) {
+  const el = document.getElementById('reinforce-banner');
+  document.getElementById('reinforce-text').textContent = msg;
+  el.style.display = 'flex';
+  setTimeout(() => { el.style.display = 'none'; }, 2500);
+}
+
+// 🔵 제갈량: 위험 범위 토글
+function toggleDangerZone() {
+  dangerZoneActive = !dangerZoneActive;
+  const btn = document.getElementById('btn-danger-zone');
+  btn.classList.toggle('active', dangerZoneActive);
+  renderBattle();
+}
+
+// 🔴🔵 유닛 상태 목록
+function showUnitListPanel() {
+  if (!battleState) return;
+  const panel = document.getElementById('unit-list-panel');
+  const content = document.getElementById('ulp-content');
+  const playerUnits = battleState.units.filter(u => u.team === 'player');
+  const enemyUnits = battleState.units.filter(u => u.team === 'enemy');
+
+  const renderUnit = (u) => {
+    const hpPct = u.hp > 0 ? Math.round((u.hp / u.maxHp) * 100) : 0;
+    const hpColor = u.hp <= 0 ? 'dead' : hpPct > 60 ? '' : hpPct > 30 ? 'medium' : 'low';
+    const acted = u.acted ? ' acted' : '';
+    const buffCount = (u.buffs?.length || 0);
+    return `<div class="ulp-unit ${u.team}${acted} ${u.hp <= 0 ? 'ulp-dead' : ''}">
+      <span class="ulp-name">${u.name}</span>
+      <div class="ulp-hp-bar"><div class="ulp-hp-fill ${hpColor}" style="width:${hpPct}%"></div></div>
+      <span class="ulp-hp-text">${u.hp}/${u.maxHp}</span>
+      ${buffCount > 0 ? `<span class="ulp-buffs">✦${buffCount}</span>` : ''}
+      ${u.acted ? '<span class="ulp-acted">✓</span>' : ''}
+    </div>`;
+  };
+
+  content.innerHTML = `
+    <div class="ulp-section"><div class="ulp-label">🔵 아군</div>${playerUnits.map(renderUnit).join('')}</div>
+    <div class="ulp-section"><div class="ulp-label">🔴 적</div>${enemyUnits.map(renderUnit).join('')}</div>
+  `;
+  panel.style.display = '';
+}
+
 // ── End Turn ──
 
 function checkAutoEndTurn() {
@@ -1246,6 +1329,14 @@ function endTurn() {
     if (vc) { handleBattleEnd(vc); return; }
 
     endEnemyPhase(battleState);
+
+    // 🔴 사마의: 증원 체크
+    const reinforcement = spawnReinforcements(battleState);
+    if (reinforcement) {
+      showReinforceBanner(reinforcement.message);
+      reinforcement.units.forEach(u => appendLog(`🔴 증원: ${u.name} 등장!`));
+    }
+
     showPhaseBanner('아군 턴', 'player');
     renderBattle();
   }, 800);
@@ -1369,5 +1460,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-skill').addEventListener('click', onSkillBtn);
   document.getElementById('btn-wait').addEventListener('click', onWaitBtn);
   document.getElementById('btn-item').addEventListener('click', onItemBtn);
+  document.getElementById('btn-undo').addEventListener('click', onUndoMove);
   document.getElementById('btn-end-turn').addEventListener('click', endTurn);
+  document.getElementById('btn-danger-zone').addEventListener('click', toggleDangerZone);
+  document.getElementById('btn-unit-list').addEventListener('click', showUnitListPanel);
+  document.getElementById('ulp-close').addEventListener('click', () => {
+    document.getElementById('unit-list-panel').style.display = 'none';
+  });
 });

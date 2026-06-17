@@ -113,6 +113,8 @@
             <span class="hud-stage" id="hud-stage">센터 로비</span>
             <span class="hud-turn" id="hud-turn">턴 1</span>
             <span class="phase-indicator" id="phase-indicator">아군 턴</span>
+            <button class="hud-btn" id="btn-danger-zone" title="적 위험 범위 표시">⚠</button>
+            <button class="hud-btn" id="btn-unit-list" title="유닛 목록">📋</button>
           </div>
 
           <!-- 전투 맵 (스크롤 가능) -->
@@ -127,6 +129,7 @@
             <button class="action-btn skill-btn" id="btn-skill">스킬</button>
             <button class="action-btn item-btn" id="btn-item">아이템</button>
             <button class="action-btn wait-btn" id="btn-wait">대기</button>
+            <button class="action-btn undo-btn" id="btn-undo" style="display:none">↩취소</button>
           </div>
 
           <!-- 아이템 사용 패널 -->
@@ -150,6 +153,20 @@
             </div>
             <div class="unit-detail-stats" id="detail-stats"></div>
             <div class="unit-detail-sense" id="detail-sense"></div>
+          </div>
+
+          <!-- 유닛 목록 패널 -->
+          <div id="unit-list-panel" class="unit-list-panel" style="display:none">
+            <div class="ulp-header">
+              <span>유닛 상태</span>
+              <button id="ulp-close" class="ulp-close">&times;</button>
+            </div>
+            <div id="ulp-content" class="ulp-content"></div>
+          </div>
+
+          <!-- 증원 배너 -->
+          <div id="reinforce-banner" class="reinforce-banner" style="display:none">
+            <span id="reinforce-text"></span>
           </div>
 
           <!-- 턴 종료 -->
