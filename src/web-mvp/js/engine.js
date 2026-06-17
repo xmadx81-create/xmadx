@@ -184,6 +184,9 @@ export function cardToUnit(charData, x, y) {
     equipment: { weapon: null, armor: null, accessory: null },
     relic: null,
 
+    mp: 10,
+    maxMp: 10,
+
     senseSkill: charData.sense ? {
       name: charData.sense.name,
       baseType: charData.sense.baseType,
@@ -192,6 +195,7 @@ export function cardToUnit(charData, x, y) {
       effects: charData.sense.effects,
       cooldown: 0,
       maxCooldown: 3,
+      mpCost: Math.max(2, Math.ceil(charData.sense.power * 0.8)),
     } : null,
 
     acted: false,
@@ -393,6 +397,10 @@ export function endEnemyPhase(state) {
   // Mark all enemy units as not-acted
   state.units.forEach(u => {
     if (u.team === 'enemy') u.acted = false;
+  });
+  // MP recovery (+2 per round for all living units)
+  state.units.forEach(u => {
+    if (u.hp > 0) u.mp = Math.min(u.maxMp, u.mp + 2);
   });
   // Tick cooldowns at end of full round
   tickCooldowns(state);
@@ -694,6 +702,72 @@ export function attackUnit(state, attacker, defender) {
   return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated };
 }
 
+// ── Damage Preview (non-destructive estimate) ─────────────────────────
+
+export function previewDamage(state, attacker, defender) {
+  let atkPower = attacker.atk;
+  let defPower = defender.def;
+
+  if (attacker.relic?.condition === 'full_hp' && attacker.hp >= attacker.maxHp) {
+    atkPower = Math.floor(atkPower * (attacker.relic.effect.atkMult || 1));
+  }
+  if (attacker.relic?.condition === 'low_hp' && attacker.hp <= attacker.maxHp * 0.25) {
+    atkPower = Math.floor(atkPower * (attacker.relic.effect.atkMult || 1));
+  }
+  if (defender.relic?.condition === 'low_hp' && defender.hp <= defender.maxHp * 0.25) {
+    defPower = Math.floor(defPower * (defender.relic.effect.defMult || 1));
+  }
+  if (state) {
+    state.units.filter(u => u.team === defender.team && u.hp > 0 && u.uid !== defender.uid).forEach(ally => {
+      if (ally.relic?.condition === 'field_aura') defPower += ally.relic.effect.allyDef || 0;
+    });
+  }
+
+  const faction = getFactionAdvantage(attacker, defender);
+  atkPower += faction.atkBonus;
+  defPower += faction.defBonus;
+
+  const pen = attacker.pen || 0;
+  const effectiveDef = Math.max(0, defPower - pen);
+  const rawDamage = atkPower - effectiveDef;
+  let typeMult = 1.0;
+  if (attacker.attackType === 'blood') typeMult = 1.1;
+
+  const minDmg = Math.max(1, Math.floor(rawDamage * typeMult));
+  const maxVariance = Math.max(1, Math.floor(atkPower * 0.15));
+  const maxDmg = Math.max(1, Math.floor((rawDamage + maxVariance) * typeMult));
+  const critDmg = Math.max(1, Math.floor((rawDamage + maxVariance) * typeMult * 1.5));
+
+  return { minDmg, maxDmg, critDmg, crt: attacker.crt, eva: defender.eva };
+}
+
+export function previewSkillDamage(unit) {
+  if (!unit.senseSkill) return null;
+  const sense = unit.senseSkill;
+  const senseInfo = SENSE_TYPES[sense.baseType];
+  if (!senseInfo) return null;
+
+  const dmgTypes = ['직감', '혈압', '혈식', '혈기'];
+  const healTypes = ['감응', '공감'];
+  const buffTypes = ['예감', '투지', '혈맹'];
+  const debuffTypes = ['혈각', '혈향', '혈유'];
+
+  if (dmgTypes.includes(sense.baseType)) {
+    return { type: 'damage', value: sense.power, range: sense.baseType === '혈식' ? '광역 2칸' : '2칸' };
+  }
+  if (healTypes.includes(sense.baseType)) {
+    const healAmt = sense.baseType === '공감' ? Math.floor(sense.power * 0.7) : sense.power;
+    return { type: 'heal', value: healAmt, range: sense.baseType === '공감' ? '광역 3칸' : '가장 가까운 아군' };
+  }
+  if (buffTypes.includes(sense.baseType)) {
+    return { type: 'buff', value: Math.floor(sense.power * 0.5), range: sense.baseType === '투지' ? '자신' : '2칸 아군' };
+  }
+  if (debuffTypes.includes(sense.baseType)) {
+    return { type: 'debuff', value: Math.floor(sense.power * 0.4), range: '3칸 적' };
+  }
+  return null;
+}
+
 // ── Sense Skills (촉/혈 Special Abilities) ──────────────────────────────
 
 export function activateSense(state, unit) {
@@ -701,6 +775,8 @@ export function activateSense(state, unit) {
   if (!unit.senseSkill) return { ok: false, reason: '촉/혈 스킬이 없는 유닛입니다' };
   if (unit.senseSkill.cooldown > 0) return { ok: false, reason: `쿨다운 중 (${unit.senseSkill.cooldown}턴 남음)` };
   if (unit.acted) return { ok: false, reason: '이미 행동한 유닛입니다' };
+  const mpCost = unit.senseSkill.mpCost || 0;
+  if (unit.mp < mpCost) return { ok: false, reason: `MP 부족 (${unit.mp}/${mpCost})` };
 
   const sense = unit.senseSkill;
   const senseInfo = SENSE_TYPES[sense.baseType];
@@ -905,7 +981,8 @@ export function activateSense(state, unit) {
     }
   }
 
-  // Set cooldown
+  // Deduct MP and set cooldown
+  unit.mp -= mpCost;
   sense.cooldown = sense.maxCooldown;
   unit.acted = true;
 

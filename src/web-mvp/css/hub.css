@@ -3211,6 +3211,156 @@ body {
   }
 }
 
+/* ── Command Panel ── */
+.command-panel {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 850;
+  background: linear-gradient(180deg, rgba(15,15,35,0.95) 0%, #0a0a1e 100%);
+  border-top: 2px solid #e94560;
+  padding: 12px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+  animation: cmd-slide-up 0.25s ease-out;
+}
+@keyframes cmd-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.cmd-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(233,69,96,0.3);
+}
+.cmd-target-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cmd-target-portrait {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid #e94560;
+  overflow: hidden;
+  background: #0f3460;
+  flex-shrink: 0;
+}
+.cmd-target-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cmd-target-name {
+  font-size: 0.95rem;
+  font-weight: bold;
+  color: #ff6b6b;
+}
+.cmd-target-hp {
+  font-size: 0.75rem;
+  color: #aaa;
+}
+.cmd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cmd-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(233,69,96,0.25);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  color: #eee;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+}
+.cmd-option:hover, .cmd-option:focus {
+  background: rgba(233,69,96,0.12);
+  border-color: #e94560;
+}
+.cmd-option.cmd-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.cmd-option.cmd-cancel {
+  justify-content: center;
+  background: transparent;
+  border-color: rgba(255,255,255,0.1);
+  color: #888;
+  font-size: 0.85rem;
+  padding: 8px;
+}
+.cmd-option.cmd-cancel:hover {
+  color: #ccc;
+  border-color: rgba(255,255,255,0.3);
+}
+.cmd-illust-slot {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  background: rgba(15,52,96,0.5);
+  border: 1px dashed rgba(233,69,96,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+.cmd-info {
+  flex: 1;
+  min-width: 0;
+}
+.cmd-name {
+  font-size: 0.95rem;
+  font-weight: bold;
+  color: #fff;
+}
+.cmd-type {
+  font-size: 0.7rem;
+  color: #999;
+  margin-top: 2px;
+}
+.cmd-dmg {
+  font-size: 0.8rem;
+  color: #ff8a80;
+  margin-top: 3px;
+}
+.cmd-crit {
+  color: #ffd700;
+  font-size: 0.7rem;
+  margin-left: 6px;
+}
+.cmd-meta {
+  text-align: right;
+  flex-shrink: 0;
+}
+.cmd-eva {
+  font-size: 0.7rem;
+  color: #64b5f6;
+}
+.cmd-mp {
+  font-size: 0.7rem;
+  color: #80cbc4;
+}
+/* MP stat box */
+.mp-box {
+  border-color: rgba(128,203,196,0.3) !important;
+}
+.mp-val {
+  color: #80cbc4 !important;
+}
+
 /* ── Combat Widget ── */
 .combat-widget {
   position: fixed;

@@ -4,14 +4,16 @@ import {
   getAttackTargets, activateSense, endPlayerPhase, endEnemyPhase,
   runEnemyPhase, checkVictory, allPlayerUnitsActed,
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, getCombatPower,
+  previewDamage, previewSkillDamage,
 } from './engine.js';
 
 let battleState = null;
-let uiMode = 'idle'; // idle | selected | move | attack | skill
+let uiMode = 'idle'; // idle | selected | move | attack | skill | command
 let selectedUid = null;
 let highlightedTiles = [];
 let deploySelected = [];
 let currentStageId = null;
+let commandTarget = null;
 
 // ── Gallery ──
 
@@ -310,6 +312,7 @@ function showUnitDetail(unit) {
     <div class="stat-box"><span class="stat-label">PEN</span><span class="stat-val">${unit.pen || 0}</span></div>
     <div class="stat-box"><span class="stat-label">MOV</span><span class="stat-val">${unit.mov}</span></div>
     <div class="stat-box"><span class="stat-label">RNG</span><span class="stat-val">${unit.rng}</span></div>
+    <div class="stat-box mp-box"><span class="stat-label">MP</span><span class="stat-val mp-val">${unit.mp}/${unit.maxMp}</span></div>
     <div class="stat-box cp-box"><span class="stat-label">전투력</span><span class="stat-val cp-val">${cp}</span></div>
     ${equipNames.length ? `<div class="equip-list">장비: ${equipNames.join(' · ')}</div>` : ''}
     ${relicName ? `<div class="equip-list">유물: ${relicName}</div>` : ''}
@@ -317,11 +320,12 @@ function showUnitDetail(unit) {
   const sense = unit.senseSkill;
   if (sense) {
     const info = SENSE_TYPES[sense.baseType];
-    const cdText = sense.cooldown > 0 ? `(쿨다운 ${sense.cooldown}턴)` : '사용 가능';
+    const cdText = sense.cooldown > 0 ? `쿨다운 ${sense.cooldown}턴` : '사용 가능';
+    const mpCostText = sense.mpCost ? `MP ${sense.mpCost}` : '';
     document.getElementById('detail-sense').innerHTML = `
       <div class="sense-info">
         <span class="sense-icon">${info?.icon || '?'}</span>
-        <strong>${sense.name}</strong> (${sense.baseType}) ${cdText}
+        <strong>${sense.name}</strong> (${sense.baseType}) ${mpCostText} · ${cdText}
       </div>
     `;
   } else {
@@ -340,7 +344,7 @@ function showActionMenu(unit) {
   const menu = document.getElementById('action-menu');
   menu.style.display = 'flex';
 
-  const hasSense = unit.senseSkill && unit.senseSkill.cooldown === 0;
+  const hasSense = unit.senseSkill && unit.senseSkill.cooldown === 0 && unit.mp >= (unit.senseSkill.mpCost || 0);
   document.getElementById('btn-skill').disabled = !hasSense;
 
   const targets = getAttackTargets(battleState, unit);
@@ -381,10 +385,20 @@ function onTileClick(x, y) {
     const valid = highlightedTiles.find(t => t.x === x && t.y === y && t.cls === 'attack-range');
     if (valid && clickedUnit && clickedUnit.team === 'enemy') {
       const attacker = getUnitByUid(battleState, selectedUid);
-      doAttack(attacker, clickedUnit);
+      commandTarget = clickedUnit;
+      uiMode = 'command';
+      highlightedTiles = [];
+      hideActionMenu();
+      showCommandPanel(attacker, clickedUnit);
+      renderBattle();
     } else {
       cancelSelection();
     }
+    return;
+  }
+
+  if (uiMode === 'command') {
+    cancelSelection();
     return;
   }
 
@@ -409,9 +423,11 @@ function onTileClick(x, y) {
 
 function cancelSelection() {
   selectedUid = null;
+  commandTarget = null;
   uiMode = 'idle';
   highlightedTiles = [];
   hideActionMenu();
+  hideCommandPanel();
   showUnitDetail(null);
   renderBattle();
 }
@@ -464,6 +480,122 @@ function onWaitBtn() {
     unit.acted = true;
     appendLog(`${unit.name} 대기`);
   }
+  cancelSelection();
+  checkAutoEndTurn();
+}
+
+// ── Command Panel ──
+
+function showCommandPanel(attacker, defender) {
+  const panel = document.getElementById('command-panel');
+  const list = document.getElementById('command-list');
+
+  const preview = previewDamage(battleState, attacker, defender);
+  const typeLabel = { physical: '물리', mental: '정신', blood: '혈액' };
+  const typeIcon = { physical: '⚔️', mental: '🧠', blood: '🩸' };
+
+  let html = '';
+
+  // Basic attack option
+  html += `
+    <button class="cmd-option" data-cmd="basic">
+      <div class="cmd-illust-slot">${typeIcon[attacker.attackType] || '⚔️'}</div>
+      <div class="cmd-info">
+        <div class="cmd-name">기본 공격</div>
+        <div class="cmd-type">${typeLabel[attacker.attackType] || '물리'} · MP 0</div>
+        <div class="cmd-dmg">예상 ${preview.minDmg}~${preview.maxDmg} <span class="cmd-crit">CRT ${Math.round(preview.critDmg)}</span></div>
+      </div>
+      <div class="cmd-meta">
+        <span class="cmd-eva">회피 ${Math.round((preview.eva || 0) * 100)}%</span>
+      </div>
+    </button>`;
+
+  // Skill option
+  if (attacker.senseSkill) {
+    const sense = attacker.senseSkill;
+    const senseInfo = SENSE_TYPES[sense.baseType];
+    const skillPreview = previewSkillDamage(attacker);
+    const canUse = sense.cooldown === 0 && attacker.mp >= (sense.mpCost || 0);
+    const cooldownText = sense.cooldown > 0 ? `쿨다운 ${sense.cooldown}턴` : '';
+    const mpText = `MP ${sense.mpCost || 0}`;
+
+    let effectText = '';
+    if (skillPreview) {
+      if (skillPreview.type === 'damage') effectText = `데미지 ~${skillPreview.value} · ${skillPreview.range}`;
+      else if (skillPreview.type === 'heal') effectText = `회복 ~${skillPreview.value} · ${skillPreview.range}`;
+      else if (skillPreview.type === 'buff') effectText = `버프 +${skillPreview.value} · ${skillPreview.range}`;
+      else if (skillPreview.type === 'debuff') effectText = `디버프 -${skillPreview.value} · ${skillPreview.range}`;
+    }
+
+    html += `
+      <button class="cmd-option ${canUse ? '' : 'cmd-disabled'}" data-cmd="skill" ${canUse ? '' : 'disabled'}>
+        <div class="cmd-illust-slot">${senseInfo?.icon || '✦'}</div>
+        <div class="cmd-info">
+          <div class="cmd-name">「${sense.name}」</div>
+          <div class="cmd-type">${sense.baseType} · ${mpText} ${cooldownText ? `· ${cooldownText}` : ''}</div>
+          <div class="cmd-dmg">${effectText}</div>
+        </div>
+        <div class="cmd-meta">
+          <span class="cmd-mp">MP ${attacker.mp}/${attacker.maxMp}</span>
+        </div>
+      </button>`;
+  }
+
+  // Cancel button
+  html += `<button class="cmd-option cmd-cancel" data-cmd="cancel">취소</button>`;
+
+  list.innerHTML = html;
+
+  // Target info
+  document.getElementById('cmd-target-name').textContent = defender.name;
+  document.getElementById('cmd-target-hp').textContent = `HP ${defender.hp}/${defender.maxHp}`;
+  const tPortrait = document.getElementById('cmd-target-portrait');
+  tPortrait.innerHTML = `<img src="${portraitSrc(`assets/portraits/${defender.id}`)}"
+    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+    <div class="unit-initial" style="display:none">${defender.name[0]}</div>`;
+
+  // Bind clicks
+  list.querySelectorAll('.cmd-option').forEach(btn => {
+    btn.addEventListener('click', () => onCommandSelect(btn.dataset.cmd, attacker, defender));
+  });
+
+  panel.style.display = 'flex';
+}
+
+function hideCommandPanel() {
+  document.getElementById('command-panel').style.display = 'none';
+}
+
+function onCommandSelect(cmd, attacker, defender) {
+  hideCommandPanel();
+  if (cmd === 'basic') {
+    doAttack(attacker, defender);
+  } else if (cmd === 'skill') {
+    doSkillAttack(attacker, defender);
+  } else {
+    uiMode = 'selected';
+    commandTarget = null;
+    showActionMenu(attacker);
+    renderBattle();
+  }
+}
+
+async function doSkillAttack(attacker, defender) {
+  if (!attacker.senseSkill || attacker.senseSkill.cooldown > 0) return;
+
+  const result = activateSense(battleState, attacker);
+  if (!result.ok) return;
+
+  showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
+  appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
+  result.effects.forEach(e => appendLog(`  → ${e}`));
+
+  renderBattle();
+
+  const vc = checkVictory(battleState);
+  if (vc) { setTimeout(() => handleBattleEnd(vc), 600); return; }
+
+  commandTarget = null;
   cancelSelection();
   checkAutoEndTurn();
 }
