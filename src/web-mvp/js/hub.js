@@ -5,8 +5,13 @@ import {
   runEnemyPhase, checkVictory, allPlayerUnitsActed,
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, getCombatPower,
   previewDamage, previewSkillDamage,
-  getTeamSynergy, getTeamCP, cardToUnit, gainXP,
+  getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate,
 } from './engine.js';
+import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard } from './save.js';
+
+let gameSave = loadGame();
+refreshQuests(gameSave);
+saveGame(gameSave);
 
 let battleState = null;
 let uiMode = 'idle'; // idle | selected | move | attack | skill | command
@@ -576,6 +581,30 @@ function showCommandPanel(attacker, defender) {
       </button>`;
   }
 
+  // Ultimate options
+  if (attacker.ultimates) {
+    attacker.ultimates.forEach((ult, idx) => {
+      const locked = attacker.level < ult.unlockLevel;
+      const onCd = ult.currentCooldown > 0;
+      const noMp = attacker.mp < ult.mpCost;
+      const canUse = !locked && !onCd && !noMp;
+      const statusText = locked ? `Lv.${ult.unlockLevel} 해금` : onCd ? `쿨다운 ${ult.currentCooldown}턴` : `MP ${ult.mpCost}`;
+
+      html += `
+        <button class="cmd-option cmd-ult ${canUse ? '' : 'cmd-disabled'}" data-cmd="ult-${idx}" ${canUse ? '' : 'disabled'}>
+          <div class="cmd-illust-slot cmd-ult-icon">${ult.icon || '🌟'}</div>
+          <div class="cmd-info">
+            <div class="cmd-name">🌟 ${ult.name}</div>
+            <div class="cmd-type">궁극기 · ${statusText}</div>
+            <div class="cmd-dmg">${ult.desc}</div>
+          </div>
+          <div class="cmd-meta">
+            <span class="cmd-mp">MP ${attacker.mp}/${attacker.maxMp}</span>
+          </div>
+        </button>`;
+    });
+  }
+
   // Cancel button
   html += `<button class="cmd-option cmd-cancel" data-cmd="cancel">취소</button>`;
 
@@ -607,6 +636,9 @@ function onCommandSelect(cmd, attacker, defender) {
     doAttack(attacker, defender);
   } else if (cmd === 'skill') {
     doSkillAttack(attacker, defender);
+  } else if (cmd.startsWith('ult-')) {
+    const idx = parseInt(cmd.split('-')[1]);
+    doUltimate(attacker, idx);
   } else {
     uiMode = 'selected';
     commandTarget = null;
@@ -624,6 +656,26 @@ async function doSkillAttack(attacker, defender) {
   showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
   appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
+
+  renderBattle();
+
+  const vc = checkVictory(battleState);
+  if (vc) { setTimeout(() => handleBattleEnd(vc), 600); return; }
+
+  commandTarget = null;
+  cancelSelection();
+  checkAutoEndTurn();
+}
+
+async function doUltimate(unit, ultIndex) {
+  const result = executeUltimate(battleState, unit, ultIndex);
+  if (!result.ok) return;
+
+  showSkillOverlay(result.name, 'ult');
+  appendLog(`🌟 ${unit.name}의 궁극기 「${result.name}」!`);
+  result.effects.forEach(e => appendLog(`  → ${e}`));
+  progressQuest(gameSave, 'ultimate');
+  saveGame(gameSave);
 
   renderBattle();
 
@@ -669,7 +721,12 @@ async function doAttack(attacker, defender) {
     appendLog(`⚔ ${attacker.name} → ${defender.name}: ${result.damage}${tags.length ? ' ' + tags.join(' ') + '!' : ''}`);
   }
   if (result.counterDamage) appendLog(`  ↩ 반격: ${result.counterDamage}`);
-  if (result.defenderDied) appendLog(`  💀 ${defender.name} 전사!`);
+  if (result.defenderDied) {
+    appendLog(`  💀 ${defender.name} 전사!`);
+    gameSave.stats.totalKills++;
+    progressQuest(gameSave, 'kill');
+    saveGame(gameSave);
+  }
   if (result.attackerDied) appendLog(`  💀 ${attacker.name} 전사!`);
 
   // XP & Level Up
@@ -837,15 +894,25 @@ function handleBattleEnd(result) {
   const title = document.getElementById('result-title');
   const text = document.getElementById('result-text');
 
+  gameSave.stats.totalBattles++;
+  progressQuest(gameSave, 'battle');
+
   if (result === 'win') {
     title.textContent = '승리!';
     box.className = 'battle-result-box win';
     text.textContent = battleState.stage.storyOutro || '모든 적을 제압했습니다!';
+    gameSave.stats.wins++;
+    progressQuest(gameSave, 'win');
+    addCard(gameSave, CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id, 'common');
+    if (battleState.stageId === 'stage-4') progressQuest(gameSave, 'clear_stage4');
   } else {
     title.textContent = '패배...';
     box.className = 'battle-result-box lose';
     text.textContent = '모든 아군이 전사했습니다. 다시 도전하세요.';
+    gameSave.stats.losses++;
   }
+
+  saveGame(gameSave);
   overlay.style.display = 'flex';
   document.getElementById('btn-result-ok').onclick = () => {
     overlay.style.display = 'none';
@@ -853,6 +920,7 @@ function handleBattleEnd(result) {
     document.getElementById('battle-screen').style.display = 'none';
     document.getElementById('stage-select').style.display = '';
     cancelSelection();
+    renderStats();
   };
 }
 
@@ -869,10 +937,60 @@ function appendLog(msg) {
 
 // ── Init ──
 
+// ── Stats & Quests Rendering ──
+
+function renderStats() {
+  const s = gameSave.stats;
+  const centerBuff = getCenterBuff(gameSave);
+  const quests = getQuestSummary(gameSave);
+
+  document.getElementById('stats-summary').innerHTML = `
+    <div class="center-info">
+      <div class="center-level">${centerBuff.label}</div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-item"><span>총 전투</span><strong>${s.totalBattles}</strong></div>
+      <div class="stat-item"><span>승리</span><strong>${s.wins}</strong></div>
+      <div class="stat-item"><span>패배</span><strong>${s.losses}</strong></div>
+      <div class="stat-item"><span>승률</span><strong>${s.totalBattles ? Math.round(s.wins/s.totalBattles*100) : 0}%</strong></div>
+      <div class="stat-item"><span>총 처치</span><strong>${s.totalKills}</strong></div>
+      <div class="stat-item"><span>출석</span><strong>${quests.attendance}일</strong></div>
+    </div>
+  `;
+
+  const renderQuestList = (list, title) => {
+    if (!list || list.length === 0) return '';
+    return `<h4>${title}</h4>` + list.map(q => `
+      <div class="quest-item ${q.completed ? 'quest-done' : ''}">
+        <span class="quest-name">${q.name}</span>
+        <span class="quest-progress">${Math.min(q.progress, q.goal)}/${q.goal}</span>
+        ${q.completed ? '<span class="quest-check">✅</span>' : ''}
+      </div>
+    `).join('');
+  };
+
+  document.getElementById('stats-history').innerHTML = `
+    ${renderQuestList(quests.daily, '📋 일일 퀘스트')}
+    ${renderQuestList(quests.weekly, '📅 주간 퀘스트')}
+    ${quests.monthly ? renderQuestList([quests.monthly], '🏆 월간 퀘스트') : ''}
+  `;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initGallery();
   renderStageSelect();
+  renderStats();
+
+  const attend = getAttendanceReward(gameSave.quests.attendance);
+  if (attend) {
+    appendLog(`🎁 출석 ${gameSave.quests.attendance}일 보상!`);
+    attend.cards.forEach(rarity => {
+      const randomChar = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+      addCard(gameSave, randomChar.id, rarity);
+    });
+    saveGame(gameSave);
+  }
 
   document.getElementById('popup-close').addEventListener('click', () => {
     document.getElementById('card-popup').style.display = 'none';
