@@ -1,146 +1,398 @@
-import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, DILEMMA_EVENTS, EQUIPMENT, COMBO_BONUSES, createBloodCard, generateRandomRequest } from './cards.js';
+// ═══════════════════════════════════════════════════════════════════════════
+// engine.js — 헌혈의 집 (Red Ledger) Grid-Based Tactical SRPG Engine
+// Pure game logic, no DOM/UI code
+// ═══════════════════════════════════════════════════════════════════════════
 
-export const PHASES = ['dawn', 'morning', 'afternoon', 'night', 'settlement'];
-export const PHASE_NAMES = { dawn: '새벽', morning: '오전', afternoon: '오후', night: '야간', settlement: '정산' };
+import { CHARACTERS, SENSE_TYPES } from './cards.js';
 
-export const DIFFICULTIES = {
-  easy:   { label: '쉬움', bp: 15, rep: 70, sus: 0, susPerTurn: 1, eventChance: 0.25 },
-  normal: { label: '보통', bp: 10, rep: 50, sus: 0, susPerTurn: 2, eventChance: 0.4 },
-  hard:   { label: '어려움', bp: 7, rep: 35, sus: 10, susPerTurn: 3, eventChance: 0.55 },
+// ── Tile Types ──────────────────────────────────────────────────────────
+
+export const TILE_TYPES = {
+  floor:         { walkable: true,  label: '바닥',       icon: '·' },
+  wall:          { walkable: false, label: '벽',         icon: '█' },
+  blood_storage: { walkable: true,  label: '혈액 보관소', icon: '🩸' },
+  desk:          { walkable: true,  label: '데스크',      icon: '🪑' },
+  entrance:      { walkable: true,  label: '출입구',      icon: '🚪' },
 };
 
-export function createGameState(difficulty = 'normal') {
-  const diff = DIFFICULTIES[difficulty] || DIFFICULTIES.normal;
-  const deck = buildStarterDeck();
-  shuffle(deck);
+// ── Faction Constants ───────────────────────────────────────────────────
+
+export const FACTIONS = { CENTER: 'center', KARTEIN: 'kartein', NEUTRAL: 'neutral' };
+
+// ── Rarity → Stat Bonus Tables ──────────────────────────────────────────
+
+const RARITY_HP_BONUS   = { common: 10, uncommon: 20, rare: 35, legendary: 50 };
+const RARITY_ATK_BONUS  = { common: 2,  uncommon: 4,  rare: 6,  legendary: 10 };
+const RARITY_DEF_BONUS  = { common: 1,  uncommon: 2,  rare: 3,  legendary: 5 };
+const RARITY_MOV        = { common: 3,  uncommon: 3,  rare: 2,  legendary: 2 };
+
+// ── Role Modifiers ─────────────────────────────────────────────────────
+
+export const ROLE_MODIFIERS = {
+  tank:           { hp: 1.5,  atk: 0.7, def: 1.5, mov: 2, rng: 1 },
+  melee_dps:      { hp: 0.9,  atk: 1.4, def: 0.8, mov: 3, rng: 1 },
+  ranged_dps:     { hp: 0.8,  atk: 1.3, def: 0.7, mov: 2, rng: 2 },
+  support:        { hp: 1.0,  atk: 0.6, def: 1.0, mov: 3, rng: 2 },
+  bruiser:        { hp: 1.3,  atk: 1.1, def: 1.2, mov: 2, rng: 1 },
+  battle_support: { hp: 1.0,  atk: 1.0, def: 0.9, mov: 3, rng: 2 },
+  evasive_dps:    { hp: 0.85, atk: 1.2, def: 1.1, mov: 3, rng: 1 },
+  breaker:        { hp: 1.3,  atk: 1.4, def: 1.2, mov: 3, rng: null },
+};
+
+// ── Stat Conversion: Card → SRPG Unit ───────────────────────────────────
+
+export function cardToUnit(charData, x, y) {
+  const r = charData.rarity;
+  let hp = charData.power * 12 + (RARITY_HP_BONUS[r] || 0);
+  let atk = charData.power * 4 + (RARITY_ATK_BONUS[r] || 0);
+  let def = Math.floor(charData.cost / 2) + (RARITY_DEF_BONUS[r] || 0);
+  let mov = RARITY_MOV[r] || 3;
+
+  const abilityType = charData.ability?.type || '';
+  let rng = (abilityType === 'research' || abilityType === 'audit') ? 2 : 1;
+
+  const role = charData.role;
+  const mod = ROLE_MODIFIERS[role];
+  if (mod) {
+    hp = Math.floor(hp * mod.hp);
+    atk = Math.floor(atk * mod.atk);
+    def = Math.floor(def * mod.def);
+    mov = mod.mov;
+    if (mod.rng !== null) rng = mod.rng;
+  }
 
   return {
-    turn: 1,
-    phase: 'dawn',
-    difficulty,
-    diffSettings: diff,
-    resources: { bp: diff.bp, rep: diff.rep, sus: diff.sus },
-    deck,
-    hand: [],
-    field: [],
-    equipment: [],
-    shopEquipment: shuffle([...EQUIPMENT]),
-    bloodPool: [],
-    discardPile: [],
-    requestQueue: [],
-    activeRequest: null,
-    completedRequests: 0,
-    nextRequestNum: 1,
-    recruitShop: [],
-    nightActionTaken: false,
-    usedDilemmas: [],
-    gameOver: false,
-    winner: false,
-    maxCollect: 0,
-    comboActivations: 0,
-    log: [],
+    id: charData.id,
+    charId: charData.id,
+    name: charData.name,
+    title: charData.title,
+    faction: charData.faction,
+    rarity: charData.rarity,
+    role: role || null,
+
+    hp,
+    maxHp: hp,
+    atk,
+    def,
+    mov,
+    rng,
+
+    senseSkill: charData.sense ? {
+      name: charData.sense.name,
+      baseType: charData.sense.baseType,
+      power: charData.sense.power,
+      flavor: charData.sense.flavor,
+      effects: charData.sense.effects,
+      cooldown: 0,
+      maxCooldown: 3,
+    } : null,
+
+    acted: false,
+    x,
+    y,
   };
 }
 
-export function refreshRecruitShop(state) {
-  const pool = CHARACTERS.filter(c => c.rarity !== 'common');
-  const picks = [];
-  const shuffled = shuffle([...pool]);
-  for (let i = 0; i < Math.min(3, shuffled.length); i++) {
-    picks.push({ ...shuffled[i], recruitCost: shuffled[i].cost + 2 });
+// ── Map Utilities ───────────────────────────────────────────────────────
+
+export function createMap(mapData) {
+  const rows = mapData.length;
+  const cols = mapData[0].length;
+  const tiles = [];
+  for (let r = 0; r < rows; r++) {
+    tiles[r] = [];
+    for (let c = 0; c < cols; c++) {
+      tiles[r][c] = {
+        type: mapData[r][c],
+        x: c,
+        y: r,
+      };
+    }
   }
-  state.recruitShop = picks;
+  return { tiles, rows, cols };
 }
 
-export function recruitCharacter(state, charId) {
-  const idx = state.recruitShop.findIndex(c => c.id === charId);
-  if (idx < 0) return { ok: false, reason: '모집 대상을 찾을 수 없습니다' };
-  const char = state.recruitShop[idx];
-  if (state.resources.bp < char.recruitCost) return { ok: false, reason: `BP 부족 (필요: ${char.recruitCost})` };
+function getTile(map, x, y) {
+  if (x < 0 || y < 0 || y >= map.rows || x >= map.cols) return null;
+  return map.tiles[y][x];
+}
 
-  state.resources.bp -= char.recruitCost;
-  const instance = { ...char, type: 'character', instanceId: `${char.id}-${Math.random().toString(36).slice(2, 6)}` };
-  delete instance.recruitCost;
-  state.deck.push(instance);
-  state.recruitShop.splice(idx, 1);
-  state.log.push(`${char.name} 영입! (BP -${char.recruitCost}) → 덱에 추가됨`);
+function isTileWalkable(map, x, y) {
+  const tile = getTile(map, x, y);
+  if (!tile) return false;
+  return TILE_TYPES[tile.type]?.walkable !== false;
+}
+
+function getUnitAt(state, x, y) {
+  return state.units.find(u => u.hp > 0 && u.x === x && u.y === y) || null;
+}
+
+// ── Stages / Missions ───────────────────────────────────────────────────
+
+// Legend: F=floor, W=wall, B=blood_storage, D=desk, E=entrance
+const F = 'floor', W = 'wall', B = 'blood_storage', D = 'desk', E = 'entrance';
+
+export const STAGES = [
+  {
+    id: 'stage-1',
+    name: '센터 로비',
+    description: '첫 번째 임무. 로비에 침입한 카르테인 척후병을 제거하라.',
+    storyIntro: '야간 근무가 시작된 혈연센터 로비. 형광등이 깜빡이더니, 낯선 인물 둘이 출입구에서 나타났다. 이 시간에 방문객이라니 — 직감이 경고한다.',
+    storyOutro: '침입자를 물리쳤다. 하지만 이것은 시작에 불과하다. 쓰러진 자의 주머니에서 카르테인 가문의 인장이 발견되었다.',
+    mapData: [
+      [E, F, F, F, F, F, D, D],
+      [F, F, F, F, F, F, F, F],
+      [F, F, D, F, F, D, F, F],
+      [F, F, F, F, F, F, F, F],
+      [F, F, F, F, F, F, F, F],
+      [D, D, F, F, F, F, F, E],
+    ],
+    playerSpawns: [
+      { x: 0, y: 4 },
+      { x: 1, y: 5 },
+      { x: 0, y: 5 },
+    ],
+    enemyUnits: [
+      { charId: 'elena-morgan', x: 7, y: 0 },
+      { charId: 'kaspar-wren',  x: 6, y: 1 },
+    ],
+    victoryCondition: 'defeat_all',
+  },
+  {
+    id: 'stage-2',
+    name: '야간 창고',
+    description: '혈액 보관소에 카르테인 요원들이 잠입했다. 혈액을 지켜라.',
+    storyIntro: '자정. 혈액 보관소의 경보가 울린다. 보안 카메라에 4개의 그림자가 비친다. 놈들이 혈액 창고를 노리고 있다.',
+    storyOutro: '창고를 지켜냈다. 하지만 도주한 요원이 가져간 정보가 걱정된다. 카르테인의 본격적인 움직임이 시작된 것 같다.',
+    mapData: [
+      [W, W, E, F, F, E, W, W],
+      [W, F, F, F, F, F, F, W],
+      [F, F, B, B, B, B, F, F],
+      [F, F, B, B, B, B, F, F],
+      [W, F, F, F, F, F, F, W],
+      [W, W, F, F, F, F, W, W],
+    ],
+    playerSpawns: [
+      { x: 2, y: 0 },
+      { x: 5, y: 0 },
+      { x: 3, y: 1 },
+      { x: 4, y: 1 },
+    ],
+    enemyUnits: [
+      { charId: 'sergei-volkov',   x: 1, y: 4 },
+      { charId: 'otto-brandt',     x: 6, y: 4 },
+      { charId: 'elena-morgan',    x: 3, y: 5 },
+      { charId: 'lucien-deveraux', x: 4, y: 5 },
+    ],
+    victoryCondition: 'defeat_all',
+  },
+  {
+    id: 'stage-3',
+    name: '지하 복도',
+    description: '카르테인의 비밀 지하 통로. 강력한 적들이 기다리고 있다.',
+    storyIntro: 'B2 복도 아래, 설계도에 없는 통로가 발견되었다. 배관에서 미지근한 온기가 흐른다. 이 아래에 뭔가 있다 — 가봐야 한다.',
+    storyOutro: '지하 복도를 제압했다. 통로 끝에서 발견된 것은... 카르테인 가문이 수십 년간 운영해온 비밀 혈액 저장시설이었다. 진실이 밝혀지기 시작한다.',
+    mapData: [
+      [W, F, F, W, W, F, F, W],
+      [W, F, F, F, W, F, F, W],
+      [F, F, W, F, F, W, F, F],
+      [F, F, W, F, F, W, F, F],
+      [W, F, F, F, W, F, F, W],
+      [W, F, F, W, W, F, F, W],
+    ],
+    playerSpawns: [
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+      { x: 5, y: 0 },
+      { x: 6, y: 0 },
+    ],
+    enemyUnits: [
+      { charId: 'viktor-hessen',  x: 1, y: 5 },
+      { charId: 'aldric-thorne',  x: 6, y: 5 },
+      { charId: 'marcus-vale',    x: 1, y: 3 },
+      { charId: 'nigel-crowe',    x: 6, y: 3 },
+      { charId: 'nadia-petrova',  x: 3, y: 4 },
+      { charId: 'madeleine-voss', x: 4, y: 4 },
+    ],
+    victoryCondition: 'defeat_all',
+  },
+];
+
+// ── Battle State Factory ────────────────────────────────────────────────
+
+export function createBattleState(stageId, playerCharIds) {
+  const stage = STAGES.find(s => s.id === stageId);
+  if (!stage) throw new Error(`Stage not found: ${stageId}`);
+
+  const map = createMap(stage.mapData);
+  const units = [];
+
+  // Place player units
+  const playerChars = playerCharIds
+    .map(id => CHARACTERS.find(c => c.id === id))
+    .filter(Boolean);
+
+  playerChars.forEach((charData, i) => {
+    const spawn = stage.playerSpawns[i];
+    if (!spawn) return;
+    const unit = cardToUnit(charData, spawn.x, spawn.y);
+    unit.team = 'player';
+    // Disambiguate duplicate ids
+    unit.uid = `player-${charData.id}-${i}`;
+    units.push(unit);
+  });
+
+  // Place enemy units
+  stage.enemyUnits.forEach((eu, i) => {
+    const charData = CHARACTERS.find(c => c.id === eu.charId);
+    if (!charData) return;
+    const unit = cardToUnit(charData, eu.x, eu.y);
+    unit.team = 'enemy';
+    unit.uid = `enemy-${charData.id}-${i}`;
+    units.push(unit);
+  });
+
+  return {
+    stageId,
+    stage,
+    map,
+    units,
+    phase: 'player_phase',
+    turnNumber: 1,
+    selectedUnit: null,
+    log: [],
+    victoryCondition: stage.victoryCondition,
+    result: null, // 'win' | 'lose' | null
+  };
+}
+
+// ── Turn Phase Management ───────────────────────────────────────────────
+
+export function endPlayerPhase(state) {
+  if (state.phase !== 'player_phase') return;
+  // Mark all player units as not-acted for next turn
+  state.units.forEach(u => {
+    if (u.team === 'player') u.acted = false;
+  });
+  state.phase = 'enemy_phase';
+  state.log.push(`── 턴 ${state.turnNumber}: 적 페이즈 ──`);
+}
+
+export function endEnemyPhase(state) {
+  if (state.phase !== 'enemy_phase') return;
+  // Mark all enemy units as not-acted
+  state.units.forEach(u => {
+    if (u.team === 'enemy') u.acted = false;
+  });
+  // Tick cooldowns at end of full round
+  tickCooldowns(state);
+  state.turnNumber++;
+  state.phase = 'player_phase';
+  state.log.push(`── 턴 ${state.turnNumber}: 플레이어 페이즈 ──`);
+}
+
+// ── Movement (BFS) ──────────────────────────────────────────────────────
+
+export function getMovementRange(state, unit) {
+  if (!unit || unit.hp <= 0) return [];
+
+  const { map } = state;
+  const visited = new Map(); // key "x,y" → distance
+  const queue = [{ x: unit.x, y: unit.y, dist: 0 }];
+  visited.set(`${unit.x},${unit.y}`, 0);
+
+  const directions = [
+    { dx: 0, dy: -1 },
+    { dx: 0, dy: 1 },
+    { dx: -1, dy: 0 },
+    { dx: 1, dy: 0 },
+  ];
+
+  while (queue.length > 0) {
+    const { x, y, dist } = queue.shift();
+    if (dist >= unit.mov) continue;
+
+    for (const { dx, dy } of directions) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const key = `${nx},${ny}`;
+      if (visited.has(key)) continue;
+      if (!isTileWalkable(map, nx, ny)) continue;
+
+      // Blocked by other units (can't walk through)
+      const occupant = getUnitAt(state, nx, ny);
+      if (occupant && occupant.uid !== unit.uid) continue;
+
+      visited.set(key, dist + 1);
+      queue.push({ x: nx, y: ny, dist: dist + 1 });
+    }
+  }
+
+  // Remove the unit's current position, return only reachable tiles
+  const result = [];
+  for (const [key, dist] of visited) {
+    if (dist === 0) continue; // skip current position
+    const [cx, cy] = key.split(',').map(Number);
+    // Must not be occupied by another unit at the destination
+    const occupant = getUnitAt(state, cx, cy);
+    if (!occupant || occupant.uid === unit.uid) {
+      result.push({ x: cx, y: cy });
+    }
+  }
+  return result;
+}
+
+// ── Move Unit ───────────────────────────────────────────────────────────
+
+export function moveUnit(state, unit, targetX, targetY) {
+  if (!unit || unit.hp <= 0) return { ok: false, reason: '유닛이 유효하지 않습니다' };
+  if (unit.acted) return { ok: false, reason: '이미 행동한 유닛입니다' };
+
+  const range = getMovementRange(state, unit);
+  const valid = range.some(t => t.x === targetX && t.y === targetY);
+  if (!valid) return { ok: false, reason: '이동 범위 밖입니다' };
+
+  const fromX = unit.x;
+  const fromY = unit.y;
+  unit.x = targetX;
+  unit.y = targetY;
+
+  state.log.push(`${unit.name} 이동: (${fromX},${fromY}) → (${targetX},${targetY})`);
   return { ok: true };
 }
 
-export function nightInvestigate(state) {
-  if (state.nightActionTaken) return { ok: false, reason: '이미 야간 행동을 수행했습니다' };
-  const reduction = 4 + Math.floor(Math.random() * 4);
-  state.resources.sus = Math.max(0, state.resources.sus - reduction);
-  state.nightActionTaken = true;
-  state.log.push(`야간 조사 수행: SUS -${reduction} (현재: ${state.resources.sus})`);
-  return { ok: true, value: reduction };
-}
+// ── Attack Range ────────────────────────────────────────────────────────
 
-export function nightPromote(state) {
-  if (state.nightActionTaken) return { ok: false, reason: '이미 야간 행동을 수행했습니다' };
-  const boost = 3 + Math.floor(Math.random() * 3);
-  state.resources.rep += boost;
-  state.nightActionTaken = true;
-  state.log.push(`야간 홍보 활동: REP +${boost} (현재: ${state.resources.rep})`);
-  return { ok: true, value: boost };
-}
+export function getAttackRange(state, unit) {
+  if (!unit || unit.hp <= 0) return [];
 
-export function buyEquipment(state, equipId) {
-  const idx = state.shopEquipment.findIndex(e => e.id === equipId);
-  if (idx < 0) return { ok: false, reason: '장비를 찾을 수 없습니다' };
-  const eq = state.shopEquipment[idx];
-  if (state.resources.bp < eq.cost) return { ok: false, reason: `BP 부족 (필요: ${eq.cost}, 보유: ${state.resources.bp})` };
-  if (state.equipment.find(e => e.id === equipId)) return { ok: false, reason: '이미 설치된 장비입니다' };
+  const result = [];
+  const { map } = state;
 
-  state.resources.bp -= eq.cost;
-  state.equipment.push(eq);
-  state.shopEquipment.splice(idx, 1);
-  state.log.push(`장비 설치: ${eq.name} (BP -${eq.cost}) — ${eq.description}`);
-  return { ok: true };
-}
-
-function buildStarterDeck() {
-  const deck = [];
-  const starters = CHARACTERS.filter(c => c.rarity === 'common');
-  starters.forEach(c => {
-    for (let copy = 0; copy < 3; copy++) {
-      deck.push({ ...c, type: 'character', instanceId: `${c.id}-${Math.random().toString(36).slice(2, 6)}` });
+  if (unit.rng === 1) {
+    // Melee: 4 adjacent tiles
+    const dirs = [
+      { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
+      { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+    ];
+    for (const { dx, dy } of dirs) {
+      const nx = unit.x + dx;
+      const ny = unit.y + dy;
+      if (nx >= 0 && ny >= 0 && nx < map.cols && ny < map.rows) {
+        result.push({ x: nx, y: ny });
+      }
     }
-  });
-  BLOOD_TYPES.forEach(bt => {
-    for (let i = 0; i < 2; i++) {
-      deck.push(createBloodCard(bt));
-    }
-  });
-  return deck;
-}
-
-export function shuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-export function calculateComboBonuses(state) {
-  const factionCounts = {};
-  state.field.forEach(card => {
-    if (card.faction) factionCounts[card.faction] = (factionCounts[card.faction] || 0) + 1;
-  });
-
-  const result = { bpBonus: 0, repBonus: 0, susReduction: 0, bloodCards: 0, active: [] };
-
-  for (const [faction, count] of Object.entries(factionCounts)) {
-    const combos = COMBO_BONUSES[faction];
-    if (!combos) continue;
-    for (const combo of combos) {
-      if (count >= combo.threshold) {
-        result.bpBonus += combo.effects.bpBonus || 0;
-        result.repBonus += combo.effects.repBonus || 0;
-        result.susReduction += combo.effects.susReduction || 0;
-        result.bloodCards += combo.effects.bloodCards || 0;
-        result.active.push(combo);
+  } else {
+    // Ranged (rng=2): all tiles within Manhattan distance 1..rng
+    for (let dy = -unit.rng; dy <= unit.rng; dy++) {
+      for (let dx = -unit.rng; dx <= unit.rng; dx++) {
+        const dist = Math.abs(dx) + Math.abs(dy);
+        if (dist < 1 || dist > unit.rng) continue;
+        const nx = unit.x + dx;
+        const ny = unit.y + dy;
+        if (nx >= 0 && ny >= 0 && nx < map.cols && ny < map.rows) {
+          result.push({ x: nx, y: ny });
+        }
       }
     }
   }
@@ -148,318 +400,556 @@ export function calculateComboBonuses(state) {
   return result;
 }
 
-export function drawCards(state, count = 5) {
-  const drawn = [];
-  for (let i = 0; i < count; i++) {
-    if (state.deck.length === 0) {
-      if (state.discardPile.length === 0) break;
-      state.deck = shuffle([...state.discardPile]);
-      state.discardPile = [];
-      state.log.push('덱 재구성: 버린 카드 더미를 섞어 새 덱 생성');
-    }
-    drawn.push(state.deck.pop());
-  }
-  state.hand.push(...drawn);
-  state.log.push(`${drawn.length}장 드로우`);
-  return drawn;
+// ── Faction Advantage ───────────────────────────────────────────────────
+
+function getFactionAdvantage(attacker, defender) {
+  // center > kartein on defense (+2 DEF to center)
+  // kartein > neutral on attack (+3 ATK to kartein)
+  // neutral > center on speed (neutral attacks first in counter)
+  return {
+    atkBonus: (attacker.faction === FACTIONS.KARTEIN && defender.faction === FACTIONS.NEUTRAL) ? 3 : 0,
+    defBonus: (defender.faction === FACTIONS.CENTER && attacker.faction === FACTIONS.KARTEIN) ? 2 : 0,
+    speedAdvantage: (attacker.faction === FACTIONS.NEUTRAL && defender.faction === FACTIONS.CENTER),
+  };
 }
 
-export function playCharacter(state, handIndex) {
-  const card = state.hand[handIndex];
-  if (!card || card.type !== 'character') return { ok: false, reason: '인물 카드가 아닙니다' };
-  if (state.resources.bp < card.cost) return { ok: false, reason: 'BP 부족' };
+// ── Combat ──────────────────────────────────────────────────────────────
 
-  state.resources.bp -= card.cost;
-  state.hand.splice(handIndex, 1);
-  state.field.push(card);
-  state.log.push(`${card.name} 배치 (BP -${card.cost})`);
+function calculateDamage(attackerAtk, defenderDef) {
+  return Math.max(1, attackerAtk - defenderDef + Math.floor(Math.random() * 4) - 1);
+}
 
-  if (card.ability.type === 'reputation') {
-    state.resources.rep += card.ability.value;
-    state.log.push(`${card.name} 효과: REP +${card.ability.value}`);
+function isCritical() {
+  return Math.random() < 0.15;
+}
+
+function isInRange(attackerUnit, targetX, targetY) {
+  const dist = Math.abs(attackerUnit.x - targetX) + Math.abs(attackerUnit.y - targetY);
+  return dist >= 1 && dist <= attackerUnit.rng;
+}
+
+export function attackUnit(state, attacker, defender) {
+  if (!attacker || !defender || attacker.hp <= 0 || defender.hp <= 0) {
+    return { ok: false, reason: '유효하지 않은 전투입니다' };
   }
 
-  if (card.ability.type === 'audit') {
-    state.resources.sus = Math.max(0, state.resources.sus - card.ability.value);
-    const nextEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
-    state.log.push(`${card.name} 감사: SUS -${card.ability.value}. 다음 이벤트 정보: "${nextEvent.name}"`);
+  // Check attacker is in range of defender
+  const atkRange = getAttackRange(state, attacker);
+  const inRange = atkRange.some(t => t.x === defender.x && t.y === defender.y);
+  if (!inRange) {
+    return { ok: false, reason: '공격 범위 밖입니다' };
   }
 
-  if (card.ability.onPlay) {
-    for (const [key, val] of Object.entries(card.ability.onPlay)) {
-      state.resources[key] = (state.resources[key] || 0) + val;
+  const advantage = getFactionAdvantage(attacker, defender);
+
+  // Neutral > center speed advantage: if defender is neutral attacking center,
+  // but we reverse — neutral attacks first if COUNTER, so we handle in counter logic below.
+  // For the primary attack flow, attacker just attacks normally.
+
+  const effectiveAtk = attacker.atk + advantage.atkBonus;
+  const effectiveDef = defender.def + advantage.defBonus;
+
+  let damage = calculateDamage(effectiveAtk, effectiveDef);
+  const critical = isCritical();
+  if (critical) damage = Math.floor(damage * 1.5);
+
+  // Check if neutral > center speed advantage means defender counters first
+  const defAdvantage = getFactionAdvantage(defender, attacker);
+  const defenderCountersFirst = defAdvantage.speedAdvantage;
+
+  let counterDamage = 0;
+  let defenderDied = false;
+  let attackerDied = false;
+
+  if (defenderCountersFirst) {
+    // Defender (neutral) attacks first as counter
+    if (isInRange(defender, attacker.x, attacker.y)) {
+      const cEffAtk = defender.atk + defAdvantage.atkBonus;
+      const cEffDef = attacker.def + defAdvantage.defBonus;
+      counterDamage = Math.floor(calculateDamage(cEffAtk, cEffDef) * 0.7);
+      counterDamage = Math.max(1, counterDamage);
+
+      attacker.hp -= counterDamage;
+      if (attacker.hp <= 0) {
+        attacker.hp = 0;
+        attackerDied = true;
+        state.log.push(`${defender.name}의 선제 반격! ${attacker.name}에게 ${counterDamage} 데미지 → 전사!`);
+        attacker.acted = true;
+        return {
+          ok: true,
+          damage: 0,
+          critical: false,
+          counterDamage,
+          defenderDied: false,
+          attackerDied: true,
+        };
+      } else {
+        state.log.push(`${defender.name}의 선제 반격! ${attacker.name}에게 ${counterDamage} 데미지`);
+      }
     }
   }
 
-  return { ok: true };
+  // Primary attack
+  defender.hp -= damage;
+  if (defender.hp <= 0) {
+    defender.hp = 0;
+    defenderDied = true;
+  }
+
+  state.log.push(
+    `${attacker.name} → ${defender.name}: ${damage} 데미지${critical ? ' (크리티컬!)' : ''}${defenderDied ? ' → 전사!' : ''}`
+  );
+
+  // Counter-attack (normal case, not speed-advantage)
+  if (!defenderCountersFirst && !defenderDied && isInRange(defender, attacker.x, attacker.y)) {
+    const cAdv = getFactionAdvantage(defender, attacker);
+    const cEffAtk = defender.atk + cAdv.atkBonus;
+    const cEffDef = attacker.def + cAdv.defBonus;
+    counterDamage = Math.floor(calculateDamage(cEffAtk, cEffDef) * 0.7);
+    counterDamage = Math.max(1, counterDamage);
+
+    attacker.hp -= counterDamage;
+    if (attacker.hp <= 0) {
+      attacker.hp = 0;
+      attackerDied = true;
+    }
+
+    state.log.push(
+      `${defender.name} 반격! ${attacker.name}에게 ${counterDamage} 데미지${attackerDied ? ' → 전사!' : ''}`
+    );
+  }
+
+  attacker.acted = true;
+
+  return {
+    ok: true,
+    damage,
+    critical,
+    counterDamage,
+    defenderDied,
+    attackerDied,
+  };
 }
 
-export function collectBlood(state) {
-  let totalCollected = 0;
-  const equipBonus = state.equipment.reduce((sum, eq) => sum + (eq.effect.collectBonus || 0), 0);
-  const researchBonus = state.field.filter(c => c.ability.type === 'research').reduce((sum, c) => sum + c.ability.value, 0);
+// ── Sense Skills (촉/혈 Special Abilities) ──────────────────────────────
 
-  state.field.forEach(card => {
-    if (card.ability.type === 'collect') {
-      const amount = card.ability.value + equipBonus;
-      totalCollected += amount;
+export function activateSense(state, unit) {
+  if (!unit || unit.hp <= 0) return { ok: false, reason: '유닛이 유효하지 않습니다' };
+  if (!unit.senseSkill) return { ok: false, reason: '촉/혈 스킬이 없는 유닛입니다' };
+  if (unit.senseSkill.cooldown > 0) return { ok: false, reason: `쿨다운 중 (${unit.senseSkill.cooldown}턴 남음)` };
+  if (unit.acted) return { ok: false, reason: '이미 행동한 유닛입니다' };
 
-      if (card.ability.onCollect) {
-        for (const [key, val] of Object.entries(card.ability.onCollect)) {
-          state.resources[key] = (state.resources[key] || 0) + val;
-          if (val < 0) state.resources[key] = Math.max(0, state.resources[key]);
+  const sense = unit.senseSkill;
+  const senseInfo = SENSE_TYPES[sense.baseType];
+  if (!senseInfo) return { ok: false, reason: '알 수 없는 스킬 타입' };
+
+  const result = {
+    ok: true,
+    skillName: sense.name,
+    baseType: sense.baseType,
+    effects: [],
+  };
+
+  const allyUnits = state.units.filter(u => u.team === unit.team && u.hp > 0 && u.uid !== unit.uid);
+  const enemyUnits = state.units.filter(u => u.team !== unit.team && u.hp > 0);
+
+  if (senseInfo.category === '촉') {
+    // Human sense skills
+    switch (sense.baseType) {
+      case '예감': {
+        // Buff DEF of all allies within range 2
+        const buffAmount = Math.floor(sense.power * 0.5);
+        allyUnits.forEach(ally => {
+          const dist = Math.abs(ally.x - unit.x) + Math.abs(ally.y - unit.y);
+          if (dist <= 2) {
+            ally.def += buffAmount;
+            result.effects.push(`${ally.name} DEF +${buffAmount}`);
+          }
+        });
+        state.log.push(`${unit.name}의 「${sense.name}」 발동 — 아군 DEF 강화`);
+        break;
+      }
+      case '직감': {
+        // Direct damage to one adjacent enemy
+        const target = enemyUnits.find(e => {
+          const dist = Math.abs(e.x - unit.x) + Math.abs(e.y - unit.y);
+          return dist <= 2;
+        });
+        if (target) {
+          const dmg = sense.power + Math.floor(Math.random() * 3);
+          target.hp -= dmg;
+          if (target.hp <= 0) target.hp = 0;
+          result.effects.push(`${target.name}에게 ${dmg} 데미지${target.hp <= 0 ? ' → 전사!' : ''}`);
+          state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name}에게 ${dmg} 데미지!`);
+        } else {
+          result.effects.push('범위 내 적 없음');
+          state.log.push(`${unit.name}의 「${sense.name}」 — 범위 내 적 없음`);
         }
+        break;
+      }
+      case '감응': {
+        // Heal nearest ally
+        const injured = allyUnits
+          .filter(a => a.hp < a.maxHp)
+          .sort((a, b) => {
+            const da = Math.abs(a.x - unit.x) + Math.abs(a.y - unit.y);
+            const db = Math.abs(b.x - unit.x) + Math.abs(b.y - unit.y);
+            return da - db;
+          });
+        if (injured.length > 0) {
+          const target = injured[0];
+          const heal = sense.power + Math.floor(Math.random() * 4);
+          target.hp = Math.min(target.maxHp, target.hp + heal);
+          result.effects.push(`${target.name} HP +${heal} 회복`);
+          state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name} HP +${heal} 회복`);
+        } else {
+          // Heal self if no injured allies
+          const selfHeal = Math.floor(sense.power * 0.5);
+          unit.hp = Math.min(unit.maxHp, unit.hp + selfHeal);
+          result.effects.push(`자가 회복 HP +${selfHeal}`);
+          state.log.push(`${unit.name}의 「${sense.name}」 — 자가 회복 HP +${selfHeal}`);
+        }
+        break;
+      }
+      case '혈각': {
+        // Debuff enemy ATK
+        const debuffAmount = Math.floor(sense.power * 0.4);
+        enemyUnits.forEach(enemy => {
+          const dist = Math.abs(enemy.x - unit.x) + Math.abs(enemy.y - unit.y);
+          if (dist <= 3) {
+            enemy.atk = Math.max(1, enemy.atk - debuffAmount);
+            result.effects.push(`${enemy.name} ATK -${debuffAmount}`);
+          }
+        });
+        state.log.push(`${unit.name}의 「${sense.name}」 발동 — 적 ATK 약화`);
+        break;
+      }
+      case '투지': {
+        // Buff own ATK and DEF
+        const atkBuff = Math.floor(sense.power * 0.6);
+        const defBuff = Math.floor(sense.power * 0.3);
+        unit.atk += atkBuff;
+        unit.def += defBuff;
+        result.effects.push(`자신 ATK +${atkBuff}, DEF +${defBuff}`);
+        state.log.push(`${unit.name}의 「${sense.name}」 — ATK +${atkBuff}, DEF +${defBuff}`);
+        break;
+      }
+      case '공감': {
+        // Heal all allies in range 3
+        const healAmount = Math.floor(sense.power * 0.7);
+        allyUnits.forEach(ally => {
+          const dist = Math.abs(ally.x - unit.x) + Math.abs(ally.y - unit.y);
+          if (dist <= 3 && ally.hp < ally.maxHp) {
+            ally.hp = Math.min(ally.maxHp, ally.hp + healAmount);
+            result.effects.push(`${ally.name} HP +${healAmount}`);
+          }
+        });
+        state.log.push(`${unit.name}의 「${sense.name}」 발동 — 광역 회복`);
+        break;
       }
     }
-    if (card.ability.type === 'donate') {
-      const donateCount = card.ability.value + researchBonus;
-      for (let i = 0; i < donateCount; i++) {
-        const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
-        state.bloodPool.push(createBloodCard(bt));
+  } else {
+    // 혈 skills (vampire)
+    switch (sense.baseType) {
+      case '혈압': {
+        // Direct damage to one enemy in range 2
+        const target = enemyUnits
+          .sort((a, b) => {
+            const da = Math.abs(a.x - unit.x) + Math.abs(a.y - unit.y);
+            const db = Math.abs(b.x - unit.x) + Math.abs(b.y - unit.y);
+            return da - db;
+          })[0];
+        if (target) {
+          const dist = Math.abs(target.x - unit.x) + Math.abs(target.y - unit.y);
+          if (dist <= 2) {
+            const dmg = sense.power + Math.floor(Math.random() * 4);
+            target.hp -= dmg;
+            if (target.hp <= 0) target.hp = 0;
+            result.effects.push(`${target.name}에게 ${dmg} 데미지`);
+            state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name}에게 ${dmg} 데미지!`);
+          }
+        }
+        break;
       }
-      if (researchBonus > 0) {
-        state.log.push(`연구 보너스: 혈액 생성 +${researchBonus}`);
+      case '혈향': {
+        // Debuff: reduce all enemies' DEF in range
+        const debuffDef = Math.floor(sense.power * 0.4);
+        enemyUnits.forEach(enemy => {
+          const dist = Math.abs(enemy.x - unit.x) + Math.abs(enemy.y - unit.y);
+          if (dist <= 3) {
+            enemy.def = Math.max(0, enemy.def - debuffDef);
+            result.effects.push(`${enemy.name} DEF -${debuffDef}`);
+          }
+        });
+        state.log.push(`${unit.name}의 「${sense.name}」 발동 — 적 방어력 약화`);
+        break;
       }
-    }
-    if (card.ability.type === 'research') {
-      state.log.push(`${card.name}: 혈액 효율 +${card.ability.value} 적용 중`);
-    }
-  });
-
-  const combos = calculateComboBonuses(state);
-  totalCollected += combos.bpBonus;
-  state.resources.rep += combos.repBonus;
-  state.resources.sus = Math.max(0, state.resources.sus - combos.susReduction);
-  for (let i = 0; i < combos.bloodCards; i++) {
-    const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
-    state.bloodPool.push(createBloodCard(bt));
-  }
-  if (combos.active.length > 0) {
-    state.comboActivations += combos.active.length;
-    state.log.push(`콤보 발동: ${combos.active.map(c => c.label).join(', ')}`);
-  }
-
-  state.resources.bp += totalCollected;
-  if (totalCollected > state.maxCollect) state.maxCollect = totalCollected;
-
-  for (let i = state.hand.length - 1; i >= 0; i--) {
-    if (state.hand[i].type === 'blood') {
-      state.bloodPool.push(state.hand.splice(i, 1)[0]);
-    }
-  }
-
-  state.log.push(`오후 수집: BP +${totalCollected}, 혈액 풀 ${state.bloodPool.length}장`);
-  return totalCollected;
-}
-
-export function activateNextRequest(state) {
-  if (state.activeRequest) return state.activeRequest;
-  if (state.completedRequests >= 5) return null;
-  state.activeRequest = generateRandomRequest(state.nextRequestNum, state.turn);
-  state.nextRequestNum++;
-  state.log.push(`새 의뢰 도착: ${state.activeRequest.name}`);
-  return state.activeRequest;
-}
-
-export function fulfillRequest(state) {
-  const req = state.activeRequest;
-  if (!req) return { ok: false, reason: '활성 의뢰 없음' };
-
-  const needed = { ...req.requirements };
-  const used = [];
-
-  for (const [bt, count] of Object.entries(needed)) {
-    const available = state.bloodPool.filter(b => b.bloodType === bt);
-    if (available.length < count) {
-      return { ok: false, reason: `${bt}형 혈액 부족 (필요: ${count}, 보유: ${available.length})` };
-    }
-    for (let i = 0; i < count; i++) {
-      const idx = state.bloodPool.findIndex(b => b.bloodType === bt);
-      used.push(state.bloodPool.splice(idx, 1)[0]);
-    }
-  }
-
-  const discount = state.field.filter(c => c.ability.type === 'request_discount').reduce((sum, c) => sum + c.ability.value, 0);
-  const transportBonus = state.field.filter(c => c.ability.type === 'transport').reduce((sum, c) => sum + c.ability.value, 0);
-
-  const bpReward = (req.reward.bp || 0) + transportBonus;
-  if (bpReward) state.resources.bp += bpReward;
-  if (req.reward.rep) state.resources.rep += req.reward.rep;
-  const susCost = Math.max(0, 3 + state.completedRequests * 3 - discount);
-  state.resources.sus += susCost;
-
-  if (discount > 0) state.log.push(`의뢰 할인: SUS 비용 -${discount}`);
-  if (transportBonus > 0) state.log.push(`운송 보너스: BP +${transportBonus}`);
-
-  state.completedRequests++;
-  state.log.push(`의뢰 이행 완료: ${req.name} (완료: ${state.completedRequests}/5)`);
-  state.activeRequest = null;
-
-  return { ok: true, reward: req.reward };
-}
-
-export function failRequest(state) {
-  const req = state.activeRequest;
-  if (!req) return;
-
-  if (req.penalty.sus) state.resources.sus += req.penalty.sus;
-  if (req.penalty.rep) state.resources.rep += req.penalty.rep;
-
-  state.log.push(`의뢰 실패: ${req.name} (SUS +${req.penalty.sus || 0})`);
-  state.activeRequest = null;
-}
-
-export function processEvent(state) {
-  const event = EVENTS[Math.floor(Math.random() * EVENTS.length)];
-  for (const [key, val] of Object.entries(event.effect)) {
-    state.resources[key] = (state.resources[key] || 0) + val;
-  }
-  state.resources.rep = Math.max(0, state.resources.rep);
-  state.resources.sus = Math.max(0, state.resources.sus);
-  state.log.push(`이벤트: ${event.name} — ${event.description}`);
-  return event;
-}
-
-export function convertBlood(state, fromIndex, targetType) {
-  if (fromIndex < 0 || fromIndex >= state.bloodPool.length) return { ok: false, reason: '변환할 혈액이 없습니다' };
-  if (!BLOOD_TYPES.includes(targetType)) return { ok: false, reason: '잘못된 혈액형입니다' };
-  const hasConverter = state.field.some(c => c.ability.type === 'convert');
-  if (!hasConverter) return { ok: false, reason: '변환 능력 보유 캐릭터가 필드에 없습니다' };
-  const old = state.bloodPool[fromIndex].bloodType;
-  state.bloodPool[fromIndex].bloodType = targetType;
-  state.log.push(`혈액 변환: ${old}형 → ${targetType}형`);
-  return { ok: true };
-}
-
-export function generateDilemma(state) {
-  const usedIds = state.usedDilemmas || [];
-  const available = DILEMMA_EVENTS.filter(d => !usedIds.includes(d.id));
-  if (available.length === 0) {
-    state.usedDilemmas = [];
-    return DILEMMA_EVENTS[Math.floor(Math.random() * DILEMMA_EVENTS.length)];
-  }
-  return available[Math.floor(Math.random() * available.length)];
-}
-
-export function resolveDilemma(state, dilemma, choiceIndex) {
-  const choice = dilemma.choices[choiceIndex];
-  if (!choice) return { ok: false };
-  for (const [key, val] of Object.entries(choice.effect)) {
-    state.resources[key] = (state.resources[key] || 0) + val;
-  }
-  state.resources.rep = Math.max(0, state.resources.rep);
-  state.resources.sus = Math.max(0, state.resources.sus);
-  if (!state.usedDilemmas) state.usedDilemmas = [];
-  state.usedDilemmas.push(dilemma.id);
-  state.nightActionTaken = true;
-  state.log.push(`딜레마: ${dilemma.name} → "${choice.label}"`);
-  return { ok: true, choice };
-}
-
-export function settleTurn(state) {
-  const equipRepBonus = state.equipment.reduce((sum, eq) => sum + (eq.effect.repBonus || 0), 0);
-  const equipSusReduction = state.equipment.reduce((sum, eq) => sum + (eq.effect.susReduction || 0), 0);
-
-  state.field.forEach(card => {
-    if (card.ability.onField) {
-      for (const [key, val] of Object.entries(card.ability.onField)) {
-        state.resources[key] = (state.resources[key] || 0) + val;
+      case '혈맹': {
+        // Buff all ally kartein units' ATK
+        const buffAtk = Math.floor(sense.power * 0.5);
+        allyUnits.forEach(ally => {
+          if (ally.faction === FACTIONS.KARTEIN) {
+            ally.atk += buffAtk;
+            result.effects.push(`${ally.name} ATK +${buffAtk}`);
+          }
+        });
+        state.log.push(`${unit.name}의 「${sense.name}」 발동 — 카르테인 동맹 강화`);
+        break;
       }
-      state.log.push(`${card.name} 필드 효과: ${Object.entries(card.ability.onField).map(([k, v]) => `${k.toUpperCase()} ${v > 0 ? '+' : ''}${v}`).join(', ')}`);
-    }
-  });
-
-  state.resources.rep += equipRepBonus;
-  state.resources.sus += (state.diffSettings?.susPerTurn ?? 2);
-  state.resources.sus = Math.max(0, state.resources.sus - equipSusReduction);
-
-  if (state.activeRequest) {
-    state.activeRequest.turnsLeft--;
-    if (state.activeRequest.turnsLeft <= 0) {
-      failRequest(state);
-    }
-  }
-
-  while (state.hand.length > 3) {
-    state.discardPile.push(state.hand.pop());
-  }
-
-  state.field.forEach(card => state.discardPile.push(card));
-  state.field = [];
-  state.nightActionTaken = false;
-  refreshRecruitShop(state);
-
-  state.log.push(`턴 ${state.turn} 정산 완료 — BP:${state.resources.bp} REP:${state.resources.rep} SUS:${state.resources.sus}`);
-}
-
-export function checkGameEnd(state) {
-  if (state.completedRequests >= 5) {
-    state.gameOver = true;
-    state.winner = true;
-    state.log.push('승리! 카르테인 가문의 5개 의뢰를 모두 이행했습니다.');
-    return 'win';
-  }
-  if (state.resources.rep <= 0) {
-    state.gameOver = true;
-    state.log.push('패배... 평판이 바닥나 센터가 폐쇄되었습니다.');
-    return 'lose-rep';
-  }
-  if (state.resources.sus >= 100) {
-    state.gameOver = true;
-    state.log.push('패배... 뱀파이어 활동이 적발되었습니다.');
-    return 'lose-sus';
-  }
-  return null;
-}
-
-export function advanceTurn(state) {
-  state.turn++;
-  state.phase = 'dawn';
-}
-
-export function runFullTurn(state) {
-  if (state.gameOver) return;
-
-  state.phase = 'dawn';
-  drawCards(state, 5);
-
-  state.phase = 'morning';
-  let placed = true;
-  while (placed) {
-    placed = false;
-    for (let i = state.hand.length - 1; i >= 0; i--) {
-      const card = state.hand[i];
-      if (card.type === 'character' && card.cost <= state.resources.bp) {
-        playCharacter(state, i);
-        placed = true;
+      case '혈식': {
+        // AOE: damage all enemies in range 2
+        const aoeDmg = Math.floor(sense.power * 0.8);
+        enemyUnits.forEach(enemy => {
+          const dist = Math.abs(enemy.x - unit.x) + Math.abs(enemy.y - unit.y);
+          if (dist <= 2) {
+            enemy.hp -= aoeDmg;
+            if (enemy.hp <= 0) enemy.hp = 0;
+            result.effects.push(`${enemy.name}에게 ${aoeDmg} 데미지${enemy.hp <= 0 ? ' → 전사!' : ''}`);
+          }
+        });
+        state.log.push(`${unit.name}의 「${sense.name}」 발동 — 광역 공격!`);
+        break;
+      }
+      case '혈기': {
+        // Lifesteal: damage one enemy, heal self
+        const target = enemyUnits
+          .sort((a, b) => a.hp - b.hp)[0]; // target lowest HP
+        if (target) {
+          const dmg = sense.power + Math.floor(Math.random() * 3);
+          target.hp -= dmg;
+          if (target.hp <= 0) target.hp = 0;
+          const heal = Math.floor(dmg * 0.5);
+          unit.hp = Math.min(unit.maxHp, unit.hp + heal);
+          result.effects.push(`${target.name}에게 ${dmg} 데미지, 자신 HP +${heal} 흡혈`);
+          state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name}에게 ${dmg} 데미지, 흡혈 +${heal}`);
+        }
+        break;
+      }
+      case '혈유': {
+        // Charm/debuff: reduce target MOV and ATK
+        const target = enemyUnits
+          .sort((a, b) => b.atk - a.atk)[0]; // target highest ATK
+        if (target) {
+          const atkReduce = Math.floor(sense.power * 0.5);
+          const movReduce = 1;
+          target.atk = Math.max(1, target.atk - atkReduce);
+          target.mov = Math.max(1, target.mov - movReduce);
+          result.effects.push(`${target.name} ATK -${atkReduce}, MOV -${movReduce} (매혹)`);
+          state.log.push(`${unit.name}의 「${sense.name}」 — ${target.name} 매혹! ATK -${atkReduce}, MOV -${movReduce}`);
+        }
         break;
       }
     }
   }
 
-  const affordable = state.shopEquipment
-    .filter(eq => eq.cost <= state.resources.bp && !state.equipment.find(e => e.id === eq.id))
-    .sort((a, b) => a.cost - b.cost);
-  if (affordable.length > 0) buyEquipment(state, affordable[0].id);
+  // Set cooldown
+  sense.cooldown = sense.maxCooldown;
+  unit.acted = true;
 
-  state.phase = 'afternoon';
-  collectBlood(state);
+  return result;
+}
 
-  state.phase = 'night';
-  activateNextRequest(state);
-  if (state.activeRequest) {
-    const result = fulfillRequest(state);
-    if (!result.ok) {
-      state.log.push(`의뢰 이행 불가: ${result.reason}`);
+// ── Cooldown Tick ────────────────────────────────────────────────────────
+
+export function tickCooldowns(state) {
+  state.units.forEach(u => {
+    if (u.hp > 0 && u.senseSkill && u.senseSkill.cooldown > 0) {
+      u.senseSkill.cooldown--;
+    }
+  });
+}
+
+// ── Victory Check ───────────────────────────────────────────────────────
+
+export function checkVictory(state) {
+  const playerAlive = state.units.filter(u => u.team === 'player' && u.hp > 0);
+  const enemyAlive = state.units.filter(u => u.team === 'enemy' && u.hp > 0);
+
+  // Lose condition: all player units defeated
+  if (playerAlive.length === 0) {
+    state.result = 'lose';
+    state.log.push('패배... 모든 아군이 전사했습니다.');
+    return 'lose';
+  }
+
+  // Win conditions based on stage type
+  if (state.victoryCondition === 'defeat_all') {
+    if (enemyAlive.length === 0) {
+      state.result = 'win';
+      state.log.push('승리! 모든 적을 제압했습니다!');
+      return 'win';
+    }
+  } else if (state.victoryCondition === 'survive') {
+    // Survive for N turns (check at end of turn)
+    const surviveTurns = state.stage.surviveTurns || 5;
+    if (state.turnNumber > surviveTurns && playerAlive.length > 0) {
+      state.result = 'win';
+      state.log.push(`승리! ${surviveTurns}턴 생존 성공!`);
+      return 'win';
     }
   }
-  if (Math.random() < (state.diffSettings?.eventChance ?? 0.4)) processEvent(state);
 
-  state.phase = 'settlement';
-  settleTurn(state);
+  return null;
+}
 
-  const endResult = checkGameEnd(state);
-  if (!endResult) advanceTurn(state);
+// ── Enemy AI ────────────────────────────────────────────────────────────
 
-  return endResult;
+function manhattanDist(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+export function runEnemyPhase(state) {
+  if (state.phase !== 'enemy_phase') return [];
+
+  const actions = [];
+  const enemies = state.units.filter(u => u.team === 'enemy' && u.hp > 0);
+  const players = state.units.filter(u => u.team === 'player' && u.hp > 0);
+
+  if (players.length === 0) return actions;
+
+  for (const enemy of enemies) {
+    if (enemy.acted) continue;
+
+    // Find closest player unit
+    let closestPlayer = null;
+    let closestDist = Infinity;
+    for (const p of players) {
+      if (p.hp <= 0) continue;
+      const dist = manhattanDist(enemy, p);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestPlayer = p;
+      }
+    }
+
+    if (!closestPlayer) continue;
+
+    // Try to use sense skill if available and in range
+    if (enemy.senseSkill && enemy.senseSkill.cooldown === 0 && closestDist <= 3) {
+      const senseResult = activateSense(state, enemy);
+      if (senseResult.ok) {
+        actions.push({ type: 'sense', unit: enemy.uid, skillName: enemy.senseSkill.name, effects: senseResult.effects });
+        // Check if victory changed after sense
+        const vc = checkVictory(state);
+        if (vc) return actions;
+        continue; // sense skill uses the action
+      }
+    }
+
+    // Try to attack first if already in range
+    const atkRange = getAttackRange(state, enemy);
+    const canAttack = atkRange.some(t => {
+      const target = getUnitAt(state, t.x, t.y);
+      return target && target.team === 'player' && target.hp > 0;
+    });
+
+    if (canAttack) {
+      // Find best target (lowest HP)
+      let bestTarget = null;
+      let bestHp = Infinity;
+      for (const t of atkRange) {
+        const target = getUnitAt(state, t.x, t.y);
+        if (target && target.team === 'player' && target.hp > 0 && target.hp < bestHp) {
+          bestHp = target.hp;
+          bestTarget = target;
+        }
+      }
+      if (bestTarget) {
+        const atkResult = attackUnit(state, enemy, bestTarget);
+        if (atkResult.ok) {
+          actions.push({ type: 'attack', unit: enemy.uid, target: bestTarget.uid, ...atkResult });
+          const vc = checkVictory(state);
+          if (vc) return actions;
+          continue;
+        }
+      }
+    }
+
+    // Move toward closest player
+    const movRange = getMovementRange(state, enemy);
+    if (movRange.length === 0) {
+      enemy.acted = true;
+      continue;
+    }
+
+    // Pick the tile that gets closest to the target
+    let bestTile = null;
+    let bestMoveDist = Infinity;
+    for (const tile of movRange) {
+      const dist = manhattanDist(tile, closestPlayer);
+      if (dist < bestMoveDist) {
+        bestMoveDist = dist;
+        bestTile = tile;
+      }
+    }
+
+    if (bestTile) {
+      const moveResult = moveUnit(state, enemy, bestTile.x, bestTile.y);
+      if (moveResult.ok) {
+        actions.push({ type: 'move', unit: enemy.uid, x: bestTile.x, y: bestTile.y });
+      }
+    }
+
+    // Try to attack after moving
+    const atkRangeAfterMove = getAttackRange(state, enemy);
+    let bestTargetAfterMove = null;
+    let bestHpAfterMove = Infinity;
+    for (const t of atkRangeAfterMove) {
+      const target = getUnitAt(state, t.x, t.y);
+      if (target && target.team === 'player' && target.hp > 0 && target.hp < bestHpAfterMove) {
+        bestHpAfterMove = target.hp;
+        bestTargetAfterMove = target;
+      }
+    }
+
+    if (bestTargetAfterMove) {
+      const atkResult = attackUnit(state, enemy, bestTargetAfterMove);
+      if (atkResult.ok) {
+        actions.push({ type: 'attack', unit: enemy.uid, target: bestTargetAfterMove.uid, ...atkResult });
+        const vc = checkVictory(state);
+        if (vc) return actions;
+      }
+    } else {
+      enemy.acted = true;
+    }
+  }
+
+  return actions;
+}
+
+// ── Utility: Check if player phase should auto-end ──────────────────────
+
+export function allPlayerUnitsActed(state) {
+  const playerUnits = state.units.filter(u => u.team === 'player' && u.hp > 0);
+  return playerUnits.length > 0 && playerUnits.every(u => u.acted);
+}
+
+// ── Utility: Get valid targets for attack ───────────────────────────────
+
+export function getAttackTargets(state, unit) {
+  if (!unit || unit.hp <= 0) return [];
+  const atkRange = getAttackRange(state, unit);
+  return atkRange
+    .map(t => getUnitAt(state, t.x, t.y))
+    .filter(target => target && target.team !== unit.team && target.hp > 0);
+}
+
+// ── Utility: Get unit by UID ────────────────────────────────────────────
+
+export function getUnitByUid(state, uid) {
+  return state.units.find(u => u.uid === uid) || null;
+}
+
+// ── Utility: Get living units by team ───────────────────────────────────
+
+export function getLivingUnits(state, team) {
+  return state.units.filter(u => u.team === team && u.hp > 0);
+}
+
+// ── Utility: Reset unit actions for new phase ───────────────────────────
+
+export function resetActedFlags(state, team) {
+  state.units.forEach(u => {
+    if (u.team === team) u.acted = false;
+  });
 }
