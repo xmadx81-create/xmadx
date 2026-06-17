@@ -4562,6 +4562,143 @@ body {
   color: #666;
 }
 
+/* ── Enemy Action Highlight ── */
+.tile.enemy-acting {
+  box-shadow: 0 0 12px rgba(233, 57, 70, 0.8), inset 0 0 8px rgba(233, 57, 70, 0.4);
+  z-index: 5;
+}
+
+/* ── Battle Result Detail ── */
+.result-story {
+  font-size: 0.85rem;
+  color: #ccc;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.result-stars {
+  font-size: 1.5rem;
+  text-align: center;
+  margin: 8px 0;
+}
+.result-summary {
+  font-size: 0.75rem;
+  color: #aaa;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.result-units {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.result-unit {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: rgba(69, 123, 157, 0.1);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+.result-unit.result-dead {
+  background: rgba(233, 57, 70, 0.1);
+  opacity: 0.6;
+}
+.result-unit-name { color: #eee; }
+.result-unit-status { color: #aaa; }
+
+/* ── Card Gallery Progression ── */
+.card-lv-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(255, 215, 0, 0.9);
+  color: #1a1a2e;
+  font-size: 0.55rem;
+  font-weight: 900;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.card-xp-bar {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+.card-xp-fill {
+  height: 100%;
+  background: var(--accent-gold);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+/* ── Equipment Select ── */
+.equip-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.equip-select-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #eee;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+.equip-select-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-gold);
+}
+.equip-item-name { font-weight: bold; }
+.equip-item-stats { font-size: 0.7rem; color: var(--accent-gold); }
+.equip-cancel {
+  justify-content: center;
+  color: #888;
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ── Deploy Equipment Panel ── */
+.dd-equip {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.dd-equip-title {
+  font-size: 0.7rem;
+  color: #888;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+.dd-equip-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 0.75rem;
+}
+.dd-slot-icon { font-size: 0.85rem; }
+.dd-slot-name { flex: 1; color: #ccc; }
+.dd-equip-btn {
+  background: rgba(100, 181, 246, 0.15);
+  border: 1px solid rgba(100, 181, 246, 0.3);
+  color: #64b5f6;
+  font-size: 0.6rem;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.dd-equip-btn:hover {
+  background: rgba(100, 181, 246, 0.25);
+}
+
 /* ── Accessibility: Reduce Motion ── */
 @media (prefers-reduced-motion: reduce) {
   .tile.move-range,
