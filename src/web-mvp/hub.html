@@ -44,24 +44,52 @@
           <div id="stage-list" class="stage-list"></div>
         </div>
 
-        <!-- 유닛 편성 -->
-        <div id="deploy-screen" class="deploy-panel" style="display:none">
-          <h3 id="deploy-stage-name">유닛 편성</h3>
-          <p class="deploy-hint">출격할 캐릭터를 선택하세요 (<span id="deploy-count">0</span>/<span id="deploy-max">4</span>)</p>
-          <div id="deploy-roster" class="deploy-roster"></div>
-          <div id="deploy-synergy" class="deploy-synergy" style="display:none">
-            <div class="synergy-header">
-              <span class="synergy-label">팀 시너지</span>
-              <span class="synergy-grade" id="synergy-grade">—</span>
-              <span class="synergy-mult" id="synergy-mult">×1.0</span>
+        <!-- 유닛 편성 (새 로비) -->
+        <div id="deploy-screen" class="deploy-screen-v2" style="display:none">
+          <!-- 상단: 스테이지 정보 + 맵 미리보기 -->
+          <div class="deploy-top">
+            <div class="deploy-stage-header">
+              <h3 id="deploy-stage-name">유닛 편성</h3>
+              <p class="deploy-hint">출격할 캐릭터를 선택하세요 (<span id="deploy-count">0</span>/<span id="deploy-max">4</span>)</p>
+            </div>
+            <div class="deploy-map-preview" id="deploy-map-preview"></div>
+          </div>
+
+          <!-- 중단: 좌측 캐릭터 선택 + 우측 상세정보 -->
+          <div class="deploy-mid">
+            <div class="deploy-roster-panel">
+              <div class="deploy-roster-header">
+                <span class="roster-title">캐릭터 선택</span>
+                <div class="roster-filters">
+                  <button class="roster-filter active" data-rf="all">전체</button>
+                  <button class="roster-filter" data-rf="center">센터</button>
+                  <button class="roster-filter" data-rf="neutral">비소속</button>
+                </div>
+              </div>
+              <div id="deploy-roster" class="deploy-roster-grid"></div>
+            </div>
+            <div class="deploy-detail-panel" id="deploy-detail">
+              <div class="deploy-detail-empty">캐릭터를 선택하세요</div>
+            </div>
+          </div>
+
+          <!-- 하단: 출전 대기석 + 시너지 + 버튼 -->
+          <div class="deploy-bottom">
+            <div class="deploy-bench-header">
+              <span class="bench-title">출전 대기석</span>
+              <div id="deploy-synergy" class="deploy-synergy-inline" style="display:none">
+                <span class="synergy-grade" id="synergy-grade">—</span>
+                <span class="synergy-mult" id="synergy-mult">×1.0</span>
+                <span class="synergy-cp-inline">CP <strong id="synergy-cp">0</strong></span>
+              </div>
             </div>
             <div class="synergy-secret" id="synergy-secret" style="display:none"></div>
             <div class="synergy-pairs" id="synergy-pairs"></div>
-            <div class="synergy-cp">팀 전투력: <strong id="synergy-cp">0</strong></div>
-          </div>
-          <div class="deploy-actions">
-            <button id="btn-deploy-back" class="btn-secondary">뒤로</button>
-            <button id="btn-deploy-start" class="btn-primary" disabled>출격!</button>
+            <div id="deploy-bench" class="deploy-bench"></div>
+            <div class="deploy-actions">
+              <button id="btn-deploy-back" class="btn-secondary">뒤로</button>
+              <button id="btn-deploy-start" class="btn-primary" disabled>출격!</button>
+            </div>
           </div>
         </div>
 
