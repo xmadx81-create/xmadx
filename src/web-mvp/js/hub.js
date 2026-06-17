@@ -8,6 +8,7 @@ import {
   getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate, useItem,
   spawnReinforcements, getDangerZone,
   EQUIPMENT, RELICS, equipItem, equipRelic,
+  getSkillTargetType, getSkillTargets,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear } from './save.js';
 
@@ -755,6 +756,10 @@ function renderBattle() {
         }
         if (unit.shield > 0) buffIcons += `<div class="unit-shield-icon">🛡${unit.shield}</div>`;
         if (unit.invuln) buffIcons += `<div class="unit-invuln-icon">⭐</div>`;
+        if (unit.dots && unit.dots.length > 0) {
+          const dotIcons = unit.dots.map(d => d.type === 'poison' ? '🟢' : '🩸').join('');
+          buffIcons += `<div class="unit-dot-icon">${dotIcons}</div>`;
+        }
 
         unitHtml = `
           <div class="unit ${unit.team}${actedClass}" data-uid="${unit.uid}">
@@ -844,6 +849,10 @@ function showUnitDetail(unit) {
     ${passiveHtml}
     ${shieldHtml}${invulnHtml}
     ${buffListHtml}
+    ${unit.dots && unit.dots.length > 0 ? `<div class="dot-list">${unit.dots.map(d => {
+      const label = d.type === 'poison' ? '🟢독' : '🩸출혈';
+      return `<span class="dot-tag dot-${d.type}">${label} ${d.damage}/턴 <small>${d.turns}턴</small></span>`;
+    }).join('')}</div>` : ''}
     ${growthHtml ? `<div class="growth-list">성장: ${growthHtml}</div>` : ''}
   `;
   const sense = unit.senseSkill;
@@ -894,10 +903,25 @@ function hideActionMenu() {
 
 // ── Tile Click Handler ──
 
+let skillTargetUid = null;
+
 function onTileClick(x, y) {
   if (!battleState || battleState.phase !== 'player_phase') return;
 
   const clickedUnit = battleState.units.find(u => u.hp > 0 && u.x === x && u.y === y);
+
+  if (uiMode === 'skill_target') {
+    const valid = highlightedTiles.find(t => t.x === x && t.y === y && t.cls === 'skill-range');
+    if (valid && clickedUnit) {
+      const attacker = getUnitByUid(battleState, selectedUid);
+      if (attacker) {
+        executeSkillOnTarget(attacker, clickedUnit);
+      }
+    } else {
+      cancelSelection();
+    }
+    return;
+  }
 
   if (uiMode === 'move') {
     const valid = highlightedTiles.find(t => t.x === x && t.y === y && t.cls === 'move-range');
@@ -998,11 +1022,31 @@ function onSkillBtn() {
   const unit = getUnitByUid(battleState, selectedUid);
   if (!unit || !unit.senseSkill || unit.senseSkill.cooldown > 0) return;
 
+  const targetType = getSkillTargetType(unit);
+
+  if (targetType === 'self' || targetType === 'auto') {
+    executeSkillOnTarget(unit, null);
+    return;
+  }
+
+  const targets = getSkillTargets(battleState, unit);
+  if (targets.length === 0) {
+    appendLog(`범위 내 대상 없음`);
+    return;
+  }
+
+  highlightedTiles = targets.map(t => ({ x: t.x, y: t.y, cls: 'skill-range' }));
+  uiMode = 'skill_target';
+  hideActionMenu();
+  renderBattle();
+}
+
+function executeSkillOnTarget(attacker, target) {
   undoMoveData = null;
-  const result = activateSense(battleState, unit);
+  const result = activateSense(battleState, attacker, target);
   if (result.ok) {
-    showSkillOverlay(unit.senseSkill.name, SENSE_TYPES[unit.senseSkill.baseType]?.category);
-    appendLog(`✦ ${unit.name}의 「${result.skillName}」 발동!`);
+    showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
+    appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
     result.effects.forEach(e => appendLog(`  → ${e}`));
     progressQuest(gameSave, 'skill');
     saveGame(gameSave);
@@ -1206,7 +1250,12 @@ async function doSkillAttack(attacker, defender) {
   undoMoveData = null;
   if (!attacker.senseSkill || attacker.senseSkill.cooldown > 0) return;
 
-  const result = activateSense(battleState, attacker);
+  const targetType = getSkillTargetType(attacker);
+  const target = (targetType === 'enemy_single') ? defender :
+                 (targetType === 'ally_single') ? null :
+                 null;
+
+  const result = activateSense(battleState, attacker, target);
   if (!result.ok) return;
 
   showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
@@ -1443,6 +1492,7 @@ function showUnitListPanel() {
       <div class="ulp-hp-bar"><div class="ulp-hp-fill ${hpColor}" style="width:${hpPct}%"></div></div>
       <span class="ulp-hp-text">${u.hp}/${u.maxHp}</span>
       ${buffCount > 0 ? `<span class="ulp-buffs">✦${buffCount}</span>` : ''}
+      ${u.dots?.length > 0 ? `<span class="ulp-dots">${u.dots.map(d => d.type === 'poison' ? '🟢' : '🩸').join('')}</span>` : ''}
       ${u.acted ? '<span class="ulp-acted">✓</span>' : ''}
     </div>`;
   };
@@ -1515,7 +1565,25 @@ function endTurn() {
       if (vc) { handleBattleEnd(vc); return; }
     }
 
+    const dotSnapshot = battleState.units
+      .filter(u => u.hp > 0 && u.dots && u.dots.length > 0)
+      .map(u => ({ uid: u.uid, x: u.x, y: u.y, dots: u.dots.map(d => ({ ...d })) }));
+
     endEnemyPhase(battleState);
+
+    if (dotSnapshot.length > 0) {
+      renderBattle();
+      dotSnapshot.forEach(snap => {
+        const tile = document.querySelector(`.tile[data-x="${snap.x}"][data-y="${snap.y}"]`);
+        if (tile) {
+          snap.dots.forEach(d => {
+            const label = d.type === 'poison' ? '🟢' : '🩸';
+            showFloatingText(tile, `${label}-${d.damage}`, 'dot');
+          });
+        }
+      });
+      await delay(600);
+    }
 
     const reinforcement = spawnReinforcements(battleState);
     if (reinforcement) {
