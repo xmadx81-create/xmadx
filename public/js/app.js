@@ -1131,6 +1131,10 @@ async function renderMore() {
         <span class="qa-icon">&#129309;</span>
         <span class="qa-label" style="color:#db2777; font-weight:700;">봉사활동</span>
       </button>
+      <button class="quick-action-btn" onclick="window.open('/room-assignment.html','_blank')" style="border:2px solid #0891b2;" data-help="워크샵/연수 시 객실 방배정을 자동으로 처리합니다.">
+        <span class="qa-icon">&#127970;</span>
+        <span class="qa-label" style="color:#0891b2; font-weight:700;">워크샵 방배정</span>
+      </button>
       <button class="quick-action-btn" onclick="showAttendancePage()" style="border:2px solid #6366f1;">
         <span class="qa-icon">&#128339;</span>
         <span class="qa-label" style="color:#6366f1; font-weight:700;">출퇴근 기록</span>

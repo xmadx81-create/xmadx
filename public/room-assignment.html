@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>워크샵 방배정 도구</title>
+<style>
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --male: #3b82f6;
+  --female: #ec4899;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.1), 0 2px 4px rgba(0,0,0,.06);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Segoe UI','Malgun Gothic',sans-serif; background:#f0f2f5; color:var(--gray-800); min-height:100vh; }
+
+/* Header */
+.header { background:linear-gradient(135deg,#1e3a5f,#2563eb); color:#fff; padding:16px 24px; display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+.header h1 { font-size:22px; white-space:nowrap; }
+.header select { padding:8px 12px; border-radius:var(--radius); border:none; font-size:14px; cursor:pointer; }
+.header .stats { margin-left:auto; display:flex; gap:16px; font-size:14px; }
+.header .stats span { background:rgba(255,255,255,.15); padding:4px 12px; border-radius:20px; }
+
+/* Layout */
+.main-container { display:flex; gap:0; height:calc(100vh - 60px); }
+.panel { background:#fff; overflow-y:auto; }
+.panel-left { width:380px; min-width:340px; border-right:1px solid var(--gray-200); }
+.panel-center { flex:1; background:var(--gray-50); padding:20px; overflow:auto; }
+
+/* Panel headers */
+.panel-header { padding:14px 16px; background:var(--gray-50); border-bottom:1px solid var(--gray-200); font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:5; }
+.panel-header .btn-group { display:flex; gap:6px; }
+
+/* Buttons */
+.btn { padding:6px 14px; border:none; border-radius:var(--radius); cursor:pointer; font-size:13px; font-weight:600; transition:.15s; display:inline-flex; align-items:center; gap:5px; }
+.btn:hover { opacity:.85; }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-success { background:var(--success); color:#fff; }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-warning { background:var(--warning); color:#fff; }
+.btn-outline { background:#fff; border:1px solid var(--gray-300); color:var(--gray-700); }
+.btn-outline:hover { background:var(--gray-50); }
+.btn-sm { padding:4px 10px; font-size:12px; }
+.btn-lg { padding:10px 24px; font-size:15px; }
+
+/* Tabs */
+.tabs { display:flex; border-bottom:2px solid var(--gray-200); }
+.tab { flex:1; padding:10px; text-align:center; cursor:pointer; font-size:13px; font-weight:600; color:var(--gray-500); border-bottom:2px solid transparent; margin-bottom:-2px; transition:.15s; }
+.tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+.tab:hover { color:var(--primary); }
+
+/* Forms */
+.form-section { padding:12px 16px; }
+.form-row { display:flex; gap:8px; margin-bottom:8px; }
+.form-group { display:flex; flex-direction:column; gap:3px; flex:1; }
+.form-group label { font-size:11px; font-weight:600; color:var(--gray-500); text-transform:uppercase; }
+.form-group input, .form-group select { padding:7px 10px; border:1px solid var(--gray-300); border-radius:var(--radius); font-size:13px; }
+.form-group input:focus, .form-group select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(37,99,235,.15); }
+.form-group textarea { padding:7px 10px; border:1px solid var(--gray-300); border-radius:var(--radius); font-size:13px; resize:vertical; }
+
+/* Participant list */
+.participant-list { list-style:none; }
+.participant-item { display:flex; align-items:center; gap:8px; padding:8px 16px; border-bottom:1px solid var(--gray-100); cursor:grab; transition:background .1s; font-size:13px; }
+.participant-item:hover { background:var(--gray-50); }
+.participant-item.dragging { opacity:.4; }
+.participant-item .gender-badge { width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#fff; flex-shrink:0; }
+.participant-item .gender-badge.male { background:var(--male); }
+.participant-item .gender-badge.female { background:var(--female); }
+.participant-item .info { flex:1; min-width:0; }
+.participant-item .name { font-weight:600; }
+.participant-item .meta { font-size:11px; color:var(--gray-500); }
+.participant-item .tags { display:flex; gap:3px; flex-wrap:wrap; }
+.participant-item .tag { font-size:10px; padding:1px 6px; border-radius:10px; background:var(--gray-100); color:var(--gray-600); }
+.participant-item .tag.health { background:#fef3c7; color:#92400e; }
+.participant-item .tag.vip { background:#ede9fe; color:#5b21b6; }
+.participant-item .tag.group-tag { background:#dbeafe; color:#1e40af; }
+.participant-item .actions { display:flex; gap:4px; opacity:0; transition:.15s; }
+.participant-item:hover .actions { opacity:1; }
+.participant-item .actions button { background:none; border:none; cursor:pointer; font-size:14px; padding:2px; color:var(--gray-400); }
+.participant-item .actions button:hover { color:var(--gray-700); }
+.participant-item.assigned { background:#f0fdf4; }
+.participant-item.assigned .name::after { content:'✓'; margin-left:4px; color:var(--success); font-size:11px; }
+
+/* Room cards */
+.floor-plan-title { font-size:18px; font-weight:700; text-align:center; margin-bottom:4px; }
+.floor-plan-addr { font-size:12px; color:var(--gray-500); text-align:center; margin-bottom:16px; }
+.building-section { margin-bottom:24px; }
+.building-label { font-size:14px; font-weight:700; color:var(--gray-600); margin-bottom:10px; padding-left:4px; border-left:3px solid var(--primary); padding:2px 8px; }
+.rooms-grid { display:flex; flex-wrap:wrap; gap:12px; }
+.room-card { background:#fff; border:2px solid var(--gray-200); border-radius:10px; width:200px; min-height:120px; display:flex; flex-direction:column; transition:border-color .2s, box-shadow .2s; }
+.room-card.drag-over { border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,.2); }
+.room-card.full { border-color:var(--success); }
+.room-card.overflow { border-color:var(--danger); }
+.room-card.gender-male { border-left:4px solid var(--male); }
+.room-card.gender-female { border-left:4px solid var(--female); }
+.room-header { padding:8px 10px; background:var(--gray-50); border-bottom:1px solid var(--gray-200); border-radius:8px 8px 0 0; display:flex; justify-content:space-between; align-items:center; }
+.room-header .room-name { font-weight:700; font-size:13px; }
+.room-header .room-cap { font-size:11px; color:var(--gray-500); }
+.room-header .room-cap .count { font-weight:700; }
+.room-header .room-cap .over { color:var(--danger); }
+.room-tags { display:flex; gap:3px; padding:4px 10px 0; flex-wrap:wrap; }
+.room-tags .tag { font-size:10px; padding:1px 6px; border-radius:10px; }
+.room-tags .tag.bed { background:#dbeafe; color:#1e40af; }
+.room-tags .tag.floor1 { background:#dcfce7; color:#166534; }
+.room-tags .tag.duplex { background:#fef3c7; color:#92400e; }
+.room-tags .tag.vip { background:#ede9fe; color:#5b21b6; }
+.room-tags .tag.big { background:#fce7f3; color:#9d174d; }
+.room-tags .tag.ondol { background:#ffedd5; color:#9a3412; }
+.room-body { padding:6px 10px 10px; flex:1; min-height:50px; display:flex; flex-direction:column; gap:3px; }
+.room-person { display:flex; align-items:center; gap:5px; padding:3px 6px; border-radius:4px; font-size:12px; background:var(--gray-50); cursor:grab; }
+.room-person:hover { background:var(--gray-100); }
+.room-person .gender-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.room-person .gender-dot.male { background:var(--male); }
+.room-person .gender-dot.female { background:var(--female); }
+.room-person .remove-person { margin-left:auto; background:none; border:none; cursor:pointer; color:var(--gray-400); font-size:12px; opacity:0; transition:.15s; }
+.room-person:hover .remove-person { opacity:1; }
+.room-person:hover .remove-person:hover { color:var(--danger); }
+.room-empty { color:var(--gray-400); font-size:12px; text-align:center; padding:16px 0; font-style:italic; }
+
+/* Rules panel */
+.rules-panel { padding:16px; }
+.rule-item { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--gray-100); }
+.rule-item label { flex:1; font-size:13px; }
+.rule-item input[type="checkbox"] { width:18px; height:18px; cursor:pointer; accent-color:var(--primary); }
+.rule-priority { font-size:11px; color:var(--gray-400); font-weight:600; }
+
+/* Bulk paste modal */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; justify-content:center; align-items:center; }
+.modal-overlay.active { display:flex; }
+.modal { background:#fff; border-radius:12px; padding:24px; width:90%; max-width:600px; max-height:80vh; overflow-y:auto; box-shadow:var(--shadow-md); }
+.modal h3 { margin-bottom:12px; }
+.modal .close-btn { position:absolute; top:12px; right:12px; background:none; border:none; font-size:20px; cursor:pointer; }
+
+/* Toast */
+.toast { position:fixed; bottom:20px; right:20px; background:var(--gray-800); color:#fff; padding:12px 20px; border-radius:var(--radius); font-size:14px; z-index:200; transform:translateY(100px); opacity:0; transition:.3s; }
+.toast.show { transform:translateY(0); opacity:1; }
+.toast.error { background:var(--danger); }
+.toast.success { background:var(--success); }
+
+/* Warning badge */
+.warning-icon { color:var(--warning); font-size:14px; cursor:help; }
+.error-icon { color:var(--danger); font-size:14px; cursor:help; }
+
+/* Print */
+@media print {
+  .panel-left, .header { display:none !important; }
+  .main-container { display:block !important; }
+  .panel-center { padding:10px !important; }
+  .room-card { break-inside:avoid; }
+  .room-person .remove-person { display:none !important; }
+}
+
+/* Summary table */
+.summary-table { width:100%; border-collapse:collapse; margin-top:12px; font-size:13px; }
+.summary-table th, .summary-table td { border:1px solid var(--gray-200); padding:6px 10px; text-align:left; }
+.summary-table th { background:var(--gray-100); font-weight:600; }
+.summary-table tr:hover { background:var(--gray-50); }
+
+/* Toolbar */
+.toolbar { display:flex; gap:8px; padding:12px 20px; background:#fff; border-bottom:1px solid var(--gray-200); align-items:center; flex-wrap:wrap; }
+.toolbar .spacer { flex:1; }
+
+/* Unassigned section in floor plan */
+.unassigned-pool { background:#fff; border:2px dashed var(--gray-300); border-radius:10px; padding:12px; margin-top:20px; }
+.unassigned-pool h4 { color:var(--gray-500); margin-bottom:8px; font-size:13px; }
+.unassigned-pool .people-list { display:flex; flex-wrap:wrap; gap:4px; min-height:30px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏢 워크샵 방배정</h1>
+  <select id="centerSelect" onchange="switchCenter()">
+    <option value="pohang">포항 연수원</option>
+    <option value="gyeongnam">경남 연수원</option>
+  </select>
+  <div class="stats">
+    <span id="statTotal">참여자: 0명</span>
+    <span id="statAssigned">배정: 0명</span>
+    <span id="statUnassigned">미배정: 0명</span>
+    <span id="statRooms">객실: 0개</span>
+  </div>
+</div>
+
+<div class="toolbar">
+  <button class="btn btn-primary btn-lg" onclick="autoAssign()">⚡ 자동 방배정</button>
+  <button class="btn btn-outline" onclick="clearAllAssignments()">🔄 배정 초기화</button>
+  <div class="spacer"></div>
+  <button class="btn btn-outline" onclick="showSummary()">📋 요약보기</button>
+  <button class="btn btn-outline" onclick="exportExcel()">📥 엑셀 다운로드</button>
+  <button class="btn btn-outline" onclick="window.print()">🖨️ 인쇄</button>
+</div>
+
+<div class="main-container">
+  <!-- Left: Participants -->
+  <div class="panel panel-left">
+    <div class="tabs">
+      <div class="tab active" data-tab="add" onclick="switchTab(this)">참여자 등록</div>
+      <div class="tab" data-tab="list" onclick="switchTab(this)">명단 (<span id="listCount">0</span>)</div>
+      <div class="tab" data-tab="rules" onclick="switchTab(this)">배정규칙</div>
+    </div>
+
+    <!-- Add tab -->
+    <div class="tab-content" id="tab-add">
+      <div class="form-section">
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label>이름 *</label>
+            <input type="text" id="pName" placeholder="홍길동" onkeydown="if(event.key==='Enter')addParticipant()">
+          </div>
+          <div class="form-group">
+            <label>성별 *</label>
+            <select id="pGender">
+              <option value="male">남</option>
+              <option value="female">여</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>나이</label>
+            <input type="number" id="pAge" placeholder="45" min="1" max="120">
+          </div>
+          <div class="form-group">
+            <label>연령대</label>
+            <select id="pAgeGroup">
+              <option value="">자동</option>
+              <option value="20s">20대</option>
+              <option value="30s">30대</option>
+              <option value="40s">40대</option>
+              <option value="50s">50대</option>
+              <option value="60s">60대</option>
+              <option value="70+">70대이상</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>직급/직책</label>
+            <select id="pPosition">
+              <option value="member">일반</option>
+              <option value="leader">조장/팀장</option>
+              <option value="manager">관리자</option>
+              <option value="vip">VIP/임원</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>그룹(같은방)</label>
+            <input type="text" id="pGroup" placeholder="A조">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>건강/우대사항</label>
+            <select id="pHealth" multiple size="3" style="font-size:12px">
+              <option value="mobility">거동불편 (1층배정)</option>
+              <option value="snoring">코골이 (분리배정)</option>
+              <option value="elderly">고령우대 (침대방)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>메모</label>
+            <input type="text" id="pMemo" placeholder="특이사항">
+          </div>
+        </div>
+        <div class="form-row" style="gap:8px">
+          <button class="btn btn-primary" onclick="addParticipant()" style="flex:1">➕ 추가</button>
+          <button class="btn btn-outline" onclick="showBulkModal()">📋 일괄등록</button>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--gray-400)">나이 입력 시 연령대 자동 설정 · 건강/우대사항 Ctrl+클릭 다중선택</div>
+      </div>
+    </div>
+
+    <!-- List tab -->
+    <div class="tab-content" id="tab-list" style="display:none">
+      <div class="form-section" style="padding:8px 16px; display:flex; gap:8px; align-items:center;">
+        <input type="text" id="searchInput" placeholder="이름 검색..." style="flex:1; padding:6px 10px; border:1px solid var(--gray-300); border-radius:var(--radius); font-size:13px;" oninput="renderParticipantList()">
+        <select id="filterGender" onchange="renderParticipantList()" style="padding:6px; border:1px solid var(--gray-300); border-radius:var(--radius); font-size:12px;">
+          <option value="">전체</option>
+          <option value="male">남</option>
+          <option value="female">여</option>
+        </select>
+        <select id="filterAssigned" onchange="renderParticipantList()" style="padding:6px; border:1px solid var(--gray-300); border-radius:var(--radius); font-size:12px;">
+          <option value="">전체</option>
+          <option value="yes">배정됨</option>
+          <option value="no">미배정</option>
+        </select>
+      </div>
+      <ul class="participant-list" id="participantList"></ul>
+    </div>
+
+    <!-- Rules tab -->
+    <div class="tab-content" id="tab-rules" style="display:none">
+      <div class="rules-panel">
+        <h4 style="margin-bottom:12px; font-size:14px;">자동 배정 규칙 (우선순위순)</h4>
+        <div class="rule-item">
+          <span class="rule-priority">P1</span>
+          <input type="checkbox" id="ruleGender" checked disabled>
+          <label>성별 분리 (필수 — 남녀 혼숙 불가)</label>
+        </div>
+        <div class="rule-item">
+          <span class="rule-priority">P2</span>
+          <input type="checkbox" id="ruleHealth" checked>
+          <label>건강/우대 — 거동불편→1층, 고령→침대방</label>
+        </div>
+        <div class="rule-item">
+          <span class="rule-priority">P3</span>
+          <input type="checkbox" id="ruleVIP" checked>
+          <label>직급 우선 — VIP/관리자→소규모·VIP방</label>
+        </div>
+        <div class="rule-item">
+          <span class="rule-priority">P4</span>
+          <input type="checkbox" id="ruleGroup" checked>
+          <label>그룹 묶기 — 같은 그룹 같은 방 배정</label>
+        </div>
+        <div class="rule-item">
+          <span class="rule-priority">P5</span>
+          <input type="checkbox" id="ruleAge" checked>
+          <label>연령대 그룹핑 — 비슷한 나이대끼리</label>
+        </div>
+        <div class="rule-item">
+          <span class="rule-priority">P6</span>
+          <input type="checkbox" id="ruleOptimize" checked>
+          <label>인원 최적화 — 빈자리 최소화</label>
+        </div>
+        <div class="rule-item">
+          <span class="rule-priority">P7</span>
+          <input type="checkbox" id="ruleSnoring" checked>
+          <label>코골이 분리 — 코골이 인원 별도 방 배정</label>
+        </div>
+        <hr style="margin:16px 0; border:none; border-top:1px solid var(--gray-200);">
+        <h4 style="margin-bottom:8px; font-size:13px;">경고 표시 설정</h4>
+        <div class="rule-item">
+          <input type="checkbox" id="warnMixed" checked>
+          <label>남녀 혼숙 시 경고</label>
+        </div>
+        <div class="rule-item">
+          <input type="checkbox" id="warnOver" checked>
+          <label>정원 초과 시 경고</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Center: Floor plan -->
+  <div class="panel panel-center" id="floorPlan"></div>
+</div>
+
+<!-- Bulk modal -->
+<div class="modal-overlay" id="bulkModal">
+  <div class="modal">
+    <h3>📋 참여자 일괄 등록</h3>
+    <p style="font-size:13px; color:var(--gray-500); margin-bottom:12px;">
+      한 줄에 한 명씩 입력. 형식: <b>이름, 성별(남/여), 나이, 직급, 건강사항, 그룹</b><br>
+      최소 이름과 성별만 있으면 됩니다. 엑셀에서 복사-붙여넣기 가능.
+    </p>
+    <textarea id="bulkText" rows="12" style="width:100%; padding:10px; font-size:13px; font-family:monospace; border:1px solid var(--gray-300); border-radius:var(--radius);" placeholder="홍길동, 남, 45, 일반,, A조
+김영희, 여, 38, 관리자, 고령우대
+이철수, 남, 52
+박지영, 여, 29, 일반, 거동불편, B조"></textarea>
+    <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+      <button class="btn btn-outline" onclick="closeBulkModal()">취소</button>
+      <button class="btn btn-primary" onclick="bulkAdd()">일괄 추가</button>
+    </div>
+  </div>
+</div>
+
+<!-- Summary modal -->
+<div class="modal-overlay" id="summaryModal">
+  <div class="modal" style="max-width:800px;">
+    <h3>📋 방배정 요약</h3>
+    <div id="summaryContent"></div>
+    <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
+      <button class="btn btn-outline" onclick="document.getElementById('summaryModal').classList.remove('active')">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const CENTERS = {
+  pohang: {
+    name: '포항 연수원',
+    address: '포항시 남구 장기면 계원리 24-5번지',
+    buildings: [
+      {
+        name: 'B동',
+        rooms: [
+          { id:'B201', name:'B201', capacity:3, maxCap:3, floor:2, bed:true, big:true, note:'큰편,침대' },
+          { id:'B202', name:'B202', capacity:3, maxCap:3, floor:2, bed:true, note:'침대' },
+          { id:'B203', name:'B203', capacity:3, maxCap:3, floor:2, big:true, note:'큰편' },
+          { id:'B101', name:'B101', capacity:2, maxCap:4, floor:1, note:'' },
+        ]
+      },
+      {
+        name: '독립동 (C~F, 복층)',
+        rooms: [
+          { id:'C101', name:'C101', capacity:3, maxCap:4, floor:1, duplex:true, note:'복층' },
+          { id:'D101', name:'D101', capacity:3, maxCap:4, floor:1, duplex:true, note:'복층' },
+          { id:'E101', name:'E101', capacity:3, maxCap:4, floor:1, duplex:true, note:'복층' },
+          { id:'F101', name:'F101', capacity:3, maxCap:4, floor:1, duplex:true, note:'복층' },
+        ]
+      },
+      {
+        name: 'A동',
+        rooms: [
+          { id:'A201', name:'A201', capacity:3, maxCap:3, floor:2, bed:true, note:'침대' },
+          { id:'A202', name:'A202', capacity:3, maxCap:3, floor:2, note:'' },
+          { id:'A203', name:'A203', capacity:3, maxCap:3, floor:2, bed:true, note:'침대' },
+          { id:'A101', name:'A101', capacity:3, maxCap:4, floor:1, note:'' },
+          { id:'A102', name:'A102', capacity:10, maxCap:10, floor:1, ondol:true, note:'온돌' },
+          { id:'A103', name:'A103', capacity:3, maxCap:3, floor:1, note:'' },
+        ]
+      }
+    ]
+  },
+  gyeongnam: {
+    name: '경남 연수원',
+    address: '경남 창원시 마산합포구 구산면 해양관광로 804-28',
+    buildings: [
+      {
+        name: '본관',
+        rooms: [
+          { id:'G101', name:'101호', capacity:4, maxCap:4, floor:1, vip:true, note:'VIP' },
+          { id:'G204', name:'204호', capacity:6, maxCap:8, floor:2, note:'' },
+          { id:'G203', name:'203호', capacity:10, maxCap:15, floor:2, note:'' },
+          { id:'G202', name:'202호', capacity:25, maxCap:30, floor:2, note:'' },
+        ]
+      }
+    ]
+  }
+};
+
+let currentCenter = 'pohang';
+let participants = [];
+let assignments = {};
+let nextId = 1;
+
+function getAgeGroup(age) {
+  if (!age) return '';
+  if (age < 30) return '20s';
+  if (age < 40) return '30s';
+  if (age < 50) return '40s';
+  if (age < 60) return '50s';
+  if (age < 70) return '60s';
+  return '70+';
+}
+
+function ageGroupLabel(g) {
+  const m = { '20s':'20대','30s':'30대','40s':'40대','50s':'50대','60s':'60대','70+':'70+' };
+  return m[g] || '';
+}
+
+function positionLabel(p) {
+  const m = { member:'일반', leader:'조장/팀장', manager:'관리자', vip:'VIP/임원' };
+  return m[p] || p;
+}
+
+function healthLabel(h) {
+  const m = { mobility:'거동불편', snoring:'코골이', elderly:'고령우대' };
+  return m[h] || h;
+}
+
+function switchCenter() {
+  currentCenter = document.getElementById('centerSelect').value;
+  assignments = {};
+  renderFloorPlan();
+  renderParticipantList();
+  updateStats();
+}
+
+function switchTab(el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+  document.getElementById('tab-' + el.dataset.tab).style.display = 'block';
+  if (el.dataset.tab === 'list') renderParticipantList();
+}
+
+function addParticipant() {
+  const name = document.getElementById('pName').value.trim();
+  const gender = document.getElementById('pGender').value;
+  if (!name) { toast('이름을 입력해주세요', 'error'); return; }
+
+  const age = parseInt(document.getElementById('pAge').value) || null;
+  let ageGroup = document.getElementById('pAgeGroup').value;
+  if (!ageGroup && age) ageGroup = getAgeGroup(age);
+
+  const healthSelect = document.getElementById('pHealth');
+  const health = Array.from(healthSelect.selectedOptions).map(o => o.value);
+
+  const p = {
+    id: nextId++,
+    name,
+    gender,
+    age,
+    ageGroup,
+    position: document.getElementById('pPosition').value,
+    group: document.getElementById('pGroup').value.trim(),
+    health,
+    memo: document.getElementById('pMemo').value.trim()
+  };
+  participants.push(p);
+
+  document.getElementById('pName').value = '';
+  document.getElementById('pAge').value = '';
+  document.getElementById('pAgeGroup').value = '';
+  document.getElementById('pPosition').value = 'member';
+  document.getElementById('pGroup').value = '';
+  document.getElementById('pHealth').selectedIndex = -1;
+  document.getElementById('pMemo').value = '';
+  document.getElementById('pName').focus();
+
+  document.getElementById('listCount').textContent = participants.length;
+  updateStats();
+  renderFloorPlan();
+  toast(name + ' 추가됨', 'success');
+}
+
+function removeParticipant(id) {
+  participants = participants.filter(p => p.id !== id);
+  for (const roomId in assignments) {
+    assignments[roomId] = assignments[roomId].filter(pid => pid !== id);
+  }
+  document.getElementById('listCount').textContent = participants.length;
+  renderParticipantList();
+  renderFloorPlan();
+  updateStats();
+}
+
+function editParticipant(id) {
+  const p = participants.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('pName').value = p.name;
+  document.getElementById('pGender').value = p.gender;
+  document.getElementById('pAge').value = p.age || '';
+  document.getElementById('pAgeGroup').value = p.ageGroup || '';
+  document.getElementById('pPosition').value = p.position;
+  document.getElementById('pGroup').value = p.group;
+  document.getElementById('pMemo').value = p.memo || '';
+  const healthSelect = document.getElementById('pHealth');
+  Array.from(healthSelect.options).forEach(o => { o.selected = p.health.includes(o.value); });
+
+  removeParticipant(id);
+  switchTab(document.querySelector('.tab[data-tab="add"]'));
+  document.getElementById('pName').focus();
+}
+
+function getAssignedRoom(personId) {
+  for (const roomId in assignments) {
+    if (assignments[roomId] && assignments[roomId].includes(personId)) return roomId;
+  }
+  return null;
+}
+
+function renderParticipantList() {
+  const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+  const filterG = document.getElementById('filterGender')?.value || '';
+  const filterA = document.getElementById('filterAssigned')?.value || '';
+
+  let filtered = participants.filter(p => {
+    if (search && !p.name.toLowerCase().includes(search)) return false;
+    if (filterG && p.gender !== filterG) return false;
+    if (filterA === 'yes' && !getAssignedRoom(p.id)) return false;
+    if (filterA === 'no' && getAssignedRoom(p.id)) return false;
+    return true;
+  });
+
+  const ul = document.getElementById('participantList');
+  if (!ul) return;
+  ul.innerHTML = filtered.map(p => {
+    const assigned = getAssignedRoom(p.id);
+    const room = assigned ? getRoomById(assigned) : null;
+    return `<li class="participant-item ${assigned?'assigned':''}" draggable="true"
+      ondragstart="dragStartPerson(event,${p.id})" data-person-id="${p.id}">
+      <div class="gender-badge ${p.gender}">${p.gender==='male'?'남':'여'}</div>
+      <div class="info">
+        <div class="name">${esc(p.name)}${p.age?' ('+p.age+'세)':''}</div>
+        <div class="meta">${positionLabel(p.position)}${p.ageGroup?' · '+ageGroupLabel(p.ageGroup):''}${room?' · 📍'+room.name:''}</div>
+        <div class="tags">
+          ${p.health.map(h=>'<span class="tag health">'+healthLabel(h)+'</span>').join('')}
+          ${p.position==='vip'||p.position==='manager'?'<span class="tag vip">'+positionLabel(p.position)+'</span>':''}
+          ${p.group?'<span class="tag group-tag">'+esc(p.group)+'</span>':''}
+        </div>
+      </div>
+      <div class="actions">
+        <button onclick="editParticipant(${p.id})" title="수정">✏️</button>
+        <button onclick="removeParticipant(${p.id})" title="삭제">🗑️</button>
+      </div>
+    </li>`;
+  }).join('');
+}
+
+function getRoomById(roomId) {
+  const center = CENTERS[currentCenter];
+  for (const b of center.buildings) {
+    for (const r of b.rooms) {
+      if (r.id === roomId) return r;
+    }
+  }
+  return null;
+}
+
+function getAllRooms() {
+  const center = CENTERS[currentCenter];
+  const rooms = [];
+  for (const b of center.buildings) {
+    for (const r of b.rooms) rooms.push(r);
+  }
+  return rooms;
+}
+
+function renderFloorPlan() {
+  const center = CENTERS[currentCenter];
+  const unassignedPeople = participants.filter(p => !getAssignedRoom(p.id));
+
+  let html = `<div class="floor-plan-title">${center.name}</div>`;
+  html += `<div class="floor-plan-addr">${center.address}</div>`;
+
+  for (const building of center.buildings) {
+    html += `<div class="building-section">`;
+    html += `<div class="building-label">${building.name}</div>`;
+    html += `<div class="rooms-grid">`;
+    for (const room of building.rooms) {
+      const people = (assignments[room.id] || []).map(id => participants.find(p => p.id === id)).filter(Boolean);
+      const count = people.length;
+      const isFull = count >= room.maxCap;
+      const isOver = count > room.maxCap;
+      const genders = [...new Set(people.map(p => p.gender))];
+      const isMixed = genders.length > 1;
+      let cardClass = 'room-card';
+      if (isOver) cardClass += ' overflow';
+      else if (isFull) cardClass += ' full';
+      if (genders.length === 1) cardClass += ' gender-' + genders[0];
+
+      html += `<div class="${cardClass}" data-room-id="${room.id}"
+        ondragover="dragOverRoom(event)" ondragleave="dragLeaveRoom(event)" ondrop="dropOnRoom(event,'${room.id}')">`;
+      html += `<div class="room-header">
+        <span class="room-name">${room.name}${isMixed?'<span class="warning-icon" title="남녀 혼숙!"> ⚠️</span>':''}</span>
+        <span class="room-cap"><span class="count ${isOver?'over':''}">${count}</span>/${room.maxCap}명</span>
+      </div>`;
+
+      html += `<div class="room-tags">`;
+      if (room.bed) html += `<span class="tag bed">침대</span>`;
+      if (room.floor === 1) html += `<span class="tag floor1">1층</span>`;
+      if (room.duplex) html += `<span class="tag duplex">복층</span>`;
+      if (room.vip) html += `<span class="tag vip">VIP</span>`;
+      if (room.big) html += `<span class="tag big">큰편</span>`;
+      if (room.ondol) html += `<span class="tag ondol">온돌</span>`;
+      html += `</div>`;
+
+      html += `<div class="room-body">`;
+      if (people.length === 0) {
+        html += `<div class="room-empty">비어있음</div>`;
+      } else {
+        for (const p of people) {
+          html += `<div class="room-person" draggable="true" ondragstart="dragStartPerson(event,${p.id})">
+            <span class="gender-dot ${p.gender}"></span>
+            ${esc(p.name)}${p.age?' ('+p.age+')':''}
+            ${p.health.length?'<span class="warning-icon" title="'+p.health.map(healthLabel).join(', ')+'">⚕</span>':''}
+            <button class="remove-person" onclick="unassignPerson(${p.id},'${room.id}')" title="배정해제">✕</button>
+          </div>`;
+        }
+      }
+      html += `</div></div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  if (unassignedPeople.length > 0) {
+    html += `<div class="unassigned-pool" ondragover="dragOverRoom(event)" ondragleave="dragLeaveRoom(event)" ondrop="dropOnRoom(event,'__unassigned__')">
+      <h4>미배정 인원 (${unassignedPeople.length}명) — 아래 인원을 방카드로 드래그하세요</h4>
+      <div class="people-list">`;
+    for (const p of unassignedPeople) {
+      html += `<div class="room-person" draggable="true" ondragstart="dragStartPerson(event,${p.id})" style="background:#fff;border:1px solid var(--gray-200);">
+        <span class="gender-dot ${p.gender}"></span>
+        ${esc(p.name)}${p.age?' ('+p.age+')':''}
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  document.getElementById('floorPlan').innerHTML = html;
+}
+
+function unassignPerson(personId, roomId) {
+  if (assignments[roomId]) {
+    assignments[roomId] = assignments[roomId].filter(id => id !== personId);
+  }
+  renderFloorPlan();
+  renderParticipantList();
+  updateStats();
+}
+
+// Drag & Drop
+let draggedPersonId = null;
+function dragStartPerson(e, personId) {
+  draggedPersonId = personId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', personId);
+  setTimeout(() => { if(e.target.classList) e.target.classList.add('dragging'); }, 0);
+}
+function dragOverRoom(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const card = e.currentTarget.closest('.room-card') || e.currentTarget;
+  card.classList.add('drag-over');
+}
+function dragLeaveRoom(e) {
+  const card = e.currentTarget.closest('.room-card') || e.currentTarget;
+  card.classList.remove('drag-over');
+}
+function dropOnRoom(e, roomId) {
+  e.preventDefault();
+  const card = e.currentTarget.closest('.room-card') || e.currentTarget;
+  card.classList.remove('drag-over');
+  if (draggedPersonId === null) return;
+  const personId = draggedPersonId;
+  draggedPersonId = null;
+
+  // Remove from current room
+  for (const rid in assignments) {
+    assignments[rid] = assignments[rid].filter(id => id !== personId);
+  }
+
+  if (roomId !== '__unassigned__') {
+    if (!assignments[roomId]) assignments[roomId] = [];
+    assignments[roomId].push(personId);
+
+    const room = getRoomById(roomId);
+    if (room && assignments[roomId].length > room.maxCap) {
+      toast(room.name + ' 정원 초과!', 'error');
+    }
+    const genders = [...new Set(assignments[roomId].map(id => {
+      const p = participants.find(x => x.id === id);
+      return p ? p.gender : '';
+    }))];
+    if (genders.length > 1) {
+      toast(room.name + ' 남녀 혼숙 경고!', 'error');
+    }
+  }
+
+  renderFloorPlan();
+  renderParticipantList();
+  updateStats();
+}
+
+// Auto-assign
+function autoAssign() {
+  if (participants.length === 0) { toast('참여자가 없습니다', 'error'); return; }
+  assignments = {};
+
+  const rooms = getAllRooms();
+  const rules = {
+    health: document.getElementById('ruleHealth').checked,
+    vip: document.getElementById('ruleVIP').checked,
+    group: document.getElementById('ruleGroup').checked,
+    age: document.getElementById('ruleAge').checked,
+    optimize: document.getElementById('ruleOptimize').checked,
+    snoring: document.getElementById('ruleSnoring').checked,
+  };
+
+  rooms.forEach(r => { assignments[r.id] = []; });
+
+  const males = participants.filter(p => p.gender === 'male');
+  const females = participants.filter(p => p.gender === 'female');
+
+  assignGenderGroup(males, rooms, rules);
+  assignGenderGroup(females, rooms, rules);
+
+  renderFloorPlan();
+  renderParticipantList();
+  updateStats();
+
+  const unassigned = participants.filter(p => !getAssignedRoom(p.id));
+  if (unassigned.length > 0) {
+    toast(unassigned.length + '명 미배정 (객실 부족)', 'error');
+  } else {
+    toast('자동 배정 완료!', 'success');
+  }
+}
+
+function assignGenderGroup(people, allRooms, rules) {
+  if (people.length === 0) return;
+  const remaining = [...people];
+  const availableRooms = allRooms.filter(r => {
+    const current = assignments[r.id] || [];
+    if (current.length >= r.maxCap) return false;
+    if (current.length > 0) {
+      const existingGender = participants.find(p => p.id === current[0])?.gender;
+      if (existingGender && existingGender !== people[0].gender) return false;
+    }
+    return true;
+  });
+
+  // P2: Health - mobility → 1층
+  if (rules.health) {
+    const mobilityPeople = remaining.filter(p => p.health.includes('mobility'));
+    const floor1Rooms = availableRooms.filter(r => r.floor === 1);
+    for (const p of mobilityPeople) {
+      const room = floor1Rooms.find(r => (assignments[r.id]||[]).length < r.maxCap);
+      if (room) {
+        assignments[room.id].push(p.id);
+        remaining.splice(remaining.indexOf(p), 1);
+      }
+    }
+  }
+
+  // P2: Health - elderly → bed rooms
+  if (rules.health) {
+    const elderlyPeople = remaining.filter(p => p.health.includes('elderly'));
+    const bedRooms = availableRooms.filter(r => r.bed);
+    for (const p of elderlyPeople) {
+      const room = bedRooms.find(r => (assignments[r.id]||[]).length < r.maxCap);
+      if (room) {
+        assignments[room.id].push(p.id);
+        remaining.splice(remaining.indexOf(p), 1);
+      }
+    }
+  }
+
+  // P3: VIP → VIP/small rooms
+  if (rules.vip) {
+    const vipPeople = remaining.filter(p => p.position === 'vip' || p.position === 'manager');
+    const vipRooms = availableRooms.filter(r => r.vip || r.maxCap <= 4).sort((a,b) => a.maxCap - b.maxCap);
+    for (const p of vipPeople) {
+      const room = vipRooms.find(r => {
+        const cur = assignments[r.id] || [];
+        if (cur.length >= r.maxCap) return false;
+        if (cur.length > 0) {
+          const g = participants.find(x => x.id === cur[0])?.gender;
+          if (g !== p.gender) return false;
+        }
+        return true;
+      });
+      if (room) {
+        assignments[room.id].push(p.id);
+        remaining.splice(remaining.indexOf(p), 1);
+      }
+    }
+  }
+
+  // P7: Snoring → separate room
+  if (rules.snoring) {
+    const snoringPeople = remaining.filter(p => p.health.includes('snoring'));
+    if (snoringPeople.length > 0) {
+      const snoringRoom = availableRooms.find(r => {
+        const cur = assignments[r.id] || [];
+        if (cur.length > 0) return false;
+        if (r.maxCap >= snoringPeople.length) return true;
+        return false;
+      }) || availableRooms.find(r => (assignments[r.id]||[]).length === 0);
+
+      if (snoringRoom) {
+        for (const p of snoringPeople) {
+          if ((assignments[snoringRoom.id]||[]).length < snoringRoom.maxCap) {
+            assignments[snoringRoom.id].push(p.id);
+            remaining.splice(remaining.indexOf(p), 1);
+          }
+        }
+      }
+    }
+  }
+
+  // P4: Group → same room
+  if (rules.group) {
+    const groups = {};
+    remaining.forEach(p => {
+      if (p.group) {
+        if (!groups[p.group]) groups[p.group] = [];
+        groups[p.group].push(p);
+      }
+    });
+
+    for (const [gName, gPeople] of Object.entries(groups)) {
+      const suitableRoom = availableRooms.find(r => {
+        const cur = assignments[r.id] || [];
+        const space = r.maxCap - cur.length;
+        if (space < gPeople.length) return false;
+        if (cur.length > 0) {
+          const g = participants.find(x => x.id === cur[0])?.gender;
+          if (g !== gPeople[0].gender) return false;
+        }
+        return true;
+      });
+
+      if (suitableRoom) {
+        for (const p of gPeople) {
+          assignments[suitableRoom.id].push(p.id);
+          remaining.splice(remaining.indexOf(p), 1);
+        }
+      }
+    }
+  }
+
+  // P5: Age grouping + P6: Optimize
+  if (rules.age) {
+    remaining.sort((a, b) => {
+      const aAge = a.age || 50;
+      const bAge = b.age || 50;
+      return aAge - bAge;
+    });
+  }
+
+  // Fill remaining people into available rooms
+  for (const p of [...remaining]) {
+    let bestRoom = null;
+    let bestScore = -Infinity;
+
+    for (const room of availableRooms) {
+      const cur = assignments[room.id] || [];
+      if (cur.length >= room.maxCap) continue;
+      if (cur.length > 0) {
+        const g = participants.find(x => x.id === cur[0])?.gender;
+        if (g !== p.gender) continue;
+      }
+
+      let score = 0;
+
+      // Prefer rooms that already have people (optimize space)
+      if (rules.optimize && cur.length > 0) score += 10;
+
+      // Prefer rooms with similar age
+      if (rules.age && cur.length > 0) {
+        const avgAge = cur.reduce((sum, id) => {
+          const pp = participants.find(x => x.id === id);
+          return sum + (pp?.age || 50);
+        }, 0) / cur.length;
+        const ageDiff = Math.abs((p.age || 50) - avgAge);
+        score -= ageDiff * 0.2;
+      }
+
+      // Don't overfill - prefer rooms with more space
+      const fillRatio = cur.length / room.maxCap;
+      if (fillRatio < 1) score += (1 - fillRatio) * 3;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestRoom = room;
+      }
+    }
+
+    if (bestRoom) {
+      assignments[bestRoom.id].push(p.id);
+      remaining.splice(remaining.indexOf(p), 1);
+    }
+  }
+}
+
+function clearAllAssignments() {
+  if (Object.values(assignments).some(a => a.length > 0)) {
+    if (!confirm('모든 방배정을 초기화하시겠습니까?')) return;
+  }
+  assignments = {};
+  renderFloorPlan();
+  renderParticipantList();
+  updateStats();
+  toast('배정 초기화됨');
+}
+
+function updateStats() {
+  const total = participants.length;
+  const assigned = participants.filter(p => getAssignedRoom(p.id)).length;
+  const rooms = getAllRooms().length;
+  document.getElementById('statTotal').textContent = '참여자: ' + total + '명';
+  document.getElementById('statAssigned').textContent = '배정: ' + assigned + '명';
+  document.getElementById('statUnassigned').textContent = '미배정: ' + (total - assigned) + '명';
+  document.getElementById('statRooms').textContent = '객실: ' + rooms + '개';
+  document.getElementById('listCount').textContent = total;
+}
+
+// Bulk add
+function showBulkModal() { document.getElementById('bulkModal').classList.add('active'); }
+function closeBulkModal() { document.getElementById('bulkModal').classList.remove('active'); }
+
+function bulkAdd() {
+  const text = document.getElementById('bulkText').value.trim();
+  if (!text) { toast('데이터를 입력해주세요', 'error'); return; }
+
+  const lines = text.split('\n').filter(l => l.trim());
+  let added = 0;
+
+  for (const line of lines) {
+    const parts = line.split(/[,\t]/).map(s => s.trim());
+    if (parts.length < 2) continue;
+
+    const name = parts[0];
+    let gender = 'male';
+    if (parts[1]) {
+      const g = parts[1].toLowerCase();
+      if (g === '여' || g === 'f' || g === 'female' || g === '여성') gender = 'female';
+    }
+
+    const age = parts[2] ? parseInt(parts[2]) || null : null;
+    let ageGroup = age ? getAgeGroup(age) : '';
+
+    let position = 'member';
+    if (parts[3]) {
+      const pos = parts[3];
+      if (pos.includes('VIP') || pos.includes('vip') || pos.includes('임원')) position = 'vip';
+      else if (pos.includes('관리')) position = 'manager';
+      else if (pos.includes('조장') || pos.includes('팀장')) position = 'leader';
+    }
+
+    let health = [];
+    if (parts[4]) {
+      const h = parts[4];
+      if (h.includes('거동')) health.push('mobility');
+      if (h.includes('코골')) health.push('snoring');
+      if (h.includes('고령') || h.includes('우대')) health.push('elderly');
+    }
+
+    const group = parts[5] || '';
+
+    participants.push({
+      id: nextId++, name, gender, age, ageGroup, position, group, health, memo: ''
+    });
+    added++;
+  }
+
+  document.getElementById('bulkText').value = '';
+  closeBulkModal();
+  document.getElementById('listCount').textContent = participants.length;
+  updateStats();
+  renderFloorPlan();
+  toast(added + '명 일괄 추가됨', 'success');
+}
+
+// Summary
+function showSummary() {
+  const center = CENTERS[currentCenter];
+  let html = `<h4 style="margin:12px 0 8px">${center.name} — 방배정 현황</h4>`;
+  html += `<table class="summary-table"><thead><tr>
+    <th>객실</th><th>수용</th><th>배정</th><th>배정인원</th><th>상태</th>
+  </tr></thead><tbody>`;
+
+  let totalCap = 0, totalAssigned = 0;
+
+  for (const b of center.buildings) {
+    for (const room of b.rooms) {
+      const people = (assignments[room.id] || []).map(id => participants.find(p => p.id === id)).filter(Boolean);
+      const count = people.length;
+      totalCap += room.maxCap;
+      totalAssigned += count;
+      const genders = [...new Set(people.map(p => p.gender))];
+      let status = '';
+      if (count === 0) status = '빈방';
+      else if (count > room.maxCap) status = '⚠️ 초과';
+      else if (count === room.maxCap) status = '✅ 만실';
+      else status = '여유 ' + (room.maxCap - count) + '명';
+      if (genders.length > 1) status += ' ⚠️혼숙';
+
+      html += `<tr>
+        <td><b>${room.name}</b>${room.note?' ('+room.note+')':''}</td>
+        <td>${room.maxCap}명</td>
+        <td>${count}명</td>
+        <td>${people.map(p => p.name).join(', ') || '-'}</td>
+        <td>${status}</td>
+      </tr>`;
+    }
+  }
+
+  html += `</tbody></table>`;
+
+  const unassigned = participants.filter(p => !getAssignedRoom(p.id));
+  html += `<div style="margin-top:16px; font-size:14px;">
+    <b>총 수용: ${totalCap}명 | 배정: ${totalAssigned}명 | 미배정: ${unassigned.length}명</b>
+  </div>`;
+
+  if (unassigned.length > 0) {
+    html += `<div style="margin-top:8px; color:var(--danger); font-size:13px;">
+      미배정: ${unassigned.map(p => p.name).join(', ')}
+    </div>`;
+  }
+
+  document.getElementById('summaryContent').innerHTML = html;
+  document.getElementById('summaryModal').classList.add('active');
+}
+
+// Export Excel (CSV)
+function exportExcel() {
+  const center = CENTERS[currentCenter];
+  let csv = '﻿';  // BOM for Korean Excel
+  csv += '객실,수용인원,이름,성별,나이,직급,건강사항,그룹,메모\n';
+
+  for (const b of center.buildings) {
+    for (const room of b.rooms) {
+      const people = (assignments[room.id] || []).map(id => participants.find(p => p.id === id)).filter(Boolean);
+      if (people.length === 0) {
+        csv += `${room.name},${room.maxCap},(빈방),,,,,,\n`;
+      } else {
+        for (const p of people) {
+          csv += `${room.name},${room.maxCap},${p.name},${p.gender==='male'?'남':'여'},${p.age||''},${positionLabel(p.position)},${p.health.map(healthLabel).join('/')},${p.group},${p.memo||''}\n`;
+        }
+      }
+    }
+  }
+
+  const unassigned = participants.filter(p => !getAssignedRoom(p.id));
+  for (const p of unassigned) {
+    csv += `미배정,,${p.name},${p.gender==='male'?'남':'여'},${p.age||''},${positionLabel(p.position)},${p.health.map(healthLabel).join('/')},${p.group},${p.memo||''}\n`;
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = center.name + '_방배정_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('엑셀 파일 다운로드됨', 'success');
+}
+
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.className = 'toast'; }, 2500);
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Save/Load (localStorage)
+function saveState() {
+  const state = { participants, assignments, nextId, currentCenter };
+  try { localStorage.setItem('roomAssignState', JSON.stringify(state)); } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('roomAssignState');
+    if (raw) {
+      const state = JSON.parse(raw);
+      participants = state.participants || [];
+      assignments = state.assignments || {};
+      nextId = state.nextId || 1;
+      if (state.currentCenter) {
+        currentCenter = state.currentCenter;
+        document.getElementById('centerSelect').value = currentCenter;
+      }
+    }
+  } catch(e) {}
+}
+
+// Auto-save
+setInterval(saveState, 5000);
+window.addEventListener('beforeunload', saveState);
+
+// Init
+loadState();
+renderFloorPlan();
+updateStats();
+</script>
+</body>
+</html>
