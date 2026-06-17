@@ -885,7 +885,7 @@ export const STAGES = [
 
 // ── Battle State Factory ────────────────────────────────────────────────
 
-export function createBattleState(stageId, playerCharIds) {
+export function createBattleState(stageId, playerCharIds, centerBuff, teamSynergyMult) {
   const stage = STAGES.find(s => s.id === stageId);
   if (!stage) throw new Error(`Stage not found: ${stageId}`);
 
@@ -904,6 +904,12 @@ export function createBattleState(stageId, playerCharIds) {
     unit.team = 'player';
     // Disambiguate duplicate ids
     unit.uid = `player-${charData.id}-${i}`;
+    if (centerBuff) {
+      unit.maxHp += centerBuff.hpBuff;
+      unit.hp = unit.maxHp;
+      unit.atk += centerBuff.atkBuff;
+      unit.def += centerBuff.defBuff;
+    }
     units.push(unit);
   });
 
@@ -939,7 +945,8 @@ export function createBattleState(stageId, playerCharIds) {
     selectedUnit: null,
     log: [],
     victoryCondition: stage.victoryCondition,
-    result: null, // 'win' | 'lose' | null
+    result: null,
+    teamSynergyMult: teamSynergyMult || 1.0,
   };
 }
 
@@ -1168,7 +1175,13 @@ function calcCombatResult(state, attacker, defender, isCounter = false) {
   // Counter reduction
   const counterMult = isCounter ? 0.7 : 1.0;
 
-  const damage = Math.max(1, Math.floor((rawDamage + variance) * typeMult * critMult * counterMult));
+  // Team synergy multiplier (player units only, capped at 1.5× for balance)
+  let synergyMult = 1.0;
+  if (state && attacker.team === 'player' && state.teamSynergyMult) {
+    synergyMult = Math.min(1.5, 0.7 + state.teamSynergyMult * 0.3);
+  }
+
+  const damage = Math.max(1, Math.floor((rawDamage + variance) * typeMult * critMult * counterMult * synergyMult));
 
   return { damage, critical, evaded: false, penetrated };
 }
@@ -1225,6 +1238,15 @@ export function attackUnit(state, attacker, defender) {
   } else {
     damage = atkResult.damage;
     critical = atkResult.critical;
+    if (defender.invuln) {
+      state.log.push(`${defender.name} 무적! 데미지 무효화`);
+      damage = 0;
+    } else if (defender.shield > 0) {
+      const absorbed = Math.min(defender.shield, damage);
+      defender.shield -= absorbed;
+      damage -= absorbed;
+      if (absorbed > 0) state.log.push(`  실드 흡수 ${absorbed}`);
+    }
     defender.hp -= damage;
     if (defender.hp <= 0) {
       defender.hp = 0;
@@ -1275,20 +1297,10 @@ export function attackUnit(state, attacker, defender) {
   attacker.acted = true;
 
   // UO stat growth
-  const statGrowths = [];
   if (!evaded && damage > 0) applyStatGrowth(attacker, 'attack');
   if (counterDamage > 0) { applyStatGrowth(attacker, 'take_damage'); applyStatGrowth(defender, 'attack'); }
   if (evaded) applyStatGrowth(defender, 'evade');
   if (critical) applyStatGrowth(attacker, 'critical');
-
-  // Shield absorption
-  if (!evaded && damage > 0 && defender.shield > 0) {
-    const absorbed = Math.min(defender.shield, damage);
-    defender.shield -= absorbed;
-  }
-  if (defender.invuln && !evaded) {
-    defender.hp = Math.min(defender.maxHp, defender.hp + damage);
-  }
 
   // XP awards
   const xpGains = [];
