@@ -1657,4 +1657,7 @@ body {
   margin: 0;
 }
 
+.sense-blue { color: #60a5fa; }
+.sense-red { color: #f87171; }
+
 .vcard { position: relative; }

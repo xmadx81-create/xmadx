@@ -7,6 +7,7 @@ import {
   calculateComboBonuses, DIFFICULTIES, generateDilemma, resolveDilemma, convertBlood,
   activateSense, calculateSensePassives,
   generateRouteMap, selectRouteNode, applyRestNode, applyEventNode, NODE_TYPES,
+  generateBossRequest, generateEliteRequest,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest, COMBO_BONUSES, DILEMMA_EVENTS, SENSE_TYPES } from '../src/web-mvp/js/cards.js';
 
@@ -698,6 +699,38 @@ describe('route map system', () => {
     applyRestNode(state);
     expect(state.resources.rep).toBeGreaterThan(repBefore);
     expect(state.resources.sus).toBeLessThan(susBefore);
+  });
+
+  it('보스 의뢰를 생성한다', () => {
+    const state = createGameState();
+    state.routeMap = generateRouteMap(15);
+    const req = generateBossRequest(state);
+    expect(req.isBoss).toBe(true);
+    expect(req.name).toContain('최종');
+    expect(Object.keys(req.requirements).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('긴급 의뢰를 생성한다', () => {
+    const state = createGameState();
+    state.routeMap = generateRouteMap(15);
+    const req = generateEliteRequest(state);
+    expect(req.name).toContain('긴급');
+    expect(req.turnsLeft).toBe(3);
+  });
+
+  it('루트맵 모드에서는 보스 클리어가 승리 조건이다', () => {
+    const state = createGameState();
+    state.routeMap = generateRouteMap(15);
+    state.routeMap.completed = true;
+    state.bossDefeated = true;
+    expect(checkGameEnd(state)).toBe('win');
+  });
+
+  it('루트맵 모드에서 completedRequests 5는 승리가 아니다', () => {
+    const state = createGameState();
+    state.routeMap = generateRouteMap(15);
+    state.completedRequests = 5;
+    expect(checkGameEnd(state)).toBeNull();
   });
 
   it('보스 노드 선택 시 completed가 true가 된다', () => {

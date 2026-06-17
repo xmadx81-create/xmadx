@@ -38,6 +38,7 @@ export function createGameState(difficulty = 'normal') {
     senseSuppress: false,
     usedDilemmas: [],
     routeMap: null,
+    bossDefeated: false,
     gameOver: false,
     winner: false,
     maxCollect: 0,
@@ -506,7 +507,13 @@ export function settleTurn(state) {
 }
 
 export function checkGameEnd(state) {
-  if (state.completedRequests >= 5) {
+  if (state.routeMap?.completed && state.bossDefeated) {
+    state.gameOver = true;
+    state.winner = true;
+    state.log.push('승리! 15층 최종 의뢰를 클리어했습니다. 카르테인 가문과의 거래가 끝났다.');
+    return 'win';
+  }
+  if (!state.routeMap && state.completedRequests >= 5) {
     state.gameOver = true;
     state.winner = true;
     state.log.push('승리! 카르테인 가문의 5개 의뢰를 모두 이행했습니다.');
@@ -629,6 +636,43 @@ export function applyRestNode(state) {
   state.resources.sus = Math.max(0, state.resources.sus - susLoss);
   state.log.push(`휴식: REP +${repGain}, SUS -${susLoss}`);
   return { repGain, susLoss };
+}
+
+export function generateBossRequest(state) {
+  const floor = state.routeMap?.currentFloor || 14;
+  const reqTypes = shuffle([...BLOOD_TYPES]);
+  const requirements = {};
+  const typeCount = Math.min(3, reqTypes.length);
+  for (let i = 0; i < typeCount; i++) {
+    requirements[reqTypes[i]] = 2 + Math.floor(floor / 5);
+  }
+  return {
+    id: `boss-req-f${floor}`,
+    type: 'request',
+    name: '카르테인 최종 의뢰',
+    requirements,
+    reward: { bp: 20 + floor * 2, rep: 15 },
+    penalty: { sus: 30, rep: -15 },
+    turnsLeft: 4,
+    isBoss: true,
+  };
+}
+
+export function generateEliteRequest(state) {
+  const floor = state.routeMap?.currentFloor || 5;
+  const reqTypes = shuffle([...BLOOD_TYPES]);
+  const requirements = {};
+  requirements[reqTypes[0]] = 2 + Math.floor(floor / 4);
+  if (Math.random() > 0.4) requirements[reqTypes[1]] = 1 + Math.floor(floor / 6);
+  return {
+    id: `elite-req-f${floor}`,
+    type: 'request',
+    name: `긴급 의뢰 (${floor + 1}층)`,
+    requirements,
+    reward: { bp: 12 + floor, rep: 8 },
+    penalty: { sus: 15 + floor },
+    turnsLeft: 3,
+  };
 }
 
 export function applyEventNode(state) {

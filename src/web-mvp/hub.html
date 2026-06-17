@@ -136,29 +136,49 @@
         <div class="rules-content">
           <h2>게임 규칙</h2>
           <h3>개요</h3>
-          <p>당신은 백십자재단 산하 <strong>혈연센터</strong>의 관리자입니다. 표면적으로는 원활한 헌혈 사업을 운영하지만, 이면에서는 <strong>카르테인 가문 혈액관리국</strong>의 비밀 의뢰를 수행해야 합니다.</p>
+          <p>당신은 백십자재단 산하 <strong>혈연센터</strong>의 관리자입니다. 표면적으로는 원활한 헌혈 사업을 운영하지만, 이면에서는 <strong>카르테인 가문</strong>의 비밀 의뢰를 수행합니다. 15층의 루트를 돌파하여 최종 의뢰를 완수하세요.</p>
 
           <h3>자원</h3>
           <ul>
-            <li><strong>BP (혈점)</strong> — 수집한 혈액량. 카드 배치·장비 구매·의뢰 이행에 사용</li>
-            <li><strong>REP (평판)</strong> — 센터 평판. 0이 되면 폐쇄 (패배)</li>
-            <li><strong>SUS (의심도)</strong> — 뱀파이어 의심 수준. 100 도달 시 적발 (패배)</li>
+            <li><strong>BP (혈점)</strong> — 혈액량. 카드 배치·장비·의뢰에 사용</li>
+            <li><strong>REP (평판)</strong> — 센터 평판. 0이면 폐쇄 (패배)</li>
+            <li><strong>SUS (의심도)</strong> — 의심 수준. 100이면 적발 (패배)</li>
+          </ul>
+
+          <h3>루트 맵</h3>
+          <p>게임은 <strong>15층 분기형 맵</strong>을 탐험하며 진행합니다. 각 층에서 경로를 선택하세요.</p>
+          <ul>
+            <li>🏥 <strong>센터 운영</strong> — 일반 턴 (드로우→배치→수집→야간)</li>
+            <li>🌙 <strong>밤의 선택</strong> — 딜레마 이벤트, 선택에 따라 자원 변동</li>
+            <li>🛒 <strong>암시장</strong> — 특별 모집과 장비 구매</li>
+            <li>☕ <strong>휴식</strong> — REP 회복 + SUS 감소</li>
+            <li>⚠️ <strong>긴급 의뢰</strong> — 어려운 의뢰, 큰 보상</li>
+            <li>❓ <strong>랜덤 이벤트</strong> — 행운에 맡겨라</li>
+            <li>👑 <strong>최종 의뢰</strong> — 15층 보스, 클리어하면 승리!</li>
           </ul>
 
           <h3>턴 구조</h3>
           <ol>
             <li><strong>새벽</strong> — 카드 5장 드로우</li>
-            <li><strong>오전</strong> — 인물 카드 배치 + 장비 구매 (BP 비용 지불)</li>
-            <li><strong>오후</strong> — 헌혈 수집 (배치된 인물 능력 발동)</li>
-            <li><strong>야간</strong> — 의뢰 이행 / 이벤트 해결</li>
+            <li><strong>오전</strong> — 인물 배치 + 장비 구매 + 촉/혈 스킬 발동</li>
+            <li><strong>오후</strong> — 헌혈 수집 (능력 발동)</li>
+            <li><strong>야간</strong> — 의뢰 이행 / 딜레마 / 이벤트</li>
             <li><strong>정산</strong> — 자원 계산, 핸드 정리 (최대 3장)</li>
           </ol>
 
-          <h3>장비</h3>
-          <p>오전 단계에 장비 상점에서 BP를 지불하고 장비를 설치할 수 있습니다. 장비는 영구적으로 매 턴 효과를 발휘합니다.</p>
+          <h3>촉(觸) vs 혈(血) — 감각 스킬</h3>
+          <p>인간은 <strong class="sense-blue">촉(觸)</strong>을, 뱀파이어는 <strong class="sense-red">혈(血)</strong> 스킬을 사용합니다. 오전에 패에서 촉/혈 버튼을 눌러 발동하세요 (턴당 1회).</p>
+          <ul>
+            <li>👁 <strong>예감</strong> → 🌬 혈향 차단 (추적 무력화)</li>
+            <li>⚡ <strong>직감</strong> → 👊 혈압 회피 (지배 저항)</li>
+            <li>🔗 <strong>감응</strong> → 🫦 혈유 저항 (매혹 차단, 인간 수 비례 버프)</li>
+            <li>🩸 <strong>혈각</strong> → 🌑 혈식 무효 (각성 차단)</li>
+            <li>🔥 <strong>투지</strong> → 💀 혈기 무시 (위압 관통)</li>
+            <li>💛 <strong>공감</strong> → ⛓ 혈맹 균열 (맹약 파괴)</li>
+          </ul>
 
           <h3>승리 조건</h3>
-          <p>카르테인 의뢰 <strong>5개</strong>를 성공적으로 이행하면 승리!</p>
+          <p>15층 <strong>최종 의뢰</strong>를 클리어하면 승리!</p>
 
           <h3>패배 조건</h3>
           <ul>

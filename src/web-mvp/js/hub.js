@@ -7,6 +7,7 @@ import {
   calculateComboBonuses, PHASE_NAMES, DIFFICULTIES,
   generateDilemma, resolveDilemma, convertBlood, activateSense,
   generateRouteMap, selectRouteNode, applyRestNode, applyEventNode, NODE_TYPES,
+  generateBossRequest, generateEliteRequest,
 } from './engine.js';
 import {
   initAudio, toggleMute, isMuted, startBGM, stopBGM,
@@ -300,6 +301,7 @@ function advancePhase() {
 function tryFulfill() {
   if (!gameState || !gameState.activeRequest) return;
   if (gameState.nightActionTaken) { appendLog('이미 야간 행동을 수행했습니다.'); return; }
+  const wasBoss = gameState.activeRequest?.isBoss;
   gameState.log = [];
   const result = fulfillRequest(gameState);
   gameState.log.forEach(msg => appendLog(msg));
@@ -308,7 +310,12 @@ function tryFulfill() {
     gameState.nightActionTaken = true;
     document.getElementById('btn-fulfill').disabled = true;
     disableNightBtns();
-    appendLog(`의뢰 완료! (${gameState.completedRequests}/5)`);
+    if (wasBoss) {
+      gameState.bossDefeated = true;
+      appendLog('👑 최종 의뢰 클리어! 카르테인과의 거래가 끝났다!');
+    } else {
+      appendLog(`의뢰 완료! (${gameState.completedRequests}/5)`);
+    }
     checkStoryBeats();
   } else {
     appendLog(`이행 불가: ${result.reason}`);
@@ -690,8 +697,21 @@ function onSelectNode(nodeId) {
   }
 }
 
-function startTurnFromMap(isElite) {
-  if (isElite) appendLog('── ⚠️ 긴급 의뢰 발생! ──');
+function startTurnFromMap(isEliteOrBoss) {
+  const currentNode = gameState.routeMap?.floors[gameState.routeMap.currentFloor]
+    ?.find(n => n.id === gameState.routeMap.currentNode);
+  const isBoss = currentNode?.type === 'boss';
+
+  if (isBoss) {
+    appendLog('── 👑 최종 의뢰! 이것이 마지막이다 ──');
+    gameState.activeRequest = generateBossRequest(gameState);
+    gameState.log.push(`최종 의뢰 도착: ${gameState.activeRequest.name}`);
+  } else if (isEliteOrBoss) {
+    appendLog('── ⚠️ 긴급 의뢰 발생! ──');
+    gameState.activeRequest = generateEliteRequest(gameState);
+    gameState.log.push(`긴급 의뢰 도착: ${gameState.activeRequest.name}`);
+  }
+
   gameState.phase = 'dawn';
   gameState.log = [];
   drawCards(gameState, 5);
