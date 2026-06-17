@@ -897,8 +897,8 @@ export const COMBO_BONUSES = {
 
 export function generateRandomRequest(requestNum, turn) {
   const types = [...BLOOD_TYPES];
-  const unitCount = 1 + requestNum;
-  const typeCount = Math.min(1 + Math.floor(requestNum / 2), 3);
+  const unitCount = Math.ceil(requestNum * 0.8) + 1;
+  const typeCount = Math.min(1 + Math.floor(requestNum / 3), 3);
   const shuffledTypes = types.sort(() => Math.random() - 0.5);
   const requirements = {};
   for (let t = 0; t < typeCount; t++) {
@@ -909,9 +909,9 @@ export function generateRandomRequest(requestNum, turn) {
     requirements[keys[i % keys.length]]++;
   }
   const totalNeeded = Object.values(requirements).reduce((a, b) => a + b, 0);
-  const bpReward = 3 + totalNeeded * 2 + Math.floor(requestNum * 1.5);
-  const repReward = requestNum >= 3 ? Math.floor(requestNum * 2) : 0;
-  const susPenalty = 5 + requestNum * 3;
+  const bpReward = 5 + totalNeeded * 3 + Math.floor(requestNum * 2);
+  const repReward = requestNum >= 2 ? Math.floor(requestNum * 2) : 0;
+  const susPenalty = 4 + requestNum * 2;
 
   return {
     id: `req-${requestNum}-t${turn}`,
@@ -920,6 +920,6 @@ export function generateRandomRequest(requestNum, turn) {
     requirements,
     reward: { bp: bpReward, ...(repReward > 0 ? { rep: repReward } : {}) },
     penalty: { sus: susPenalty },
-    turnsLeft: Math.max(2, 4 - Math.floor(requestNum / 3)),
+    turnsLeft: Math.max(2, 4 - Math.floor(requestNum / 4)),
   };
 }

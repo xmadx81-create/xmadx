@@ -4,9 +4,9 @@ export const PHASES = ['dawn', 'morning', 'afternoon', 'night', 'settlement'];
 export const PHASE_NAMES = { dawn: '새벽', morning: '오전', afternoon: '오후', night: '야간', settlement: '정산' };
 
 export const DIFFICULTIES = {
-  easy:   { label: '쉬움', bp: 15, rep: 70, sus: 0, susPerTurn: 1, eventChance: 0.25 },
-  normal: { label: '보통', bp: 10, rep: 50, sus: 0, susPerTurn: 2, eventChance: 0.4 },
-  hard:   { label: '어려움', bp: 7, rep: 35, sus: 10, susPerTurn: 3, eventChance: 0.55 },
+  easy:   { label: '쉬움', bp: 18, rep: 70, sus: 0, susPerTurn: 1, eventChance: 0.2 },
+  normal: { label: '보통', bp: 12, rep: 50, sus: 0, susPerTurn: 2, eventChance: 0.35 },
+  hard:   { label: '어려움', bp: 8, rep: 35, sus: 10, susPerTurn: 3, eventChance: 0.5 },
 };
 
 export function createGameState(difficulty = 'normal') {
@@ -74,7 +74,7 @@ export function recruitCharacter(state, charId) {
 
 export function nightInvestigate(state) {
   if (state.nightActionTaken) return { ok: false, reason: '이미 야간 행동을 수행했습니다' };
-  const reduction = 4 + Math.floor(Math.random() * 4);
+  const reduction = 5 + Math.floor(Math.random() * 5);
   state.resources.sus = Math.max(0, state.resources.sus - reduction);
   state.nightActionTaken = true;
   state.log.push(`야간 조사 수행: SUS -${reduction} (현재: ${state.resources.sus})`);
@@ -83,7 +83,7 @@ export function nightInvestigate(state) {
 
 export function nightPromote(state) {
   if (state.nightActionTaken) return { ok: false, reason: '이미 야간 행동을 수행했습니다' };
-  const boost = 3 + Math.floor(Math.random() * 3);
+  const boost = 4 + Math.floor(Math.random() * 4);
   state.resources.rep += boost;
   state.nightActionTaken = true;
   state.log.push(`야간 홍보 활동: REP +${boost} (현재: ${state.resources.rep})`);
@@ -113,7 +113,7 @@ function buildStarterDeck() {
     }
   });
   BLOOD_TYPES.forEach(bt => {
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       deck.push(createBloodCard(bt));
     }
   });
@@ -251,6 +251,15 @@ export function collectBlood(state) {
     if (state.hand[i].type === 'blood') {
       state.bloodPool.push(state.hand.splice(i, 1)[0]);
     }
+  }
+
+  if (state.routeMap) {
+    const floorBonus = Math.floor(state.routeMap.currentFloor / 5);
+    for (let i = 0; i < floorBonus; i++) {
+      const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
+      state.bloodPool.push(createBloodCard(bt));
+    }
+    if (floorBonus > 0) state.log.push(`층수 보너스: 혈액 +${floorBonus}장`);
   }
 
   state.log.push(`오후 수집: BP +${totalCollected}, 혈액 풀 ${state.bloodPool.length}장`);
@@ -632,28 +641,41 @@ export function selectRouteNode(state, nodeId) {
 export function applyRestNode(state) {
   const repGain = 5 + Math.floor(Math.random() * 6);
   const susLoss = 3 + Math.floor(Math.random() * 5);
+  const bpGain = 2 + Math.floor(Math.random() * 3);
   state.resources.rep += repGain;
+  state.resources.bp += bpGain;
   state.resources.sus = Math.max(0, state.resources.sus - susLoss);
-  state.log.push(`휴식: REP +${repGain}, SUS -${susLoss}`);
-  return { repGain, susLoss };
+  const bloodBonus = 2;
+  for (let i = 0; i < bloodBonus; i++) {
+    const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
+    state.bloodPool.push(createBloodCard(bt));
+  }
+  state.log.push(`휴식: REP +${repGain}, BP +${bpGain}, SUS -${susLoss}, 혈액 +${bloodBonus}장`);
+  return { repGain, susLoss, bpGain, bloodBonus };
 }
 
 export function generateBossRequest(state) {
   const floor = state.routeMap?.currentFloor || 14;
+  const diff = state.difficulty || 'normal';
   const reqTypes = shuffle([...BLOOD_TYPES]);
   const requirements = {};
-  const typeCount = Math.min(3, reqTypes.length);
-  for (let i = 0; i < typeCount; i++) {
-    requirements[reqTypes[i]] = 2 + Math.floor(floor / 5);
+  const bossSpec = {
+    easy:   { types: 2, perType: 3, turns: 6 },
+    normal: { types: 2, perType: 5, turns: 4 },
+    hard:   { types: 2, perType: 6, turns: 3 },
+  };
+  const spec = bossSpec[diff] || bossSpec.normal;
+  for (let i = 0; i < spec.types; i++) {
+    requirements[reqTypes[i]] = spec.perType;
   }
   return {
     id: `boss-req-f${floor}`,
     type: 'request',
     name: '카르테인 최종 의뢰',
     requirements,
-    reward: { bp: 20 + floor * 2, rep: 15 },
-    penalty: { sus: 30, rep: -15 },
-    turnsLeft: 4,
+    reward: { bp: 25 + floor * 2, rep: 20 },
+    penalty: { sus: 25, rep: -10 },
+    turnsLeft: spec.turns,
     isBoss: true,
   };
 }
@@ -662,15 +684,15 @@ export function generateEliteRequest(state) {
   const floor = state.routeMap?.currentFloor || 5;
   const reqTypes = shuffle([...BLOOD_TYPES]);
   const requirements = {};
-  requirements[reqTypes[0]] = 2 + Math.floor(floor / 4);
-  if (Math.random() > 0.4) requirements[reqTypes[1]] = 1 + Math.floor(floor / 6);
+  requirements[reqTypes[0]] = 1 + Math.floor(floor / 6);
+  if (Math.random() > 0.5) requirements[reqTypes[1]] = 1;
   return {
     id: `elite-req-f${floor}`,
     type: 'request',
     name: `긴급 의뢰 (${floor + 1}층)`,
     requirements,
-    reward: { bp: 12 + floor, rep: 8 },
-    penalty: { sus: 15 + floor },
+    reward: { bp: 15 + floor, rep: 10 },
+    penalty: { sus: 10 + Math.floor(floor / 2) },
     turnsLeft: 3,
   };
 }

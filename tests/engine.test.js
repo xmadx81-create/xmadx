@@ -16,7 +16,7 @@ describe('createGameState', () => {
     const state = createGameState();
     expect(state.turn).toBe(1);
     expect(state.phase).toBe('dawn');
-    expect(state.resources.bp).toBe(10);
+    expect(state.resources.bp).toBe(12);
     expect(state.resources.rep).toBe(50);
     expect(state.resources.sus).toBe(0);
     expect(state.deck.length).toBeGreaterThan(0);
@@ -305,16 +305,16 @@ describe('activateNextRequest (random)', () => {
 });
 
 describe('createGameState with difficulty', () => {
-  it('쉬움 난이도는 BP 15, REP 70으로 시작', () => {
+  it('쉬움 난이도는 BP 18, REP 70으로 시작', () => {
     const state = createGameState('easy');
-    expect(state.resources.bp).toBe(15);
+    expect(state.resources.bp).toBe(18);
     expect(state.resources.rep).toBe(70);
     expect(state.diffSettings.susPerTurn).toBe(1);
   });
 
-  it('어려움 난이도는 BP 7, REP 35, SUS 10으로 시작', () => {
+  it('어려움 난이도는 BP 8, REP 35, SUS 10으로 시작', () => {
     const state = createGameState('hard');
-    expect(state.resources.bp).toBe(7);
+    expect(state.resources.bp).toBe(8);
     expect(state.resources.rep).toBe(35);
     expect(state.resources.sus).toBe(10);
     expect(state.diffSettings.susPerTurn).toBe(3);
@@ -691,14 +691,18 @@ describe('route map system', () => {
     expect(NODE_TYPES.rest).toBeDefined();
   });
 
-  it('휴식 노드는 REP 증가 SUS 감소', () => {
+  it('휴식 노드는 REP/BP 증가 SUS 감소 혈액 생성', () => {
     const state = createGameState();
     state.resources.sus = 20;
     const repBefore = state.resources.rep;
+    const bpBefore = state.resources.bp;
     const susBefore = state.resources.sus;
+    const bloodBefore = state.bloodPool.length;
     applyRestNode(state);
     expect(state.resources.rep).toBeGreaterThan(repBefore);
+    expect(state.resources.bp).toBeGreaterThan(bpBefore);
     expect(state.resources.sus).toBeLessThan(susBefore);
+    expect(state.bloodPool.length).toBe(bloodBefore + 2);
   });
 
   it('보스 의뢰를 생성한다', () => {
@@ -707,7 +711,7 @@ describe('route map system', () => {
     const req = generateBossRequest(state);
     expect(req.isBoss).toBe(true);
     expect(req.name).toContain('최종');
-    expect(Object.keys(req.requirements).length).toBeGreaterThanOrEqual(2);
+    expect(Object.keys(req.requirements).length).toBe(2);
   });
 
   it('긴급 의뢰를 생성한다', () => {
