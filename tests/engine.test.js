@@ -6,12 +6,18 @@ import {
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, createMap,
   tickCooldowns, ROLE_MODIFIERS, EQUIPMENT, RELICS, equipItem, equipRelic,
   getCombatPower, previewDamage, previewSkillDamage,
+  getMbtiPairScore, getMbtiSynergyGrade, getTeamSynergy, getTeamCP,
+  gainXP, rollLoot, SECRET_COMBOS, getTerrainEffect,
 } from '../src/web-mvp/js/engine.js';
-import { CHARACTERS, SENSE_TYPES } from '../src/web-mvp/js/cards.js';
+import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
 
 describe('TILE_TYPES', () => {
-  it('5가지 타일 타입이 정의되어 있다', () => {
-    expect(Object.keys(TILE_TYPES)).toEqual(['floor', 'wall', 'blood_storage', 'desk', 'entrance']);
+  it('15가지 타일 타입이 정의되어 있다', () => {
+    expect(Object.keys(TILE_TYPES).length).toBe(15);
+    expect(TILE_TYPES.floor.walkable).toBe(true);
+    expect(TILE_TYPES.mountain.walkable).toBe(false);
+    expect(TILE_TYPES.forest.movCost).toBe(2);
+    expect(TILE_TYPES.hotspring.healPerTurn).toBe(5);
   });
 
   it('벽은 이동 불가, 바닥은 이동 가능', () => {
@@ -167,8 +173,8 @@ describe('createBattleState', () => {
     const state = createBattleState('stage-1', ['park-harin', 'kim-doyun']);
     expect(state.phase).toBe('player_phase');
     expect(state.turnNumber).toBe(1);
-    expect(state.map.cols).toBe(8);
-    expect(state.map.rows).toBe(6);
+    expect(state.map.cols).toBe(10);
+    expect(state.map.rows).toBe(8);
     expect(state.units.length).toBeGreaterThan(0);
   });
 
@@ -509,5 +515,165 @@ describe('previewSkillDamage', () => {
       const unit = cardToUnit(char, 0, 0);
       expect(previewSkillDamage(unit)).toBeNull();
     }
+  });
+});
+
+describe('MBTI synergy', () => {
+  it('50명 캐릭터에 MBTI가 할당되어 있다', () => {
+    expect(Object.keys(CHARACTER_MBTI).length).toBe(50);
+    CHARACTERS.forEach(c => {
+      expect(CHARACTER_MBTI[c.id]).toBeDefined();
+    });
+  });
+
+  it('cardToUnit에 MBTI가 포함된다', () => {
+    const char = CHARACTERS.find(c => c.id === 'park-harin');
+    const unit = cardToUnit(char, 0, 0);
+    expect(unit.mbti).toBe('ENTJ');
+  });
+
+  it('MBTI 쌍 점수를 계산한다', () => {
+    const score = getMbtiPairScore('INTJ', 'ENFP');
+    expect(score).toBeGreaterThanOrEqual(-1);
+    expect(score).toBeLessThanOrEqual(9);
+  });
+
+  it('같은 MBTI는 높은 점수', () => {
+    const same = getMbtiPairScore('ENTJ', 'ENTJ');
+    const diff = getMbtiPairScore('ENTJ', 'ISFP');
+    expect(same).toBeGreaterThan(diff);
+  });
+
+  it('시너지 등급을 반환한다', () => {
+    const grade = getMbtiSynergyGrade(8);
+    expect(grade.grade).toBe('SS');
+    expect(grade.mult).toBe(2.0);
+  });
+
+  it('팀 시너지를 계산한다', () => {
+    const units = ['park-harin', 'kim-doyun', 'lee-seoyeon'].map(id => {
+      const c = CHARACTERS.find(ch => ch.id === id);
+      return cardToUnit(c, 0, 0);
+    });
+    const syn = getTeamSynergy(units);
+    expect(syn.teamMult).toBeGreaterThan(0);
+    expect(syn.pairDetails.length).toBe(3);
+    expect(syn.avgGrade).toBeDefined();
+  });
+
+  it('팀 전투력을 시너지 반영하여 계산한다', () => {
+    const units = ['park-harin', 'kim-doyun'].map(id => {
+      const c = CHARACTERS.find(ch => ch.id === id);
+      return cardToUnit(c, 0, 0);
+    });
+    const result = getTeamCP(units);
+    expect(result.total).toBeGreaterThan(0);
+    expect(result.synergy.teamMult).toBeGreaterThan(0);
+  });
+
+  it('시크릿 콤보 테이블이 존재한다', () => {
+    expect(SECRET_COMBOS.length).toBeGreaterThanOrEqual(5);
+    SECRET_COMBOS.forEach(c => {
+      expect(c.mbtis.length).toBeGreaterThanOrEqual(3);
+      expect(c.mult).toBeGreaterThan(1);
+      expect(c.name).toBeDefined();
+    });
+  });
+});
+
+describe('terrain system', () => {
+  it('숲은 이동 비용 2', () => {
+    expect(TILE_TYPES.forest.movCost).toBe(2);
+    expect(TILE_TYPES.forest.walkable).toBe(true);
+    expect(TILE_TYPES.forest.defBonus).toBe(1);
+  });
+
+  it('산은 이동 불가', () => {
+    expect(TILE_TYPES.mountain.walkable).toBe(false);
+  });
+
+  it('온천은 턴당 회복', () => {
+    expect(TILE_TYPES.hotspring.healPerTurn).toBe(5);
+  });
+
+  it('지형 효과를 가져온다', () => {
+    const map = createMap([['graveyard', 'hotspring']]);
+    const effect = getTerrainEffect(map, 0, 0);
+    expect(effect.atkBonus).toBe(2);
+    const hEffect = getTerrainEffect(map, 1, 0);
+    expect(hEffect.healPerTurn).toBe(5);
+  });
+
+  it('숲 지형은 이동 범위를 줄인다', () => {
+    const map = createMap([
+      ['floor', 'forest', 'forest', 'floor'],
+    ]);
+    const unit = cardToUnit(CHARACTERS[0], 0, 0);
+    unit.mov = 3;
+    const state = { map, units: [unit] };
+    const range = getMovementRange(state, unit);
+    const canReach3 = range.some(t => t.x === 3);
+    expect(canReach3).toBe(false);
+  });
+});
+
+describe('XP and level system', () => {
+  it('유닛은 레벨 1, XP 0으로 생성된다', () => {
+    const unit = cardToUnit(CHARACTERS[0], 0, 0);
+    expect(unit.level).toBe(1);
+    expect(unit.xp).toBe(0);
+    expect(unit.xpToNext).toBe(50);
+  });
+
+  it('XP를 얻으면 레벨업한다', () => {
+    const unit = cardToUnit(CHARACTERS[0], 0, 0);
+    const baseAtk = unit.atk;
+    const result = gainXP(unit, 60);
+    expect(result).not.toBeNull();
+    expect(unit.level).toBe(2);
+    expect(unit.atk).toBe(baseAtk + 2);
+  });
+
+  it('XP 부족하면 레벨업하지 않는다', () => {
+    const unit = cardToUnit(CHARACTERS[0], 0, 0);
+    const result = gainXP(unit, 10);
+    expect(result).toBeNull();
+    expect(unit.level).toBe(1);
+    expect(unit.xp).toBe(10);
+  });
+
+  it('적 레벨이 스테이지에 따라 적용된다', () => {
+    const state = createBattleState('stage-3', ['park-harin']);
+    const enemy = state.units.find(u => u.team === 'enemy');
+    expect(enemy.level).toBe(3);
+  });
+});
+
+describe('loot system', () => {
+  it('루트를 드롭한다', () => {
+    const loot = rollLoot();
+    expect(loot).toBeDefined();
+    expect(loot.name).toBeDefined();
+    expect(loot.type).toBe('consumable');
+  });
+});
+
+describe('expanded stages', () => {
+  it('7개의 스테이지가 정의되어 있다', () => {
+    expect(STAGES.length).toBe(7);
+  });
+
+  it('각 스테이지에 enemyLevel이 있다', () => {
+    STAGES.forEach(s => {
+      expect(s.enemyLevel).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('새 스테이지에 지형 타일이 포함되어 있다', () => {
+    const stage4 = STAGES.find(s => s.id === 'stage-4');
+    const flat = stage4.mapData.flat();
+    expect(flat).toContain('forest');
+    expect(flat).toContain('mountain');
+    expect(flat).toContain('ice');
   });
 });

@@ -3,16 +3,26 @@
 // Pure game logic, no DOM/UI code
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { CHARACTERS, SENSE_TYPES } from './cards.js';
+import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from './cards.js';
 
 // ── Tile Types ──────────────────────────────────────────────────────────
 
 export const TILE_TYPES = {
-  floor:         { walkable: true,  label: '바닥',       icon: '·' },
-  wall:          { walkable: false, label: '벽',         icon: '█' },
-  blood_storage: { walkable: true,  label: '혈액 보관소', icon: '🩸' },
-  desk:          { walkable: true,  label: '데스크',      icon: '🪑' },
-  entrance:      { walkable: true,  label: '출입구',      icon: '🚪' },
+  floor:         { walkable: true,  movCost: 1, label: '바닥',       icon: '·' },
+  wall:          { walkable: false, movCost: 99, label: '벽',        icon: '█' },
+  blood_storage: { walkable: true,  movCost: 1, label: '혈액 보관소', icon: '🩸' },
+  desk:          { walkable: true,  movCost: 1, label: '데스크',      icon: '🪑' },
+  entrance:      { walkable: true,  movCost: 1, label: '출입구',      icon: '🚪' },
+  forest:        { walkable: true,  movCost: 2, label: '숲',         icon: '🌲', defBonus: 1 },
+  mountain:      { walkable: false, movCost: 99, label: '산',        icon: '⛰️' },
+  swamp:         { walkable: true,  movCost: 2, label: '늪',         icon: '🟤', defBonus: -1 },
+  ice:           { walkable: true,  movCost: 1, label: '빙판',       icon: '🧊', evaBonus: 0.05 },
+  graveyard:     { walkable: true,  movCost: 1, label: '묘지',       icon: '🪦', atkBonus: 2 },
+  hotspring:     { walkable: true,  movCost: 1, label: '온천',       icon: '♨️', healPerTurn: 5 },
+  dungeon:       { walkable: true,  movCost: 1, label: '던전',       icon: '🕳️' },
+  bridge:        { walkable: true,  movCost: 1, label: '다리',       icon: '🌉' },
+  valley:        { walkable: true,  movCost: 2, label: '계곡',       icon: '🏞️', defBonus: -2 },
+  road:          { walkable: true,  movCost: 1, label: '도로',       icon: '🛤️' },
 };
 
 // ── Faction Constants ───────────────────────────────────────────────────
@@ -140,6 +150,167 @@ export function getCombatPower(unit) {
   );
 }
 
+// ── MBTI Synergy System ────────────────────────────────────────────────
+
+const MBTI_DIM_SCORES = {
+  EI: { same: 1, diff: 1 },
+  SN: { same: 3, diff: -1 },
+  TF: { same: 0, diff: 3 },
+  JP: { same: 2, diff: 1 },
+};
+
+export function getMbtiPairScore(mbtiA, mbtiB) {
+  if (!mbtiA || !mbtiB || mbtiA.length !== 4 || mbtiB.length !== 4) return 4;
+  let score = 0;
+  const dims = ['EI', 'SN', 'TF', 'JP'];
+  for (let i = 0; i < 4; i++) {
+    const same = mbtiA[i] === mbtiB[i];
+    score += same ? MBTI_DIM_SCORES[dims[i]].same : MBTI_DIM_SCORES[dims[i]].diff;
+  }
+  return score;
+}
+
+export function getMbtiSynergyGrade(pairScore) {
+  if (pairScore >= 8) return { grade: 'SS', mult: 2.0, label: '🔥 황금 궁합' };
+  if (pairScore >= 6) return { grade: 'S',  mult: 1.5, label: '✦ 자연 동맹' };
+  if (pairScore >= 4) return { grade: 'A',  mult: 1.2, label: '○ 호환' };
+  if (pairScore >= 2) return { grade: 'B',  mult: 1.0, label: '— 중립' };
+  if (pairScore >= 0) return { grade: 'C',  mult: 0.75, label: '△ 마찰' };
+  return { grade: 'D', mult: 0.5, label: '❌ 충돌' };
+}
+
+export const SECRET_COMBOS = [
+  { mbtis: ['INTJ','ENTP','INFJ','ENFP'], mult: 3.0, name: '천재 연합' },
+  { mbtis: ['ISTJ','ESTJ','ISFJ','ESFJ'], mult: 2.5, name: '철벽 수비대' },
+  { mbtis: ['ENTJ','INTJ','ENTP','INTP'], mult: 2.8, name: '전략가 협의회' },
+  { mbtis: ['INFP','ENFP','INFJ','ENFJ'], mult: 2.5, name: '정신 공명' },
+  { mbtis: ['ESTP','ISTP','ENTJ'],        mult: 2.0, name: '돌격 삼총사' },
+  { mbtis: ['ENFJ','INFP','ISTP'],        mult: 2.0, name: '삼위일체' },
+  { mbtis: ['INTJ','ENFP','ISTJ'],        mult: 1.8, name: '균형의 삼각' },
+  { mbtis: ['ENTJ','ISFP','INTP'],        mult: 1.8, name: '창조적 리더십' },
+  { mbtis: ['ESTJ','INFJ','ESTP','INFP'], mult: 2.2, name: '완전한 균형' },
+  { mbtis: ['ISTP','ESTP','ESFP','ISFP'], mult: 2.0, name: '감각의 질풍' },
+];
+
+function findSecretCombo(mbtiList) {
+  const sorted = [...mbtiList].sort();
+  for (const combo of SECRET_COMBOS) {
+    const comboSorted = [...combo.mbtis].sort();
+    if (comboSorted.length > sorted.length) continue;
+    const match = comboSorted.every(m => sorted.includes(m));
+    if (match) return combo;
+  }
+  return null;
+}
+
+export function getTeamSynergy(units) {
+  if (!units || units.length < 2) return { teamMult: 1.0, pairDetails: [], secretCombo: null, avgGrade: 'B' };
+
+  const pairs = [];
+  for (let i = 0; i < units.length; i++) {
+    for (let j = i + 1; j < units.length; j++) {
+      const score = getMbtiPairScore(units[i].mbti, units[j].mbti);
+      const synergy = getMbtiSynergyGrade(score);
+      pairs.push({ a: units[i].name, b: units[j].name, score, ...synergy });
+    }
+  }
+
+  const geoMean = Math.pow(pairs.reduce((acc, p) => acc * p.mult, 1), 1 / pairs.length);
+
+  const secret = findSecretCombo(units.map(u => u.mbti));
+  const secretMult = secret ? secret.mult : 1.0;
+
+  const finalMult = Math.round(geoMean * secretMult * 100) / 100;
+
+  const avgScore = pairs.reduce((s, p) => s + p.score, 0) / pairs.length;
+  const avgGrade = getMbtiSynergyGrade(Math.round(avgScore)).grade;
+
+  return { teamMult: finalMult, pairDetails: pairs, secretCombo: secret, avgGrade };
+}
+
+export function getTeamCP(units) {
+  const individual = units.reduce((sum, u) => sum + getCombatPower(u) * (1 + (u.level - 1) * 0.08), 0);
+  const synergy = getTeamSynergy(units);
+  return { total: Math.floor(individual * synergy.teamMult), individual: Math.floor(individual), synergy };
+}
+
+// ── XP / Level System ──────────────────────────────────────────────────
+
+export const XP_TABLE = { attack: 10, kill: 30, skill: 15, takeDamage: 5 };
+
+export function gainXP(unit, amount) {
+  if (!unit || unit.hp <= 0) return null;
+  unit.xp += amount;
+  const levelUps = [];
+  while (unit.xp >= unit.xpToNext) {
+    unit.xp -= unit.xpToNext;
+    unit.level++;
+    unit.xpToNext = unit.level * 50;
+    const hpGain = Math.floor(unit.maxHp * 0.05);
+    unit.maxHp += hpGain;
+    unit.hp = Math.min(unit.hp + hpGain, unit.maxHp);
+    unit.atk += 2;
+    unit.def += 1;
+    unit.maxMp += 1;
+    unit.mp = Math.min(unit.mp + 1, unit.maxMp);
+    if (unit.senseSkill) {
+      unit.senseSkill.power += 1;
+      if (unit.level % 3 === 0 && unit.senseSkill.maxCooldown > 1) {
+        unit.senseSkill.maxCooldown--;
+      }
+    }
+    levelUps.push({ level: unit.level, hpGain, atk: unit.atk, def: unit.def });
+  }
+  return levelUps.length > 0 ? levelUps : null;
+}
+
+// ── Terrain Effects ────────────────────────────────────────────────────
+
+export function getTerrainEffect(map, x, y) {
+  if (y < 0 || y >= map.rows || x < 0 || x >= map.cols) return {};
+  const tileType = map.tiles[y][x].type;
+  const t = TILE_TYPES[tileType];
+  if (!t) return {};
+  return {
+    defBonus: t.defBonus || 0,
+    atkBonus: t.atkBonus || 0,
+    evaBonus: t.evaBonus || 0,
+    healPerTurn: t.healPerTurn || 0,
+  };
+}
+
+export function applyTerrainHealing(state) {
+  state.units.forEach(u => {
+    if (u.hp <= 0) return;
+    const effect = getTerrainEffect(state.map, u.x, u.y);
+    if (effect.healPerTurn > 0 && u.hp < u.maxHp) {
+      u.hp = Math.min(u.maxHp, u.hp + effect.healPerTurn);
+      state.log.push(`♨ ${u.name} 온천 회복 +${effect.healPerTurn} HP`);
+    }
+  });
+}
+
+// ── Loot System ────────────────────────────────────────────────────────
+
+const LOOT_TABLE = [
+  { id: 'potion-small', name: '소형 포션', type: 'consumable', effect: { heal: 20 }, weight: 40 },
+  { id: 'potion-mp', name: 'MP 포션', type: 'consumable', effect: { mp: 5 }, weight: 25 },
+  { id: 'atk-gem', name: '공격의 보석', type: 'consumable', effect: { atkBuff: 3 }, weight: 15 },
+  { id: 'def-gem', name: '방어의 보석', type: 'consumable', effect: { defBuff: 3 }, weight: 10 },
+  { id: 'xp-orb', name: '경험치 구슬', type: 'consumable', effect: { xp: 25 }, weight: 8 },
+  { id: 'rare-charm', name: '행운의 부적', type: 'consumable', effect: { crtBuff: 0.1 }, weight: 2 },
+];
+
+export function rollLoot() {
+  const totalWeight = LOOT_TABLE.reduce((s, l) => s + l.weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const item of LOOT_TABLE) {
+    roll -= item.weight;
+    if (roll <= 0) return { ...item };
+  }
+  return { ...LOOT_TABLE[0] };
+}
+
 // ── Stat Conversion: Card → SRPG Unit ───────────────────────────────────
 
 export function cardToUnit(charData, x, y) {
@@ -170,6 +341,7 @@ export function cardToUnit(charData, x, y) {
     faction: charData.faction,
     rarity: charData.rarity,
     role: role || null,
+    mbti: CHARACTER_MBTI[charData.id] || 'ISTJ',
 
     hp,
     maxHp: hp,
@@ -186,6 +358,10 @@ export function cardToUnit(charData, x, y) {
 
     mp: 10,
     maxMp: 10,
+
+    level: 1,
+    xp: 0,
+    xpToNext: 50,
 
     senseSkill: charData.sense ? {
       name: charData.sense.name,
@@ -240,32 +416,34 @@ function getUnitAt(state, x, y) {
 
 // ── Stages / Missions ───────────────────────────────────────────────────
 
-// Legend: F=floor, W=wall, B=blood_storage, D=desk, E=entrance
-const F = 'floor', W = 'wall', B = 'blood_storage', D = 'desk', E = 'entrance';
+// Legend
+const F='floor', W='wall', B='blood_storage', D='desk', E='entrance';
+const T='forest', M='mountain', S='swamp', I='ice', G='graveyard', H='hotspring', U='dungeon', R='bridge', V='valley', P='road';
 
 export const STAGES = [
   {
     id: 'stage-1',
     name: '센터 로비',
     description: '첫 번째 임무. 로비에 침입한 카르테인 척후병을 제거하라.',
-    storyIntro: '야간 근무가 시작된 혈연센터 로비. 형광등이 깜빡이더니, 낯선 인물 둘이 출입구에서 나타났다. 이 시간에 방문객이라니 — 직감이 경고한다.',
-    storyOutro: '침입자를 물리쳤다. 하지만 이것은 시작에 불과하다. 쓰러진 자의 주머니에서 카르테인 가문의 인장이 발견되었다.',
+    storyIntro: '야간 근무가 시작된 혈연센터 로비. 형광등이 깜빡이더니, 낯선 인물 둘이 출입구에서 나타났다.',
+    storyOutro: '침입자를 물리쳤다. 쓰러진 자의 주머니에서 카르테인 가문의 인장이 발견되었다.',
+    enemyLevel: 1,
     mapData: [
-      [E, F, F, F, F, F, D, D],
-      [F, F, F, F, F, F, F, F],
-      [F, F, D, F, F, D, F, F],
-      [F, F, F, F, F, F, F, F],
-      [F, F, F, F, F, F, F, F],
-      [D, D, F, F, F, F, F, E],
+      [E, F, F, F, F, F, D, D, F, F],
+      [F, F, F, F, F, F, F, F, F, F],
+      [F, F, D, F, F, D, F, F, D, F],
+      [F, F, F, F, F, F, F, F, F, F],
+      [F, F, F, F, F, F, F, F, F, F],
+      [F, F, F, F, F, F, F, F, F, F],
+      [F, F, D, F, F, D, F, F, D, F],
+      [D, D, F, F, F, F, F, F, F, E],
     ],
     playerSpawns: [
-      { x: 0, y: 4 },
-      { x: 1, y: 5 },
-      { x: 0, y: 5 },
+      { x: 0, y: 5 }, { x: 1, y: 6 }, { x: 0, y: 7 },
     ],
     enemyUnits: [
-      { charId: 'elena-morgan', x: 7, y: 0 },
-      { charId: 'kaspar-wren',  x: 6, y: 1 },
+      { charId: 'elena-morgan', x: 9, y: 0 },
+      { charId: 'kaspar-wren',  x: 8, y: 1 },
     ],
     victoryCondition: 'defeat_all',
   },
@@ -273,27 +451,27 @@ export const STAGES = [
     id: 'stage-2',
     name: '야간 창고',
     description: '혈액 보관소에 카르테인 요원들이 잠입했다. 혈액을 지켜라.',
-    storyIntro: '자정. 혈액 보관소의 경보가 울린다. 보안 카메라에 4개의 그림자가 비친다. 놈들이 혈액 창고를 노리고 있다.',
-    storyOutro: '창고를 지켜냈다. 하지만 도주한 요원이 가져간 정보가 걱정된다. 카르테인의 본격적인 움직임이 시작된 것 같다.',
+    storyIntro: '자정. 혈액 보관소의 경보가 울린다. 보안 카메라에 4개의 그림자가 비친다.',
+    storyOutro: '창고를 지켜냈다. 카르테인의 본격적인 움직임이 시작된 것 같다.',
+    enemyLevel: 2,
     mapData: [
-      [W, W, E, F, F, E, W, W],
-      [W, F, F, F, F, F, F, W],
-      [F, F, B, B, B, B, F, F],
-      [F, F, B, B, B, B, F, F],
-      [W, F, F, F, F, F, F, W],
-      [W, W, F, F, F, F, W, W],
+      [W, W, E, F, F, F, E, W, W, W],
+      [W, F, F, F, F, F, F, F, F, W],
+      [F, F, B, B, B, B, B, B, F, F],
+      [F, F, B, B, B, B, B, B, F, F],
+      [F, F, F, F, F, F, F, F, F, F],
+      [W, F, F, F, D, D, F, F, F, W],
+      [W, W, F, F, F, F, F, F, W, W],
+      [W, W, W, F, F, F, F, W, W, W],
     ],
     playerSpawns: [
-      { x: 2, y: 0 },
-      { x: 5, y: 0 },
-      { x: 3, y: 1 },
-      { x: 4, y: 1 },
+      { x: 2, y: 0 }, { x: 6, y: 0 }, { x: 3, y: 1 }, { x: 5, y: 1 },
     ],
     enemyUnits: [
-      { charId: 'sergei-volkov',   x: 1, y: 4 },
-      { charId: 'otto-brandt',     x: 6, y: 4 },
-      { charId: 'elena-morgan',    x: 3, y: 5 },
-      { charId: 'lucien-deveraux', x: 4, y: 5 },
+      { charId: 'sergei-volkov',   x: 1, y: 5 },
+      { charId: 'otto-brandt',     x: 8, y: 5 },
+      { charId: 'elena-morgan',    x: 3, y: 7 },
+      { charId: 'lucien-deveraux', x: 6, y: 7 },
     ],
     victoryCondition: 'defeat_all',
   },
@@ -301,29 +479,159 @@ export const STAGES = [
     id: 'stage-3',
     name: '지하 복도',
     description: '카르테인의 비밀 지하 통로. 강력한 적들이 기다리고 있다.',
-    storyIntro: 'B2 복도 아래, 설계도에 없는 통로가 발견되었다. 배관에서 미지근한 온기가 흐른다. 이 아래에 뭔가 있다 — 가봐야 한다.',
-    storyOutro: '지하 복도를 제압했다. 통로 끝에서 발견된 것은... 카르테인 가문이 수십 년간 운영해온 비밀 혈액 저장시설이었다. 진실이 밝혀지기 시작한다.',
+    storyIntro: 'B2 복도 아래, 설계도에 없는 통로가 발견되었다.',
+    storyOutro: '통로 끝에서 발견된 것은 카르테인 가문이 수십 년간 운영해온 비밀 혈액 저장시설이었다.',
+    enemyLevel: 3,
     mapData: [
-      [W, F, F, W, W, F, F, W],
-      [W, F, F, F, W, F, F, W],
-      [F, F, W, F, F, W, F, F],
-      [F, F, W, F, F, W, F, F],
-      [W, F, F, F, W, F, F, W],
-      [W, F, F, W, W, F, F, W],
+      [W, U, U, W, W, U, U, W, W, U],
+      [W, U, U, U, W, U, U, U, W, U],
+      [U, U, W, U, U, W, U, U, U, U],
+      [U, U, W, U, U, W, U, U, U, U],
+      [W, U, U, U, W, U, U, U, W, U],
+      [W, U, U, W, W, U, U, W, W, U],
+      [U, U, U, U, U, U, U, U, U, U],
+      [W, U, U, U, W, U, U, U, U, W],
     ],
     playerSpawns: [
-      { x: 1, y: 0 },
-      { x: 2, y: 0 },
-      { x: 5, y: 0 },
-      { x: 6, y: 0 },
+      { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 5, y: 0 }, { x: 6, y: 0 },
     ],
     enemyUnits: [
       { charId: 'viktor-hessen',  x: 1, y: 5 },
       { charId: 'aldric-thorne',  x: 6, y: 5 },
       { charId: 'marcus-vale',    x: 1, y: 3 },
       { charId: 'nigel-crowe',    x: 6, y: 3 },
-      { charId: 'nadia-petrova',  x: 3, y: 4 },
-      { charId: 'madeleine-voss', x: 4, y: 4 },
+      { charId: 'nadia-petrova',  x: 3, y: 7 },
+      { charId: 'madeleine-voss', x: 6, y: 7 },
+    ],
+    victoryCondition: 'defeat_all',
+  },
+  {
+    id: 'stage-4',
+    name: '빙결의 숲',
+    description: '겨울 산림 속 카르테인 전초기지. 빙판과 숲이 이동을 방해한다.',
+    storyIntro: '도시 외곽의 동결된 숲. 카르테인의 보급로를 차단하기 위해 깊숙이 들어왔다. 나뭇가지 사이로 은발이 스친다.',
+    storyOutro: '전초기지를 파괴했다. 하지만 숲 깊은 곳에서 더 강한 기운이 느껴진다.',
+    enemyLevel: 4,
+    mapData: [
+      [T, T, F, I, I, F, T, T, T, M, M, T],
+      [T, F, F, I, I, F, F, T, F, F, M, T],
+      [F, F, T, F, F, F, T, F, F, T, F, F],
+      [F, F, T, F, T, T, F, F, T, F, F, F],
+      [T, F, F, F, T, T, F, F, F, F, F, T],
+      [T, F, F, I, F, F, I, F, F, T, F, T],
+      [F, F, T, I, F, F, I, T, F, F, F, F],
+      [T, T, T, F, F, F, F, T, T, F, T, T],
+      [M, T, F, F, T, T, F, F, T, F, T, M],
+      [M, M, T, F, F, F, F, T, M, M, M, M],
+    ],
+    playerSpawns: [
+      { x: 1, y: 1 }, { x: 2, y: 0 }, { x: 1, y: 2 }, { x: 0, y: 2 },
+    ],
+    enemyUnits: [
+      { charId: 'nikolai-frost',     x: 10, y: 1 },
+      { charId: 'madeleine-voss',    x: 9, y: 3 },
+      { charId: 'dimitri-rad',       x: 7, y: 5 },
+      { charId: 'kaspar-wren',       x: 10, y: 6 },
+      { charId: 'nadia-petrova',     x: 8, y: 8 },
+    ],
+    victoryCondition: 'defeat_all',
+  },
+  {
+    id: 'stage-5',
+    name: '계곡의 다리',
+    description: '깊은 계곡을 가로지르는 오래된 다리. 양쪽에서 적이 밀려온다.',
+    storyIntro: '카르테인 본거지로 향하는 유일한 길. 좁은 다리 위에서 적의 매복이 시작됐다.',
+    storyOutro: '다리를 건넜다. 계곡 너머로 카르테인의 성이 보인다. 최종 결전이 다가오고 있다.',
+    enemyLevel: 5,
+    mapData: [
+      [M, V, V, M, M, F, F, F, F, M, V, M],
+      [M, V, F, F, M, F, F, F, F, M, V, M],
+      [F, F, F, F, F, F, F, F, F, F, F, F],
+      [V, V, F, R, R, R, R, R, F, V, V, V],
+      [V, V, F, R, R, R, R, R, F, V, V, V],
+      [F, F, F, F, F, F, F, F, F, F, F, F],
+      [M, V, F, F, M, F, F, M, F, F, V, M],
+      [M, V, V, M, M, F, F, M, M, V, V, M],
+      [M, M, V, V, F, F, F, F, V, V, M, M],
+      [M, M, M, V, V, F, F, V, V, M, M, M],
+    ],
+    playerSpawns: [
+      { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 1, y: 5 }, { x: 2, y: 5 },
+    ],
+    enemyUnits: [
+      { charId: 'aldric-thorne',     x: 9, y: 2 },
+      { charId: 'sergei-volkov',     x: 10, y: 2 },
+      { charId: 'marcus-vale',       x: 9, y: 5 },
+      { charId: 'vivienne-la-croix', x: 7, y: 3 },
+      { charId: 'otto-brandt',       x: 7, y: 4 },
+      { charId: 'lucien-deveraux',   x: 5, y: 8 },
+    ],
+    victoryCondition: 'defeat_all',
+  },
+  {
+    id: 'stage-6',
+    name: '묘지의 온천',
+    description: '고대 뱀파이어들의 묘지. 온천에서 회복하며 싸워라.',
+    storyIntro: '카르테인 선조들의 묘지. 기이하게도 뜨거운 온천이 솟아오르고 있다. 묘비 사이로 적들이 깨어난다.',
+    storyOutro: '묘지의 수호자를 물리쳤다. 고대의 비밀이 담긴 석판을 발견했다.',
+    enemyLevel: 6,
+    mapData: [
+      [G, G, F, F, T, T, F, F, G, G, F, F],
+      [G, F, F, H, F, F, H, F, F, G, F, F],
+      [F, F, G, F, F, F, F, G, F, F, F, S],
+      [F, H, F, F, G, G, F, F, H, F, S, S],
+      [F, F, F, G, G, G, G, F, F, F, F, F],
+      [T, F, G, G, W, W, G, G, F, T, F, F],
+      [T, F, F, G, W, W, G, F, F, T, F, F],
+      [F, F, H, F, F, F, F, H, F, F, F, F],
+      [G, F, F, F, G, G, F, F, F, G, F, F],
+      [G, G, F, F, T, T, F, F, G, G, F, F],
+    ],
+    playerSpawns: [
+      { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 },
+    ],
+    enemyUnits: [
+      { charId: 'isadora-kartein',   x: 4, y: 4 },
+      { charId: 'cecilia-kartein',   x: 5, y: 4 },
+      { charId: 'viktor-hessen',     x: 9, y: 0 },
+      { charId: 'nikolai-frost',     x: 10, y: 2 },
+      { charId: 'nigel-crowe',       x: 9, y: 8 },
+      { charId: 'aldric-thorne',     x: 10, y: 5 },
+      { charId: 'nadia-petrova',     x: 5, y: 9 },
+    ],
+    victoryCondition: 'defeat_all',
+  },
+  {
+    id: 'stage-7',
+    name: '카르테인 성',
+    description: '최종 결전. 카르테인 듀크와의 대결.',
+    storyIntro: '카르테인 성의 대전(大殿). 듀크가 옥좌에서 일어선다. "여기까지 왔군. 하지만 이것으로 끝이다."',
+    storyOutro: '듀크를 물리쳤다! 하지만 그는 미소를 지으며 사라졌다. "다음에 또 만나지..."',
+    enemyLevel: 8,
+    mapData: [
+      [W, W, W, U, U, U, U, U, U, W, W, W],
+      [W, U, U, U, F, F, F, F, U, U, U, W],
+      [W, U, F, F, F, F, F, F, F, F, U, W],
+      [U, U, F, F, F, G, G, F, F, F, U, U],
+      [U, F, F, F, G, G, G, G, F, F, F, U],
+      [U, F, F, F, G, G, G, G, F, F, F, U],
+      [U, U, F, F, F, F, F, F, F, F, U, U],
+      [W, U, F, F, F, F, F, F, F, F, U, W],
+      [W, U, U, F, F, F, F, F, F, U, U, W],
+      [W, W, U, U, E, E, E, E, U, U, W, W],
+    ],
+    playerSpawns: [
+      { x: 4, y: 9 }, { x: 5, y: 9 }, { x: 6, y: 9 }, { x: 7, y: 9 },
+    ],
+    enemyUnits: [
+      { charId: 'kartein-duke',      x: 5, y: 3 },
+      { charId: 'isadora-kartein',   x: 4, y: 4 },
+      { charId: 'cecilia-kartein',   x: 7, y: 4 },
+      { charId: 'commissioner-park', x: 6, y: 3 },
+      { charId: 'aldric-thorne',     x: 2, y: 2 },
+      { charId: 'marcus-vale',       x: 9, y: 2 },
+      { charId: 'vivienne-la-croix', x: 3, y: 6 },
+      { charId: 'nikolai-frost',     x: 8, y: 6 },
     ],
     victoryCondition: 'defeat_all',
   },
@@ -353,13 +661,22 @@ export function createBattleState(stageId, playerCharIds) {
     units.push(unit);
   });
 
-  // Place enemy units
+  // Place enemy units (scaled to stage enemyLevel)
   stage.enemyUnits.forEach((eu, i) => {
     const charData = CHARACTERS.find(c => c.id === eu.charId);
     if (!charData) return;
     const unit = cardToUnit(charData, eu.x, eu.y);
     unit.team = 'enemy';
     unit.uid = `enemy-${charData.id}-${i}`;
+    const eLv = stage.enemyLevel || 1;
+    for (let lv = 1; lv < eLv; lv++) {
+      unit.level++;
+      unit.maxHp += Math.floor(unit.maxHp * 0.05);
+      unit.hp = unit.maxHp;
+      unit.atk += 2;
+      unit.def += 1;
+      unit.xpToNext = unit.level * 50;
+    }
     units.push(unit);
   });
 
@@ -394,15 +711,13 @@ export function endPlayerPhase(state) {
 
 export function endEnemyPhase(state) {
   if (state.phase !== 'enemy_phase') return;
-  // Mark all enemy units as not-acted
   state.units.forEach(u => {
     if (u.team === 'enemy') u.acted = false;
   });
-  // MP recovery (+2 per round for all living units)
   state.units.forEach(u => {
     if (u.hp > 0) u.mp = Math.min(u.maxMp, u.mp + 2);
   });
-  // Tick cooldowns at end of full round
+  applyTerrainHealing(state);
   tickCooldowns(state);
   state.turnNumber++;
   state.phase = 'player_phase';
@@ -434,15 +749,19 @@ export function getMovementRange(state, unit) {
       const nx = x + dx;
       const ny = y + dy;
       const key = `${nx},${ny}`;
-      if (visited.has(key)) continue;
       if (!isTileWalkable(map, nx, ny)) continue;
 
-      // Blocked by other units (can't walk through)
+      const tile = getTile(map, nx, ny);
+      const movCost = TILE_TYPES[tile.type]?.movCost || 1;
+      const newDist = dist + movCost;
+      if (newDist > unit.mov) continue;
+      if (visited.has(key) && visited.get(key) <= newDist) continue;
+
       const occupant = getUnitAt(state, nx, ny);
       if (occupant && occupant.uid !== unit.uid) continue;
 
-      visited.set(key, dist + 1);
-      queue.push({ x: nx, y: ny, dist: dist + 1 });
+      visited.set(key, newDist);
+      queue.push({ x: nx, y: ny, dist: newDist });
     }
   }
 
@@ -542,6 +861,14 @@ function calcCombatResult(state, attacker, defender, isCounter = false) {
   let atkPower = attacker.atk;
   let defPower = defender.def;
 
+  // Terrain bonuses
+  if (state) {
+    const atkTerrain = getTerrainEffect(state.map, attacker.x, attacker.y);
+    const defTerrain = getTerrainEffect(state.map, defender.x, defender.y);
+    atkPower += atkTerrain.atkBonus || 0;
+    defPower += defTerrain.defBonus || 0;
+  }
+
   // Relic: full HP ATK boost
   if (attacker.relic?.condition === 'full_hp' && attacker.hp >= attacker.maxHp) {
     atkPower = Math.floor(atkPower * (attacker.relic.effect.atkMult || 1));
@@ -566,8 +893,9 @@ function calcCombatResult(state, attacker, defender, isCounter = false) {
   atkPower += faction.atkBonus;
   defPower += faction.defBonus;
 
-  // Evasion check
-  if (Math.random() < (defender.eva || 0)) {
+  // Evasion check (includes terrain bonus)
+  const defTerrainEva = state ? (getTerrainEffect(state.map, defender.x, defender.y).evaBonus || 0) : 0;
+  if (Math.random() < ((defender.eva || 0) + defTerrainEva)) {
     return { damage: 0, critical: false, evaded: true, penetrated: false };
   }
 
@@ -699,7 +1027,28 @@ export function attackUnit(state, attacker, defender) {
 
   attacker.acted = true;
 
-  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated };
+  // XP awards
+  const xpGains = [];
+  if (!evaded && damage > 0) {
+    const atkXP = gainXP(attacker, XP_TABLE.attack);
+    if (atkXP) xpGains.push({ unit: attacker.uid, levelUps: atkXP });
+  }
+  if (defenderDied) {
+    const killXP = gainXP(attacker, XP_TABLE.kill);
+    if (killXP) xpGains.push({ unit: attacker.uid, levelUps: killXP });
+  }
+  if (counterDamage > 0) {
+    const defXP = gainXP(defender, XP_TABLE.takeDamage);
+    if (defXP) xpGains.push({ unit: defender.uid, levelUps: defXP });
+  }
+
+  // Loot drop on kill
+  let loot = null;
+  if (defenderDied) {
+    loot = rollLoot();
+  }
+
+  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated, xpGains, loot };
 }
 
 // ── Damage Preview (non-destructive estimate) ─────────────────────────
