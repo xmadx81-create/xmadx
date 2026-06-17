@@ -4,7 +4,8 @@ import {
   getAttackTargets, activateSense, endPlayerPhase, endEnemyPhase,
   runEnemyPhase, checkVictory, allPlayerUnitsActed, cardToUnit,
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, createMap,
-  tickCooldowns, ROLE_MODIFIERS,
+  tickCooldowns, ROLE_MODIFIERS, EQUIPMENT, RELICS, equipItem, equipRelic,
+  getCombatPower,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, SENSE_TYPES } from '../src/web-mvp/js/cards.js';
 
@@ -59,6 +60,66 @@ describe('cardToUnit', () => {
     expect(unit.senseSkill).not.toBeNull();
     expect(unit.senseSkill.cooldown).toBe(0);
     expect(unit.senseSkill.maxCooldown).toBe(3);
+  });
+
+  it('신규 전투 스탯이 포함된다 (crt, eva, pen, attackType)', () => {
+    const char = CHARACTERS.find(c => c.id === 'park-harin');
+    const unit = cardToUnit(char, 0, 0);
+    expect(unit.crt).toBe(0.10);
+    expect(unit.eva).toBe(0);
+    expect(unit.pen).toBe(0);
+    expect(unit.attackType).toBe('mental');
+    expect(unit.equipment).toEqual({ weapon: null, armor: null, accessory: null });
+    expect(unit.relic).toBeNull();
+  });
+
+  it('카르테인 혈 스킬 캐릭터는 blood 공격 타입', () => {
+    const duke = CHARACTERS.find(c => c.id === 'kartein-duke');
+    const unit = cardToUnit(duke, 0, 0);
+    expect(unit.attackType).toBe('blood');
+  });
+});
+
+describe('equipment system', () => {
+  it('장비를 장착하면 스탯이 증가한다', () => {
+    const char = CHARACTERS.find(c => c.id === 'park-harin');
+    const unit = cardToUnit(char, 0, 0);
+    const baseAtk = unit.atk;
+    equipItem(unit, 'baton');
+    expect(unit.atk).toBe(baseAtk + 4);
+    expect(unit.crt).toBeCloseTo(0.15);
+    expect(unit.equipment.weapon.name).toBe('보안봉');
+  });
+
+  it('방어구의 HP 보너스가 적용된다', () => {
+    const char = CHARACTERS.find(c => c.id === 'park-harin');
+    const unit = cardToUnit(char, 0, 0);
+    const baseHp = unit.hp;
+    equipItem(unit, 'guard-vest');
+    expect(unit.hp).toBe(baseHp + 10);
+    expect(unit.maxHp).toBe(baseHp + 10);
+    expect(unit.def).toBe(unit.def); // def already includes +4
+  });
+
+  it('유물을 장착할 수 있다', () => {
+    const char = CHARACTERS.find(c => c.id === 'park-harin');
+    const unit = cardToUnit(char, 0, 0);
+    equipRelic(unit, 'first-resolve');
+    expect(unit.relic.name).toBe('첫날의 각오');
+  });
+
+  it('전투력을 계산한다', () => {
+    const char = CHARACTERS.find(c => c.id === 'kartein-duke');
+    const unit = cardToUnit(char, 0, 0);
+    const cp = getCombatPower(unit);
+    expect(cp).toBeGreaterThan(100);
+  });
+
+  it('createBattleState에서 자동 장비가 적용된다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    expect(player.equipment.weapon).not.toBeNull();
+    expect(player.equipment.armor).not.toBeNull();
   });
 });
 
