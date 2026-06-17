@@ -1,11 +1,11 @@
-import { CHARACTERS, EQUIPMENT, STORY_BEATS } from './cards.js';
+import { CHARACTERS, EQUIPMENT, STORY_BEATS, SENSE_TYPES } from './cards.js';
 import {
   createGameState, drawCards, playCharacter, collectBlood,
   activateNextRequest, fulfillRequest, processEvent, settleTurn,
   checkGameEnd, advanceTurn, runFullTurn, buyEquipment,
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
   calculateComboBonuses, PHASE_NAMES, DIFFICULTIES,
-  generateDilemma, resolveDilemma, convertBlood,
+  generateDilemma, resolveDilemma, convertBlood, activateSense,
 } from './engine.js';
 import {
   initAudio, toggleMute, isMuted, startBGM, stopBGM,
@@ -88,6 +88,14 @@ function showCardPopup(cardId) {
       <div class="ability-label">능력</div>
       <p>${card.ability.description}</p>
     </div>
+    ${card.sense ? `<div class="sheet-sense ${card.sense.baseType && SENSE_TYPES[card.sense.baseType]?.category === '혈' ? 'blood' : 'human'}">
+      <div class="sense-header">
+        <span class="sense-icon">${SENSE_TYPES[card.sense.baseType]?.icon || '✦'}</span>
+        <span class="sense-name">${card.sense.name}</span>
+        <span class="sense-badge">${card.sense.baseType} Lv.${card.sense.power}</span>
+      </div>
+      <p class="sense-flavor">"${card.sense.flavor}"</p>
+    </div>` : ''}
     <p class="popup-flavor">"${card.flavor}"</p>
   `;
   overlay.style.display = 'flex';
@@ -479,6 +487,9 @@ function renderHandCards() {
         <div class="vcard-name">${c.bloodType}형</div>
       </div>`;
     }
+    const senseInfo = c.sense ? SENSE_TYPES[c.sense.baseType] : null;
+    const senseTag = senseInfo ? `<span class="vcard-sense ${senseInfo.category}">${senseInfo.icon}${c.sense.name}</span>` : '';
+    const canSense = gameState && !gameState.senseUsedThisTurn && c.sense && gameState.phase === 'morning';
     return `<div class="vcard ${playable ? 'playable' : ''}${flipClass}" data-rarity="${c.rarity}"
                 onclick="window.__onHandClick(${i})">
       <div class="vcard-thumb"><img src="${portraitSrc(c.portrait)}" alt="" onerror="this.style.display='none'"/></div>
@@ -486,7 +497,9 @@ function renderHandCards() {
         <div class="vcard-name">${c.name}</div>
         <div class="vcard-stats"><span>⚔${c.cost}</span><span>💪${c.power}</span></div>
         <div class="vcard-ability">${c.ability.description}</div>
+        ${senseTag}
       </div>
+      ${canSense ? `<button class="btn-sense ${senseInfo.category}" onclick="event.stopPropagation();window.__onSense(${i})" title="${c.sense.baseType} Lv.${c.sense.power}">촉/혈</button>` : ''}
     </div>`;
   }).join('') || '<span class="empty-hint">패 비어 있음</span>';
   if (shouldFlip) {
@@ -498,16 +511,17 @@ function renderHandCards() {
 
 function renderFieldCards() {
   const el = document.getElementById('field-cards');
-  const cards = gameState.field.map(c =>
-    `<div class="vcard field-card" data-rarity="${c.rarity}">
+  const cards = gameState.field.map(c => {
+    const si = c.sense ? SENSE_TYPES[c.sense.baseType] : null;
+    return `<div class="vcard field-card" data-rarity="${c.rarity}">
       <div class="vcard-thumb"><img src="${portraitSrc(c.portrait)}" alt="" onerror="this.style.display='none'"/></div>
       <div class="vcard-body">
         <div class="vcard-name">${c.name}</div>
-        <div class="vcard-stats"><span>💪${c.power}</span></div>
+        <div class="vcard-stats"><span>💪${c.power}</span>${si ? `<span class="sense-mini ${si.category}">${si.icon}</span>` : ''}</div>
         <div class="vcard-ability">${c.ability.description}</div>
       </div>
-    </div>`
-  ).join('');
+    </div>`;
+  }).join('');
 
   const combos = calculateComboBonuses(gameState);
   const comboHtml = combos.active.length > 0
@@ -546,6 +560,23 @@ function onConvertBlood(targetType) {
   updateUI();
 }
 window.__convertBlood = onConvertBlood;
+
+function onSense(handIndex) {
+  if (!gameState || gameState.phase !== 'morning') return;
+  gameState.log = [];
+  const result = activateSense(gameState, handIndex);
+  gameState.log.forEach(msg => appendLog(msg));
+  if (result.ok) {
+    sfxCardPlay();
+    if (result.countered.length > 0) {
+      appendLog(`⚡ 상성 발동! ${result.countered.join(', ')}의 혈술 무력화!`);
+    }
+  } else {
+    appendLog(result.reason);
+  }
+  updateUI();
+}
+window.__onSense = onSense;
 
 function renderRequest() {
   const el = document.getElementById('active-request');

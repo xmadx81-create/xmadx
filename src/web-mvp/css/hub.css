@@ -1438,3 +1438,107 @@ body {
     left: 0.5rem;
   }
 }
+
+/* ── 촉/혈 Sense System ── */
+.sheet-sense {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  border-left: 3px solid;
+}
+.sheet-sense.human {
+  background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(147,197,253,0.08));
+  border-color: #60a5fa;
+}
+.sheet-sense.blood {
+  background: linear-gradient(135deg, rgba(220,38,38,0.15), rgba(252,165,165,0.08));
+  border-color: #f87171;
+}
+.sense-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+}
+.sense-icon { font-size: 1.1rem; }
+.sense-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+.sense-badge {
+  margin-left: auto;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.sheet-sense.human .sense-badge {
+  background: rgba(59,130,246,0.25);
+  color: #93c5fd;
+}
+.sheet-sense.blood .sense-badge {
+  background: rgba(220,38,38,0.25);
+  color: #fca5a5;
+}
+.sense-flavor {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0;
+}
+
+.vcard-sense {
+  display: inline-block;
+  font-size: 0.6rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  margin-top: 0.15rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.vcard-sense.촉 {
+  background: rgba(59,130,246,0.2);
+  color: #93c5fd;
+}
+.vcard-sense.혈 {
+  background: rgba(220,38,38,0.2);
+  color: #fca5a5;
+}
+
+.btn-sense {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 0.55rem;
+  padding: 0.15rem 0.35rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
+  animation: sensePulse 1.5s ease-in-out infinite;
+}
+.btn-sense.촉 {
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+  color: #fff;
+}
+.btn-sense.혈 {
+  background: linear-gradient(135deg, #dc2626, #f87171);
+  color: #fff;
+}
+@keyframes sensePulse {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+.sense-mini {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.sense-mini.촉 { filter: drop-shadow(0 0 3px rgba(59,130,246,0.5)); }
+.sense-mini.혈 { filter: drop-shadow(0 0 3px rgba(220,38,38,0.5)); }
+
+.vcard { position: relative; }

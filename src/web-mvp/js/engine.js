@@ -1,4 +1,4 @@
-import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, DILEMMA_EVENTS, EQUIPMENT, COMBO_BONUSES, createBloodCard, generateRandomRequest } from './cards.js';
+import { CHARACTERS, BLOOD_TYPES, STARTER_REQUESTS, EVENTS, DILEMMA_EVENTS, EQUIPMENT, COMBO_BONUSES, SENSE_TYPES, createBloodCard, generateRandomRequest } from './cards.js';
 
 export const PHASES = ['dawn', 'morning', 'afternoon', 'night', 'settlement'];
 export const PHASE_NAMES = { dawn: '새벽', morning: '오전', afternoon: '오후', night: '야간', settlement: '정산' };
@@ -33,6 +33,9 @@ export function createGameState(difficulty = 'normal') {
     nextRequestNum: 1,
     recruitShop: [],
     nightActionTaken: false,
+    senseUsedThisTurn: false,
+    sensePreview: null,
+    senseSuppress: false,
     usedDilemmas: [],
     gameOver: false,
     winner: false,
@@ -331,6 +334,112 @@ export function convertBlood(state, fromIndex, targetType) {
   return { ok: true };
 }
 
+export function activateSense(state, handIndex) {
+  const card = state.hand[handIndex];
+  if (!card || !card.sense) return { ok: false, reason: '촉/혈 스킬이 없는 카드입니다' };
+  if (state.senseUsedThisTurn) return { ok: false, reason: '이번 턴에 이미 촉/혈 스킬을 사용했습니다' };
+
+  const sense = card.sense;
+  const senseInfo = SENSE_TYPES[sense.baseType];
+  if (!senseInfo) return { ok: false, reason: '알 수 없는 스킬 타입' };
+
+  const result = { ok: true, sense, countered: [] };
+
+  if (sense.effects?.onPlay) {
+    for (const [key, val] of Object.entries(sense.effects.onPlay)) {
+      state.resources[key] = (state.resources[key] || 0) + val;
+      if (key === 'rep' || key === 'bp') state.resources[key] = Math.max(0, state.resources[key]);
+    }
+  }
+
+  if (senseInfo.category === '촉') {
+    const counterTarget = senseInfo.counters;
+    const enemiesCountered = state.field.filter(c => c.sense?.baseType === counterTarget);
+    enemiesCountered.forEach(enemy => {
+      if (enemy.sense.effects?.onField) {
+        for (const [key, val] of Object.entries(enemy.sense.effects.onField)) {
+          const reverse = val > 0 ? -val : Math.abs(val);
+          state.resources[key] = (state.resources[key] || 0) + reverse;
+        }
+      }
+      result.countered.push(enemy.name);
+    });
+
+    if (sense.baseType === '감응') {
+      const humanCount = state.field.filter(c => c.faction !== 'kartein').length;
+      const resonanceBonus = Math.floor(humanCount * sense.power * 0.3);
+      if (resonanceBonus > 0) {
+        state.resources.rep += resonanceBonus;
+        state.log.push(`감응 공명: 필드 인간 ${humanCount}명 → REP +${resonanceBonus}`);
+      }
+    }
+
+    if (sense.baseType === '예감') {
+      const nextEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+      state.sensePreview = nextEvent;
+      state.log.push(`예감 발동: 다음 이벤트 예지 — "${nextEvent.name}"`);
+    }
+
+    if (sense.baseType === '투지') {
+      const susThreshold = 60;
+      if (state.resources.sus >= susThreshold) {
+        const crisisPower = Math.floor(sense.power * 1.5);
+        state.resources.rep += crisisPower;
+        state.log.push(`투지 각성! 위기 상황(SUS≥${susThreshold}) → REP +${crisisPower}`);
+      }
+    }
+  }
+
+  if (senseInfo.category === '혈') {
+    if (sense.baseType === '혈압') {
+      state.senseSuppress = true;
+      state.log.push('혈압 발동: 다음 인간 스킬 1회 봉쇄');
+    }
+    if (sense.baseType === '혈유') {
+      const humans = state.field.filter(c => c.faction !== 'kartein' && c.sense);
+      if (humans.length > 0) {
+        const target = humans[Math.floor(Math.random() * humans.length)];
+        state.resources.bp += Math.floor(sense.power * 0.5);
+        state.log.push(`혈유 매혹: ${target.name} 조종 → BP +${Math.floor(sense.power * 0.5)}`);
+      }
+    }
+    if (sense.baseType === '혈식') {
+      const damage = sense.power;
+      state.resources.bp += damage;
+      state.log.push(`혈식 각성: BP +${damage} (대가: SUS 폭증)`);
+    }
+  }
+
+  state.senseUsedThisTurn = true;
+  const category = senseInfo.category === '촉' ? '촉' : '혈';
+  state.log.push(`${category} 스킬 발동: ${card.name}의 「${sense.name}」 (${sense.baseType} Lv.${sense.power})`);
+  if (result.countered.length > 0) {
+    state.log.push(`상성 카운터! ${result.countered.join(', ')}의 ${senseInfo.counters} 무력화`);
+  }
+
+  return result;
+}
+
+export function calculateSensePassives(state) {
+  const passiveEffects = { repBonus: 0, susReduction: 0, bpBonus: 0 };
+
+  state.field.forEach(card => {
+    if (!card.sense) return;
+    const senseInfo = SENSE_TYPES[card.sense.baseType];
+    if (!senseInfo || senseInfo.type !== 'passive') return;
+
+    if (card.sense.effects?.onField) {
+      for (const [key, val] of Object.entries(card.sense.effects.onField)) {
+        if (key === 'rep') passiveEffects.repBonus += val;
+        if (key === 'sus') passiveEffects.susReduction -= val;
+        if (key === 'bp') passiveEffects.bpBonus += val;
+      }
+    }
+  });
+
+  return passiveEffects;
+}
+
 export function generateDilemma(state) {
   const usedIds = state.usedDilemmas || [];
   const available = DILEMMA_EVENTS.filter(d => !usedIds.includes(d.id));
@@ -387,6 +496,9 @@ export function settleTurn(state) {
   state.field.forEach(card => state.discardPile.push(card));
   state.field = [];
   state.nightActionTaken = false;
+  state.senseUsedThisTurn = false;
+  state.sensePreview = null;
+  state.senseSuppress = false;
   refreshRecruitShop(state);
 
   state.log.push(`턴 ${state.turn} 정산 완료 — BP:${state.resources.bp} REP:${state.resources.rep} SUS:${state.resources.sus}`);

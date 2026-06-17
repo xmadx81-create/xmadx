@@ -5,8 +5,9 @@ import {
   settleTurn, advanceTurn, shuffle, runFullTurn, buyEquipment,
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
   calculateComboBonuses, DIFFICULTIES, generateDilemma, resolveDilemma, convertBlood,
+  activateSense, calculateSensePassives,
 } from '../src/web-mvp/js/engine.js';
-import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest, COMBO_BONUSES, DILEMMA_EVENTS } from '../src/web-mvp/js/cards.js';
+import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest, COMBO_BONUSES, DILEMMA_EVENTS, SENSE_TYPES } from '../src/web-mvp/js/cards.js';
 
 describe('createGameState', () => {
   it('초기 상태가 올바르게 생성된다', () => {
@@ -539,6 +540,103 @@ describe('ability types', () => {
     state.resources.sus = 20;
     collectBlood(state);
     expect(state.resources.sus).toBeLessThan(20);
+  });
+});
+
+describe('촉/혈 sense system', () => {
+  it('SENSE_TYPES에 12종 스킬이 정의되어 있다', () => {
+    expect(Object.keys(SENSE_TYPES).length).toBe(12);
+    expect(SENSE_TYPES['예감'].category).toBe('촉');
+    expect(SENSE_TYPES['혈식'].category).toBe('혈');
+  });
+
+  it('촉 6종이 각각 혈 스킬을 카운터한다', () => {
+    const humanSkills = Object.entries(SENSE_TYPES).filter(([, v]) => v.category === '촉');
+    expect(humanSkills.length).toBe(6);
+    humanSkills.forEach(([, v]) => {
+      expect(SENSE_TYPES[v.counters]).toBeDefined();
+      expect(SENSE_TYPES[v.counters].category).toBe('혈');
+    });
+  });
+
+  it('모든 캐릭터에 sense가 정의되어 있다', () => {
+    CHARACTERS.forEach(c => {
+      expect(c.sense).toBeDefined();
+      expect(c.sense.name).toBeTruthy();
+      expect(c.sense.baseType).toBeTruthy();
+      expect(c.sense.power).toBeGreaterThan(0);
+      expect(SENSE_TYPES[c.sense.baseType]).toBeDefined();
+    });
+  });
+
+  it('센터/뉴트럴 캐릭터는 촉 스킬을 가진다', () => {
+    CHARACTERS.filter(c => c.faction !== 'kartein').forEach(c => {
+      expect(SENSE_TYPES[c.sense.baseType].category).toBe('촉');
+    });
+  });
+
+  it('카르테인 캐릭터는 혈 스킬을 가진다', () => {
+    CHARACTERS.filter(c => c.faction === 'kartein').forEach(c => {
+      expect(SENSE_TYPES[c.sense.baseType].category).toBe('혈');
+    });
+  });
+
+  it('activateSense로 촉 스킬을 발동한다', () => {
+    const state = createGameState();
+    const harin = CHARACTERS.find(c => c.id === 'park-harin');
+    state.hand = [{ ...harin, type: 'character', instanceId: 'a' }];
+    state.phase = 'morning';
+    const repBefore = state.resources.rep;
+    const result = activateSense(state, 0);
+    expect(result.ok).toBe(true);
+    expect(state.senseUsedThisTurn).toBe(true);
+    expect(state.resources.rep).toBeGreaterThan(repBefore);
+  });
+
+  it('한 턴에 촉/혈 스킬은 1회만 사용 가능하다', () => {
+    const state = createGameState();
+    const harin = CHARACTERS.find(c => c.id === 'park-harin');
+    state.hand = [
+      { ...harin, type: 'character', instanceId: 'a' },
+      { ...harin, type: 'character', instanceId: 'b' },
+    ];
+    activateSense(state, 0);
+    const result = activateSense(state, 1);
+    expect(result.ok).toBe(false);
+  });
+
+  it('촉 스킬이 필드의 혈 스킬을 카운터한다', () => {
+    const state = createGameState();
+    const seoha = CHARACTERS.find(c => c.id === 'kim-seoha');
+    const duke = CHARACTERS.find(c => c.id === 'kartein-duke');
+    state.field = [{ ...duke, type: 'character', instanceId: 'enemy' }];
+    state.hand = [{ ...seoha, type: 'character', instanceId: 'a' }];
+    const result = activateSense(state, 0);
+    expect(result.ok).toBe(true);
+  });
+
+  it('정산 시 senseUsedThisTurn이 리셋된다', () => {
+    const state = createGameState();
+    state.senseUsedThisTurn = true;
+    state.sensePreview = {};
+    settleTurn(state);
+    expect(state.senseUsedThisTurn).toBe(false);
+    expect(state.sensePreview).toBeNull();
+  });
+
+  it('감응은 필드 인간 수에 비례하여 REP 보너스를 준다', () => {
+    const state = createGameState();
+    const soyul = CHARACTERS.find(c => c.id === 'han-soyul');
+    const doyun = CHARACTERS.find(c => c.id === 'kim-doyun');
+    state.field = [
+      { ...doyun, type: 'character', instanceId: 'a' },
+      { ...doyun, type: 'character', instanceId: 'b' },
+      { ...doyun, type: 'character', instanceId: 'c' },
+    ];
+    state.hand = [{ ...soyul, type: 'character', instanceId: 'd' }];
+    const repBefore = state.resources.rep;
+    activateSense(state, 0);
+    expect(state.resources.rep).toBeGreaterThan(repBefore);
   });
 });
 
