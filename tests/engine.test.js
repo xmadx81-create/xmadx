@@ -5,7 +5,7 @@ import {
   runEnemyPhase, checkVictory, allPlayerUnitsActed, cardToUnit,
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, createMap,
   tickCooldowns, ROLE_MODIFIERS, EQUIPMENT, RELICS, equipItem, equipRelic,
-  getCombatPower,
+  getCombatPower, previewDamage, previewSkillDamage,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, SENSE_TYPES } from '../src/web-mvp/js/cards.js';
 
@@ -426,5 +426,88 @@ describe('50 characters', () => {
     expect(factions).toContain('center');
     expect(factions).toContain('kartein');
     expect(factions).toContain('neutral');
+  });
+});
+
+describe('MP system', () => {
+  it('유닛은 MP 10으로 생성된다', () => {
+    const char = CHARACTERS.find(c => c.id === 'park-harin');
+    const unit = cardToUnit(char, 0, 0);
+    expect(unit.mp).toBe(10);
+    expect(unit.maxMp).toBe(10);
+  });
+
+  it('스킬에 mpCost가 설정된다', () => {
+    const char = CHARACTERS.find(c => c.sense);
+    const unit = cardToUnit(char, 0, 0);
+    expect(unit.senseSkill.mpCost).toBeGreaterThan(0);
+  });
+
+  it('MP 부족 시 스킬 사용 불가', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    player.mp = 0;
+    const result = activateSense(state, player);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('MP 부족');
+  });
+
+  it('라운드 종료 시 MP +2 회복', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    player.mp = 5;
+    endPlayerPhase(state);
+    endEnemyPhase(state);
+    expect(player.mp).toBe(7);
+  });
+
+  it('MP 최대치를 초과하지 않는다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    player.mp = 10;
+    endPlayerPhase(state);
+    endEnemyPhase(state);
+    expect(player.mp).toBe(10);
+  });
+});
+
+describe('previewDamage', () => {
+  it('예상 데미지 범위를 반환한다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    const enemy = state.units.find(u => u.team === 'enemy');
+    const preview = previewDamage(state, player, enemy);
+    expect(preview.minDmg).toBeGreaterThanOrEqual(1);
+    expect(preview.maxDmg).toBeGreaterThanOrEqual(preview.minDmg);
+    expect(preview.critDmg).toBeGreaterThan(preview.maxDmg);
+    expect(preview.crt).toBeGreaterThan(0);
+    expect(typeof preview.eva).toBe('number');
+  });
+});
+
+describe('previewSkillDamage', () => {
+  it('데미지 스킬의 프리뷰를 반환한다', () => {
+    const char = CHARACTERS.find(c => c.sense?.baseType === '직감');
+    const unit = cardToUnit(char, 0, 0);
+    const preview = previewSkillDamage(unit);
+    expect(preview).not.toBeNull();
+    expect(preview.type).toBe('damage');
+    expect(preview.value).toBeGreaterThan(0);
+  });
+
+  it('힐 스킬의 프리뷰를 반환한다', () => {
+    const char = CHARACTERS.find(c => c.sense?.baseType === '감응');
+    const unit = cardToUnit(char, 0, 0);
+    const preview = previewSkillDamage(unit);
+    expect(preview).not.toBeNull();
+    expect(preview.type).toBe('heal');
+  });
+
+  it('스킬이 없는 유닛은 null 반환', () => {
+    const char = CHARACTERS.find(c => !c.sense);
+    if (char) {
+      const unit = cardToUnit(char, 0, 0);
+      expect(previewSkillDamage(unit)).toBeNull();
+    }
   });
 });
