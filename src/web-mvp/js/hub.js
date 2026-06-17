@@ -141,12 +141,15 @@ function renderStageSelect() {
 
 // ── Deploy Screen ──
 
+let deployPreviewChar = null;
+
 function openDeploy(stageId) {
   currentStageId = stageId;
   const stage = STAGES.find(s => s.id === stageId);
   if (!stage) return;
 
   deploySelected = [];
+  deployPreviewChar = null;
   const maxUnits = stage.playerSpawns.length;
 
   document.getElementById('stage-select').style.display = 'none';
@@ -155,34 +158,16 @@ function openDeploy(stageId) {
   document.getElementById('deploy-max').textContent = maxUnits;
   document.getElementById('deploy-count').textContent = '0';
 
-  const playerChars = CHARACTERS.filter(c => c.faction !== 'kartein');
-  const roster = document.getElementById('deploy-roster');
-  roster.innerHTML = playerChars.map(c => {
-    const hp = c.power * 12 + ({common:10,uncommon:20,rare:35,legendary:50}[c.rarity]||0);
-    const atk = c.power * 4 + ({common:2,uncommon:4,rare:6,legendary:10}[c.rarity]||0);
-    const mbti = CHARACTER_MBTI[c.id] || '????';
-    return `<div class="deploy-unit" data-id="${c.id}" data-rarity="${c.rarity}">
-      <div class="deploy-thumb"><img src="${portraitSrc(c.portrait)}" alt="" onerror="this.style.display='none'"/></div>
-      <div class="deploy-info">
-        <div class="deploy-name">${c.name} <span class="mbti-badge">${mbti}</span></div>
-        <div class="deploy-stats">HP:${hp} ATK:${atk}</div>
-      </div>
-    </div>`;
-  }).join('');
+  renderMapPreview(stage);
+  renderDeployRoster('all');
+  renderDeployBench(maxUnits);
+  showDeployDetail(null);
 
-  roster.querySelectorAll('.deploy-unit').forEach(el => {
-    el.addEventListener('click', () => {
-      const id = el.dataset.id;
-      if (deploySelected.includes(id)) {
-        deploySelected = deploySelected.filter(x => x !== id);
-        el.classList.remove('selected');
-      } else if (deploySelected.length < maxUnits) {
-        deploySelected.push(id);
-        el.classList.add('selected');
-      }
-      document.getElementById('deploy-count').textContent = deploySelected.length;
-      document.getElementById('btn-deploy-start').disabled = deploySelected.length === 0;
-      updateDeploySynergy();
+  document.querySelectorAll('.roster-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.roster-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderDeployRoster(btn.dataset.rf);
     });
   });
 
@@ -191,6 +176,149 @@ function openDeploy(stageId) {
     document.getElementById('stage-select').style.display = '';
   };
   document.getElementById('btn-deploy-start').onclick = () => startBattle();
+}
+
+function renderMapPreview(stage) {
+  const preview = document.getElementById('deploy-map-preview');
+  const map = stage.mapData;
+  const rows = map.length;
+  const cols = map[0].length;
+  const tileEmoji = { wall:'⬛', floor:'', desk:'📦', entrance:'🚪', blood_storage:'🩸', forest:'🌲', mountain:'⛰️', swamp:'🌿', ice:'❄️', graveyard:'💀', hotspring:'♨️', dungeon:'🕯️', bridge:'🌉', valley:'🏔️', road:'🛤️' };
+
+  let html = `<div class="minimap" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">`;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const tile = map[r][c];
+      const isSpawn = stage.playerSpawns.some(s => s.x === c && s.y === r);
+      const isEnemy = stage.enemyUnits.some(e => e.x === c && e.y === r);
+      const cls = isSpawn ? 'mm-spawn' : isEnemy ? 'mm-enemy' : '';
+      html += `<div class="mm-tile mm-${tile} ${cls}">${tileEmoji[tile] || ''}</div>`;
+    }
+  }
+  html += '</div>';
+  html += `<div class="minimap-legend"><span class="mm-legend-spawn">▪ 아군 배치</span><span class="mm-legend-enemy">▪ 적 위치</span><span>맵 ${cols}×${rows} · 출전 ${stage.playerSpawns.length}명</span></div>`;
+  preview.innerHTML = html;
+}
+
+function renderDeployRoster(filter) {
+  const stage = STAGES.find(s => s.id === currentStageId);
+  const maxUnits = stage ? stage.playerSpawns.length : 3;
+  const playerChars = CHARACTERS.filter(c => c.faction !== 'kartein');
+  const filtered = filter === 'all' ? playerChars : playerChars.filter(c => c.faction === filter);
+
+  const roster = document.getElementById('deploy-roster');
+  roster.innerHTML = filtered.map(c => {
+    const mbti = CHARACTER_MBTI[c.id] || '????';
+    const roleLabel = { tank:'탱커', melee_dps:'근딜', ranged_dps:'원딜', support:'서포터', bruiser:'브루저', battle_support:'전술', evasive_dps:'암살', breaker:'브레이커' };
+    const isSelected = deploySelected.includes(c.id);
+    return `<div class="roster-card ${isSelected ? 'roster-selected' : ''}" data-id="${c.id}" data-rarity="${c.rarity}">
+      <div class="roster-portrait"><img src="${portraitSrc(c.portrait)}" alt="${c.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="roster-initial" style="display:none">${c.name[0]}</div></div>
+      <div class="roster-name">${c.name}</div>
+      <div class="roster-meta"><span class="roster-role">${roleLabel[c.role] || c.role}</span><span class="mbti-badge">${mbti}</span></div>
+      ${isSelected ? '<div class="roster-check">✓</div>' : ''}
+    </div>`;
+  }).join('');
+
+  roster.querySelectorAll('.roster-card').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      if (deploySelected.includes(id)) {
+        deploySelected = deploySelected.filter(x => x !== id);
+      } else if (deploySelected.length < maxUnits) {
+        deploySelected.push(id);
+      }
+      document.getElementById('deploy-count').textContent = deploySelected.length;
+      document.getElementById('btn-deploy-start').disabled = deploySelected.length === 0;
+      renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
+      renderDeployBench(maxUnits);
+      updateDeploySynergy();
+      showDeployDetail(id);
+    });
+  });
+}
+
+function renderDeployBench(maxSlots) {
+  const bench = document.getElementById('deploy-bench');
+  let html = '';
+  for (let i = 0; i < maxSlots; i++) {
+    const charId = deploySelected[i];
+    if (charId) {
+      const c = CHARACTERS.find(ch => ch.id === charId);
+      html += `<div class="bench-slot bench-filled" data-idx="${i}">
+        <div class="bench-portrait"><img src="${portraitSrc(c.portrait)}" alt="${c.name}" onerror="this.style.display='none'" /></div>
+        <div class="bench-name">${c.name}</div>
+        <button class="bench-remove" data-id="${charId}">✕</button>
+      </div>`;
+    } else {
+      html += `<div class="bench-slot bench-empty"><span class="bench-empty-label">${i + 1}</span></div>`;
+    }
+  }
+  bench.innerHTML = html;
+
+  bench.querySelectorAll('.bench-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      deploySelected = deploySelected.filter(x => x !== id);
+      document.getElementById('deploy-count').textContent = deploySelected.length;
+      document.getElementById('btn-deploy-start').disabled = deploySelected.length === 0;
+      renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
+      renderDeployBench(maxSlots);
+      updateDeploySynergy();
+    });
+  });
+
+  bench.querySelectorAll('.bench-filled').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = +el.dataset.idx;
+      const charId = deploySelected[idx];
+      if (charId) showDeployDetail(charId);
+    });
+  });
+}
+
+function showDeployDetail(charId) {
+  const panel = document.getElementById('deploy-detail');
+  if (!charId) {
+    panel.innerHTML = '<div class="deploy-detail-empty">캐릭터를 선택하세요</div>';
+    return;
+  }
+  const c = CHARACTERS.find(ch => ch.id === charId);
+  if (!c) return;
+
+  const unit = cardToUnit(c, 0, 0);
+  const cp = getCombatPower(unit);
+  const mbti = CHARACTER_MBTI[c.id] || '????';
+  const roleLabel = { tank:'탱커', melee_dps:'근접 딜러', ranged_dps:'원거리 딜러', support:'서포터', bruiser:'브루저', battle_support:'전투 지원', evasive_dps:'암살자', breaker:'브레이커' };
+  const rarityKo = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
+  const factionKo = { center: '혈연센터', kartein: '카르테인', neutral: '비소속' };
+  const senseInfo = c.sense ? SENSE_TYPES[c.sense.baseType] : null;
+
+  panel.innerHTML = `
+    <div class="dd-portrait"><img src="${portraitSrc(c.portrait)}" alt="${c.name}" onerror="this.style.display='none'" /></div>
+    <div class="dd-header">
+      <div class="dd-name">${c.name}</div>
+      <div class="dd-title">${c.title}</div>
+      <div class="dd-badges">
+        <span class="faction-badge ${c.faction}">${factionKo[c.faction]}</span>
+        <span class="rarity-badge ${c.rarity}">${rarityKo[c.rarity]}</span>
+        <span class="role-badge">${roleLabel[c.role]}</span>
+        <span class="mbti-badge">${mbti}</span>
+      </div>
+    </div>
+    <div class="dd-stats">
+      <div class="dd-stat"><span>HP</span><strong>${unit.maxHp}</strong></div>
+      <div class="dd-stat"><span>ATK</span><strong>${unit.atk}</strong></div>
+      <div class="dd-stat"><span>DEF</span><strong>${unit.def}</strong></div>
+      <div class="dd-stat"><span>CRT</span><strong>${Math.round(unit.crt * 100)}%</strong></div>
+      <div class="dd-stat"><span>EVA</span><strong>${Math.round((unit.eva || 0) * 100)}%</strong></div>
+      <div class="dd-stat"><span>MOV</span><strong>${unit.mov}</strong></div>
+      <div class="dd-stat"><span>RNG</span><strong>${unit.rng}</strong></div>
+      <div class="dd-stat dd-cp"><span>전투력</span><strong>${cp}</strong></div>
+    </div>
+    ${senseInfo ? `<div class="dd-sense"><span class="sense-icon">${senseInfo.icon || '?'}</span> <strong>「${c.sense.name}」</strong> ${c.sense.baseType} Lv.${c.sense.power}<br><span class="dd-sense-flavor">${c.sense.flavor}</span></div>` : ''}
+    ${unit.ultimates ? `<div class="dd-ults">${unit.ultimates.map(u => `<div class="dd-ult"><span>${u.icon}</span> ${u.name} <span class="dd-ult-lv">Lv.${u.unlockLevel}</span></div>`).join('')}</div>` : ''}
+  `;
 }
 
 function updateDeploySynergy() {
@@ -212,7 +340,7 @@ function updateDeploySynergy() {
 
   const secretEl = document.getElementById('synergy-secret');
   if (syn.secretCombo) {
-    secretEl.textContent = `🔥 시크릿 콤보 발동! 「${syn.secretCombo.name}」 ×${syn.secretCombo.mult}`;
+    secretEl.textContent = `🔥 시크릿 콤보! 「${syn.secretCombo.name}」 ×${syn.secretCombo.mult}`;
     secretEl.style.display = '';
   } else {
     secretEl.style.display = 'none';
