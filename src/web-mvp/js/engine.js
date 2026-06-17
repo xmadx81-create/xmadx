@@ -749,6 +749,9 @@ export const STAGES = [
       { charId: 'nadia-petrova',  x: 3, y: 7 },
       { charId: 'madeleine-voss', x: 6, y: 7 },
     ],
+    reinforcements: [
+      { turn: 3, units: [{ charId: 'kaspar-wren', x: 9, y: 7 }], message: '🔴 통로 끝에서 적 증원 출현!' },
+    ],
     victoryCondition: 'defeat_all',
   },
   {
@@ -811,6 +814,10 @@ export const STAGES = [
       { charId: 'vivienne-la-croix', x: 7, y: 3 },
       { charId: 'otto-brandt',       x: 7, y: 4 },
       { charId: 'lucien-deveraux',   x: 5, y: 8 },
+    ],
+    reinforcements: [
+      { turn: 2, units: [{ charId: 'dimitri-rad', x: 5, y: 9 }], message: '🔴 계곡 아래에서 적 증원!' },
+      { turn: 4, units: [{ charId: 'nadia-petrova', x: 10, y: 5 }, { charId: 'kaspar-wren', x: 11, y: 5 }], message: '🔴 적 후속 부대 도착!' },
     ],
     victoryCondition: 'defeat_all',
   },
@@ -878,6 +885,10 @@ export const STAGES = [
       { charId: 'marcus-vale',       x: 9, y: 2 },
       { charId: 'vivienne-la-croix', x: 3, y: 6 },
       { charId: 'nikolai-frost',     x: 8, y: 6 },
+    ],
+    reinforcements: [
+      { turn: 3, units: [{ charId: 'sergei-volkov', x: 3, y: 9 }, { charId: 'elena-morgan', x: 8, y: 9 }], message: '🔴 성문에서 카르테인 근위대 출현!' },
+      { turn: 5, units: [{ charId: 'otto-brandt', x: 5, y: 0 }], message: '🔴 옥좌 뒤에서 암살자 출현!' },
     ],
     victoryCondition: 'defeat_all',
   },
@@ -1895,5 +1906,77 @@ export function getLivingUnits(state, team) {
 export function resetActedFlags(state, team) {
   state.units.forEach(u => {
     if (u.team === team) u.acted = false;
+  });
+}
+
+// 🔴 사마의: 적 증원 시스템
+export function spawnReinforcements(state) {
+  const stage = state.stage;
+  if (!stage.reinforcements) return null;
+  const wave = stage.reinforcements.find(r => r.turn === state.turnNumber && !r.spawned);
+  if (!wave) return null;
+
+  const spawned = [];
+  wave.units.forEach((eu, i) => {
+    const charData = CHARACTERS.find(c => c.id === eu.charId);
+    if (!charData) return;
+    if (getUnitAt(state, eu.x, eu.y)) return;
+    const unit = cardToUnit(charData, eu.x, eu.y);
+    unit.team = 'enemy';
+    unit.uid = `reinforce-${charData.id}-${state.turnNumber}-${i}`;
+    const eLv = stage.enemyLevel || 1;
+    for (let lv = 1; lv < eLv; lv++) {
+      unit.level++;
+      unit.maxHp += Math.floor(unit.maxHp * 0.05);
+      unit.hp = unit.maxHp;
+      unit.atk += 2;
+      unit.def += 1;
+    }
+    autoEquip(unit);
+    unit.acted = true;
+    state.units.push(unit);
+    spawned.push(unit);
+  });
+  wave.spawned = true;
+  if (spawned.length > 0) {
+    state.log.push(wave.message || '🔴 적 증원 출현!');
+  }
+  return spawned.length > 0 ? { units: spawned, message: wave.message } : null;
+}
+
+// 🔵 제갈량: 적 위험 범위 계산
+export function getDangerZone(state) {
+  const enemies = state.units.filter(u => u.team === 'enemy' && u.hp > 0);
+  const dangerTiles = new Set();
+  for (const enemy of enemies) {
+    const movRange = getMovementRange(state, enemy);
+    const positions = [{ x: enemy.x, y: enemy.y }, ...movRange];
+    for (const pos of positions) {
+      const tmpUnit = { ...enemy, x: pos.x, y: pos.y };
+      if (tmpUnit.rng === 1) {
+        const dirs = [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }];
+        for (const { dx, dy } of dirs) {
+          const nx = pos.x + dx, ny = pos.y + dy;
+          if (nx >= 0 && ny >= 0 && nx < state.map.cols && ny < state.map.rows) {
+            dangerTiles.add(`${nx},${ny}`);
+          }
+        }
+      } else {
+        for (let dy = -tmpUnit.rng; dy <= tmpUnit.rng; dy++) {
+          for (let dx = -tmpUnit.rng; dx <= tmpUnit.rng; dx++) {
+            const dist = Math.abs(dx) + Math.abs(dy);
+            if (dist < 1 || dist > tmpUnit.rng) continue;
+            const nx = pos.x + dx, ny = pos.y + dy;
+            if (nx >= 0 && ny >= 0 && nx < state.map.cols && ny < state.map.rows) {
+              dangerTiles.add(`${nx},${ny}`);
+            }
+          }
+        }
+      }
+    }
+  }
+  return [...dangerTiles].map(key => {
+    const [x, y] = key.split(',').map(Number);
+    return { x, y };
   });
 }
