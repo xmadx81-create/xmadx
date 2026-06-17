@@ -1767,23 +1767,34 @@ body {
   100% { box-shadow: 0 0 16px rgba(230, 57, 70, 0.6); }
 }
 
+/* ── Battle Viewport (scrollable) ── */
+.battle-viewport {
+  width: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  touch-action: pan-x pan-y;
+  max-height: 55vh;
+}
+.battle-viewport::-webkit-scrollbar { width: 0; height: 0; }
+
 /* ── Battle Grid ── */
 .battle-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  grid-template-rows: repeat(6, 1fr);
   gap: 2px;
   padding: 2px;
-  background: rgba(0, 0, 0, 0.3);
-  aspect-ratio: 8 / 6;
   position: relative;
   user-select: none;
   -webkit-user-select: none;
+  min-width: max-content;
 }
 
 /* ── Individual Tile ── */
 .tile {
-  aspect-ratio: 1;
+  width: 48px;
+  height: 48px;
   position: relative;
   display: flex;
   align-items: center;
@@ -1851,6 +1862,99 @@ body {
   inset: 0;
   background: radial-gradient(ellipse at center, rgba(46, 204, 113, 0.08) 0%, transparent 70%);
   pointer-events: none;
+}
+
+.tile.forest {
+  background: #1a3a1a;
+  border-color: rgba(34,139,34,0.2);
+}
+.tile.forest::after {
+  content: "🌲";
+  position: absolute;
+  font-size: 0.6rem;
+  top: 1px; right: 2px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.tile.mountain {
+  background: #3a3a3a;
+  border-color: rgba(120,120,120,0.3);
+  cursor: not-allowed;
+}
+.tile.mountain::after {
+  content: "⛰";
+  position: absolute;
+  font-size: 0.65rem;
+  top: 1px; right: 1px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.tile.swamp {
+  background: #2a1f1a;
+  border-color: rgba(139,90,43,0.2);
+}
+.tile.swamp::after {
+  content: "~";
+  position: absolute;
+  font-size: 0.8rem;
+  color: rgba(139,90,43,0.5);
+  pointer-events: none;
+}
+.tile.ice {
+  background: #1a2a3a;
+  border-color: rgba(100,181,246,0.25);
+}
+.tile.ice::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(100,181,246,0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+.tile.graveyard {
+  background: #1a1a25;
+  border-color: rgba(156,39,176,0.2);
+}
+.tile.graveyard::after {
+  content: "🪦";
+  position: absolute;
+  font-size: 0.5rem;
+  bottom: 1px; right: 1px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+.tile.hotspring {
+  background: #2a1a1a;
+  border-color: rgba(255,152,0,0.2);
+  animation: hotspring-glow 3s ease-in-out infinite;
+}
+@keyframes hotspring-glow {
+  0%,100% { box-shadow: inset 0 0 6px rgba(255,152,0,0.1); }
+  50% { box-shadow: inset 0 0 12px rgba(255,152,0,0.2); }
+}
+.tile.dungeon {
+  background: #12121a;
+  border-color: rgba(255,255,255,0.04);
+}
+.tile.bridge {
+  background: #2a2520;
+  border-color: rgba(160,120,60,0.2);
+}
+.tile.bridge::after {
+  content: "═";
+  position: absolute;
+  color: rgba(160,120,60,0.3);
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+.tile.valley {
+  background: #0a1a0a;
+  border-color: rgba(50,100,50,0.15);
+  cursor: not-allowed;
+}
+.tile.road {
+  background: #1e1e28;
+  border-color: rgba(200,200,200,0.08);
 }
 
 /* ── Tile States ── */
@@ -3041,6 +3145,11 @@ body {
     padding: 1px;
   }
 
+  .tile {
+    width: 42px;
+    height: 42px;
+  }
+
   .unit {
     width: 36px;
     height: 36px;
@@ -3209,6 +3318,166 @@ body {
     width: 120px;
     height: 150px;
   }
+}
+
+/* ── Deploy Synergy Display ── */
+.deploy-synergy {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(233,69,96,0.2);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+}
+.synergy-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.synergy-label {
+  font-size: 0.8rem;
+  color: #aaa;
+}
+.synergy-grade {
+  font-size: 1rem;
+  font-weight: 900;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(233,69,96,0.2);
+  color: #ffd700;
+}
+.synergy-grade.ss { background: rgba(255,215,0,0.3); color: #ffd700; }
+.synergy-grade.s { background: rgba(233,69,96,0.3); color: #ff6b6b; }
+.synergy-grade.a { background: rgba(100,181,246,0.2); color: #64b5f6; }
+.synergy-grade.b { color: #999; }
+.synergy-grade.c { background: rgba(255,152,0,0.2); color: #ffa726; }
+.synergy-grade.d { background: rgba(255,0,0,0.2); color: #ff4444; }
+.synergy-mult {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #ffd700;
+  margin-left: auto;
+}
+.synergy-secret {
+  background: linear-gradient(135deg, rgba(255,215,0,0.15), rgba(233,69,96,0.15));
+  border: 1px solid rgba(255,215,0,0.4);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: #ffd700;
+  text-align: center;
+  animation: secret-glow 2s ease-in-out infinite;
+}
+@keyframes secret-glow {
+  0%,100% { box-shadow: 0 0 4px rgba(255,215,0,0.2); }
+  50% { box-shadow: 0 0 12px rgba(255,215,0,0.4); }
+}
+.synergy-pairs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.synergy-pair {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.05);
+  color: #ccc;
+}
+.synergy-pair.ss { color: #ffd700; background: rgba(255,215,0,0.1); }
+.synergy-pair.s { color: #ff6b6b; }
+.synergy-pair.c, .synergy-pair.d { color: #ff8a80; }
+.synergy-cp {
+  font-size: 0.85rem;
+  color: #aaa;
+  text-align: right;
+}
+.synergy-cp strong {
+  color: #ffd700;
+  font-size: 1rem;
+}
+/* MBTI badge */
+.mbti-badge {
+  font-size: 0.55rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(100,181,246,0.15);
+  color: #64b5f6;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+/* ── Loot Popup ── */
+.loot-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 800;
+  animation: loot-pop 0.4s ease-out, loot-fade 0.5s ease-in 1.5s forwards;
+}
+@keyframes loot-pop {
+  from { transform: translate(-50%,-50%) scale(0.3); opacity: 0; }
+  50% { transform: translate(-50%,-50%) scale(1.1); }
+  to { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+}
+@keyframes loot-fade {
+  to { opacity: 0; transform: translate(-50%,-60%) scale(0.8); }
+}
+.loot-inner {
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  border: 2px solid #ffd700;
+  border-radius: 10px;
+  padding: 12px 20px;
+  text-align: center;
+  box-shadow: 0 0 20px rgba(255,215,0,0.3);
+}
+.loot-icon { font-size: 1.6rem; }
+.loot-name {
+  font-size: 0.85rem;
+  color: #ffd700;
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+/* ── Level Up Popup ── */
+.levelup-popup {
+  position: fixed;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 810;
+  animation: levelup-anim 0.5s ease-out, loot-fade 0.5s ease-in 2s forwards;
+}
+@keyframes levelup-anim {
+  from { transform: translate(-50%,-50%) scale(0.5) rotate(-5deg); opacity: 0; }
+  to { transform: translate(-50%,-50%) scale(1) rotate(0); opacity: 1; }
+}
+.levelup-inner {
+  background: linear-gradient(135deg, rgba(255,215,0,0.15), rgba(233,69,96,0.15));
+  border: 2px solid #ffd700;
+  border-radius: 12px;
+  padding: 14px 24px;
+  text-align: center;
+  box-shadow: 0 0 30px rgba(255,215,0,0.4);
+}
+.levelup-text {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #ffd700;
+  text-shadow: 0 0 10px rgba(255,215,0,0.5);
+}
+.levelup-name {
+  font-size: 0.85rem;
+  color: #eee;
+  margin-top: 4px;
+}
+.levelup-level {
+  font-size: 1rem;
+  color: #ffd700;
+  font-weight: bold;
 }
 
 /* ── Command Panel ── */

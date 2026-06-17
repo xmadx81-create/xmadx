@@ -1,10 +1,11 @@
-import { CHARACTERS, SENSE_TYPES } from './cards.js';
+import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from './cards.js';
 import {
   createBattleState, moveUnit, attackUnit, getMovementRange, getAttackRange,
   getAttackTargets, activateSense, endPlayerPhase, endEnemyPhase,
   runEnemyPhase, checkVictory, allPlayerUnitsActed,
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, getCombatPower,
   previewDamage, previewSkillDamage,
+  getTeamSynergy, getTeamCP, cardToUnit, gainXP,
 } from './engine.js';
 
 let battleState = null;
@@ -123,7 +124,7 @@ function renderStageSelect() {
     <div class="stage-card" data-stage="${s.id}">
       <div class="stage-num">${i + 1}</div>
       <div class="stage-info">
-        <div class="stage-name">${s.name}</div>
+        <div class="stage-name">${s.name} <span style="color:#e94560;font-size:0.7rem">Lv.${s.enemyLevel || 1}</span></div>
         <div class="stage-desc">${s.description}</div>
       </div>
     </div>
@@ -154,10 +155,11 @@ function openDeploy(stageId) {
   roster.innerHTML = playerChars.map(c => {
     const hp = c.power * 12 + ({common:10,uncommon:20,rare:35,legendary:50}[c.rarity]||0);
     const atk = c.power * 4 + ({common:2,uncommon:4,rare:6,legendary:10}[c.rarity]||0);
+    const mbti = CHARACTER_MBTI[c.id] || '????';
     return `<div class="deploy-unit" data-id="${c.id}" data-rarity="${c.rarity}">
       <div class="deploy-thumb"><img src="${portraitSrc(c.portrait)}" alt="" onerror="this.style.display='none'"/></div>
       <div class="deploy-info">
-        <div class="deploy-name">${c.name}</div>
+        <div class="deploy-name">${c.name} <span class="mbti-badge">${mbti}</span></div>
         <div class="deploy-stats">HP:${hp} ATK:${atk}</div>
       </div>
     </div>`;
@@ -175,6 +177,7 @@ function openDeploy(stageId) {
       }
       document.getElementById('deploy-count').textContent = deploySelected.length;
       document.getElementById('btn-deploy-start').disabled = deploySelected.length === 0;
+      updateDeploySynergy();
     });
   });
 
@@ -183,6 +186,38 @@ function openDeploy(stageId) {
     document.getElementById('stage-select').style.display = '';
   };
   document.getElementById('btn-deploy-start').onclick = () => startBattle();
+}
+
+function updateDeploySynergy() {
+  const panel = document.getElementById('deploy-synergy');
+  if (deploySelected.length < 2) { panel.style.display = 'none'; return; }
+
+  const units = deploySelected.map(id => {
+    const c = CHARACTERS.find(ch => ch.id === id);
+    return c ? cardToUnit(c, 0, 0) : null;
+  }).filter(Boolean);
+
+  const teamData = getTeamCP(units);
+  const syn = teamData.synergy;
+
+  document.getElementById('synergy-grade').textContent = syn.avgGrade;
+  document.getElementById('synergy-grade').className = `synergy-grade ${syn.avgGrade.toLowerCase()}`;
+  document.getElementById('synergy-mult').textContent = `×${syn.teamMult}`;
+  document.getElementById('synergy-cp').textContent = teamData.total;
+
+  const secretEl = document.getElementById('synergy-secret');
+  if (syn.secretCombo) {
+    secretEl.textContent = `🔥 시크릿 콤보 발동! 「${syn.secretCombo.name}」 ×${syn.secretCombo.mult}`;
+    secretEl.style.display = '';
+  } else {
+    secretEl.style.display = 'none';
+  }
+
+  document.getElementById('synergy-pairs').innerHTML = syn.pairDetails.map(p =>
+    `<span class="synergy-pair ${p.grade.toLowerCase()}">${p.a}↔${p.b} ${p.grade}</span>`
+  ).join('');
+
+  panel.style.display = '';
 }
 
 // ── Battle Start ──
@@ -229,8 +264,8 @@ function renderBattle() {
   if (!battleState) return;
   const { map, units } = battleState;
   const grid = document.getElementById('battle-grid');
-  grid.style.gridTemplateColumns = `repeat(${map.cols}, 1fr)`;
-  grid.style.gridTemplateRows = `repeat(${map.rows}, 1fr)`;
+  grid.style.gridTemplateColumns = `repeat(${map.cols}, 48px)`;
+  grid.style.gridTemplateRows = `repeat(${map.rows}, 48px)`;
 
   let html = '';
   for (let r = 0; r < map.rows; r++) {
@@ -294,11 +329,11 @@ function showUnitDetail(unit) {
     <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
          onerror="this.style.display='none'" />
   `;
-  document.getElementById('detail-name').textContent = unit.name;
-  document.getElementById('detail-title').textContent = unit.title;
+  document.getElementById('detail-name').textContent = `${unit.name} Lv.${unit.level}`;
+  document.getElementById('detail-title').textContent = `${unit.title} · ${unit.mbti || '????'}`;
   const hpPct = Math.round((unit.hp / unit.maxHp) * 100);
   document.getElementById('detail-hp-fill').style.width = hpPct + '%';
-  document.getElementById('detail-hp-text').textContent = `${unit.hp}/${unit.maxHp}`;
+  document.getElementById('detail-hp-text').textContent = `HP ${unit.hp}/${unit.maxHp} · XP ${unit.xp}/${unit.xpToNext}`;
   const cp = getCombatPower(unit);
   const equipNames = ['weapon', 'armor', 'accessory']
     .map(s => unit.equipment?.[s]?.name)
@@ -637,6 +672,25 @@ async function doAttack(attacker, defender) {
   if (result.defenderDied) appendLog(`  💀 ${defender.name} 전사!`);
   if (result.attackerDied) appendLog(`  💀 ${attacker.name} 전사!`);
 
+  // XP & Level Up
+  if (result.xpGains) {
+    result.xpGains.forEach(g => {
+      g.levelUps.forEach(lv => {
+        const u = getUnitByUid(battleState, g.unit);
+        if (u) showLevelUp(u.name, lv.level);
+        appendLog(`⬆ ${u?.name || '?'} Lv.${lv.level} 달성!`);
+      });
+    });
+  }
+
+  // Loot drop
+  if (result.loot) {
+    showLootDrop(result.loot);
+    appendLog(`🎁 드롭: ${result.loot.name}`);
+  }
+
+  renderBattle();
+
   const vc = checkVictory(battleState);
   if (vc) { setTimeout(() => handleBattleEnd(vc), 600); return; }
 
@@ -713,6 +767,27 @@ function showSkillOverlay(name, category) {
   document.getElementById('skill-overlay-name').textContent = `「${name}」`;
   overlay.style.display = 'flex';
   setTimeout(() => { overlay.style.display = 'none'; }, 1200);
+}
+
+function showLootDrop(loot) {
+  const el = document.getElementById('loot-popup');
+  document.getElementById('loot-name').textContent = loot.name;
+  el.style.display = '';
+  el.style.animation = 'none';
+  el.offsetHeight;
+  el.style.animation = '';
+  setTimeout(() => { el.style.display = 'none'; }, 2000);
+}
+
+function showLevelUp(name, level) {
+  const el = document.getElementById('levelup-popup');
+  document.getElementById('levelup-name').textContent = name;
+  document.getElementById('levelup-level').textContent = `Lv.${level}`;
+  el.style.display = '';
+  el.style.animation = 'none';
+  el.offsetHeight;
+  el.style.animation = '';
+  setTimeout(() => { el.style.display = 'none'; }, 2500);
 }
 
 // ── End Turn ──

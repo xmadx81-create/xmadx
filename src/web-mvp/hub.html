@@ -49,6 +49,16 @@
           <h3 id="deploy-stage-name">유닛 편성</h3>
           <p class="deploy-hint">출격할 캐릭터를 선택하세요 (<span id="deploy-count">0</span>/<span id="deploy-max">4</span>)</p>
           <div id="deploy-roster" class="deploy-roster"></div>
+          <div id="deploy-synergy" class="deploy-synergy" style="display:none">
+            <div class="synergy-header">
+              <span class="synergy-label">팀 시너지</span>
+              <span class="synergy-grade" id="synergy-grade">—</span>
+              <span class="synergy-mult" id="synergy-mult">×1.0</span>
+            </div>
+            <div class="synergy-secret" id="synergy-secret" style="display:none"></div>
+            <div class="synergy-pairs" id="synergy-pairs"></div>
+            <div class="synergy-cp">팀 전투력: <strong id="synergy-cp">0</strong></div>
+          </div>
           <div class="deploy-actions">
             <button id="btn-deploy-back" class="btn-secondary">뒤로</button>
             <button id="btn-deploy-start" class="btn-primary" disabled>출격!</button>
@@ -64,8 +74,10 @@
             <span class="phase-indicator" id="phase-indicator">아군 턴</span>
           </div>
 
-          <!-- 전투 맵 -->
-          <div id="battle-grid" class="battle-grid"></div>
+          <!-- 전투 맵 (스크롤 가능) -->
+          <div id="battle-viewport" class="battle-viewport">
+            <div id="battle-grid" class="battle-grid"></div>
+          </div>
 
           <!-- 액션 메뉴 -->
           <div id="action-menu" class="action-menu" style="display:none">
@@ -238,6 +250,23 @@
           <div class="cw-name" id="cw-def-name"></div>
           <div class="cw-hp-change" id="cw-def-hp"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- 루트 드롭 팝업 -->
+    <div id="loot-popup" class="loot-popup" style="display:none">
+      <div class="loot-inner">
+        <div class="loot-icon" id="loot-icon">🎁</div>
+        <div class="loot-name" id="loot-name"></div>
+      </div>
+    </div>
+
+    <!-- 레벨업 알림 -->
+    <div id="levelup-popup" class="levelup-popup" style="display:none">
+      <div class="levelup-inner">
+        <div class="levelup-text">⬆ LEVEL UP!</div>
+        <div class="levelup-name" id="levelup-name"></div>
+        <div class="levelup-level" id="levelup-level"></div>
       </div>
     </div>
 
