@@ -7,6 +7,7 @@ import {
   previewDamage, previewSkillDamage, getFlankingBonus,
   getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate, useItem,
   spawnReinforcements, getDangerZone,
+  EQUIPMENT, RELICS, equipItem, equipRelic,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear } from './save.js';
 
@@ -42,20 +43,27 @@ function initGallery() {
 function portraitSrc(base) { return `${base}.png`; }
 
 function renderGalleryCards(container, cards) {
-  container.innerHTML = cards.map(card => `
-    <div class="card" data-rarity="${card.rarity}" data-id="${card.id}">
+  container.innerHTML = cards.map(card => {
+    const cardData = gameSave.cards[card.id];
+    const owned = cardData && cardData.count > 0;
+    const lvDisplay = cardData && cardData.level > 1 ? `Lv.${cardData.level}` : '';
+    const xpPct = cardData ? Math.round((cardData.xp || 0) / (cardData.level * 50) * 100) : 0;
+    return `
+    <div class="card ${owned ? 'card-owned' : ''}" data-rarity="${card.rarity}" data-id="${card.id}">
       <div class="card-portrait">
         <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
              onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none';this.nextElementSibling.style.display='flex'}" />
         <div class="placeholder" style="display:none">${card.name[0]}</div>
+        ${lvDisplay ? `<div class="card-lv-badge">${lvDisplay}</div>` : ''}
       </div>
       <div class="card-info">
         <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
         <div class="card-name">${card.name}</div>
         <div class="card-title">${card.title}</div>
+        ${owned ? `<div class="card-xp-bar"><div class="card-xp-fill" style="width:${xpPct}%"></div></div>` : ''}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   container.querySelectorAll('.card').forEach(el => {
     el.addEventListener('click', () => showCardPopup(el.dataset.id));
   });
@@ -498,7 +506,61 @@ function showDeployDetail(charId) {
     </div>
     ${senseInfo ? `<div class="dd-sense"><span class="sense-icon">${senseInfo.icon || '?'}</span> <strong>「${c.sense.name}」</strong> ${c.sense.baseType} Lv.${c.sense.power}<br><span class="dd-sense-flavor">${c.sense.flavor}</span></div>` : ''}
     ${unit.ultimates ? `<div class="dd-ults">${unit.ultimates.map(u => `<div class="dd-ult"><span>${u.icon}</span> ${u.name} <span class="dd-ult-lv">Lv.${u.unlockLevel}</span></div>`).join('')}</div>` : ''}
+    <div class="dd-equip">
+      <div class="dd-equip-title">장비</div>
+      ${['weapon', 'armor', 'accessory'].map(slot => {
+        const equipped = unit.equipment[slot];
+        const slotLabel = { weapon: '무기', armor: '방어구', accessory: '장신구' }[slot];
+        const slotIcon = { weapon: '⚔️', armor: '🛡️', accessory: '💍' }[slot];
+        return `<div class="dd-equip-slot">
+          <span class="dd-slot-icon">${slotIcon}</span>
+          <span class="dd-slot-name">${equipped ? equipped.name : `${slotLabel} 없음`}</span>
+          <button class="dd-equip-btn" data-char="${c.id}" data-slot="${slot}">변경</button>
+        </div>`;
+      }).join('')}
+    </div>
   `;
+
+  panel.querySelectorAll('.dd-equip-btn').forEach(btn => {
+    btn.addEventListener('click', () => showEquipSelect(btn.dataset.char, btn.dataset.slot));
+  });
+}
+
+function showEquipSelect(charId, slot) {
+  const items = EQUIPMENT.filter(e => e.slot === slot);
+  const slotLabel = { weapon: '무기', armor: '방어구', accessory: '장신구' }[slot];
+  const popup = document.getElementById('card-popup');
+  const details = document.getElementById('popup-details');
+  document.getElementById('popup-portrait').innerHTML = `<div style="font-size:2rem;text-align:center;padding:20px">${{ weapon: '⚔️', armor: '🛡️', accessory: '💍' }[slot]}</div>`;
+
+  details.innerHTML = `
+    <h2>${slotLabel} 선택</h2>
+    <div class="equip-select-list">
+      ${items.map(item => {
+        const statsText = Object.entries(item.stats).map(([k, v]) => `${k.toUpperCase()}+${typeof v === 'number' && v < 1 ? Math.round(v * 100) + '%' : v}`).join(' ');
+        return `<button class="equip-select-item" data-equip-id="${item.id}">
+          <span class="equip-item-name">${item.name}</span>
+          <span class="equip-item-stats">${statsText}</span>
+        </button>`;
+      }).join('')}
+      <button class="equip-select-item equip-cancel">취소</button>
+    </div>
+  `;
+
+  details.querySelectorAll('.equip-select-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      popup.style.display = 'none';
+      const equipId = btn.dataset.equipId;
+      if (!equipId) return;
+      if (!gameSave.cards[charId]) gameSave.cards[charId] = { level: 1, xp: 0, count: 1 };
+      if (!gameSave.cards[charId].equipment) gameSave.cards[charId].equipment = {};
+      gameSave.cards[charId].equipment[slot] = equipId;
+      saveGame(gameSave);
+      showDeployDetail(charId);
+    });
+  });
+
+  popup.style.display = 'flex';
 }
 
 function updateDeploySynergy() {
@@ -561,6 +623,11 @@ function startBattle() {
       u.hp = u.maxHp;
       u.mp = u.maxMp;
       u.xp = cardData.xp || 0;
+    }
+    if (cardData?.equipment) {
+      Object.entries(cardData.equipment).forEach(([slot, itemId]) => {
+        if (itemId) equipItem(u, itemId);
+      });
     }
   });
 
@@ -1348,44 +1415,77 @@ function endTurn() {
 
   endPlayerPhase(battleState);
   showPhaseBanner('적 턴', 'enemy');
+  document.getElementById('btn-end-turn').disabled = true;
 
-  setTimeout(() => {
+  setTimeout(async () => {
     const actions = runEnemyPhase(battleState);
 
-    actions.forEach(a => {
+    for (const a of actions) {
       if (a.type === 'attack') {
+        const unit = getUnitByUid(battleState, a.unit);
         const target = getUnitByUid(battleState, a.target);
-        appendLog(`⚔ 적 → ${target?.name || '?'}: ${a.damage}${a.critical ? ' 크리티컬!' : ''}`);
+        renderBattle();
+        if (unit) highlightEnemyAction(unit);
+        appendLog(`⚔ ${unit?.name || '적'} → ${target?.name || '?'}: ${a.damage}${a.critical ? ' 크리티컬!' : ''}`);
         if (a.defenderDied) appendLog(`  💀 ${target?.name} 전사!`);
+        const defTile = target ? document.querySelector(`.tile[data-x="${target.x}"][data-y="${target.y}"]`) : null;
+        if (defTile && !a.evaded) {
+          showFloatingText(defTile, `-${a.damage}`, a.critical ? 'critical' : 'damage');
+          defTile.classList.add('damage-shake');
+          setTimeout(() => defTile.classList.remove('damage-shake'), 400);
+        }
+        await delay(600);
       } else if (a.type === 'move') {
         const unit = getUnitByUid(battleState, a.unit);
+        renderBattle();
         appendLog(`적 ${unit?.name || '?'} 이동`);
+        await delay(300);
       } else if (a.type === 'sense') {
+        renderBattle();
         appendLog(`✦ 적 스킬: ${a.skillName}`);
+        showSkillOverlay(a.skillName, 'blood');
+        await delay(800);
       } else if (a.type === 'ultimate') {
+        renderBattle();
         appendLog(`🌟 적 궁극기: ${a.name}`);
         a.effects?.forEach(e => appendLog(`  → ${e}`));
+        showSkillOverlay(a.name, 'ult');
+        await delay(1000);
       } else if (a.type === 'enrage') {
         const unit = getUnitByUid(battleState, a.unit);
+        renderBattle();
         appendLog(`🔥 ${unit?.name || '?'} 분노! ATK +${a.atkBoost}`);
+        showReinforceBanner(`🔥 ${unit?.name || '?'} 분노 발동!`);
+        await delay(1200);
       }
-    });
 
-    const vc = checkVictory(battleState);
-    if (vc) { handleBattleEnd(vc); return; }
+      const vc = checkVictory(battleState);
+      if (vc) { handleBattleEnd(vc); return; }
+    }
 
     endEnemyPhase(battleState);
 
-    // 🔴 사마의: 증원 체크
     const reinforcement = spawnReinforcements(battleState);
     if (reinforcement) {
+      renderBattle();
       showReinforceBanner(reinforcement.message);
       reinforcement.units.forEach(u => appendLog(`🔴 증원: ${u.name} 등장!`));
+      await delay(2000);
     }
 
     showPhaseBanner('아군 턴', 'player');
     renderBattle();
   }, 800);
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function highlightEnemyAction(unit) {
+  const tile = document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`);
+  if (tile) {
+    tile.classList.add('enemy-acting');
+    setTimeout(() => tile.classList.remove('enemy-acting'), 600);
+  }
 }
 
 // ── Battle End ──
@@ -1401,13 +1501,34 @@ function handleBattleEnd(result) {
 
   saveCharProgress(gameSave, battleState.units);
 
+  const playerUnits = battleState.units.filter(u => u.team === 'player');
+  const survivors = playerUnits.filter(u => u.hp > 0);
+  const enemiesDefeated = battleState.units.filter(u => u.team === 'enemy' && u.hp <= 0).length;
+
   if (result === 'win') {
     title.textContent = '승리!';
     box.className = 'battle-result-box win';
     const turns = battleState.turnNumber;
     const stars = turns <= 5 ? 3 : turns <= 8 ? 2 : 1;
     recordStageClear(gameSave, battleState.stageId, turns);
-    text.textContent = `${battleState.stage.storyOutro || '모든 적을 제압했습니다!'}\n${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)} (${turns}턴)`;
+
+    const unitSummary = playerUnits.map(u => {
+      const lvInfo = u.level > 1 ? ` Lv.${u.level}` : '';
+      const status = u.hp > 0 ? `HP ${u.hp}/${u.maxHp}` : '💀 전사';
+      return `<div class="result-unit ${u.hp <= 0 ? 'result-dead' : ''}">
+        <span class="result-unit-name">${u.name}${lvInfo}</span>
+        <span class="result-unit-status">${status}</span>
+      </div>`;
+    }).join('');
+
+    text.innerHTML = `
+      <div class="result-story">${battleState.stage.storyOutro || '모든 적을 제압했습니다!'}</div>
+      <div class="result-stars">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
+      <div class="result-summary">
+        <span>${turns}턴</span> · <span>생존 ${survivors.length}/${playerUnits.length}</span> · <span>처치 ${enemiesDefeated}</span>
+      </div>
+      <div class="result-units">${unitSummary}</div>
+    `;
     gameSave.stats.wins++;
     progressQuest(gameSave, 'win');
     addCard(gameSave, CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id, 'common');
@@ -1415,7 +1536,10 @@ function handleBattleEnd(result) {
   } else {
     title.textContent = '패배...';
     box.className = 'battle-result-box lose';
-    text.textContent = '모든 아군이 전사했습니다. 다시 도전하세요.';
+    text.innerHTML = `
+      <div class="result-story">모든 아군이 전사했습니다. 다시 도전하세요.</div>
+      <div class="result-summary">${battleState.turnNumber}턴 · 처치 ${enemiesDefeated}</div>
+    `;
     gameSave.stats.losses++;
   }
 
