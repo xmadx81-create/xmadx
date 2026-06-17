@@ -179,6 +179,88 @@ body { font-family: 'Segoe UI','Malgun Gothic',sans-serif; background:#f0f2f5; c
 .unassigned-pool { background:#fff; border:2px dashed var(--gray-300); border-radius:10px; padding:12px; margin-top:20px; }
 .unassigned-pool h4 { color:var(--gray-500); margin-bottom:8px; font-size:13px; }
 .unassigned-pool .people-list { display:flex; flex-wrap:wrap; gap:4px; min-height:30px; }
+
+/* Mobile toggle button */
+.mobile-panel-toggle { display:none; }
+
+/* ═══ Mobile ═══ */
+@media (max-width: 768px) {
+  .header { padding:10px 12px; gap:8px; }
+  .header h1 { font-size:16px; }
+  .header select { padding:6px 8px; font-size:12px; }
+  .header .stats { margin-left:0; width:100%; gap:6px; font-size:11px; justify-content:center; }
+  .header .stats span { padding:3px 8px; }
+
+  .toolbar { padding:8px 12px; gap:6px; flex-wrap:nowrap; overflow-x:auto; }
+  .toolbar .btn { font-size:11px; padding:6px 10px; white-space:nowrap; flex-shrink:0; }
+  .toolbar .btn-lg { padding:8px 14px; font-size:13px; }
+  .toolbar .spacer { display:none; }
+
+  .main-container { flex-direction:column; height:auto; min-height:calc(100vh - 120px); }
+
+  .panel-left {
+    width:100%; min-width:0;
+    border-right:none; border-bottom:1px solid var(--gray-200);
+    position:fixed; bottom:0; left:0; right:0; z-index:50;
+    max-height:70vh; border-radius:16px 16px 0 0;
+    box-shadow:0 -4px 20px rgba(0,0,0,.15);
+    transform:translateY(calc(100% - 44px));
+    transition:transform .3s ease;
+  }
+  .panel-left.expanded { transform:translateY(0); }
+
+  .mobile-panel-toggle {
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:12px; cursor:pointer; background:#fff;
+    border-bottom:1px solid var(--gray-200); border-radius:16px 16px 0 0;
+    font-size:14px; font-weight:700; color:var(--primary);
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mobile-panel-toggle .handle {
+    width:36px; height:4px; border-radius:2px; background:var(--gray-300);
+    position:absolute; top:6px;
+  }
+  .mobile-panel-toggle .badge {
+    background:var(--danger); color:#fff; font-size:10px;
+    padding:1px 6px; border-radius:10px; font-weight:700;
+  }
+
+  .panel-center { padding:12px; padding-bottom:60px; }
+
+  .rooms-grid { gap:8px; }
+  .room-card { width:100%; min-width:0; }
+  .building-label { font-size:13px; }
+  .floor-plan-title { font-size:16px; }
+  .floor-plan-addr { font-size:11px; }
+
+  .tabs { font-size:12px; }
+  .tab { padding:8px 4px; font-size:12px; }
+
+  .form-section { padding:10px 12px; }
+  .form-row { gap:6px; margin-bottom:6px; }
+  .form-group input, .form-group select { padding:8px; font-size:14px; }
+  .form-group label { font-size:10px; }
+
+  .participant-item { padding:6px 12px; }
+  .participant-item .actions { opacity:1; }
+
+  .modal { width:95%; padding:16px; border-radius:10px; max-height:85vh; }
+
+  .toast { bottom:56px; right:10px; left:10px; text-align:center; font-size:13px; }
+
+  .summary-table { font-size:11px; }
+  .summary-table th, .summary-table td { padding:4px 6px; }
+
+  .unassigned-pool { padding:8px; }
+  .unassigned-pool h4 { font-size:12px; }
+}
+
+@media (max-width: 380px) {
+  .header h1 { font-size:14px; }
+  .header .stats { font-size:10px; gap:4px; }
+  .toolbar .btn { font-size:10px; padding:5px 8px; }
+  .room-card { font-size:12px; }
+}
 </style>
 </head>
 <body>
@@ -208,7 +290,11 @@ body { font-family: 'Segoe UI','Malgun Gothic',sans-serif; background:#f0f2f5; c
 
 <div class="main-container">
   <!-- Left: Participants -->
-  <div class="panel panel-left">
+  <div class="panel panel-left" id="panelLeft">
+    <div class="mobile-panel-toggle" onclick="toggleMobilePanel()">
+      <span class="handle"></span>
+      &#9650; 참여자 등록/명단 <span class="badge" id="mobileBadge">0</span>
+    </div>
     <div class="tabs">
       <div class="tab active" data-tab="add" onclick="switchTab(this)">참여자 등록</div>
       <div class="tab" data-tab="list" onclick="switchTab(this)">명단 (<span id="listCount">0</span>)</div>
@@ -454,6 +540,28 @@ let currentCenter = 'pohang';
 let participants = [];
 let assignments = {};
 let nextId = 1;
+let mobilePanelOpen = false;
+
+function toggleMobilePanel() {
+  const panel = document.getElementById('panelLeft');
+  mobilePanelOpen = !mobilePanelOpen;
+  panel.classList.toggle('expanded', mobilePanelOpen);
+  const toggle = panel.querySelector('.mobile-panel-toggle');
+  toggle.innerHTML = `<span class="handle"></span>${mobilePanelOpen ? '&#9660;' : '&#9650;'} 참여자 등록/명단 <span class="badge" id="mobileBadge">${participants.length}</span>`;
+}
+
+function closeMobilePanel() {
+  const panel = document.getElementById('panelLeft');
+  mobilePanelOpen = false;
+  panel.classList.remove('expanded');
+  const toggle = panel.querySelector('.mobile-panel-toggle');
+  if (toggle) toggle.innerHTML = `<span class="handle"></span>&#9650; 참여자 등록/명단 <span class="badge" id="mobileBadge">${participants.length}</span>`;
+}
+
+function updateMobileBadge() {
+  const badge = document.getElementById('mobileBadge');
+  if (badge) badge.textContent = participants.length;
+}
 
 function getAgeGroup(age) {
   if (!age) return '';
@@ -533,6 +641,7 @@ function addParticipant() {
   document.getElementById('listCount').textContent = participants.length;
   updateStats();
   renderFloorPlan();
+  updateMobileBadge();
   toast(name + ' 추가됨', 'success');
 }
 
@@ -542,6 +651,7 @@ function removeParticipant(id) {
     assignments[roomId] = assignments[roomId].filter(pid => pid !== id);
   }
   document.getElementById('listCount').textContent = participants.length;
+  updateMobileBadge();
   renderParticipantList();
   renderFloorPlan();
   updateStats();
@@ -1042,6 +1152,8 @@ function bulkAdd() {
   document.getElementById('listCount').textContent = participants.length;
   updateStats();
   renderFloorPlan();
+  updateMobileBadge();
+  closeMobilePanel();
   toast(added + '명 일괄 추가됨', 'success');
 }
 
