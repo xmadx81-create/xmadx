@@ -3,7 +3,7 @@ import {
   createBattleState, moveUnit, attackUnit, getMovementRange, getAttackRange,
   getAttackTargets, activateSense, endPlayerPhase, endEnemyPhase,
   runEnemyPhase, checkVictory, allPlayerUnitsActed,
-  STAGES, TILE_TYPES, getLivingUnits, getUnitByUid,
+  STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, getCombatPower,
 } from './engine.js';
 
 let battleState = null;
@@ -297,11 +297,22 @@ function showUnitDetail(unit) {
   const hpPct = Math.round((unit.hp / unit.maxHp) * 100);
   document.getElementById('detail-hp-fill').style.width = hpPct + '%';
   document.getElementById('detail-hp-text').textContent = `${unit.hp}/${unit.maxHp}`;
+  const cp = getCombatPower(unit);
+  const equipNames = ['weapon', 'armor', 'accessory']
+    .map(s => unit.equipment?.[s]?.name)
+    .filter(Boolean);
+  const relicName = unit.relic?.name || '';
   document.getElementById('detail-stats').innerHTML = `
     <div class="stat-box"><span class="stat-label">ATK</span><span class="stat-val">${unit.atk}</span></div>
     <div class="stat-box"><span class="stat-label">DEF</span><span class="stat-val">${unit.def}</span></div>
+    <div class="stat-box"><span class="stat-label">CRT</span><span class="stat-val">${Math.round(unit.crt * 100)}%</span></div>
+    <div class="stat-box"><span class="stat-label">EVA</span><span class="stat-val">${Math.round((unit.eva || 0) * 100)}%</span></div>
+    <div class="stat-box"><span class="stat-label">PEN</span><span class="stat-val">${unit.pen || 0}</span></div>
     <div class="stat-box"><span class="stat-label">MOV</span><span class="stat-val">${unit.mov}</span></div>
     <div class="stat-box"><span class="stat-label">RNG</span><span class="stat-val">${unit.rng}</span></div>
+    <div class="stat-box cp-box"><span class="stat-label">전투력</span><span class="stat-val cp-val">${cp}</span></div>
+    ${equipNames.length ? `<div class="equip-list">장비: ${equipNames.join(' · ')}</div>` : ''}
+    ${relicName ? `<div class="equip-list">유물: ${relicName}</div>` : ''}
   `;
   const sense = unit.senseSkill;
   if (sense) {
@@ -464,20 +475,29 @@ function doAttack(attacker, defender) {
   if (!result.ok) return;
 
   const defTile = document.querySelector(`.tile[data-x="${defender.x}"][data-y="${defender.y}"]`);
-  if (defTile) {
-    showFloatingText(defTile, `-${result.damage}`, result.critical ? 'critical' : 'damage');
+  const atkTile = document.querySelector(`.tile[data-x="${attacker.x}"][data-y="${attacker.y}"]`);
+
+  if (result.evaded) {
+    if (defTile) showFloatingText(defTile, '회피!', 'evade');
+  } else if (defTile) {
+    const label = result.penetrated ? `관통! -${result.damage}` : `-${result.damage}`;
+    showFloatingText(defTile, label, result.critical ? 'critical' : (result.penetrated ? 'penetrate' : 'damage'));
     defTile.classList.add('damage-shake');
     setTimeout(() => defTile.classList.remove('damage-shake'), 400);
   }
 
-  if (result.counterDamage > 0) {
-    const atkTile = document.querySelector(`.tile[data-x="${attacker.x}"][data-y="${attacker.y}"]`);
-    if (atkTile) {
-      setTimeout(() => showFloatingText(atkTile, `-${result.counterDamage}`, 'damage'), 500);
-    }
+  if (result.counterDamage > 0 && atkTile) {
+    setTimeout(() => showFloatingText(atkTile, `-${result.counterDamage}`, 'damage'), 500);
   }
 
-  appendLog(`⚔ ${attacker.name} → ${defender.name}: ${result.damage}${result.critical ? ' 크리티컬!' : ''}`);
+  if (result.evaded) {
+    appendLog(`⚔ ${attacker.name} → ${defender.name}: 회피!`);
+  } else {
+    const tags = [];
+    if (result.penetrated) tags.push('관통');
+    if (result.critical) tags.push('크리티컬');
+    appendLog(`⚔ ${attacker.name} → ${defender.name}: ${result.damage}${tags.length ? ' ' + tags.join(' ') + '!' : ''}`);
+  }
   if (result.counterDamage) appendLog(`  ↩ 반격: ${result.counterDamage}`);
   if (result.defenderDied) appendLog(`  💀 ${defender.name} 전사!`);
   if (result.attackerDied) appendLog(`  💀 ${attacker.name} 전사!`);

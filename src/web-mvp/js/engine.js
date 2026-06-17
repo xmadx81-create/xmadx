@@ -39,6 +39,107 @@ export const ROLE_MODIFIERS = {
   breaker:        { hp: 1.3,  atk: 1.4, def: 1.2, mov: 3, rng: null },
 };
 
+// ── Equipment ──────────────────────────────────────────────────────────
+
+export const EQUIPMENT = [
+  { id: 'needle', name: '채혈침', slot: 'weapon', stats: { atk: 2 } },
+  { id: 'baton', name: '보안봉', slot: 'weapon', stats: { atk: 4, crt: 0.05 } },
+  { id: 'scalpel', name: '수술용 메스', slot: 'weapon', stats: { atk: 6, pen: 2 } },
+  { id: 'kartein-blade', name: '카르테인 장검', slot: 'weapon', stats: { atk: 8, pen: 3, crt: 0.1 } },
+  { id: 'duke-saber', name: '듀크의 의검', slot: 'weapon', stats: { atk: 12, pen: 5, crt: 0.15 } },
+  { id: 'lab-coat', name: '실험복', slot: 'armor', stats: { def: 2, hp: 5 } },
+  { id: 'guard-vest', name: '방호복', slot: 'armor', stats: { def: 4, hp: 10 } },
+  { id: 'blood-armor', name: '혈맹 갑주', slot: 'armor', stats: { def: 6, hp: 20, eva: 0.05 } },
+  { id: 'ancient-plate', name: '고대 혈족 갑주', slot: 'armor', stats: { def: 10, hp: 30, eva: 0.1 } },
+  { id: 'night-goggles', name: '야간 투시경', slot: 'accessory', stats: { rng: 1 } },
+  { id: 'speed-boots', name: '경량 부츠', slot: 'accessory', stats: { mov: 1 } },
+  { id: 'crit-charm', name: '날카로운 부적', slot: 'accessory', stats: { crt: 0.15, atk: 3 } },
+  { id: 'duke-signet', name: '듀크의 인장', slot: 'accessory', stats: { atk: 5, crt: 0.15, eva: 0.1 } },
+];
+
+export const RELICS = [
+  { id: 'first-resolve', name: '첫날의 각오', desc: 'HP 100%일 때 ATK +20%', condition: 'full_hp', effect: { atkMult: 1.2 } },
+  { id: 'survivor-will', name: '생존자의 의지', desc: 'HP 25% 이하일 때 DEF +50%, ATK +30%', condition: 'low_hp', effect: { atkMult: 1.3, defMult: 1.5 } },
+  { id: 'blood-pact', name: '혈연의 계약', desc: '공격 시 데미지의 10% HP 흡수', condition: 'on_attack', effect: { lifesteal: 0.1 } },
+  { id: 'director-glasses', name: '센터장의 안경', desc: '아군 전체 DEF +2', condition: 'field_aura', effect: { allyDef: 2 } },
+  { id: 'duke-wine', name: '듀크의 와인잔', desc: '적 처치 시 HP 30% 회복', condition: 'on_kill', effect: { killHeal: 0.3 } },
+];
+
+const DEFAULT_LOADOUT = {
+  tank:           { weapon: 'baton', armor: 'guard-vest' },
+  melee_dps:      { weapon: 'baton', armor: 'lab-coat' },
+  ranged_dps:     { weapon: 'needle', armor: 'lab-coat' },
+  support:        { weapon: 'needle', armor: 'lab-coat' },
+  bruiser:        { weapon: 'scalpel', armor: 'guard-vest' },
+  battle_support: { weapon: 'needle', armor: 'lab-coat' },
+  evasive_dps:    { weapon: 'scalpel', armor: 'lab-coat', accessory: 'speed-boots' },
+  breaker:        { weapon: 'kartein-blade', armor: 'blood-armor', accessory: 'crit-charm' },
+};
+
+export function equipItem(unit, equipmentId) {
+  const item = EQUIPMENT.find(e => e.id === equipmentId);
+  if (!item) return false;
+  if (unit.equipment[item.slot]) unequipItem(unit, item.slot);
+  unit.equipment[item.slot] = item;
+  const s = item.stats;
+  if (s.hp)  { unit.maxHp += s.hp; unit.hp += s.hp; }
+  if (s.atk) unit.atk += s.atk;
+  if (s.def) unit.def += s.def;
+  if (s.crt) unit.crt += s.crt;
+  if (s.eva) unit.eva += s.eva;
+  if (s.pen) unit.pen += s.pen;
+  if (s.mov) unit.mov += s.mov;
+  if (s.rng) unit.rng += s.rng;
+  return true;
+}
+
+function unequipItem(unit, slot) {
+  const item = unit.equipment[slot];
+  if (!item) return;
+  const s = item.stats;
+  if (s.hp)  { unit.maxHp -= s.hp; unit.hp = Math.min(unit.hp, unit.maxHp); }
+  if (s.atk) unit.atk -= s.atk;
+  if (s.def) unit.def -= s.def;
+  if (s.crt) unit.crt -= s.crt;
+  if (s.eva) unit.eva -= s.eva;
+  if (s.pen) unit.pen -= s.pen;
+  if (s.mov) unit.mov -= s.mov;
+  if (s.rng) unit.rng -= s.rng;
+  unit.equipment[slot] = null;
+}
+
+export function equipRelic(unit, relicId) {
+  const relic = RELICS.find(r => r.id === relicId);
+  if (!relic) return false;
+  unit.relic = relic;
+  return true;
+}
+
+function autoEquip(unit) {
+  const loadout = DEFAULT_LOADOUT[unit.role];
+  if (!loadout) return;
+  for (const [, itemId] of Object.entries(loadout)) {
+    equipItem(unit, itemId);
+  }
+}
+
+function getAttackType(charData, role) {
+  if (charData.faction === 'kartein' && charData.sense) {
+    const senseInfo = SENSE_TYPES[charData.sense.baseType];
+    if (senseInfo && senseInfo.category === '혈') return 'blood';
+  }
+  if (role === 'breaker') return charData.faction === 'kartein' ? 'blood' : 'physical';
+  if (['tank', 'melee_dps', 'bruiser', 'evasive_dps'].includes(role)) return 'physical';
+  return 'mental';
+}
+
+export function getCombatPower(unit) {
+  return Math.floor(
+    unit.atk * 2 + unit.def * 1.5 + unit.maxHp * 0.3
+    + unit.crt * 50 + unit.eva * 40 + unit.pen * 10
+  );
+}
+
 // ── Stat Conversion: Card → SRPG Unit ───────────────────────────────────
 
 export function cardToUnit(charData, x, y) {
@@ -76,6 +177,12 @@ export function cardToUnit(charData, x, y) {
     def,
     mov,
     rng,
+    crt: 0.10,
+    eva: 0,
+    pen: 0,
+    attackType: getAttackType(charData, role),
+    equipment: { weapon: null, armor: null, accessory: null },
+    relic: null,
 
     senseSkill: charData.sense ? {
       name: charData.sense.name,
@@ -252,6 +359,9 @@ export function createBattleState(stageId, playerCharIds) {
     units.push(unit);
   });
 
+  // Auto-equip all units with default loadout
+  units.forEach(u => autoEquip(u));
+
   return {
     stageId,
     stage,
@@ -415,17 +525,69 @@ function getFactionAdvantage(attacker, defender) {
 
 // ── Combat ──────────────────────────────────────────────────────────────
 
-function calculateDamage(attackerAtk, defenderDef) {
-  return Math.max(1, attackerAtk - defenderDef + Math.floor(Math.random() * 4) - 1);
-}
-
-function isCritical() {
-  return Math.random() < 0.15;
-}
-
 function isInRange(attackerUnit, targetX, targetY) {
   const dist = Math.abs(attackerUnit.x - targetX) + Math.abs(attackerUnit.y - targetY);
   return dist >= 1 && dist <= attackerUnit.rng;
+}
+
+function calcCombatResult(state, attacker, defender, isCounter = false) {
+  let atkPower = attacker.atk;
+  let defPower = defender.def;
+
+  // Relic: full HP ATK boost
+  if (attacker.relic?.condition === 'full_hp' && attacker.hp >= attacker.maxHp) {
+    atkPower = Math.floor(atkPower * (attacker.relic.effect.atkMult || 1));
+  }
+  // Relic: low HP ATK/DEF boost
+  if (attacker.relic?.condition === 'low_hp' && attacker.hp <= attacker.maxHp * 0.25) {
+    atkPower = Math.floor(atkPower * (attacker.relic.effect.atkMult || 1));
+  }
+  if (defender.relic?.condition === 'low_hp' && defender.hp <= defender.maxHp * 0.25) {
+    defPower = Math.floor(defPower * (defender.relic.effect.defMult || 1));
+  }
+
+  // Relic: field aura DEF
+  if (state) {
+    state.units.filter(u => u.team === defender.team && u.hp > 0 && u.uid !== defender.uid).forEach(ally => {
+      if (ally.relic?.condition === 'field_aura') defPower += ally.relic.effect.allyDef || 0;
+    });
+  }
+
+  // Faction bonus
+  const faction = getFactionAdvantage(attacker, defender);
+  atkPower += faction.atkBonus;
+  defPower += faction.defBonus;
+
+  // Evasion check
+  if (Math.random() < (defender.eva || 0)) {
+    return { damage: 0, critical: false, evaded: true, penetrated: false };
+  }
+
+  // Penetration
+  const pen = attacker.pen || 0;
+  const effectiveDef = Math.max(0, defPower - pen);
+  const penetrated = pen > 0 && defPower > effectiveDef;
+
+  // Raw damage
+  const rawDamage = atkPower - effectiveDef;
+
+  // Type multiplier
+  let typeMult = 1.0;
+  if (attacker.attackType === 'blood') typeMult = 1.1;
+
+  // Variance (15% of ATK, minimum range 1)
+  const variance = Math.floor(Math.random() * Math.max(1, Math.floor(atkPower * 0.15)));
+
+  // Critical
+  const critical = Math.random() < (attacker.crt || 0.1);
+  const critMult = critical ? 1.5 : 1.0;
+
+  // Counter reduction
+  const counterMult = isCounter ? 0.7 : 1.0;
+
+  const damage = Math.max(1, Math.floor((rawDamage + variance) * typeMult * critMult * counterMult));
+
+  return { damage, critical, evaded: false, penetrated };
 }
 
 export function attackUnit(state, attacker, defender) {
@@ -433,102 +595,103 @@ export function attackUnit(state, attacker, defender) {
     return { ok: false, reason: '유효하지 않은 전투입니다' };
   }
 
-  // Check attacker is in range of defender
   const atkRange = getAttackRange(state, attacker);
   const inRange = atkRange.some(t => t.x === defender.x && t.y === defender.y);
   if (!inRange) {
     return { ok: false, reason: '공격 범위 밖입니다' };
   }
 
-  const advantage = getFactionAdvantage(attacker, defender);
-
-  // Neutral > center speed advantage: if defender is neutral attacking center,
-  // but we reverse — neutral attacks first if COUNTER, so we handle in counter logic below.
-  // For the primary attack flow, attacker just attacks normally.
-
-  const effectiveAtk = attacker.atk + advantage.atkBonus;
-  const effectiveDef = defender.def + advantage.defBonus;
-
-  let damage = calculateDamage(effectiveAtk, effectiveDef);
-  const critical = isCritical();
-  if (critical) damage = Math.floor(damage * 1.5);
-
-  // Check if neutral > center speed advantage means defender counters first
   const defAdvantage = getFactionAdvantage(defender, attacker);
   const defenderCountersFirst = defAdvantage.speedAdvantage;
 
   let counterDamage = 0;
   let defenderDied = false;
   let attackerDied = false;
+  let evaded = false;
+  let penetrated = false;
+  let counterEvaded = false;
 
-  if (defenderCountersFirst) {
-    // Defender (neutral) attacks first as counter
-    if (isInRange(defender, attacker.x, attacker.y)) {
-      const cEffAtk = defender.atk + defAdvantage.atkBonus;
-      const cEffDef = attacker.def + defAdvantage.defBonus;
-      counterDamage = Math.floor(calculateDamage(cEffAtk, cEffDef) * 0.7);
-      counterDamage = Math.max(1, counterDamage);
-
+  // Speed advantage: defender counters first
+  if (defenderCountersFirst && isInRange(defender, attacker.x, attacker.y)) {
+    const cResult = calcCombatResult(state, defender, attacker, true);
+    if (cResult.evaded) {
+      state.log.push(`${attacker.name} 회피! ${defender.name}의 선제 반격을 피했다`);
+    } else {
+      counterDamage = cResult.damage;
       attacker.hp -= counterDamage;
       if (attacker.hp <= 0) {
         attacker.hp = 0;
         attackerDied = true;
         state.log.push(`${defender.name}의 선제 반격! ${attacker.name}에게 ${counterDamage} 데미지 → 전사!`);
         attacker.acted = true;
-        return {
-          ok: true,
-          damage: 0,
-          critical: false,
-          counterDamage,
-          defenderDied: false,
-          attackerDied: true,
-        };
-      } else {
-        state.log.push(`${defender.name}의 선제 반격! ${attacker.name}에게 ${counterDamage} 데미지`);
+        return { ok: true, damage: 0, critical: false, counterDamage, defenderDied: false, attackerDied: true, evaded: false, penetrated: false };
       }
+      state.log.push(`${defender.name}의 선제 반격! ${attacker.name}에게 ${counterDamage} 데미지`);
     }
   }
 
   // Primary attack
-  defender.hp -= damage;
-  if (defender.hp <= 0) {
-    defender.hp = 0;
-    defenderDied = true;
-  }
+  const atkResult = calcCombatResult(state, attacker, defender);
+  evaded = atkResult.evaded;
+  penetrated = atkResult.penetrated;
+  let damage = 0;
+  let critical = false;
 
-  state.log.push(
-    `${attacker.name} → ${defender.name}: ${damage} 데미지${critical ? ' (크리티컬!)' : ''}${defenderDied ? ' → 전사!' : ''}`
-  );
-
-  // Counter-attack (normal case, not speed-advantage)
-  if (!defenderCountersFirst && !defenderDied && isInRange(defender, attacker.x, attacker.y)) {
-    const cAdv = getFactionAdvantage(defender, attacker);
-    const cEffAtk = defender.atk + cAdv.atkBonus;
-    const cEffDef = attacker.def + cAdv.defBonus;
-    counterDamage = Math.floor(calculateDamage(cEffAtk, cEffDef) * 0.7);
-    counterDamage = Math.max(1, counterDamage);
-
-    attacker.hp -= counterDamage;
-    if (attacker.hp <= 0) {
-      attacker.hp = 0;
-      attackerDied = true;
+  if (evaded) {
+    state.log.push(`${defender.name} 회피! ${attacker.name}의 공격을 피했다`);
+  } else {
+    damage = atkResult.damage;
+    critical = atkResult.critical;
+    defender.hp -= damage;
+    if (defender.hp <= 0) {
+      defender.hp = 0;
+      defenderDied = true;
     }
 
-    state.log.push(
-      `${defender.name} 반격! ${attacker.name}에게 ${counterDamage} 데미지${attackerDied ? ' → 전사!' : ''}`
-    );
+    const tags = [];
+    if (penetrated) tags.push('관통!');
+    if (critical) tags.push('크리티컬!');
+    if (defenderDied) tags.push('전사!');
+    const tagStr = tags.length > 0 ? ` (${tags.join(' ')})` : '';
+    state.log.push(`${attacker.name} → ${defender.name}: ${damage} 데미지${tagStr}`);
+
+    // Relic: lifesteal
+    if (attacker.relic?.condition === 'on_attack' && attacker.relic.effect.lifesteal) {
+      const heal = Math.floor(damage * attacker.relic.effect.lifesteal);
+      if (heal > 0) {
+        attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+        state.log.push(`  흡혈 +${heal} HP`);
+      }
+    }
+
+    // Relic: kill heal
+    if (defenderDied && attacker.relic?.condition === 'on_kill' && attacker.relic.effect.killHeal) {
+      const heal = Math.floor(attacker.maxHp * attacker.relic.effect.killHeal);
+      attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+      state.log.push(`  처치 회복 +${heal} HP`);
+    }
+  }
+
+  // Counter-attack (normal, not speed-advantage)
+  if (!defenderCountersFirst && !defenderDied && !evaded && isInRange(defender, attacker.x, attacker.y)) {
+    const cResult = calcCombatResult(state, defender, attacker, true);
+    counterEvaded = cResult.evaded;
+    if (counterEvaded) {
+      state.log.push(`${attacker.name} 회피! ${defender.name}의 반격을 피했다`);
+    } else {
+      counterDamage = cResult.damage;
+      attacker.hp -= counterDamage;
+      if (attacker.hp <= 0) {
+        attacker.hp = 0;
+        attackerDied = true;
+      }
+      state.log.push(`${defender.name} 반격! ${attacker.name}에게 ${counterDamage} 데미지${attackerDied ? ' → 전사!' : ''}`);
+    }
   }
 
   attacker.acted = true;
 
-  return {
-    ok: true,
-    damage,
-    critical,
-    counterDamage,
-    defenderDied,
-    attackerDied,
-  };
+  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated };
 }
 
 // ── Sense Skills (촉/혈 Special Abilities) ──────────────────────────────
