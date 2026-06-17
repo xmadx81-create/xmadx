@@ -4698,6 +4698,93 @@ body {
 .dd-equip-btn:hover {
   background: rgba(100, 181, 246, 0.25);
 }
+.dd-relic-btn {
+  background: rgba(148, 103, 189, 0.15);
+  border: 1px solid rgba(148, 103, 189, 0.3);
+  color: #b388ff;
+  font-size: 0.6rem;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.dd-relic-btn:hover { background: rgba(148, 103, 189, 0.25); }
+.dd-relic-desc {
+  font-size: 0.65rem;
+  color: #b388ff;
+  padding: 3px 0 0 24px;
+  font-style: italic;
+}
+
+/* ── Buff Duration Tags ── */
+.buff-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+.buff-tag {
+  font-size: 0.6rem;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+.buff-tag small {
+  font-weight: normal;
+  opacity: 0.7;
+}
+.buff-pos {
+  background: rgba(75, 155, 110, 0.2);
+  color: #4b9b6e;
+}
+.buff-neg {
+  background: rgba(233, 57, 70, 0.2);
+  color: #ff6b6b;
+}
+
+/* ── Terrain Tooltip ── */
+.terrain-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 0.6rem;
+  color: #eee;
+  white-space: nowrap;
+  z-index: 100;
+  pointer-events: none;
+  animation: tooltip-fade 0.2s ease-out;
+}
+@keyframes tooltip-fade {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.terrain-tooltip strong {
+  color: #ffd700;
+}
+
+/* ── Result Actions ── */
+.result-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+}
+.result-actions .btn-secondary {
+  background: rgba(100, 181, 246, 0.15);
+  border: 1px solid rgba(100, 181, 246, 0.3);
+  color: #64b5f6;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.result-actions .btn-secondary:hover {
+  background: rgba(100, 181, 246, 0.25);
+}
 
 /* ── Accessibility: Reduce Motion ── */
 @media (prefers-reduced-motion: reduce) {
