@@ -19,7 +19,7 @@
 
     <nav class="hub-nav">
       <button class="nav-btn active" data-tab="gallery">카드 도감</button>
-      <button class="nav-btn" data-tab="play">게임 시작</button>
+      <button class="nav-btn" data-tab="play">전투</button>
       <button class="nav-btn" data-tab="rules">규칙서</button>
       <button class="nav-btn" data-tab="stats">전적</button>
     </nav>
@@ -36,98 +36,67 @@
         <div id="card-gallery" class="card-grid"></div>
       </section>
 
-      <!-- 게임 -->
+      <!-- 전투 -->
       <section id="tab-play" class="tab-panel">
-        <div id="game-board">
-          <!-- 난이도 선택 (게임 시작 전) -->
-          <div id="difficulty-select" class="difficulty-panel">
-            <h3>난이도 선택</h3>
-            <div class="diff-options">
-              <button class="diff-btn" data-diff="easy">
-                <span class="diff-label">쉬움</span>
-                <span class="diff-desc">BP 18 · REP 70 · SUS +1/턴</span>
-              </button>
-              <button class="diff-btn active" data-diff="normal">
-                <span class="diff-label">보통</span>
-                <span class="diff-desc">BP 12 · REP 50 · SUS +2/턴</span>
-              </button>
-              <button class="diff-btn" data-diff="hard">
-                <span class="diff-label">어려움</span>
-                <span class="diff-desc">BP 8 · REP 35 · SUS 10 · +3/턴</span>
-              </button>
+        <!-- 스테이지 선택 -->
+        <div id="stage-select" class="stage-select">
+          <h2>스테이지 선택</h2>
+          <div id="stage-list" class="stage-list"></div>
+        </div>
+
+        <!-- 유닛 편성 -->
+        <div id="deploy-screen" class="deploy-panel" style="display:none">
+          <h3 id="deploy-stage-name">유닛 편성</h3>
+          <p class="deploy-hint">출격할 캐릭터를 선택하세요 (<span id="deploy-count">0</span>/<span id="deploy-max">4</span>)</p>
+          <div id="deploy-roster" class="deploy-roster"></div>
+          <div class="deploy-actions">
+            <button id="btn-deploy-back" class="btn-secondary">뒤로</button>
+            <button id="btn-deploy-start" class="btn-primary" disabled>출격!</button>
+          </div>
+        </div>
+
+        <!-- 전투 화면 -->
+        <div id="battle-screen" class="battle-screen" style="display:none">
+          <!-- 전투 HUD -->
+          <div class="battle-hud">
+            <span class="hud-stage" id="hud-stage">센터 로비</span>
+            <span class="hud-turn" id="hud-turn">턴 1</span>
+            <span class="phase-indicator" id="phase-indicator">아군 턴</span>
+          </div>
+
+          <!-- 전투 맵 -->
+          <div id="battle-grid" class="battle-grid"></div>
+
+          <!-- 액션 메뉴 -->
+          <div id="action-menu" class="action-menu" style="display:none">
+            <button class="action-btn move-btn" id="btn-move">이동</button>
+            <button class="action-btn attack-btn" id="btn-attack">공격</button>
+            <button class="action-btn skill-btn" id="btn-skill">스킬</button>
+            <button class="action-btn wait-btn" id="btn-wait">대기</button>
+          </div>
+
+          <!-- 유닛 정보 패널 -->
+          <div id="unit-detail" class="unit-detail" style="display:none">
+            <div class="unit-detail-header">
+              <div class="unit-detail-portrait" id="detail-portrait"></div>
+              <div class="unit-detail-info">
+                <div class="unit-detail-name" id="detail-name"></div>
+                <div class="unit-detail-title" id="detail-title"></div>
+                <div class="unit-hp-bar detail-hp">
+                  <div class="unit-hp-fill" id="detail-hp-fill"></div>
+                </div>
+                <div class="unit-hp-text" id="detail-hp-text"></div>
+              </div>
             </div>
+            <div class="unit-detail-stats" id="detail-stats"></div>
+            <div class="unit-detail-sense" id="detail-sense"></div>
           </div>
 
-          <!-- 루트 맵 -->
-          <div id="route-map" class="route-map-panel" style="display:none">
-            <h3>경로 선택 <span class="route-floor" id="route-floor"></span></h3>
-            <div id="route-map-grid" class="route-map-grid"></div>
-          </div>
+          <!-- 턴 종료 -->
+          <button id="btn-end-turn" class="turn-end-btn">턴 종료</button>
 
-          <div class="resource-bar">
-            <span class="res" id="res-bp">BP: 10</span>
-            <span class="res" id="res-rep">REP: 50</span>
-            <span class="res" id="res-sus">SUS: 0</span>
-            <span class="res" id="res-turn">턴: 1</span>
-            <span class="res" id="res-phase">새벽</span>
-            <span class="res" id="res-requests">의뢰: 0/5</span>
-          </div>
-
-          <div id="request-zone" class="zone">
-            <h3>활성 의뢰</h3>
-            <div id="active-request"></div>
-          </div>
-
-          <div id="equip-zone" class="zone">
-            <h3>설치된 장비 <span id="equip-count"></span></h3>
-            <div id="installed-equip" class="card-row"></div>
-          </div>
-
-          <div id="recruit-zone" class="zone">
-            <h3>인물 모집 (오전에 BP로 영입→덱 추가)</h3>
-            <div id="recruit-cards" class="card-row"></div>
-          </div>
-
-          <div id="shop-zone" class="zone">
-            <h3>장비 상점 (오전에 구매 가능)</h3>
-            <div id="shop-cards" class="card-row"></div>
-          </div>
-
-          <div id="dilemma-panel" style="display:none"></div>
-
-          <div id="night-actions" class="zone" style="display:none">
-            <h3>야간 행동 선택</h3>
-            <div class="night-btns">
-              <button id="btn-investigate" class="btn-night">조사 (SUS 감소)</button>
-              <button id="btn-promote" class="btn-night">홍보 (REP 증가)</button>
-            </div>
-          </div>
-
-          <div id="field-zone" class="zone">
-            <h3>필드</h3>
-            <div id="field-cards" class="card-row"></div>
-          </div>
-
-          <div id="blood-zone" class="zone">
-            <h3>혈액 풀</h3>
-            <div id="blood-cards" class="card-row"></div>
-          </div>
-
-          <div id="hand-zone" class="zone">
-            <h3>패</h3>
-            <div id="hand-cards" class="card-row"></div>
-          </div>
-
-          <div class="game-controls">
-            <button id="btn-start-game" class="btn-primary">게임 시작</button>
-            <button id="btn-load-game" class="btn-secondary" style="display:none">이어하기</button>
-            <button id="btn-next-phase" class="btn-primary" disabled>다음</button>
-            <button id="btn-fulfill" class="btn-accent" disabled>의뢰 이행</button>
-            <button id="btn-auto-play" class="btn-secondary">자동 플레이</button>
-            <button id="btn-sound" class="btn-secondary">BGM ON</button>
-          </div>
-
-          <div id="game-log" class="log-box"></div>
+          <!-- 전투 로그 -->
+          <div id="battle-log" class="battle-log"></div>
         </div>
       </section>
 
@@ -136,72 +105,67 @@
         <div class="rules-content">
           <h2>게임 규칙</h2>
           <h3>개요</h3>
-          <p>당신은 백십자재단 산하 <strong>혈연센터</strong>의 관리자입니다. 표면적으로는 원활한 헌혈 사업을 운영하지만, 이면에서는 <strong>카르테인 가문</strong>의 비밀 의뢰를 수행합니다. 15층의 루트를 돌파하여 최종 의뢰를 완수하세요.</p>
+          <p>당신은 백십자재단 산하 <strong>혈연센터</strong>의 관리자입니다. 카르테인 가문의 뱀파이어들이 센터에 침투하고 있습니다. 팀을 이끌고 격자 맵에서 전투하여 센터를 지키세요.</p>
 
-          <h3>자원</h3>
-          <ul>
-            <li><strong>BP (혈점)</strong> — 혈액량. 카드 배치·장비·의뢰에 사용</li>
-            <li><strong>REP (평판)</strong> — 센터 평판. 0이면 폐쇄 (패배)</li>
-            <li><strong>SUS (의심도)</strong> — 의심 수준. 100이면 적발 (패배)</li>
-          </ul>
-
-          <h3>루트 맵</h3>
-          <p>게임은 <strong>15층 분기형 맵</strong>을 탐험하며 진행합니다. 각 층에서 경로를 선택하세요.</p>
-          <ul>
-            <li>🏥 <strong>센터 운영</strong> — 일반 턴 (드로우→배치→수집→야간)</li>
-            <li>🌙 <strong>밤의 선택</strong> — 딜레마 이벤트, 선택에 따라 자원 변동</li>
-            <li>🛒 <strong>암시장</strong> — 특별 모집과 장비 구매</li>
-            <li>☕ <strong>휴식</strong> — REP 회복 + SUS 감소</li>
-            <li>⚠️ <strong>긴급 의뢰</strong> — 어려운 의뢰, 큰 보상</li>
-            <li>❓ <strong>랜덤 이벤트</strong> — 행운에 맡겨라</li>
-            <li>👑 <strong>최종 의뢰</strong> — 15층 보스, 클리어하면 승리!</li>
-          </ul>
-
-          <h3>턴 구조</h3>
+          <h3>전투 진행</h3>
           <ol>
-            <li><strong>새벽</strong> — 카드 5장 드로우</li>
-            <li><strong>오전</strong> — 인물 배치 + 장비 구매 + 촉/혈 스킬 발동</li>
-            <li><strong>오후</strong> — 헌혈 수집 (능력 발동)</li>
-            <li><strong>야간</strong> — 의뢰 이행 / 딜레마 / 이벤트</li>
-            <li><strong>정산</strong> — 자원 계산, 핸드 정리 (최대 3장)</li>
+            <li><strong>아군 턴</strong> — 모든 아군 유닛을 이동/공격/스킬 사용</li>
+            <li><strong>적 턴</strong> — 적 AI가 자동으로 이동·공격</li>
+            <li>반복하여 승리 조건 달성</li>
           </ol>
 
-          <h3>촉(觸) vs 혈(血) — 감각 스킬</h3>
-          <p>인간은 <strong class="sense-blue">촉(觸)</strong>을, 뱀파이어는 <strong class="sense-red">혈(血)</strong> 스킬을 사용합니다. 오전에 패에서 촉/혈 버튼을 눌러 발동하세요 (턴당 1회).</p>
+          <h3>유닛 스탯</h3>
           <ul>
-            <li>👁 <strong>예감</strong> → 🌬 혈향 차단 (추적 무력화)</li>
-            <li>⚡ <strong>직감</strong> → 👊 혈압 회피 (지배 저항)</li>
-            <li>🔗 <strong>감응</strong> → 🫦 혈유 저항 (매혹 차단, 인간 수 비례 버프)</li>
-            <li>🩸 <strong>혈각</strong> → 🌑 혈식 무효 (각성 차단)</li>
-            <li>🔥 <strong>투지</strong> → 💀 혈기 무시 (위압 관통)</li>
-            <li>💛 <strong>공감</strong> → ⛓ 혈맹 균열 (맹약 파괴)</li>
+            <li><strong>HP</strong> — 체력. 0이 되면 전사</li>
+            <li><strong>ATK</strong> — 공격력. 높을수록 큰 데미지</li>
+            <li><strong>DEF</strong> — 방어력. 받는 데미지 감소</li>
+            <li><strong>MOV</strong> — 이동력. 한 턴에 이동 가능 칸 수</li>
+            <li><strong>RNG</strong> — 사거리. 1=근접, 2=원거리</li>
           </ul>
 
-          <h3>승리 조건</h3>
-          <p>15층 <strong>최종 의뢰</strong>를 클리어하면 승리!</p>
-
-          <h3>패배 조건</h3>
+          <h3>전투 시스템</h3>
           <ul>
-            <li>REP 0 이하 → 센터 폐쇄</li>
-            <li>SUS 100 이상 → 뱀파이어 활동 적발</li>
+            <li>데미지 = ATK - DEF + 랜덤(0~3)</li>
+            <li>15% 확률로 <strong>크리티컬</strong> (1.5배 데미지)</li>
+            <li>공격받은 유닛이 사거리 안이면 <strong>반격</strong> (70% 위력)</li>
+          </ul>
+
+          <h3>팩션 상성</h3>
+          <ul>
+            <li>🏥 혈연센터 → 카르테인 상대 시 DEF +2</li>
+            <li>🧛 카르테인 → 비소속 상대 시 ATK +3</li>
+            <li>🤝 비소속 → 혈연센터 상대 시 선제 반격</li>
+          </ul>
+
+          <h3>촉(觸) vs 혈(血) 스킬</h3>
+          <p>각 캐릭터는 고유 특수 스킬을 보유합니다. 사용 후 <strong>3턴 쿨다운</strong>.</p>
+          <ul>
+            <li>👁 <strong>예감</strong> — 아군 DEF 버프</li>
+            <li>⚡ <strong>직감</strong> — 적 직접 데미지</li>
+            <li>🔗 <strong>감응</strong> — 아군 회복</li>
+            <li>🩸 <strong>혈각</strong> — 적 ATK 디버프</li>
+            <li>🔥 <strong>투지</strong> — 자신 ATK/DEF 버프</li>
+            <li>💛 <strong>공감</strong> — 광역 회복</li>
+          </ul>
+
+          <h3>승리 / 패배</h3>
+          <ul>
+            <li>승리: 모든 적 제압 (또는 생존 조건 달성)</li>
+            <li>패배: 모든 아군 전사</li>
           </ul>
         </div>
       </section>
     </main>
 
-      <!-- 전적 -->
-      <section id="tab-stats" class="tab-panel">
-        <div class="stats-content">
-          <h2>전적 기록</h2>
-          <div id="stats-summary"></div>
-          <h3>언락 트리</h3>
-          <div id="unlock-tree" class="unlock-tree"></div>
-          <h3>업적</h3>
-          <div id="achievements-grid" class="achievements-grid"></div>
-          <h3>최근 기록</h3>
-          <div id="stats-history"></div>
-        </div>
-      </section>
+    <!-- 전적 -->
+    <section id="tab-stats" class="tab-panel">
+      <div class="stats-content">
+        <h2>전적 기록</h2>
+        <div id="stats-summary"></div>
+        <h3>최근 기록</h3>
+        <div id="stats-history"></div>
+      </div>
+    </section>
 
     <!-- 카드 상세 팝업 -->
     <div id="card-popup" class="card-popup-overlay" style="display:none">
@@ -210,6 +174,34 @@
         <div class="popup-portrait" id="popup-portrait"></div>
         <div class="popup-details" id="popup-details"></div>
       </div>
+    </div>
+
+    <!-- 페이즈 배너 -->
+    <div id="phase-banner" class="phase-banner" style="display:none">
+      <span id="phase-banner-text"></span>
+    </div>
+
+    <!-- 스토리 패널 -->
+    <div id="story-panel" class="story-panel" style="display:none">
+      <div class="story-portrait" id="story-portrait"></div>
+      <div class="story-dialogue">
+        <p id="story-text"></p>
+        <button id="story-next" class="btn-primary">다음</button>
+      </div>
+    </div>
+
+    <!-- 전투 결과 -->
+    <div id="battle-result" class="battle-result-overlay" style="display:none">
+      <div class="battle-result-box" id="battle-result-box">
+        <h2 id="result-title"></h2>
+        <p id="result-text"></p>
+        <button id="btn-result-ok" class="btn-primary">확인</button>
+      </div>
+    </div>
+
+    <!-- 스킬 오버레이 -->
+    <div id="skill-overlay" class="skill-overlay" style="display:none">
+      <span id="skill-overlay-name"></span>
     </div>
 
     <footer class="hub-footer">
