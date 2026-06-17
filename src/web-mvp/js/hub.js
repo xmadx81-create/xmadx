@@ -509,7 +509,14 @@ function updateDeploySynergy() {
 // ── Battle Start ──
 
 function startBattle() {
-  battleState = createBattleState(currentStageId, deploySelected);
+  const centerBuff = getCenterBuff(gameSave);
+  const units = deploySelected.map(id => {
+    const c = CHARACTERS.find(ch => ch.id === id);
+    return c ? cardToUnit(c, 0, 0) : null;
+  }).filter(Boolean);
+  const teamData = units.length >= 2 ? getTeamCP(units) : null;
+  const synergyMult = teamData ? teamData.synergy.teamMult : 1.0;
+  battleState = createBattleState(currentStageId, deploySelected, centerBuff, synergyMult);
   document.getElementById('deploy-screen').style.display = 'none';
   document.getElementById('battle-screen').style.display = '';
   document.getElementById('battle-log').innerHTML = '';
@@ -625,6 +632,14 @@ function showUnitDetail(unit) {
     .map(s => unit.equipment?.[s]?.name)
     .filter(Boolean);
   const relicName = unit.relic?.name || '';
+  const passiveHtml = (unit.passivesApplied && unit.passivesApplied.length)
+    ? `<div class="passive-list">패시브: ${unit.passivesApplied.map(p => `<span class="passive-tag">${p}</span>`).join('')}</div>` : '';
+  const shieldHtml = unit.shield > 0 ? `<div class="equip-list">🛡️ 실드: ${unit.shield}</div>` : '';
+  const invulnHtml = unit.invuln ? `<div class="equip-list" style="color:#ffd700">⭐ 무적 상태</div>` : '';
+  const growthHtml = unit.statXP ? Object.entries(unit.statXP)
+    .filter(([, v]) => v > 0)
+    .map(([k, v]) => `<span class="growth-tag">${k.toUpperCase()} +${v}</span>`).join('') : '';
+
   document.getElementById('detail-stats').innerHTML = `
     <div class="stat-box"><span class="stat-label">ATK</span><span class="stat-val">${unit.atk}</span></div>
     <div class="stat-box"><span class="stat-label">DEF</span><span class="stat-val">${unit.def}</span></div>
@@ -637,6 +652,9 @@ function showUnitDetail(unit) {
     <div class="stat-box cp-box"><span class="stat-label">전투력</span><span class="stat-val cp-val">${cp}</span></div>
     ${equipNames.length ? `<div class="equip-list">장비: ${equipNames.join(' · ')}</div>` : ''}
     ${relicName ? `<div class="equip-list">유물: ${relicName}</div>` : ''}
+    ${passiveHtml}
+    ${shieldHtml}${invulnHtml}
+    ${growthHtml ? `<div class="growth-list">성장: ${growthHtml}</div>` : ''}
   `;
   const sense = unit.senseSkill;
   if (sense) {
@@ -785,6 +803,8 @@ function onSkillBtn() {
     showSkillOverlay(unit.senseSkill.name, SENSE_TYPES[unit.senseSkill.baseType]?.category);
     appendLog(`✦ ${unit.name}의 「${result.skillName}」 발동!`);
     result.effects.forEach(e => appendLog(`  → ${e}`));
+    progressQuest(gameSave, 'skill');
+    saveGame(gameSave);
 
     const vc = checkVictory(battleState);
     if (vc) { handleBattleEnd(vc); return; }
@@ -937,6 +957,8 @@ async function doSkillAttack(attacker, defender) {
   showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
   appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
+  progressQuest(gameSave, 'skill');
+  saveGame(gameSave);
 
   renderBattle();
 
@@ -1021,10 +1043,12 @@ async function doAttack(attacker, defender) {
     });
   }
 
-  // Loot drop
+  // Loot drop → save to inventory
   if (result.loot) {
     showLootDrop(result.loot);
     appendLog(`🎁 드롭: ${result.loot.name}`);
+    gameSave.inventory.push(result.loot);
+    saveGame(gameSave);
   }
 
   renderBattle();
