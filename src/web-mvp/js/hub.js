@@ -381,7 +381,6 @@ function onResolveDilemma(choiceIndex) {
   updateUI();
 }
 window.__resolveDilemma = onResolveDilemma;
-}
 
 function disableNightBtns() {
   document.getElementById('btn-fulfill').disabled = true;
