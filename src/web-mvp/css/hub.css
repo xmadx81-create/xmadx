@@ -1541,6 +1541,100 @@ body {
 .sense-mini.촉 { filter: drop-shadow(0 0 3px rgba(59,130,246,0.5)); }
 .sense-mini.혈 { filter: drop-shadow(0 0 3px rgba(220,38,38,0.5)); }
 
+/* ── Route Map ── */
+.route-map-panel {
+  padding: 0.8rem;
+  margin-bottom: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.route-map-panel h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.route-floor {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.route-map-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.route-floor-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.route-floor-label {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  min-width: 2rem;
+  text-align: center;
+  font-weight: 600;
+}
+.route-nodes {
+  display: flex;
+  gap: 0.4rem;
+  flex: 1;
+  justify-content: center;
+}
+.route-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 10px;
+  border: 2px solid rgba(255,255,255,0.1);
+  background: var(--bg-card);
+  cursor: default;
+  opacity: 0.4;
+  transition: all 0.2s ease;
+  min-width: 4.5rem;
+}
+.route-node .node-icon { font-size: 1.2rem; }
+.route-node .node-label { font-size: 0.6rem; color: var(--text-secondary); font-weight: 600; }
+
+.route-node.visited {
+  opacity: 0.5;
+  border-color: rgba(255,255,255,0.15);
+}
+.route-node.current {
+  opacity: 1;
+  border-color: #f59e0b;
+  background: rgba(245,158,11,0.15);
+  box-shadow: 0 0 12px rgba(245,158,11,0.3);
+}
+.route-node.available {
+  opacity: 1;
+  border-color: #10b981;
+  cursor: pointer;
+  animation: nodeGlow 1.5s ease-in-out infinite;
+}
+.route-node.available:hover {
+  transform: scale(1.08);
+  border-color: #34d399;
+  box-shadow: 0 0 16px rgba(16,185,129,0.4);
+}
+@keyframes nodeGlow {
+  0%, 100% { box-shadow: 0 0 4px rgba(16,185,129,0.2); }
+  50% { box-shadow: 0 0 12px rgba(16,185,129,0.4); }
+}
+
+.route-node.operation { border-left: 3px solid #3b82f6; }
+.route-node.dilemma { border-left: 3px solid #a855f7; }
+.route-node.shop { border-left: 3px solid #f59e0b; }
+.route-node.rest { border-left: 3px solid #10b981; }
+.route-node.elite { border-left: 3px solid #ef4444; }
+.route-node.boss { border-left: 3px solid #dc2626; background: rgba(220,38,38,0.1); }
+.route-node.event { border-left: 3px solid #8b5cf6; }
+
 .sheet-lore {
   margin: 0.5rem 0;
   padding: 0.6rem 0.8rem;

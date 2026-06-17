@@ -6,6 +6,7 @@ import {
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
   calculateComboBonuses, PHASE_NAMES, DIFFICULTIES,
   generateDilemma, resolveDilemma, convertBlood, activateSense,
+  generateRouteMap, selectRouteNode, applyRestNode, applyEventNode, NODE_TYPES,
 } from './engine.js';
 import {
   initAudio, toggleMute, isMuted, startBGM, stopBGM,
@@ -173,6 +174,7 @@ function startGame() {
   deleteSave();
   storyTriggered = new Set();
   gameState = createGameState(selectedDifficulty);
+  gameState.routeMap = generateRouteMap(15);
   refreshRecruitShop(gameState);
   onGameStarted();
 }
@@ -194,8 +196,15 @@ function onGameStarted() {
 
   const diff = DIFFICULTIES[gameState.difficulty || 'normal'];
   appendLog(`=== 게임 시작 (${diff.label}) ===`);
-  appendLog('카르테인 가문의 5개 의뢰를 완수하세요.');
 
+  if (gameState.routeMap) {
+    appendLog('경로를 선택하여 센터를 운영하세요. 15층의 최종 의뢰를 클리어하면 승리!');
+    renderRouteMap();
+    updateUI();
+    return;
+  }
+
+  appendLog('카르테인 가문의 5개 의뢰를 완수하세요.');
   if (gameState.phase === 'dawn' || !gameState.hand.length) {
     gameState.phase = 'dawn';
     gameState.log = [];
@@ -267,13 +276,20 @@ function advancePhase() {
       }
 
       advanceTurn(gameState);
-      gameState.log = [];
-      gameState.phase = 'dawn';
-      drawCards(gameState, 5);
-      gameState.log.forEach(msg => appendLog(msg));
-      gameState.phase = 'morning';
-      appendLog(`── 턴 ${gameState.turn} 오전: 인물 배치 / 장비 구매 / 인물 모집 ──`);
-      checkStoryBeats();
+
+      if (gameState.routeMap && !gameState.routeMap.completed) {
+        appendLog('── 경로 선택으로 돌아갑니다 ──');
+        renderRouteMap();
+        updateUI();
+      } else {
+        gameState.log = [];
+        gameState.phase = 'dawn';
+        drawCards(gameState, 5);
+        gameState.log.forEach(msg => appendLog(msg));
+        gameState.phase = 'morning';
+        appendLog(`── 턴 ${gameState.turn} 오전: 인물 배치 / 장비 구매 / 인물 모집 ──`);
+        checkStoryBeats();
+      }
       updateUI();
       break;
   }
@@ -578,6 +594,129 @@ function onSense(handIndex) {
   updateUI();
 }
 window.__onSense = onSense;
+
+// ── Route Map ──
+
+function renderRouteMap() {
+  if (!gameState?.routeMap) return;
+  const map = gameState.routeMap;
+  const panel = document.getElementById('route-map');
+  const grid = document.getElementById('route-map-grid');
+  document.getElementById('route-floor').textContent = `(${map.currentFloor + 1}/${map.floors.length}층)`;
+
+  const visibleStart = Math.max(0, map.currentFloor - 1);
+  const visibleEnd = Math.min(map.floors.length, map.currentFloor + 5);
+
+  grid.innerHTML = '';
+  for (let f = visibleStart; f < visibleEnd; f++) {
+    const floorDiv = document.createElement('div');
+    floorDiv.className = 'route-floor-row';
+
+    const label = document.createElement('span');
+    label.className = 'route-floor-label';
+    label.textContent = `${f + 1}F`;
+    floorDiv.appendChild(label);
+
+    const nodesDiv = document.createElement('div');
+    nodesDiv.className = 'route-nodes';
+
+    map.floors[f].forEach(node => {
+      const info = NODE_TYPES[node.type];
+      const btn = document.createElement('button');
+      btn.className = `route-node ${node.type}`;
+      if (node.visited) btn.classList.add('visited');
+      if (node.id === map.currentNode) btn.classList.add('current');
+      if (node.available) btn.classList.add('available');
+      btn.innerHTML = `<span class="node-icon">${info.icon}</span><span class="node-label">${info.label}</span>`;
+      btn.title = info.desc;
+      if (node.available) {
+        btn.addEventListener('click', () => onSelectNode(node.id));
+      }
+      nodesDiv.appendChild(btn);
+    });
+
+    floorDiv.appendChild(nodesDiv);
+    grid.appendChild(floorDiv);
+  }
+
+  panel.style.display = '';
+}
+
+function onSelectNode(nodeId) {
+  if (!gameState) return;
+  gameState.log = [];
+  const result = selectRouteNode(gameState, nodeId);
+  gameState.log.forEach(msg => appendLog(msg));
+  if (!result.ok) { appendLog(result.reason); return; }
+
+  const node = result.node;
+  renderRouteMap();
+
+  switch (node.type) {
+    case 'operation':
+    case 'elite':
+      document.getElementById('route-map').style.display = 'none';
+      startTurnFromMap(node.type === 'elite');
+      break;
+    case 'dilemma':
+      document.getElementById('route-map').style.display = 'none';
+      startDilemmaFromMap();
+      break;
+    case 'shop':
+      document.getElementById('route-map').style.display = 'none';
+      startShopFromMap();
+      break;
+    case 'rest':
+      gameState.log = [];
+      const rest = applyRestNode(gameState);
+      gameState.log.forEach(msg => appendLog(msg));
+      sfxCollect();
+      updateUI();
+      renderRouteMap();
+      if (gameState.routeMap.completed) showGameOver('win');
+      break;
+    case 'event':
+      gameState.log = [];
+      applyEventNode(gameState);
+      sfxEvent();
+      gameState.log.forEach(msg => appendLog(msg));
+      updateUI();
+      renderRouteMap();
+      break;
+    case 'boss':
+      document.getElementById('route-map').style.display = 'none';
+      startTurnFromMap(true);
+      break;
+  }
+}
+
+function startTurnFromMap(isElite) {
+  if (isElite) appendLog('── ⚠️ 긴급 의뢰 발생! ──');
+  gameState.phase = 'dawn';
+  gameState.log = [];
+  drawCards(gameState, 5);
+  gameState.log.forEach(msg => appendLog(msg));
+  gameState.phase = 'morning';
+  appendLog(`── 턴 ${gameState.turn} 오전: 인물 배치 / 장비 구매 ──`);
+  checkStoryBeats();
+  updateUI();
+}
+
+function startDilemmaFromMap() {
+  gameState.phase = 'night';
+  gameState.nightActionTaken = false;
+  showDilemma();
+  updateUI();
+}
+
+function startShopFromMap() {
+  gameState.phase = 'morning';
+  refreshRecruitShop(gameState);
+  appendLog('── 🛒 암시장 — 특별 모집과 장비를 확인하세요 ──');
+  updateUI();
+}
+
+window.__selectNode = onSelectNode;
 
 function renderRequest() {
   const el = document.getElementById('active-request');

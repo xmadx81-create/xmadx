@@ -37,6 +37,7 @@ export function createGameState(difficulty = 'normal') {
     sensePreview: null,
     senseSuppress: false,
     usedDilemmas: [],
+    routeMap: null,
     gameOver: false,
     winner: false,
     maxCollect: 0,
@@ -527,6 +528,118 @@ export function checkGameEnd(state) {
 export function advanceTurn(state) {
   state.turn++;
   state.phase = 'dawn';
+}
+
+// ── Route Map System (하책) ──
+
+export const NODE_TYPES = {
+  operation: { label: '센터 운영', icon: '🏥', desc: '일반 턴을 진행합니다' },
+  dilemma:   { label: '밤의 선택', icon: '🌙', desc: '딜레마 이벤트가 발생합니다' },
+  shop:      { label: '암시장',   icon: '🛒', desc: '희귀 장비/인물 구매 가능' },
+  rest:      { label: '휴식',     icon: '☕', desc: 'REP 회복 & SUS 감소' },
+  elite:     { label: '긴급 의뢰', icon: '⚠️', desc: '어려운 의뢰, 큰 보상' },
+  boss:      { label: '최종 의뢰', icon: '👑', desc: '클리어 조건 의뢰' },
+  event:     { label: '랜덤 이벤트', icon: '❓', desc: '무엇이 일어날지 모릅니다' },
+};
+
+export function generateRouteMap(totalFloors = 15) {
+  const floors = [];
+
+  for (let f = 0; f < totalFloors; f++) {
+    const nodesPerFloor = f === 0 ? 1 : f === totalFloors - 1 ? 1 : 2 + Math.floor(Math.random() * 2);
+    const nodes = [];
+
+    for (let n = 0; n < nodesPerFloor; n++) {
+      let type;
+      if (f === 0) type = 'operation';
+      else if (f === totalFloors - 1) type = 'boss';
+      else if (f % 5 === 4) type = 'rest';
+      else if (f % 5 === 3) type = 'elite';
+      else {
+        const roll = Math.random();
+        if (roll < 0.35) type = 'operation';
+        else if (roll < 0.55) type = 'dilemma';
+        else if (roll < 0.70) type = 'shop';
+        else if (roll < 0.85) type = 'event';
+        else type = 'rest';
+      }
+
+      const connections = [];
+      if (f < totalFloors - 1) {
+        const nextFloorSize = f + 1 === totalFloors - 1 ? 1 : 2 + Math.floor(Math.random() * 2);
+        const primary = Math.min(n, nextFloorSize - 1);
+        connections.push(primary);
+        if (primary + 1 < nextFloorSize && Math.random() > 0.4) connections.push(primary + 1);
+        if (primary - 1 >= 0 && Math.random() > 0.6) connections.push(primary - 1);
+      }
+
+      nodes.push({ id: `f${f}-n${n}`, floor: f, index: n, type, connections, visited: false, available: f === 0 });
+    }
+    floors.push(nodes);
+  }
+
+  return { floors, currentFloor: 0, currentNode: null, completed: false };
+}
+
+export function selectRouteNode(state, nodeId) {
+  const map = state.routeMap;
+  if (!map) return { ok: false, reason: '루트 맵이 없습니다' };
+
+  let targetNode = null;
+  for (const floor of map.floors) {
+    for (const node of floor) {
+      if (node.id === nodeId) { targetNode = node; break; }
+    }
+    if (targetNode) break;
+  }
+
+  if (!targetNode) return { ok: false, reason: '노드를 찾을 수 없습니다' };
+  if (!targetNode.available) return { ok: false, reason: '이동할 수 없는 노드입니다' };
+
+  if (map.currentNode) {
+    const prevFloor = map.floors[map.currentFloor];
+    const prevNode = prevFloor.find(n => n.id === map.currentNode);
+    if (prevNode && !prevNode.connections.includes(targetNode.index)) {
+      return { ok: false, reason: '연결되지 않은 노드입니다' };
+    }
+  }
+
+  targetNode.visited = true;
+  map.currentFloor = targetNode.floor;
+  map.currentNode = targetNode.id;
+
+  map.floors.forEach(floor => floor.forEach(n => { n.available = false; }));
+  if (targetNode.floor + 1 < map.floors.length) {
+    targetNode.connections.forEach(nextIdx => {
+      const nextFloor = map.floors[targetNode.floor + 1];
+      if (nextFloor[nextIdx]) nextFloor[nextIdx].available = true;
+    });
+  }
+
+  if (targetNode.type === 'boss') map.completed = true;
+
+  state.log.push(`경로 이동: ${NODE_TYPES[targetNode.type].icon} ${NODE_TYPES[targetNode.type].label} (${targetNode.floor + 1}층)`);
+  return { ok: true, node: targetNode };
+}
+
+export function applyRestNode(state) {
+  const repGain = 5 + Math.floor(Math.random() * 6);
+  const susLoss = 3 + Math.floor(Math.random() * 5);
+  state.resources.rep += repGain;
+  state.resources.sus = Math.max(0, state.resources.sus - susLoss);
+  state.log.push(`휴식: REP +${repGain}, SUS -${susLoss}`);
+  return { repGain, susLoss };
+}
+
+export function applyEventNode(state) {
+  const event = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+  for (const [key, val] of Object.entries(event.effect)) {
+    state.resources[key] = (state.resources[key] || 0) + val;
+  }
+  state.resources.rep = Math.max(0, state.resources.rep);
+  state.resources.sus = Math.max(0, state.resources.sus);
+  state.log.push(`이벤트: ${event.name} — ${event.description}`);
+  return event;
 }
 
 export function runFullTurn(state) {

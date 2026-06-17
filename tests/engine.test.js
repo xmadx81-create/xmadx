@@ -6,6 +6,7 @@ import {
   recruitCharacter, refreshRecruitShop, nightInvestigate, nightPromote,
   calculateComboBonuses, DIFFICULTIES, generateDilemma, resolveDilemma, convertBlood,
   activateSense, calculateSensePassives,
+  generateRouteMap, selectRouteNode, applyRestNode, applyEventNode, NODE_TYPES,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, createBloodCard, STARTER_REQUESTS, generateRandomRequest, COMBO_BONUSES, DILEMMA_EVENTS, SENSE_TYPES } from '../src/web-mvp/js/cards.js';
 
@@ -637,6 +638,81 @@ describe('촉/혈 sense system', () => {
     const repBefore = state.resources.rep;
     activateSense(state, 0);
     expect(state.resources.rep).toBeGreaterThan(repBefore);
+  });
+});
+
+describe('route map system', () => {
+  it('15층 루트 맵을 생성한다', () => {
+    const map = generateRouteMap(15);
+    expect(map.floors.length).toBe(15);
+    expect(map.currentFloor).toBe(0);
+    expect(map.completed).toBe(false);
+  });
+
+  it('첫 층은 노드 1개, 마지막 층은 보스 1개', () => {
+    const map = generateRouteMap(15);
+    expect(map.floors[0].length).toBe(1);
+    expect(map.floors[0][0].type).toBe('operation');
+    expect(map.floors[14].length).toBe(1);
+    expect(map.floors[14][0].type).toBe('boss');
+  });
+
+  it('첫 노드만 available이다', () => {
+    const map = generateRouteMap(15);
+    expect(map.floors[0][0].available).toBe(true);
+    map.floors.slice(1).forEach(floor => {
+      floor.forEach(node => expect(node.available).toBe(false));
+    });
+  });
+
+  it('노드 선택 후 다음 층 노드가 available 된다', () => {
+    const state = createGameState();
+    state.routeMap = generateRouteMap(15);
+    const firstNode = state.routeMap.floors[0][0];
+    const result = selectRouteNode(state, firstNode.id);
+    expect(result.ok).toBe(true);
+    expect(firstNode.visited).toBe(true);
+    const hasAvailable = state.routeMap.floors[1].some(n => n.available);
+    expect(hasAvailable).toBe(true);
+  });
+
+  it('available이 아닌 노드는 선택할 수 없다', () => {
+    const state = createGameState();
+    state.routeMap = generateRouteMap(15);
+    const secondFloorNode = state.routeMap.floors[1][0];
+    const result = selectRouteNode(state, secondFloorNode.id);
+    expect(result.ok).toBe(false);
+  });
+
+  it('NODE_TYPES에 7종 노드가 정의되어 있다', () => {
+    expect(Object.keys(NODE_TYPES).length).toBe(7);
+    expect(NODE_TYPES.boss).toBeDefined();
+    expect(NODE_TYPES.rest).toBeDefined();
+  });
+
+  it('휴식 노드는 REP 증가 SUS 감소', () => {
+    const state = createGameState();
+    state.resources.sus = 20;
+    const repBefore = state.resources.rep;
+    const susBefore = state.resources.sus;
+    applyRestNode(state);
+    expect(state.resources.rep).toBeGreaterThan(repBefore);
+    expect(state.resources.sus).toBeLessThan(susBefore);
+  });
+
+  it('보스 노드 선택 시 completed가 true가 된다', () => {
+    const state = createGameState();
+    state.routeMap = generateRouteMap(3);
+    // Navigate to boss
+    selectRouteNode(state, state.routeMap.floors[0][0].id);
+    const availableSecond = state.routeMap.floors[1].find(n => n.available);
+    if (availableSecond) selectRouteNode(state, availableSecond.id);
+    const boss = state.routeMap.floors[2].find(n => n.available);
+    if (boss) {
+      const result = selectRouteNode(state, boss.id);
+      expect(result.ok).toBe(true);
+      expect(state.routeMap.completed).toBe(true);
+    }
   });
 });
 
