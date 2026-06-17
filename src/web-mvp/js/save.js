@@ -5,6 +5,7 @@ const DEFAULT_SAVE = {
   centerXP: 0,
   cards: {},
   inventory: [],
+  stageClears: {},
   quests: { daily: [], weekly: [], monthly: null, lastDailyReset: null, lastWeeklyReset: null, attendance: 0, lastLogin: null },
   stats: { wins: 0, losses: 0, totalBattles: 0, totalKills: 0 },
 };
@@ -13,7 +14,10 @@ export function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return { ...DEFAULT_SAVE, cards: {}, quests: { ...DEFAULT_SAVE.quests }, stats: { ...DEFAULT_SAVE.stats } };
-    return JSON.parse(raw);
+    const save = JSON.parse(raw);
+    if (!save.stageClears) save.stageClears = {};
+    if (!save.inventory) save.inventory = [];
+    return save;
   } catch { return { ...DEFAULT_SAVE }; }
 }
 
@@ -152,4 +156,32 @@ export function getQuestSummary(save) {
   const weekly = save.quests.weekly || [];
   const monthly = save.quests.monthly;
   return { daily, weekly, monthly, attendance: save.quests.attendance };
+}
+
+export function saveCharProgress(save, battleUnits) {
+  if (!battleUnits) return;
+  battleUnits.forEach(u => {
+    if (u.team !== 'player') return;
+    const charId = u.charId || u.id;
+    if (!save.cards[charId]) save.cards[charId] = { level: 1, xp: 0, count: 1 };
+    const card = save.cards[charId];
+    if (u.level > card.level) {
+      card.level = u.level;
+      card.xp = u.xp;
+    } else if (u.level === card.level && u.xp > card.xp) {
+      card.xp = u.xp;
+    }
+  });
+}
+
+export function recordStageClear(save, stageId, turnCount) {
+  if (!save.stageClears) save.stageClears = {};
+  const prev = save.stageClears[stageId];
+  const stars = turnCount <= 5 ? 3 : turnCount <= 8 ? 2 : 1;
+  if (!prev || stars > prev.stars) {
+    save.stageClears[stageId] = { stars, bestTurns: turnCount, clears: (prev?.clears || 0) + 1 };
+  } else {
+    save.stageClears[stageId].clears++;
+    if (turnCount < prev.bestTurns) save.stageClears[stageId].bestTurns = turnCount;
+  }
 }

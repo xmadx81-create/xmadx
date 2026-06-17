@@ -1748,6 +1748,32 @@ export function runEnemyPhase(state) {
 
     if (!priorityTarget) continue;
 
+    // 🔴 사마의: 보스 분노 — HP 30% 이하 시 ATK 폭증 (1회)
+    if (enemy.rarity === 'legendary' && !enemy._enraged && enemy.hp <= enemy.maxHp * 0.3) {
+      enemy._enraged = true;
+      const rage = Math.floor(enemy.atk * 0.4);
+      enemy.atk += rage;
+      enemy.buffs.push({ stat: 'atk', val: rage, turns: 99 });
+      state.log.push(`🔥 ${enemy.name}의 분노! ATK +${rage}!`);
+      actions.push({ type: 'enrage', unit: enemy.uid, atkBoost: rage });
+    }
+
+    // 🔴 사마의: 궁극기 AI (보스 우선)
+    if (enemy.rarity === 'legendary' && enemy.ultimates) {
+      const usableUlt = enemy.ultimates.findIndex(ult =>
+        enemy.level >= ult.unlockLevel && ult.currentCooldown === 0 && enemy.mp >= ult.mpCost
+      );
+      if (usableUlt >= 0) {
+        const ultResult = executeUltimate(state, enemy, usableUlt);
+        if (ultResult.ok) {
+          actions.push({ type: 'ultimate', unit: enemy.uid, name: ultResult.name, effects: ultResult.effects });
+          const vc = checkVictory(state);
+          if (vc) return actions;
+          continue;
+        }
+      }
+    }
+
     // 🔴 사마의: 스킬 사용 AI (MP 체크 포함)
     if (enemy.senseSkill && enemy.senseSkill.cooldown === 0 &&
         enemy.mp >= (enemy.senseSkill.mpCost || 0) &&
