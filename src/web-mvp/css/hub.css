@@ -1541,4 +1541,26 @@ body {
 .sense-mini.촉 { filter: drop-shadow(0 0 3px rgba(59,130,246,0.5)); }
 .sense-mini.혈 { filter: drop-shadow(0 0 3px rgba(220,38,38,0.5)); }
 
+.sheet-lore {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  background: rgba(255,255,255,0.04);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent-secondary, #a78bfa);
+}
+.lore-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-secondary, #a78bfa);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.3rem;
+}
+.sheet-lore p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
 .vcard { position: relative; }

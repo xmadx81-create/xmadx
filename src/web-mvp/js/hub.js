@@ -96,6 +96,7 @@ function showCardPopup(cardId) {
       </div>
       <p class="sense-flavor">"${card.sense.flavor}"</p>
     </div>` : ''}
+    ${card.lore ? `<div class="sheet-lore"><div class="lore-label">서사</div><p>${card.lore}</p></div>` : ''}
     <p class="popup-flavor">"${card.flavor}"</p>
   `;
   overlay.style.display = 'flex';

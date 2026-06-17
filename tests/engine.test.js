@@ -641,8 +641,8 @@ describe('촉/혈 sense system', () => {
 });
 
 describe('expanded characters', () => {
-  it('20명의 캐릭터가 정의되어 있다', () => {
-    expect(CHARACTERS.length).toBe(20);
+  it('50명의 캐릭터가 정의되어 있다', () => {
+    expect(CHARACTERS.length).toBe(50);
   });
 
   it('모든 팩션에 캐릭터가 있다', () => {
