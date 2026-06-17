@@ -125,15 +125,24 @@ function initTabs() {
 
 function renderStageSelect() {
   const list = document.getElementById('stage-list');
-  list.innerHTML = STAGES.map((s, i) => `
-    <div class="stage-card" data-stage="${s.id}">
+  list.innerHTML = STAGES.map((s, i) => {
+    const enemyCount = s.enemyUnits.length;
+    const maxDeploy = s.playerSpawns.length;
+    const difficulty = Math.min(5, Math.ceil((s.enemyLevel || 1) / 2));
+    const stars = '★'.repeat(difficulty) + '☆'.repeat(5 - difficulty);
+    return `<div class="stage-card" data-stage="${s.id}">
       <div class="stage-num">${i + 1}</div>
       <div class="stage-info">
-        <div class="stage-name">${s.name} <span style="color:#e94560;font-size:0.7rem">Lv.${s.enemyLevel || 1}</span></div>
+        <div class="stage-name">${s.name} <span class="stage-lv">Lv.${s.enemyLevel || 1}</span></div>
         <div class="stage-desc">${s.description}</div>
+        <div class="stage-meta">
+          <span class="stage-stars">${stars}</span>
+          <span class="stage-enemy-count">적 ${enemyCount}명</span>
+          <span class="stage-deploy-count">출전 ${maxDeploy}명</span>
+        </div>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   list.querySelectorAll('.stage-card').forEach(el => {
     el.addEventListener('click', () => openDeploy(el.dataset.stage));
   });
@@ -159,15 +168,29 @@ function openDeploy(stageId) {
   document.getElementById('deploy-count').textContent = '0';
 
   renderMapPreview(stage);
+  renderEnemyIntel(stage);
   renderDeployRoster('all');
   renderDeployBench(maxUnits);
+  renderRoleBalance([]);
   showDeployDetail(null);
+
+  const centerBuff = getCenterBuff(gameSave);
+  document.getElementById('deploy-center-buff').innerHTML = `<span class="center-buff-label">센터 Lv.${gameSave.centerLevel}</span> DEF+${centerBuff.defBuff} ATK+${centerBuff.atkBuff} HP+${centerBuff.hpBuff}`;
 
   document.querySelectorAll('.roster-filter').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.roster-filter').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       renderDeployRoster(btn.dataset.rf);
+    });
+  });
+
+  document.querySelectorAll('.roster-sort').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.roster-sort').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      deploySort = btn.dataset.sort;
+      renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
     });
   });
 
@@ -183,22 +206,113 @@ function renderMapPreview(stage) {
   const map = stage.mapData;
   const rows = map.length;
   const cols = map[0].length;
-  const tileEmoji = { wall:'⬛', floor:'', desk:'📦', entrance:'🚪', blood_storage:'🩸', forest:'🌲', mountain:'⛰️', swamp:'🌿', ice:'❄️', graveyard:'💀', hotspring:'♨️', dungeon:'🕯️', bridge:'🌉', valley:'🏔️', road:'🛤️' };
 
   let html = `<div class="minimap" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">`;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const tile = map[r][c];
-      const isSpawn = stage.playerSpawns.some(s => s.x === c && s.y === r);
+      const spawnIdx = stage.playerSpawns.findIndex(s => s.x === c && s.y === r);
       const isEnemy = stage.enemyUnits.some(e => e.x === c && e.y === r);
-      const cls = isSpawn ? 'mm-spawn' : isEnemy ? 'mm-enemy' : '';
-      html += `<div class="mm-tile mm-${tile} ${cls}">${tileEmoji[tile] || ''}</div>`;
+      const cls = spawnIdx >= 0 ? 'mm-spawn' : isEnemy ? 'mm-enemy' : '';
+      const label = spawnIdx >= 0 ? (spawnIdx + 1) : '';
+      html += `<div class="mm-tile mm-${tile} ${cls}">${label}</div>`;
     }
   }
   html += '</div>';
-  html += `<div class="minimap-legend"><span class="mm-legend-spawn">▪ 아군 배치</span><span class="mm-legend-enemy">▪ 적 위치</span><span>맵 ${cols}×${rows} · 출전 ${stage.playerSpawns.length}명</span></div>`;
+
+  const terrainTypes = [...new Set(map.flat())];
+  const terrainInfo = { forest:'🌲 숲 DEF+1', mountain:'⛰️ 산 DEF+2 이동2', swamp:'🌿 늪 DEF-1 이동2', ice:'❄️ 빙판 EVA+5%', graveyard:'💀 묘지 ATK+2', hotspring:'♨️ 온천 매턴+5HP', bridge:'🌉 다리 좁은길', dungeon:'🕯️ 던전', road:'🛤️ 도로 이동1' };
+  const specialTerrain = terrainTypes.filter(t => terrainInfo[t]);
+
+  html += `<div class="minimap-legend">
+    <span class="mm-legend-spawn">▪ 아군(번호=배치순)</span>
+    <span class="mm-legend-enemy">▪ 적 위치</span>
+    <span>맵 ${cols}×${rows}</span>
+  </div>`;
+  if (specialTerrain.length) {
+    html += `<div class="terrain-hints">${specialTerrain.map(t => `<span class="terrain-hint">${terrainInfo[t]}</span>`).join('')}</div>`;
+  }
   preview.innerHTML = html;
 }
+
+function renderEnemyIntel(stage) {
+  const panel = document.getElementById('deploy-enemy-intel');
+  const eLv = stage.enemyLevel || 1;
+  const enemies = stage.enemyUnits.map(eu => {
+    const c = CHARACTERS.find(ch => ch.id === eu.charId);
+    if (!c) return null;
+    const unit = cardToUnit(c, 0, 0);
+    for (let lv = 1; lv < eLv; lv++) { unit.maxHp += Math.floor(unit.maxHp * 0.05); unit.atk += 2; unit.def += 1; }
+    unit.level = eLv;
+    unit.hp = unit.maxHp;
+    return { ...unit, charData: c };
+  }).filter(Boolean);
+
+  const roleLabel = { tank:'탱커', melee_dps:'근딜', ranged_dps:'원딜', support:'서포터', bruiser:'브루저', battle_support:'전술', evasive_dps:'암살', breaker:'브레이커' };
+
+  panel.innerHTML = `
+    <div class="intel-header">
+      <span class="intel-title">적 정보</span>
+      <span class="intel-count">${enemies.length}명 · Lv.${eLv}</span>
+    </div>
+    <div class="intel-list">${enemies.map(e => `
+      <div class="intel-unit">
+        <div class="intel-portrait"><img src="${portraitSrc(`assets/portraits/${e.id}`)}" onerror="this.style.display='none'" /></div>
+        <div class="intel-info">
+          <div class="intel-name">${e.name}</div>
+          <div class="intel-role">${roleLabel[e.charData.role] || e.charData.role}</div>
+        </div>
+        <div class="intel-stats">
+          <span>HP${e.maxHp}</span>
+          <span>ATK${e.atk}</span>
+          <span>DEF${e.def}</span>
+        </div>
+      </div>
+    `).join('')}</div>
+  `;
+}
+
+function getTeamCompWarnings(selectedIds) {
+  const roleLabel = { tank:'탱커', melee_dps:'근딜', ranged_dps:'원딜', support:'서포터', bruiser:'브루저', battle_support:'전술', evasive_dps:'암살', breaker:'브레이커' };
+  const roles = selectedIds.map(id => {
+    const c = CHARACTERS.find(ch => ch.id === id);
+    return c ? c.role : null;
+  }).filter(Boolean);
+  const warnings = [];
+  const healRoles = ['support', 'battle_support'];
+  const tankRoles = ['tank', 'bruiser'];
+  if (roles.length >= 2 && !roles.some(r => healRoles.includes(r))) warnings.push('⚠ 힐러 없음 — 회복 불가');
+  if (roles.length >= 3 && !roles.some(r => tankRoles.includes(r))) warnings.push('⚠ 탱커 없음 — 전선 유지 어려움');
+  if (roles.length >= 3 && new Set(roles).size === 1) warnings.push('⚠ 같은 역할만 — 유연성 부족');
+  return warnings;
+}
+
+function renderRoleBalance(selectedIds) {
+  const el = document.getElementById('deploy-role-balance');
+  if (selectedIds.length === 0) { el.innerHTML = ''; return; }
+
+  const roleCounts = {};
+  const roleLabel = { tank:'탱커', melee_dps:'근딜', ranged_dps:'원딜', support:'서포터', bruiser:'브루저', battle_support:'전술', evasive_dps:'암살', breaker:'브레이커' };
+  const roleColor = { tank:'#457b9d', melee_dps:'#e94560', ranged_dps:'#ff8a80', support:'#4b9b6e', bruiser:'#e9a045', battle_support:'#80cbc4', evasive_dps:'#9b59b6', breaker:'#ffd700' };
+
+  selectedIds.forEach(id => {
+    const c = CHARACTERS.find(ch => ch.id === id);
+    if (c) roleCounts[c.role] = (roleCounts[c.role] || 0) + 1;
+  });
+
+  const warnings = getTeamCompWarnings(selectedIds);
+
+  el.innerHTML = `
+    <div class="role-bar">${Object.entries(roleCounts).map(([role, count]) =>
+      `<div class="role-segment" style="flex:${count};background:${roleColor[role] || '#555'}" title="${roleLabel[role]} ×${count}">
+        <span>${roleLabel[role]} ${count}</span>
+      </div>`
+    ).join('')}</div>
+    ${warnings.length ? `<div class="comp-warnings">${warnings.map(w => `<div class="comp-warn">${w}</div>`).join('')}</div>` : ''}
+  `;
+}
+
+let deploySort = 'name';
 
 function renderDeployRoster(filter) {
   const stage = STAGES.find(s => s.id === currentStageId);
@@ -206,15 +320,30 @@ function renderDeployRoster(filter) {
   const playerChars = CHARACTERS.filter(c => c.faction !== 'kartein');
   const filtered = filter === 'all' ? playerChars : playerChars.filter(c => c.faction === filter);
 
+  const sorted = [...filtered].sort((a, b) => {
+    if (deploySort === 'role') return (a.role || '').localeCompare(b.role || '');
+    if (deploySort === 'rarity') {
+      const order = { legendary: 0, rare: 1, uncommon: 2, common: 3 };
+      return (order[a.rarity] || 9) - (order[b.rarity] || 9);
+    }
+    if (deploySort === 'cp') {
+      return getCombatPower(cardToUnit(b, 0, 0)) - getCombatPower(cardToUnit(a, 0, 0));
+    }
+    return a.name.localeCompare(b.name);
+  });
+
   const roster = document.getElementById('deploy-roster');
-  roster.innerHTML = filtered.map(c => {
+  roster.innerHTML = sorted.map(c => {
     const mbti = CHARACTER_MBTI[c.id] || '????';
     const roleLabel = { tank:'탱커', melee_dps:'근딜', ranged_dps:'원딜', support:'서포터', bruiser:'브루저', battle_support:'전술', evasive_dps:'암살', breaker:'브레이커' };
     const isSelected = deploySelected.includes(c.id);
+    const cardData = gameSave.cards[c.id];
+    const lvDisplay = cardData ? `Lv.${cardData.level}` : '';
     return `<div class="roster-card ${isSelected ? 'roster-selected' : ''}" data-id="${c.id}" data-rarity="${c.rarity}">
       <div class="roster-portrait"><img src="${portraitSrc(c.portrait)}" alt="${c.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="roster-initial" style="display:none">${c.name[0]}</div></div>
       <div class="roster-name">${c.name}</div>
       <div class="roster-meta"><span class="roster-role">${roleLabel[c.role] || c.role}</span><span class="mbti-badge">${mbti}</span></div>
+      ${lvDisplay ? `<div class="roster-lv">${lvDisplay}</div>` : ''}
       ${isSelected ? '<div class="roster-check">✓</div>' : ''}
     </div>`;
   }).join('');
@@ -232,6 +361,7 @@ function renderDeployRoster(filter) {
       renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
       renderDeployBench(maxUnits);
       updateDeploySynergy();
+      renderRoleBalance(deploySelected);
       showDeployDetail(id);
     });
   });
@@ -239,18 +369,26 @@ function renderDeployRoster(filter) {
 
 function renderDeployBench(maxSlots) {
   const bench = document.getElementById('deploy-bench');
+  const stage = STAGES.find(s => s.id === currentStageId);
   let html = '';
   for (let i = 0; i < maxSlots; i++) {
     const charId = deploySelected[i];
+    const spawn = stage?.playerSpawns[i];
+    const posLabel = spawn ? `(${spawn.x},${spawn.y})` : '';
     if (charId) {
       const c = CHARACTERS.find(ch => ch.id === charId);
       html += `<div class="bench-slot bench-filled" data-idx="${i}">
+        <div class="bench-pos">${i + 1}</div>
         <div class="bench-portrait"><img src="${portraitSrc(c.portrait)}" alt="${c.name}" onerror="this.style.display='none'" /></div>
         <div class="bench-name">${c.name}</div>
+        <div class="bench-controls">
+          ${i > 0 ? `<button class="bench-swap" data-dir="left" data-idx="${i}">◀</button>` : '<span class="bench-swap-spacer"></span>'}
+          ${i < deploySelected.length - 1 ? `<button class="bench-swap" data-dir="right" data-idx="${i}">▶</button>` : '<span class="bench-swap-spacer"></span>'}
+        </div>
         <button class="bench-remove" data-id="${charId}">✕</button>
       </div>`;
     } else {
-      html += `<div class="bench-slot bench-empty"><span class="bench-empty-label">${i + 1}</span></div>`;
+      html += `<div class="bench-slot bench-empty"><span class="bench-empty-label">${i + 1}</span><span class="bench-pos-label">${posLabel}</span></div>`;
     }
   }
   bench.innerHTML = html;
@@ -265,6 +403,21 @@ function renderDeployBench(maxSlots) {
       renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
       renderDeployBench(maxSlots);
       updateDeploySynergy();
+      renderRoleBalance(deploySelected);
+    });
+  });
+
+  bench.querySelectorAll('.bench-swap').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = +btn.dataset.idx;
+      const dir = btn.dataset.dir;
+      const swapIdx = dir === 'left' ? idx - 1 : idx + 1;
+      if (swapIdx >= 0 && swapIdx < deploySelected.length) {
+        [deploySelected[idx], deploySelected[swapIdx]] = [deploySelected[swapIdx], deploySelected[idx]];
+        renderDeployBench(maxSlots);
+        updateDeploySynergy();
+      }
     });
   });
 

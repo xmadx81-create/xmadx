@@ -46,13 +46,17 @@
 
         <!-- 유닛 편성 (새 로비) -->
         <div id="deploy-screen" class="deploy-screen-v2" style="display:none">
-          <!-- 상단: 스테이지 정보 + 맵 미리보기 -->
+          <!-- 상단: 스테이지 정보 + 맵 미리보기 + 적 정보 -->
           <div class="deploy-top">
-            <div class="deploy-stage-header">
-              <h3 id="deploy-stage-name">유닛 편성</h3>
-              <p class="deploy-hint">출격할 캐릭터를 선택하세요 (<span id="deploy-count">0</span>/<span id="deploy-max">4</span>)</p>
+            <div class="deploy-top-left">
+              <div class="deploy-stage-header">
+                <h3 id="deploy-stage-name">유닛 편성</h3>
+                <p class="deploy-hint">출격할 캐릭터를 선택하세요 (<span id="deploy-count">0</span>/<span id="deploy-max">4</span>)</p>
+                <div class="deploy-center-buff" id="deploy-center-buff"></div>
+              </div>
+              <div class="deploy-map-preview" id="deploy-map-preview"></div>
             </div>
-            <div class="deploy-map-preview" id="deploy-map-preview"></div>
+            <div class="deploy-enemy-intel" id="deploy-enemy-intel"></div>
           </div>
 
           <!-- 중단: 좌측 캐릭터 선택 + 우측 상세정보 -->
@@ -60,10 +64,18 @@
             <div class="deploy-roster-panel">
               <div class="deploy-roster-header">
                 <span class="roster-title">캐릭터 선택</span>
-                <div class="roster-filters">
-                  <button class="roster-filter active" data-rf="all">전체</button>
-                  <button class="roster-filter" data-rf="center">센터</button>
-                  <button class="roster-filter" data-rf="neutral">비소속</button>
+                <div class="roster-controls">
+                  <div class="roster-filters">
+                    <button class="roster-filter active" data-rf="all">전체</button>
+                    <button class="roster-filter" data-rf="center">센터</button>
+                    <button class="roster-filter" data-rf="neutral">비소속</button>
+                  </div>
+                  <div class="roster-sorts">
+                    <button class="roster-sort active" data-sort="name">이름</button>
+                    <button class="roster-sort" data-sort="role">역할</button>
+                    <button class="roster-sort" data-sort="rarity">등급</button>
+                    <button class="roster-sort" data-sort="cp">전투력</button>
+                  </div>
                 </div>
               </div>
               <div id="deploy-roster" class="deploy-roster-grid"></div>
@@ -73,8 +85,9 @@
             </div>
           </div>
 
-          <!-- 하단: 출전 대기석 + 시너지 + 버튼 -->
+          <!-- 하단: 역할 밸런스 + 출전 대기석 + 시너지 + 버튼 -->
           <div class="deploy-bottom">
+            <div id="deploy-role-balance"></div>
             <div class="deploy-bench-header">
               <span class="bench-title">출전 대기석</span>
               <div id="deploy-synergy" class="deploy-synergy-inline" style="display:none">
