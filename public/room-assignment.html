@@ -1278,12 +1278,189 @@ function loadState() {
   } catch(e) {}
 }
 
+// ═══════════════════════════════════════════════════
+// 봉사앱 워크숍 명단 임포트 API
+// ═══════════════════════════════════════════════════
+
+/**
+ * 봉사앱 워크숍 명단 데이터를 받아 참여자로 변환
+ *
+ * @param {Object} data - 봉사앱에서 전달하는 워크숍 명단 객체
+ * @param {Array} data.managers - 관리담당자 배열
+ *   [{ name, region, position, age?, gender?, memo? }]
+ * @param {Array} data.additional - 추가 인원 배열
+ *   [{ name, affiliation, title, age, gender, memo? }]
+ * @param {string} [data.center] - 연수원 코드 ('pohang' | 'gyeongnam')
+ *
+ * 사용 예시 (봉사앱에서 호출):
+ *   const roomTool = document.getElementById('roomAssignFrame').contentWindow;
+ *   roomTool.importFromVolunteerApp({
+ *     managers: [...],
+ *     additional: [...],
+ *     center: 'gyeongnam'
+ *   });
+ *
+ * 또는 직접 함수 내장 시:
+ *   importFromVolunteerApp(workshopData);
+ */
+function importFromVolunteerApp(data) {
+  if (!data) return;
+
+  if (data.center && CENTERS[data.center]) {
+    currentCenter = data.center;
+    const sel = document.getElementById('centerSelect');
+    if (sel) sel.value = currentCenter;
+  }
+
+  participants = [];
+  assignments = {};
+  nextId = 1;
+
+  function mapGender(g) {
+    if (!g) return 'male';
+    const s = String(g).trim();
+    if (s === '여' || s === '여성' || s === 'F' || s === 'female') return 'female';
+    return 'male';
+  }
+
+  function mapPosition(pos) {
+    if (!pos) return 'member';
+    if (pos.includes('지역장') || pos.includes('본부장') || pos.includes('임원')) return 'vip';
+    if (pos.includes('관리') || pos.includes('부장')) return 'manager';
+    if (pos.includes('조장') || pos.includes('팀장')) return 'leader';
+    return 'member';
+  }
+
+  function parseHealth(memo) {
+    const health = [];
+    if (!memo) return health;
+    if (memo.includes('거동') || memo.includes('휠체어') || memo.includes('다리')) health.push('mobility');
+    if (memo.includes('코골')) health.push('snoring');
+    if (memo.includes('고령') || memo.includes('우대') || memo.includes('어르신')) health.push('elderly');
+    return health;
+  }
+
+  // 관리담당자 임포트
+  if (data.managers && Array.isArray(data.managers)) {
+    for (const m of data.managers) {
+      if (!m.name) continue;
+      const age = m.age ? parseInt(m.age) : null;
+      participants.push({
+        id: nextId++,
+        name: m.name.trim(),
+        gender: mapGender(m.gender),
+        age: age,
+        ageGroup: age ? getAgeGroup(age) : '',
+        position: mapPosition(m.position),
+        group: m.region || '',
+        health: parseHealth(m.memo),
+        memo: m.memo || ''
+      });
+    }
+  }
+
+  // 추가 인원 임포트
+  if (data.additional && Array.isArray(data.additional)) {
+    for (const a of data.additional) {
+      if (!a.name) continue;
+      const age = a.age ? parseInt(a.age) : null;
+      participants.push({
+        id: nextId++,
+        name: a.name.trim(),
+        gender: mapGender(a.gender),
+        age: age,
+        ageGroup: age ? getAgeGroup(age) : '',
+        position: mapPosition(a.title),
+        group: a.affiliation || '',
+        health: parseHealth(a.memo),
+        memo: a.memo || ''
+      });
+    }
+  }
+
+  document.getElementById('listCount').textContent = participants.length;
+  updateMobileBadge();
+  renderFloorPlan();
+  renderParticipantList();
+  updateStats();
+  toast(participants.length + '명 봉사앱에서 가져옴', 'success');
+  return { success: true, count: participants.length };
+}
+
+/**
+ * 현재 방배정 결과를 봉사앱에서 읽을 수 있는 형태로 반환
+ */
+function exportAssignmentResult() {
+  const center = CENTERS[currentCenter];
+  const result = {
+    center: currentCenter,
+    centerName: center.name,
+    date: new Date().toISOString(),
+    rooms: [],
+    unassigned: []
+  };
+
+  for (const b of center.buildings) {
+    for (const room of b.rooms) {
+      const people = (assignments[room.id] || [])
+        .map(id => participants.find(p => p.id === id))
+        .filter(Boolean)
+        .map(p => ({ name: p.name, gender: p.gender === 'male' ? '남' : '여', age: p.age, group: p.group }));
+      result.rooms.push({
+        roomId: room.id,
+        roomName: room.name,
+        capacity: room.maxCap,
+        assigned: people.length,
+        people: people,
+        note: room.note
+      });
+    }
+  }
+
+  result.unassigned = participants
+    .filter(p => !getAssignedRoom(p.id))
+    .map(p => ({ name: p.name, gender: p.gender === 'male' ? '남' : '여', age: p.age }));
+
+  return result;
+}
+
+/**
+ * URL 해시로 전달된 봉사앱 데이터 자동 파싱
+ * room-assignment.html#import=base64encodedJSON
+ */
+function checkUrlImport() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#import=')) {
+    try {
+      const b64 = hash.substring(8);
+      const json = decodeURIComponent(atob(b64));
+      const data = JSON.parse(json);
+      importFromVolunteerApp(data);
+      history.replaceState(null, '', window.location.pathname);
+    } catch(e) {
+      toast('URL 데이터 파싱 실패', 'error');
+    }
+  }
+}
+
+// postMessage 수신 (iframe 연동용)
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'IMPORT_WORKSHOP_LIST') {
+    importFromVolunteerApp(e.data.payload);
+  }
+  if (e.data && e.data.type === 'GET_ASSIGNMENT_RESULT') {
+    const result = exportAssignmentResult();
+    e.source.postMessage({ type: 'ASSIGNMENT_RESULT', payload: result }, '*');
+  }
+});
+
 // Auto-save
 setInterval(saveState, 5000);
 window.addEventListener('beforeunload', saveState);
 
 // Init
 loadState();
+checkUrlImport();
 renderFloorPlan();
 updateStats();
 </script>
