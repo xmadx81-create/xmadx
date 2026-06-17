@@ -49,6 +49,89 @@ export const ROLE_MODIFIERS = {
   breaker:        { hp: 1.3,  atk: 1.4, def: 1.2, mov: 3, rng: null },
 };
 
+// ── Ultimates (2 per role) ────────────────────────────────────────────
+
+export const ULTIMATES = {
+  tank: [
+    { id: 'ult-shield-wall', name: '철벽 방어', icon: '🛡️', type: 'team_def_buff', mpCost: 8, power: 5, duration: 2, cooldown: 5, unlockLevel: 5, desc: '아군 전체 DEF +5 (2턴)' },
+    { id: 'ult-last-stand', name: '최후의 보루', icon: '🏰', type: 'self_invuln', mpCost: 10, power: 0, duration: 1, cooldown: 6, unlockLevel: 8, desc: '1턴간 데미지 무효화' },
+  ],
+  melee_dps: [
+    { id: 'ult-storm-slash', name: '폭풍 일격', icon: '⚡', type: 'single_damage', mpCost: 7, powerMult: 2.5, cooldown: 4, unlockLevel: 5, desc: '단일 적에게 ATK×2.5 데미지' },
+    { id: 'ult-berserk', name: '광전사의 분노', icon: '🔥', type: 'self_atk_buff', mpCost: 8, power: 8, duration: 2, cooldown: 5, unlockLevel: 8, desc: '자신 ATK +8 (2턴)' },
+  ],
+  ranged_dps: [
+    { id: 'ult-snipe', name: '저격', icon: '🎯', type: 'ignore_def_damage', mpCost: 7, powerMult: 1.8, cooldown: 4, unlockLevel: 5, desc: 'DEF 무시 ATK×1.8 데미지' },
+    { id: 'ult-barrage', name: '탄막 사격', icon: '💥', type: 'aoe_damage', mpCost: 9, powerMult: 1.2, range: 2, cooldown: 5, unlockLevel: 8, desc: '2칸 범위 ATK×1.2 광역 데미지' },
+  ],
+  support: [
+    { id: 'ult-mass-heal', name: '대회복', icon: '💚', type: 'team_heal', mpCost: 8, powerMult: 0.4, cooldown: 4, unlockLevel: 5, desc: '아군 전체 HP 40% 회복' },
+    { id: 'ult-revive', name: '부활', icon: '✨', type: 'revive', mpCost: 10, powerMult: 0.5, cooldown: 8, unlockLevel: 8, desc: '전사한 아군 1명 HP 50%로 부활' },
+  ],
+  bruiser: [
+    { id: 'ult-quake', name: '지진 강타', icon: '💢', type: 'aoe_damage', mpCost: 7, powerMult: 1.5, range: 1, cooldown: 4, unlockLevel: 5, desc: '인접 적 전체 ATK×1.5 데미지' },
+    { id: 'ult-blood-fury', name: '혈전사', icon: '🩸', type: 'lifesteal_attack', mpCost: 8, powerMult: 2.0, cooldown: 5, unlockLevel: 8, desc: 'ATK×2.0 + 50% 흡혈' },
+  ],
+  battle_support: [
+    { id: 'ult-warcry', name: '전투 함성', icon: '📯', type: 'team_atk_buff', mpCost: 7, power: 4, duration: 2, cooldown: 4, unlockLevel: 5, desc: '아군 전체 ATK +4 (2턴)' },
+    { id: 'ult-barrier', name: '보호막', icon: '🔮', type: 'team_shield', mpCost: 9, power: 15, cooldown: 5, unlockLevel: 8, desc: '아군 전체에 15 HP 실드' },
+  ],
+  evasive_dps: [
+    { id: 'ult-shadow', name: '그림자 일격', icon: '🌑', type: 'guaranteed_crit', mpCost: 6, powerMult: 2.0, cooldown: 4, unlockLevel: 5, desc: '확정 크리티컬 ATK×2.0' },
+    { id: 'ult-phantom', name: '환영', icon: '👻', type: 'self_eva_buff', mpCost: 8, power: 0.5, duration: 2, cooldown: 5, unlockLevel: 8, desc: '2턴간 회피율 +50%' },
+  ],
+  breaker: [
+    { id: 'ult-armor-break', name: '갑파쇄', icon: '💎', type: 'def_break', mpCost: 7, power: 0, cooldown: 4, unlockLevel: 5, desc: '적 DEF를 0으로 만듦 (2턴)' },
+    { id: 'ult-soul-crush', name: '혼쇄', icon: '☠️', type: 'true_damage', mpCost: 10, powerMult: 3.0, cooldown: 6, unlockLevel: 8, desc: '방어 완전 무시 ATK×3.0' },
+  ],
+};
+
+// ── Passive Skill Tree (level-gated) ──────────────────────────────────
+
+export const PASSIVE_TREE = {
+  tank:           [{ lv: 2, stat: 'maxHp', val: 10, name: '강인함' }, { lv: 4, stat: 'def', val: 3, name: '철갑' }, { lv: 6, stat: 'eva', val: 0.05, name: '직감 회피' }],
+  melee_dps:      [{ lv: 2, stat: 'atk', val: 3, name: '날카로움' }, { lv: 4, stat: 'crt', val: 0.05, name: '급소 감각' }, { lv: 6, stat: 'pen', val: 2, name: '관통력' }],
+  ranged_dps:     [{ lv: 2, stat: 'atk', val: 2, name: '정밀 사격' }, { lv: 4, stat: 'rng', val: 1, name: '장거리' }, { lv: 6, stat: 'crt', val: 0.08, name: '헤드샷' }],
+  support:        [{ lv: 2, stat: 'maxHp', val: 8, name: '생존 본능' }, { lv: 4, stat: 'maxMp', val: 3, name: '마력 증폭' }, { lv: 6, stat: 'def', val: 2, name: '수호' }],
+  bruiser:        [{ lv: 2, stat: 'atk', val: 2, name: '투쟁심' }, { lv: 4, stat: 'def', val: 2, name: '투사의 갑주' }, { lv: 6, stat: 'maxHp', val: 12, name: '불굴' }],
+  battle_support: [{ lv: 2, stat: 'maxMp', val: 2, name: '전술 감각' }, { lv: 4, stat: 'atk', val: 2, name: '공격 지원' }, { lv: 6, stat: 'def', val: 2, name: '전선 유지' }],
+  evasive_dps:    [{ lv: 2, stat: 'eva', val: 0.05, name: '그림자 걸음' }, { lv: 4, stat: 'atk', val: 3, name: '암습' }, { lv: 6, stat: 'crt', val: 0.1, name: '급소 일격' }],
+  breaker:        [{ lv: 2, stat: 'pen', val: 2, name: '파쇄력' }, { lv: 4, stat: 'atk', val: 3, name: '파괴 본능' }, { lv: 6, stat: 'crt', val: 0.08, name: '약점 간파' }],
+};
+
+// ── UO-Style Stat Growth ──────────────────────────────────────────────
+
+export function applyStatGrowth(unit, action) {
+  if (!unit.statXP) unit.statXP = { atk: 0, def: 0, eva: 0, crt: 0, mp: 0 };
+  const threshold = 30 + unit.level * 5;
+  const gains = [];
+
+  const grow = (stat, xpKey, amount, label) => {
+    unit.statXP[xpKey] += amount;
+    if (unit.statXP[xpKey] >= threshold) {
+      unit.statXP[xpKey] -= threshold;
+      if (stat === 'eva' || stat === 'crt') {
+        unit[stat] = Math.min(stat === 'eva' ? 0.5 : 0.6, (unit[stat] || 0) + 0.01);
+      } else if (stat === 'maxMp') {
+        unit.maxMp += 1;
+        unit.mp = Math.min(unit.mp + 1, unit.maxMp);
+      } else {
+        unit[stat] += 1;
+      }
+      gains.push(label);
+    }
+  };
+
+  switch (action) {
+    case 'attack': grow('atk', 'atk', 10, 'ATK +1'); break;
+    case 'take_damage': grow('def', 'def', 8, 'DEF +1'); break;
+    case 'evade': grow('eva', 'eva', 15, 'EVA +0.01'); break;
+    case 'critical': grow('crt', 'crt', 12, 'CRT +0.01'); break;
+    case 'use_skill': grow('maxMp', 'mp', 10, 'MP +1'); break;
+  }
+  return gains.length > 0 ? gains : null;
+}
+
 // ── Equipment ──────────────────────────────────────────────────────────
 
 export const EQUIPMENT = [
@@ -259,9 +342,23 @@ export function gainXP(unit, amount) {
         unit.senseSkill.maxCooldown--;
       }
     }
+    applyPassiveTree(unit);
     levelUps.push({ level: unit.level, hpGain, atk: unit.atk, def: unit.def });
   }
   return levelUps.length > 0 ? levelUps : null;
+}
+
+function applyPassiveTree(unit) {
+  const tree = PASSIVE_TREE[unit.role];
+  if (!tree) return;
+  tree.forEach(p => {
+    if (unit.level >= p.lv && !unit.passivesApplied.includes(p.name)) {
+      if (p.stat === 'maxHp') { unit.maxHp += p.val; unit.hp += p.val; }
+      else if (p.stat === 'maxMp') { unit.maxMp += p.val; unit.mp = Math.min(unit.mp + p.val, unit.maxMp); }
+      else { unit[p.stat] = (unit[p.stat] || 0) + p.val; }
+      unit.passivesApplied.push(p.name);
+    }
+  });
 }
 
 // ── Terrain Effects ────────────────────────────────────────────────────
@@ -287,6 +384,149 @@ export function applyTerrainHealing(state) {
       u.hp = Math.min(u.maxHp, u.hp + effect.healPerTurn);
       state.log.push(`♨ ${u.name} 온천 회복 +${effect.healPerTurn} HP`);
     }
+  });
+}
+
+// ── Ultimate Execution ─────────────────────────────────────────────────
+
+export function executeUltimate(state, unit, ultIndex) {
+  if (!unit || unit.hp <= 0 || unit.acted) return { ok: false, reason: '행동 불가' };
+  const ult = unit.ultimates?.[ultIndex];
+  if (!ult) return { ok: false, reason: '궁극기 없음' };
+  if (unit.level < ult.unlockLevel) return { ok: false, reason: `Lv.${ult.unlockLevel} 해금` };
+  if (ult.currentCooldown > 0) return { ok: false, reason: `쿨다운 ${ult.currentCooldown}턴` };
+  if (unit.mp < ult.mpCost) return { ok: false, reason: `MP 부족 (${unit.mp}/${ult.mpCost})` };
+
+  unit.mp -= ult.mpCost;
+  ult.currentCooldown = ult.cooldown;
+  unit.acted = true;
+
+  const allies = state.units.filter(u => u.team === unit.team && u.hp > 0 && u.uid !== unit.uid);
+  const enemies = state.units.filter(u => u.team !== unit.team && u.hp > 0);
+  const result = { ok: true, name: ult.name, icon: ult.icon, type: ult.type, effects: [] };
+
+  switch (ult.type) {
+    case 'team_def_buff':
+      allies.forEach(a => { a.def += ult.power; a.buffs.push({ stat: 'def', val: ult.power, turns: ult.duration }); });
+      unit.def += ult.power; unit.buffs.push({ stat: 'def', val: ult.power, turns: ult.duration });
+      result.effects.push(`아군 전체 DEF +${ult.power} (${ult.duration}턴)`);
+      break;
+    case 'team_atk_buff':
+      allies.forEach(a => { a.atk += ult.power; a.buffs.push({ stat: 'atk', val: ult.power, turns: ult.duration }); });
+      unit.atk += ult.power; unit.buffs.push({ stat: 'atk', val: ult.power, turns: ult.duration });
+      result.effects.push(`아군 전체 ATK +${ult.power} (${ult.duration}턴)`);
+      break;
+    case 'self_invuln':
+      unit.invuln = true;
+      unit.buffs.push({ stat: '_invuln', val: 1, turns: ult.duration });
+      result.effects.push(`${ult.duration}턴 무적`);
+      break;
+    case 'self_atk_buff':
+      unit.atk += ult.power; unit.buffs.push({ stat: 'atk', val: ult.power, turns: ult.duration });
+      result.effects.push(`ATK +${ult.power} (${ult.duration}턴)`);
+      break;
+    case 'self_eva_buff':
+      unit.eva += ult.power; unit.buffs.push({ stat: 'eva', val: ult.power, turns: ult.duration });
+      result.effects.push(`EVA +${Math.round(ult.power*100)}% (${ult.duration}턴)`);
+      break;
+    case 'single_damage': case 'guaranteed_crit': case 'ignore_def_damage': case 'true_damage': {
+      const target = enemies.sort((a,b) => a.hp - b.hp)[0];
+      if (target) {
+        let dmg = Math.floor(unit.atk * (ult.powerMult || 2));
+        if (ult.type === 'guaranteed_crit') dmg = Math.floor(dmg * 1.5);
+        if (ult.type !== 'ignore_def_damage' && ult.type !== 'true_damage') dmg = Math.max(1, dmg - target.def);
+        if (target.invuln) dmg = 0;
+        target.hp = Math.max(0, target.hp - dmg);
+        result.effects.push(`${target.name}에게 ${dmg} 데미지${target.hp <= 0 ? ' → 전사!' : ''}`);
+      }
+      break;
+    }
+    case 'aoe_damage': {
+      const r = ult.range || 2;
+      enemies.forEach(e => {
+        const dist = Math.abs(e.x - unit.x) + Math.abs(e.y - unit.y);
+        if (dist <= r) {
+          let dmg = Math.floor(unit.atk * (ult.powerMult || 1));
+          dmg = Math.max(1, dmg - e.def);
+          if (e.invuln) dmg = 0;
+          e.hp = Math.max(0, e.hp - dmg);
+          result.effects.push(`${e.name}에게 ${dmg}${e.hp <= 0 ? ' 전사!' : ''}`);
+        }
+      });
+      break;
+    }
+    case 'lifesteal_attack': {
+      const target = enemies.sort((a,b) => a.hp - b.hp)[0];
+      if (target) {
+        let dmg = Math.floor(unit.atk * (ult.powerMult || 2));
+        dmg = Math.max(1, dmg - target.def);
+        if (target.invuln) dmg = 0;
+        target.hp = Math.max(0, target.hp - dmg);
+        const heal = Math.floor(dmg * 0.5);
+        unit.hp = Math.min(unit.maxHp, unit.hp + heal);
+        result.effects.push(`${target.name}에게 ${dmg}, 흡혈 +${heal}`);
+      }
+      break;
+    }
+    case 'team_heal':
+      allies.concat([unit]).forEach(a => {
+        if (a.hp > 0 && a.hp < a.maxHp) {
+          const heal = Math.floor(a.maxHp * (ult.powerMult || 0.3));
+          a.hp = Math.min(a.maxHp, a.hp + heal);
+          result.effects.push(`${a.name} HP +${heal}`);
+        }
+      });
+      break;
+    case 'team_shield':
+      allies.concat([unit]).forEach(a => { if (a.hp > 0) a.shield = (a.shield || 0) + ult.power; });
+      result.effects.push(`아군 전체 실드 +${ult.power}`);
+      break;
+    case 'revive': {
+      const dead = state.units.find(u => u.team === unit.team && u.hp <= 0);
+      if (dead) {
+        dead.hp = Math.floor(dead.maxHp * (ult.powerMult || 0.5));
+        dead.acted = true;
+        result.effects.push(`${dead.name} 부활! HP ${dead.hp}`);
+      } else {
+        result.effects.push('부활 대상 없음');
+      }
+      break;
+    }
+    case 'def_break': {
+      const target = enemies.sort((a,b) => b.def - a.def)[0];
+      if (target) {
+        const origDef = target.def;
+        target.def = 0;
+        target.buffs.push({ stat: 'def', val: -origDef, turns: 2 });
+        result.effects.push(`${target.name} DEF → 0 (2턴)`);
+      }
+      break;
+    }
+  }
+
+  applyStatGrowth(unit, 'use_skill');
+  state.log.push(`🌟 ${unit.name}의 궁극기 「${ult.name}」 발동!`);
+  return result;
+}
+
+// ── Buff Tick (end of round) ──────────────────────────────────────────
+
+export function tickBuffs(state) {
+  state.units.forEach(u => {
+    if (u.hp <= 0 || !u.buffs) return;
+    u.buffs = u.buffs.filter(b => {
+      b.turns--;
+      if (b.turns <= 0) {
+        if (b.stat === '_invuln') { u.invuln = false; }
+        else if (b.stat === 'eva' || b.stat === 'crt') { u[b.stat] = Math.max(0, (u[b.stat] || 0) - b.val); }
+        else if (b.val < 0) { u[b.stat] = (u[b.stat] || 0) - b.val; }
+        else { u[b.stat] = Math.max(0, (u[b.stat] || 0) - b.val); }
+        return false;
+      }
+      return true;
+    });
+    // Tick ultimate cooldowns
+    if (u.ultimates) u.ultimates.forEach(ult => { if (ult.currentCooldown > 0) ult.currentCooldown--; });
   });
 }
 
@@ -362,6 +602,12 @@ export function cardToUnit(charData, x, y) {
     level: 1,
     xp: 0,
     xpToNext: 50,
+    statXP: { atk: 0, def: 0, eva: 0, crt: 0, mp: 0 },
+    ultimates: (ULTIMATES[role] || []).map(u => ({ ...u, currentCooldown: 0 })),
+    passivesApplied: [],
+    shield: 0,
+    invuln: false,
+    buffs: [],
 
     senseSkill: charData.sense ? {
       name: charData.sense.name,
@@ -719,6 +965,7 @@ export function endEnemyPhase(state) {
   });
   applyTerrainHealing(state);
   tickCooldowns(state);
+  tickBuffs(state);
   state.turnNumber++;
   state.phase = 'player_phase';
   state.log.push(`── 턴 ${state.turnNumber}: 플레이어 페이즈 ──`);
@@ -1026,6 +1273,22 @@ export function attackUnit(state, attacker, defender) {
   }
 
   attacker.acted = true;
+
+  // UO stat growth
+  const statGrowths = [];
+  if (!evaded && damage > 0) applyStatGrowth(attacker, 'attack');
+  if (counterDamage > 0) { applyStatGrowth(attacker, 'take_damage'); applyStatGrowth(defender, 'attack'); }
+  if (evaded) applyStatGrowth(defender, 'evade');
+  if (critical) applyStatGrowth(attacker, 'critical');
+
+  // Shield absorption
+  if (!evaded && damage > 0 && defender.shield > 0) {
+    const absorbed = Math.min(defender.shield, damage);
+    defender.shield -= absorbed;
+  }
+  if (defender.invuln && !evaded) {
+    defender.hp = Math.min(defender.maxHp, defender.hp + damage);
+  }
 
   // XP awards
   const xpGains = [];

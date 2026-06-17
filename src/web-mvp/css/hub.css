@@ -3480,6 +3480,51 @@ body {
   font-weight: bold;
 }
 
+/* ── Stats & Quests ── */
+.center-info {
+  background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(233,69,96,0.08));
+  border: 1px solid rgba(255,215,0,0.2);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.center-level {
+  font-size: 0.9rem;
+  color: #ffd700;
+  font-weight: bold;
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.stat-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  padding: 8px;
+  text-align: center;
+}
+.stat-item span { display: block; font-size: 0.65rem; color: #888; }
+.stat-item strong { font-size: 1rem; color: #eee; }
+.quest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.quest-item.quest-done { opacity: 0.5; }
+.quest-name { flex: 1; font-size: 0.8rem; color: #ccc; }
+.quest-progress { font-size: 0.75rem; color: #ffd700; font-weight: bold; }
+.quest-check { font-size: 0.8rem; }
+/* Ultimate command styling */
+.cmd-ult { border-color: rgba(255,215,0,0.3) !important; }
+.cmd-ult:hover { border-color: #ffd700 !important; background: rgba(255,215,0,0.08) !important; }
+.cmd-ult-icon { background: rgba(255,215,0,0.15) !important; border-color: rgba(255,215,0,0.3) !important; }
+.cmd-ult .cmd-name { color: #ffd700; }
+
 /* ── Command Panel ── */
 .command-panel {
   position: fixed;
