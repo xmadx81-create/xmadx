@@ -475,6 +475,10 @@ function showDeployDetail(charId) {
     unit.xp = cardData.xp || 0;
     unit.xpToNext = unit.level * 50;
   }
+  if (cardData?.equipment) {
+    Object.entries(cardData.equipment).forEach(([, itemId]) => { if (itemId) equipItem(unit, itemId); });
+  }
+  if (cardData?.relic) equipRelic(unit, cardData.relic);
   const cp = getCombatPower(unit);
   const mbti = CHARACTER_MBTI[c.id] || '????';
   const roleLabel = { tank:'탱커', melee_dps:'근접 딜러', ranged_dps:'원거리 딜러', support:'서포터', bruiser:'브루저', battle_support:'전투 지원', evasive_dps:'암살자', breaker:'브레이커' };
@@ -518,11 +522,20 @@ function showDeployDetail(charId) {
           <button class="dd-equip-btn" data-char="${c.id}" data-slot="${slot}">변경</button>
         </div>`;
       }).join('')}
+      <div class="dd-equip-slot">
+        <span class="dd-slot-icon">🔮</span>
+        <span class="dd-slot-name">${unit.relic ? unit.relic.name : '유물 없음'}</span>
+        <button class="dd-relic-btn" data-char="${c.id}">변경</button>
+      </div>
+      ${unit.relic ? `<div class="dd-relic-desc">${unit.relic.desc}</div>` : ''}
     </div>
   `;
 
   panel.querySelectorAll('.dd-equip-btn').forEach(btn => {
     btn.addEventListener('click', () => showEquipSelect(btn.dataset.char, btn.dataset.slot));
+  });
+  panel.querySelectorAll('.dd-relic-btn').forEach(btn => {
+    btn.addEventListener('click', () => showRelicSelect(btn.dataset.char));
   });
 }
 
@@ -555,6 +568,36 @@ function showEquipSelect(charId, slot) {
       if (!gameSave.cards[charId]) gameSave.cards[charId] = { level: 1, xp: 0, count: 1 };
       if (!gameSave.cards[charId].equipment) gameSave.cards[charId].equipment = {};
       gameSave.cards[charId].equipment[slot] = equipId;
+      saveGame(gameSave);
+      showDeployDetail(charId);
+    });
+  });
+
+  popup.style.display = 'flex';
+}
+
+function showRelicSelect(charId) {
+  const popup = document.getElementById('card-popup');
+  const details = document.getElementById('popup-details');
+  document.getElementById('popup-portrait').innerHTML = `<div style="font-size:2rem;text-align:center;padding:20px">🔮</div>`;
+
+  details.innerHTML = `
+    <h2>유물 선택</h2>
+    <div class="equip-select-list">
+      ${RELICS.map(relic => `<button class="equip-select-item" data-relic-id="${relic.id}">
+        <span class="equip-item-name">${relic.name}</span>
+        <span class="equip-item-stats">${relic.desc}</span>
+      </button>`).join('')}
+      <button class="equip-select-item equip-cancel" data-relic-id="">해제</button>
+    </div>
+  `;
+
+  details.querySelectorAll('.equip-select-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      popup.style.display = 'none';
+      const relicId = btn.dataset.relicId;
+      if (!gameSave.cards[charId]) gameSave.cards[charId] = { level: 1, xp: 0, count: 1 };
+      gameSave.cards[charId].relic = relicId || null;
       saveGame(gameSave);
       showDeployDetail(charId);
     });
@@ -629,6 +672,7 @@ function startBattle() {
         if (itemId) equipItem(u, itemId);
       });
     }
+    if (cardData?.relic) equipRelic(u, cardData.relic);
   });
 
   document.getElementById('deploy-screen').style.display = 'none';
@@ -774,6 +818,13 @@ function showUnitDetail(unit) {
     ? `<div class="passive-list">패시브: ${unit.passivesApplied.map(p => `<span class="passive-tag">${p}</span>`).join('')}</div>` : '';
   const shieldHtml = unit.shield > 0 ? `<div class="equip-list">🛡️ 실드: ${unit.shield}</div>` : '';
   const invulnHtml = unit.invuln ? `<div class="equip-list" style="color:#ffd700">⭐ 무적 상태</div>` : '';
+  const buffListHtml = (unit.buffs && unit.buffs.length > 0)
+    ? `<div class="buff-list">${unit.buffs.map(b => {
+        const statLabel = { atk: '⚔ATK', def: '🛡DEF', eva: '💨EVA', crt: '🎯CRT', _invuln: '⭐무적' }[b.stat] || b.stat;
+        const sign = b.val > 0 ? '+' : '';
+        const valStr = (b.stat === 'eva' || b.stat === 'crt') ? `${sign}${Math.round(b.val * 100)}%` : `${sign}${b.val}`;
+        return `<span class="buff-tag ${b.val > 0 ? 'buff-pos' : 'buff-neg'}">${statLabel}${valStr} <small>${b.turns}턴</small></span>`;
+      }).join('')}</div>` : '';
   const growthHtml = unit.statXP ? Object.entries(unit.statXP)
     .filter(([, v]) => v > 0)
     .map(([k, v]) => `<span class="growth-tag">${k.toUpperCase()} +${v}</span>`).join('') : '';
@@ -792,6 +843,7 @@ function showUnitDetail(unit) {
     ${relicName ? `<div class="equip-list">유물: ${relicName}</div>` : ''}
     ${passiveHtml}
     ${shieldHtml}${invulnHtml}
+    ${buffListHtml}
     ${growthHtml ? `<div class="growth-list">성장: ${growthHtml}</div>` : ''}
   `;
   const sense = unit.senseSkill;
@@ -903,7 +955,7 @@ function onTileClick(x, y) {
     hideActionMenu();
     renderBattle();
   } else {
-    cancelSelection();
+    showTerrainTooltip(x, y);
   }
 }
 
@@ -1480,6 +1532,42 @@ function endTurn() {
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function showTerrainTooltip(x, y) {
+  if (!battleState) { cancelSelection(); return; }
+  const tile = battleState.map.tiles[y]?.[x];
+  if (!tile) { cancelSelection(); return; }
+  const tileInfo = TILE_TYPES[tile.type];
+  if (!tileInfo) { cancelSelection(); return; }
+
+  const effects = [];
+  if (tileInfo.defBonus) effects.push(`DEF ${tileInfo.defBonus > 0 ? '+' : ''}${tileInfo.defBonus}`);
+  if (tileInfo.atkBonus) effects.push(`ATK +${tileInfo.atkBonus}`);
+  if (tileInfo.evaBonus) effects.push(`EVA +${Math.round(tileInfo.evaBonus * 100)}%`);
+  if (tileInfo.healPerTurn) effects.push(`매턴 HP +${tileInfo.healPerTurn}`);
+  if (tileInfo.movCost > 1) effects.push(`이동비용 ${tileInfo.movCost}`);
+  if (!tileInfo.walkable) effects.push('이동 불가');
+
+  const tileEl = document.querySelector(`.tile[data-x="${x}"][data-y="${y}"]`);
+  if (tileEl && effects.length > 0) {
+    const tip = document.createElement('div');
+    tip.className = 'terrain-tooltip';
+    tip.innerHTML = `<strong>${tileInfo.icon} ${tileInfo.label}</strong><br>${effects.join(' · ')}`;
+    tileEl.appendChild(tip);
+    setTimeout(() => tip.remove(), 2500);
+  } else if (tileEl) {
+    const tip = document.createElement('div');
+    tip.className = 'terrain-tooltip';
+    tip.textContent = `${tileInfo.icon} ${tileInfo.label}`;
+    tileEl.appendChild(tip);
+    setTimeout(() => tip.remove(), 1500);
+  }
+  selectedUid = null;
+  uiMode = 'idle';
+  hideActionMenu();
+  hideCommandPanel();
+  showUnitDetail(null);
+}
+
 function highlightEnemyAction(unit) {
   const tile = document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`);
   if (tile) {
@@ -1545,6 +1633,10 @@ function handleBattleEnd(result) {
 
   saveGame(gameSave);
   overlay.style.display = 'flex';
+
+  const retryBtn = document.getElementById('btn-result-retry');
+  retryBtn.style.display = result === 'lose' ? '' : 'none';
+
   document.getElementById('btn-result-ok').onclick = () => {
     overlay.style.display = 'none';
     battleState = null;
@@ -1552,6 +1644,15 @@ function handleBattleEnd(result) {
     document.getElementById('stage-select').style.display = '';
     cancelSelection();
     renderStats();
+    renderStageSelect();
+  };
+  retryBtn.onclick = () => {
+    overlay.style.display = 'none';
+    const stageId = battleState.stageId;
+    battleState = null;
+    document.getElementById('battle-screen').style.display = 'none';
+    cancelSelection();
+    openDeploy(stageId);
   };
 }
 
