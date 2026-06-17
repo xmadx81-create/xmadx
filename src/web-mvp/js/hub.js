@@ -4,8 +4,8 @@ import {
   getAttackTargets, activateSense, endPlayerPhase, endEnemyPhase,
   runEnemyPhase, checkVictory, allPlayerUnitsActed,
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, getCombatPower,
-  previewDamage, previewSkillDamage,
-  getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate,
+  previewDamage, previewSkillDamage, getFlankingBonus,
+  getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate, useItem,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard } from './save.js';
 
@@ -575,12 +575,29 @@ function renderBattle() {
         const hpPct = Math.round((unit.hp / unit.maxHp) * 100);
         const hpColor = hpPct > 60 ? '' : hpPct > 30 ? ' medium' : ' low';
         const actedClass = unit.acted ? ' acted' : '';
+        // 🔵 제갈량: 버프/디버프 아이콘 시각화
+        let buffIcons = '';
+        if (unit.buffs && unit.buffs.length > 0) {
+          const icons = unit.buffs.map(b => {
+            if (b.stat === 'atk') return b.val > 0 ? '⚔' : '⚔̸';
+            if (b.stat === 'def') return b.val > 0 ? '🛡' : '🛡̸';
+            if (b.stat === '_invuln') return '⭐';
+            if (b.stat === 'eva') return '💨';
+            if (b.stat === 'crt') return '🎯';
+            return '✦';
+          });
+          buffIcons = `<div class="unit-buffs">${icons.join('')}</div>`;
+        }
+        if (unit.shield > 0) buffIcons += `<div class="unit-shield-icon">🛡${unit.shield}</div>`;
+        if (unit.invuln) buffIcons += `<div class="unit-invuln-icon">⭐</div>`;
+
         unitHtml = `
           <div class="unit ${unit.team}${actedClass}" data-uid="${unit.uid}">
             <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
             <div class="unit-initial" style="display:none">${unit.name[0]}</div>
             <div class="unit-hp-bar"><div class="unit-hp-fill${hpColor}" style="width:${hpPct}%"></div></div>
+            ${buffIcons}
           </div>`;
       }
 
@@ -688,6 +705,9 @@ function showActionMenu(unit) {
 
   const targets = getAttackTargets(battleState, unit);
   document.getElementById('btn-attack').disabled = targets.length === 0;
+
+  const hasItems = gameSave.inventory && gameSave.inventory.length > 0;
+  document.getElementById('btn-item').disabled = !hasItems;
 }
 
 function hideActionMenu() {
@@ -814,6 +834,46 @@ function onSkillBtn() {
   }
 }
 
+// 🔵 제갈량: 아이템 사용
+function onItemBtn() {
+  if (!selectedUid) return;
+  const unit = getUnitByUid(battleState, selectedUid);
+  if (!unit || !gameSave.inventory || gameSave.inventory.length === 0) return;
+
+  const panel = document.getElementById('item-panel');
+  const list = document.getElementById('item-list');
+  const itemIcon = { heal: '🧪', mp: '💧', atkBuff: '⚔️', defBuff: '🛡️', crtBuff: '🎯', xp: '💎' };
+
+  list.innerHTML = gameSave.inventory.map((item, i) => {
+    const effectKey = Object.keys(item.effect)[0];
+    return `<button class="item-option" data-idx="${i}">
+      <span class="item-icon">${itemIcon[effectKey] || '📦'}</span>
+      <span class="item-name">${item.name}</span>
+    </button>`;
+  }).join('') + `<button class="item-option item-cancel" data-idx="-1">취소</button>`;
+
+  list.querySelectorAll('.item-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = +btn.dataset.idx;
+      panel.style.display = 'none';
+      if (idx < 0) return;
+      const item = gameSave.inventory[idx];
+      if (!item) return;
+      const result = useItem(battleState, unit, item);
+      if (result.ok) {
+        gameSave.inventory.splice(idx, 1);
+        saveGame(gameSave);
+        appendLog(`🧪 ${unit.name}: ${result.name} 사용`);
+        result.effects.forEach(e => appendLog(`  → ${e}`));
+        cancelSelection();
+        renderBattle();
+        checkAutoEndTurn();
+      }
+    });
+  });
+  panel.style.display = 'flex';
+}
+
 function onWaitBtn() {
   if (!selectedUid) return;
   const unit = getUnitByUid(battleState, selectedUid);
@@ -842,7 +902,7 @@ function showCommandPanel(attacker, defender) {
     <button class="cmd-option" data-cmd="basic">
       <div class="cmd-illust-slot">${typeIcon[attacker.attackType] || '⚔️'}</div>
       <div class="cmd-info">
-        <div class="cmd-name">기본 공격</div>
+        <div class="cmd-name">기본 공격${preview.flanking > 0 ? ` <span class="cmd-flank">협공+${preview.flanking}</span>` : ''}</div>
         <div class="cmd-type">${typeLabel[attacker.attackType] || '물리'} · MP 0</div>
         <div class="cmd-dmg">예상 ${preview.minDmg}~${preview.maxDmg} <span class="cmd-crit">CRT ${Math.round(preview.critDmg)}</span></div>
       </div>
@@ -1308,5 +1368,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-attack').addEventListener('click', onAttackBtn);
   document.getElementById('btn-skill').addEventListener('click', onSkillBtn);
   document.getElementById('btn-wait').addEventListener('click', onWaitBtn);
+  document.getElementById('btn-item').addEventListener('click', onItemBtn);
   document.getElementById('btn-end-turn').addEventListener('click', endTurn);
 });

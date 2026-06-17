@@ -1147,6 +1147,9 @@ function calcCombatResult(state, attacker, defender, isCounter = false) {
   atkPower += faction.atkBonus;
   defPower += faction.defBonus;
 
+  // 🔵 제갈량: 협공 보너스 (인접 아군 1명당 ATK +2)
+  atkPower += getFlankingBonus(state, attacker, defender);
+
   // Evasion check (includes terrain bonus)
   const defTerrainEva = state ? (getTerrainEffect(state.map, defender.x, defender.y).evaBonus || 0) : 0;
   if (Math.random() < ((defender.eva || 0) + defTerrainEva)) {
@@ -1350,6 +1353,8 @@ export function previewDamage(state, attacker, defender) {
   const faction = getFactionAdvantage(attacker, defender);
   atkPower += faction.atkBonus;
   defPower += faction.defBonus;
+  const flanking = getFlankingBonus(state, attacker, defender);
+  atkPower += flanking;
 
   const pen = attacker.pen || 0;
   const effectiveDef = Math.max(0, defPower - pen);
@@ -1362,7 +1367,7 @@ export function previewDamage(state, attacker, defender) {
   const maxDmg = Math.max(1, Math.floor((rawDamage + maxVariance) * typeMult));
   const critDmg = Math.max(1, Math.floor((rawDamage + maxVariance) * typeMult * 1.5));
 
-  return { minDmg, maxDmg, critDmg, crt: attacker.crt, eva: defender.eva };
+  return { minDmg, maxDmg, critDmg, crt: attacker.crt, eva: defender.eva, flanking };
 }
 
 export function previewSkillDamage(unit) {
@@ -1662,6 +1667,43 @@ function manhattanDist(a, b) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
+// 🔵 제갈량: 인접 아군 수 = 협공 보너스
+export function getFlankingBonus(state, attacker, defender) {
+  if (!state) return 0;
+  const allies = state.units.filter(u =>
+    u.team === attacker.team && u.hp > 0 && u.uid !== attacker.uid &&
+    manhattanDist(u, defender) <= 1
+  );
+  return allies.length * 2;
+}
+
+// 🔴 사마의: 적 타겟 우선순위 — 힐러 > 약체 > 원딜 > 가까운 적
+function scoreTarget(enemy, target) {
+  let score = 0;
+  const healRoles = ['support', 'battle_support'];
+  const squishyRoles = ['ranged_dps', 'evasive_dps'];
+  if (healRoles.includes(target.role)) score += 50;
+  if (squishyRoles.includes(target.role)) score += 20;
+  const hpPct = target.hp / target.maxHp;
+  if (hpPct < 0.3) score += 40;
+  else if (hpPct < 0.6) score += 15;
+  const canKill = target.hp <= enemy.atk - target.def + 3;
+  if (canKill) score += 60;
+  score -= manhattanDist(enemy, target) * 3;
+  return score;
+}
+
+// 🔴 사마의: 이동 시 방어 지형 선호
+function scoreMoveTile(state, tile, target) {
+  let score = 0;
+  score -= manhattanDist(tile, target) * 10;
+  const terrain = getTerrainEffect(state.map, tile.x, tile.y);
+  score += (terrain.defBonus || 0) * 5;
+  score += (terrain.evaBonus || 0) * 30;
+  score += (terrain.atkBonus || 0) * 3;
+  return score;
+}
+
 export function runEnemyPhase(state) {
   if (state.phase !== 'enemy_phase') return [];
 
@@ -1671,78 +1713,80 @@ export function runEnemyPhase(state) {
 
   if (players.length === 0) return actions;
 
+  // 🔴 사마의: 보스(레전더리)는 마지막에 행동 (부하가 먼저 길을 닦는다)
+  enemies.sort((a, b) => {
+    const aIsBoss = a.rarity === 'legendary' ? 1 : 0;
+    const bIsBoss = b.rarity === 'legendary' ? 1 : 0;
+    return aIsBoss - bIsBoss;
+  });
+
   for (const enemy of enemies) {
     if (enemy.acted) continue;
 
-    // Find closest player unit
-    let closestPlayer = null;
-    let closestDist = Infinity;
+    // 🔴 사마의: 전략적 타겟 선정 (힐러 우선 > 처치 가능 > 약체 > 가까운 적)
+    let priorityTarget = null;
+    let bestScore = -Infinity;
     for (const p of players) {
       if (p.hp <= 0) continue;
-      const dist = manhattanDist(enemy, p);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestPlayer = p;
+      const score = scoreTarget(enemy, p);
+      if (score > bestScore) {
+        bestScore = score;
+        priorityTarget = p;
       }
     }
 
-    if (!closestPlayer) continue;
+    if (!priorityTarget) continue;
 
-    // Try to use sense skill if available and in range
-    if (enemy.senseSkill && enemy.senseSkill.cooldown === 0 && closestDist <= 3) {
+    // 🔴 사마의: 스킬 사용 AI (MP 체크 포함)
+    if (enemy.senseSkill && enemy.senseSkill.cooldown === 0 &&
+        enemy.mp >= (enemy.senseSkill.mpCost || 0) &&
+        manhattanDist(enemy, priorityTarget) <= 4) {
       const senseResult = activateSense(state, enemy);
       if (senseResult.ok) {
         actions.push({ type: 'sense', unit: enemy.uid, skillName: enemy.senseSkill.name, effects: senseResult.effects });
-        // Check if victory changed after sense
         const vc = checkVictory(state);
         if (vc) return actions;
-        continue; // sense skill uses the action
+        // 🔴 보스는 스킬 쓰고도 공격 가능 (2회 행동)
+        if (enemy.rarity !== 'legendary') continue;
       }
     }
 
     // Try to attack first if already in range
     const atkRange = getAttackRange(state, enemy);
-    const canAttack = atkRange.some(t => {
+    const targetsInRange = [];
+    for (const t of atkRange) {
       const target = getUnitAt(state, t.x, t.y);
-      return target && target.team === 'player' && target.hp > 0;
-    });
-
-    if (canAttack) {
-      // Find best target (lowest HP)
-      let bestTarget = null;
-      let bestHp = Infinity;
-      for (const t of atkRange) {
-        const target = getUnitAt(state, t.x, t.y);
-        if (target && target.team === 'player' && target.hp > 0 && target.hp < bestHp) {
-          bestHp = target.hp;
-          bestTarget = target;
-        }
-      }
-      if (bestTarget) {
-        const atkResult = attackUnit(state, enemy, bestTarget);
-        if (atkResult.ok) {
-          actions.push({ type: 'attack', unit: enemy.uid, target: bestTarget.uid, ...atkResult });
-          const vc = checkVictory(state);
-          if (vc) return actions;
-          continue;
-        }
+      if (target && target.team === 'player' && target.hp > 0) {
+        targetsInRange.push(target);
       }
     }
 
-    // Move toward closest player
+    if (targetsInRange.length > 0) {
+      // 🔴 사마의: 범위 내 최적 타겟 선택 (우선순위 점수 기반)
+      targetsInRange.sort((a, b) => scoreTarget(enemy, b) - scoreTarget(enemy, a));
+      const bestTarget = targetsInRange[0];
+      const atkResult = attackUnit(state, enemy, bestTarget);
+      if (atkResult.ok) {
+        actions.push({ type: 'attack', unit: enemy.uid, target: bestTarget.uid, ...atkResult });
+        const vc = checkVictory(state);
+        if (vc) return actions;
+        continue;
+      }
+    }
+
+    // 🔴 사마의: 전략적 이동 — 타겟에 접근하되 방어 지형 선호
     const movRange = getMovementRange(state, enemy);
     if (movRange.length === 0) {
       enemy.acted = true;
       continue;
     }
 
-    // Pick the tile that gets closest to the target
     let bestTile = null;
-    let bestMoveDist = Infinity;
+    let bestTileScore = -Infinity;
     for (const tile of movRange) {
-      const dist = manhattanDist(tile, closestPlayer);
-      if (dist < bestMoveDist) {
-        bestMoveDist = dist;
+      const score = scoreMoveTile(state, tile, priorityTarget);
+      if (score > bestTileScore) {
+        bestTileScore = score;
         bestTile = tile;
       }
     }
@@ -1756,20 +1800,19 @@ export function runEnemyPhase(state) {
 
     // Try to attack after moving
     const atkRangeAfterMove = getAttackRange(state, enemy);
-    let bestTargetAfterMove = null;
-    let bestHpAfterMove = Infinity;
+    const targetsAfterMove = [];
     for (const t of atkRangeAfterMove) {
       const target = getUnitAt(state, t.x, t.y);
-      if (target && target.team === 'player' && target.hp > 0 && target.hp < bestHpAfterMove) {
-        bestHpAfterMove = target.hp;
-        bestTargetAfterMove = target;
+      if (target && target.team === 'player' && target.hp > 0) {
+        targetsAfterMove.push(target);
       }
     }
 
-    if (bestTargetAfterMove) {
-      const atkResult = attackUnit(state, enemy, bestTargetAfterMove);
+    if (targetsAfterMove.length > 0) {
+      targetsAfterMove.sort((a, b) => scoreTarget(enemy, b) - scoreTarget(enemy, a));
+      const atkResult = attackUnit(state, enemy, targetsAfterMove[0]);
       if (atkResult.ok) {
-        actions.push({ type: 'attack', unit: enemy.uid, target: bestTargetAfterMove.uid, ...atkResult });
+        actions.push({ type: 'attack', unit: enemy.uid, target: targetsAfterMove[0].uid, ...atkResult });
         const vc = checkVictory(state);
         if (vc) return actions;
       }
@@ -1779,6 +1822,43 @@ export function runEnemyPhase(state) {
   }
 
   return actions;
+}
+
+// 🔵 제갈량: 전투 중 아이템 사용
+export function useItem(state, unit, item) {
+  if (!unit || unit.hp <= 0 || unit.acted) return { ok: false, reason: '행동 불가' };
+  const effects = [];
+  if (item.effect.heal) {
+    const heal = Math.min(item.effect.heal, unit.maxHp - unit.hp);
+    unit.hp += heal;
+    effects.push(`HP +${heal} 회복`);
+  }
+  if (item.effect.mp) {
+    const mp = Math.min(item.effect.mp, unit.maxMp - unit.mp);
+    unit.mp += mp;
+    effects.push(`MP +${mp} 회복`);
+  }
+  if (item.effect.atkBuff) {
+    unit.atk += item.effect.atkBuff;
+    unit.buffs.push({ stat: 'atk', val: item.effect.atkBuff, turns: 3 });
+    effects.push(`ATK +${item.effect.atkBuff} (3턴)`);
+  }
+  if (item.effect.defBuff) {
+    unit.def += item.effect.defBuff;
+    unit.buffs.push({ stat: 'def', val: item.effect.defBuff, turns: 3 });
+    effects.push(`DEF +${item.effect.defBuff} (3턴)`);
+  }
+  if (item.effect.crtBuff) {
+    unit.crt += item.effect.crtBuff;
+    unit.buffs.push({ stat: 'crt', val: item.effect.crtBuff, turns: 3 });
+    effects.push(`CRT +${Math.round(item.effect.crtBuff * 100)}% (3턴)`);
+  }
+  if (item.effect.xp) {
+    const xpResult = gainXP(unit, item.effect.xp);
+    effects.push(`XP +${item.effect.xp}`);
+  }
+  unit.acted = true;
+  return { ok: true, name: item.name, effects };
 }
 
 // ── Utility: Check if player phase should auto-end ──────────────────────
