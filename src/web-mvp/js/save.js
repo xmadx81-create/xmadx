@@ -13,16 +13,30 @@ const DEFAULT_SAVE = {
   achievements: {},
 };
 
+const STARTER_DECK = ['kim-doyun', 'choi-minseo', 'kwon-jihye'];
+
+export function ensureStarterDeck(save) {
+  if (Object.keys(save.cards).length > 0) return;
+  STARTER_DECK.forEach(id => {
+    save.cards[id] = { level: 1, xp: 0, count: 1 };
+  });
+}
+
 export function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return { ...DEFAULT_SAVE, cards: {}, quests: { ...DEFAULT_SAVE.quests }, stats: { ...DEFAULT_SAVE.stats } };
+    if (!raw) {
+      const fresh = { ...DEFAULT_SAVE, cards: {}, quests: { ...DEFAULT_SAVE.quests }, stats: { ...DEFAULT_SAVE.stats } };
+      ensureStarterDeck(fresh);
+      return fresh;
+    }
     const save = JSON.parse(raw);
     if (!save.stageClears) save.stageClears = {};
     if (!save.inventory) save.inventory = [];
     if (save.towerBest === undefined) save.towerBest = 0;
     if (!save.lastTeam) save.lastTeam = [];
     if (!save.achievements) save.achievements = {};
+    ensureStarterDeck(save);
     return save;
   } catch { return { ...DEFAULT_SAVE }; }
 }

@@ -13,7 +13,7 @@ import {
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
   getKillForecast, PASSIVE_TREE,
 } from './engine.js';
-import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS } from './save.js';
+import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, toggleMute, isMuted } from './sound.js';
 
 let gameSave = loadGame();
@@ -36,15 +36,58 @@ let battleLogHistory = [];
 
 // ── Gallery ──
 
+let galleryFilter = 'all';
+let gallerySearch = '';
+let gallerySort = '';
+
+function getFilteredGallery() {
+  let list = galleryFilter === 'all' ? [...CHARACTERS] : CHARACTERS.filter(c => c.faction === galleryFilter);
+  if (gallerySearch) {
+    const q = gallerySearch.toLowerCase();
+    list = list.filter(c => c.name.includes(q) || c.title.includes(q));
+  }
+  const rarityOrder = { legendary: 0, rare: 1, uncommon: 2, common: 3 };
+  if (gallerySort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  else if (gallerySort === 'rarity') list.sort((a, b) => (rarityOrder[a.rarity] ?? 9) - (rarityOrder[b.rarity] ?? 9));
+  else if (gallerySort === 'owned') list.sort((a, b) => {
+    const oa = gameSave.cards[a.id]?.count > 0 ? 0 : 1;
+    const ob = gameSave.cards[b.id]?.count > 0 ? 0 : 1;
+    return oa - ob;
+  });
+  return list;
+}
+
+function refreshGallery() {
+  renderGalleryCards(document.getElementById('card-gallery'), getFilteredGallery());
+}
+
 function initGallery() {
-  const gallery = document.getElementById('card-gallery');
-  renderGalleryCards(gallery, CHARACTERS);
+  refreshGallery();
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const filter = btn.dataset.filter;
-      renderGalleryCards(gallery, filter === 'all' ? CHARACTERS : CHARACTERS.filter(c => c.faction === filter));
+      galleryFilter = btn.dataset.filter;
+      refreshGallery();
+    });
+  });
+  const searchInput = document.getElementById('gallery-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      gallerySearch = e.target.value;
+      refreshGallery();
+    });
+  }
+  document.querySelectorAll('.gallery-sort').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sort = btn.dataset.sort;
+      if (gallerySort === sort) { gallerySort = ''; btn.classList.remove('active'); }
+      else {
+        document.querySelectorAll('.gallery-sort').forEach(b => b.classList.remove('active'));
+        gallerySort = sort;
+        btn.classList.add('active');
+      }
+      refreshGallery();
     });
   });
 }
@@ -167,7 +210,7 @@ function showCardPopup(cardId) {
         const charName = CHARACTERS.find(c => c.id === charId)?.name || charId;
         showLevelUp(charName, result.newLevel);
         showCardPopup(charId);
-        renderGalleryCards(document.getElementById('card-gallery'), CHARACTERS);
+        refreshGallery();
       }
     });
   });
@@ -969,6 +1012,7 @@ function renderBattle() {
 
         const nameTag = unit.name.length > 4 ? unit.name.slice(0, 4) : unit.name;
         const rarityClass = unit.rarity === 'legendary' ? ' rarity-legendary' : unit.rarity === 'rare' ? ' rarity-rare' : '';
+        const lvBadge = `<div class="unit-lv-badge ${unit.team}">${unit.level}</div>`;
         unitHtml = `
           <div class="unit ${unit.team}${actedClass}${rarityClass}" data-uid="${unit.uid}">
             <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
@@ -976,6 +1020,7 @@ function renderBattle() {
             <div class="unit-initial ${unit.team}" style="display:none">${unit.name[0]}</div>
             <div class="unit-hp-bar"><div class="unit-hp-fill${hpColor}" style="width:${hpPct}%"></div>${shieldPct > 0 ? `<div class="unit-shield-fill" style="width:${shieldPct}%;left:${hpPct}%"></div>` : ''}<span class="unit-hp-num">${unit.hp}</span></div>
             <div class="unit-name-tag ${unit.team}">${nameTag}</div>
+            ${lvBadge}
             ${buffIcons}
           </div>`;
       }
