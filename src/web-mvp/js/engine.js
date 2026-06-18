@@ -2033,6 +2033,21 @@ export function runEnemyPhase(state) {
       }
     }
 
+    // 🔴 사마의: 서포터 적 — 아군 HP 낮으면 회복 스킬 우선
+    const isHealerType = enemy.senseSkill && ['감응', '공감'].includes(enemy.senseSkill.baseType);
+    if (isHealerType && enemy.senseSkill.cooldown === 0 &&
+        enemy.mp >= (enemy.senseSkill.mpCost || 0)) {
+      const woundedAlly = enemies.find(a => a.uid !== enemy.uid && a.hp > 0 && a.hp < a.maxHp * 0.6 &&
+        manhattanDist(a, enemy) <= 4);
+      if (woundedAlly) {
+        const senseResult = activateSense(state, enemy);
+        if (senseResult.ok) {
+          actions.push({ type: 'sense', unit: enemy.uid, skillName: enemy.senseSkill.name, effects: senseResult.effects });
+          if (enemy.rarity !== 'legendary') continue;
+        }
+      }
+    }
+
     // 🔴 사마의: 스킬 사용 AI (MP 체크 포함)
     if (enemy.senseSkill && enemy.senseSkill.cooldown === 0 &&
         enemy.mp >= (enemy.senseSkill.mpCost || 0) &&

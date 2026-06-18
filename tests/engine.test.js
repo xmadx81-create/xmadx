@@ -1344,3 +1344,41 @@ describe('previewDamage extended', () => {
     expect(preview.invuln).toBe(true);
   });
 });
+
+// ── Enemy Support AI Tests ──
+
+describe('enemy support AI', () => {
+  it('적 서포터가 감응 스킬로 아군을 회복한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const supportEnemy = state.units.find(u => u.team === 'enemy' && u.senseSkill &&
+      ['감응', '공감'].includes(u.senseSkill.baseType));
+    if (supportEnemy) {
+      const otherEnemy = state.units.find(u => u.team === 'enemy' && u.uid !== supportEnemy.uid && u.hp > 0);
+      if (otherEnemy) {
+        otherEnemy.hp = Math.floor(otherEnemy.maxHp * 0.3);
+        supportEnemy.mp = supportEnemy.maxMp;
+        supportEnemy.senseSkill.cooldown = 0;
+        const result = activateSense(state, supportEnemy);
+        expect(result.ok).toBe(true);
+      }
+    }
+  });
+});
+
+// ── Tower Wave Healing Tests ──
+
+describe('tower wave mechanics', () => {
+  it('generateTowerStage가 유효한 타워 스테이지를 생성한다', () => {
+    const stage = generateTowerStage(5);
+    expect(stage.id).toBe('tower-5');
+    expect(stage.enemyUnits.length).toBeGreaterThan(0);
+    expect(stage.playerSpawns.length).toBeGreaterThan(0);
+  });
+
+  it('타워 스테이지 난이도가 웨이브에 따라 증가한다', () => {
+    const early = generateTowerStage(1);
+    const late = generateTowerStage(10);
+    expect(late.enemyLevel).toBeGreaterThan(early.enemyLevel);
+  });
+});

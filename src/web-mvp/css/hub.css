@@ -4671,6 +4671,20 @@ body {
 }
 .result-unit-name { color: #eee; }
 .result-unit-status { color: #aaa; }
+.result-unit.result-mvp {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(212, 168, 67, 0.1));
+  border: 1px solid rgba(255, 215, 0, 0.3);
+}
+.result-unit.result-mvp .result-unit-name { color: #ffd700; }
+
+.synergy-enemy-cp {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 4px 0;
+}
+.cp-advantage { color: #22c55e; }
+.cp-even { color: #facc15; }
+.cp-disadvantage { color: #ef4444; }
 
 /* ── Card Gallery Progression ── */
 .card-lv-badge {
