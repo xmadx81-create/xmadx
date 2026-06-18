@@ -14,6 +14,7 @@ import {
   applyStun, applySlow, isStunned, tickStatusEffects,
   executeUltimate, useItem, tickBuffs, ULTIMATES,
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
+  PASSIVE_TREE,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
@@ -1644,5 +1645,76 @@ describe('전투 결과 딜레이 & 승리 확인', () => {
   it('checkVictory — 양쪽 생존 시 null', () => {
     const state = createBattleState('stage-1', [CHARACTERS[0].id]);
     expect(checkVictory(state)).toBeNull();
+  });
+});
+
+describe('패시브 스킬 트리', () => {
+  it('모든 역할에 패시브 트리가 정의되어 있다', () => {
+    const roles = ['tank', 'melee_dps', 'ranged_dps', 'support', 'bruiser', 'battle_support', 'evasive_dps', 'breaker'];
+    roles.forEach(role => {
+      expect(PASSIVE_TREE[role]).toBeDefined();
+      expect(PASSIVE_TREE[role].length).toBe(3);
+    });
+  });
+
+  it('패시브는 lv, stat, val, name 속성을 갖는다', () => {
+    Object.values(PASSIVE_TREE).forEach(tree => {
+      tree.forEach(p => {
+        expect(p).toHaveProperty('lv');
+        expect(p).toHaveProperty('stat');
+        expect(p).toHaveProperty('val');
+        expect(p).toHaveProperty('name');
+        expect(typeof p.name).toBe('string');
+      });
+    });
+  });
+
+  it('레벨업 시 패시브가 자동 적용된다', () => {
+    const char = CHARACTERS.find(c => c.role === 'tank');
+    if (!char) return;
+    const unit = cardToUnit(char, 0, 0);
+    unit.level = 1;
+    unit.xp = 0;
+    unit.xpToNext = 10;
+    gainXP(unit, 200);
+    const tree = PASSIVE_TREE[unit.role];
+    const expectedPassives = tree.filter(p => unit.level >= p.lv).map(p => p.name);
+    expectedPassives.forEach(name => {
+      expect(unit.passivesApplied).toContain(name);
+    });
+  });
+
+  it('패시브 레벨 순서가 오름차순이다', () => {
+    Object.values(PASSIVE_TREE).forEach(tree => {
+      for (let i = 1; i < tree.length; i++) {
+        expect(tree[i].lv).toBeGreaterThanOrEqual(tree[i - 1].lv);
+      }
+    });
+  });
+});
+
+describe('사운드 모듈', () => {
+  it('사운드 함수들이 export되어 있다', async () => {
+    const sound = await import('../src/web-mvp/js/sound.js');
+    expect(typeof sound.initAudio).toBe('function');
+    expect(typeof sound.sfxHit).toBe('function');
+    expect(typeof sound.sfxCritical).toBe('function');
+    expect(typeof sound.sfxDeath).toBe('function');
+    expect(typeof sound.sfxSkill).toBe('function');
+    expect(typeof sound.sfxEvade).toBe('function');
+    expect(typeof sound.sfxLevelUp).toBe('function');
+    expect(typeof sound.sfxWin).toBe('function');
+    expect(typeof sound.sfxLose).toBe('function');
+    expect(typeof sound.toggleMute).toBe('function');
+    expect(typeof sound.isMuted).toBe('function');
+  });
+
+  it('toggleMute가 상태를 토글한다', async () => {
+    const sound = await import('../src/web-mvp/js/sound.js');
+    const before = sound.isMuted();
+    sound.toggleMute();
+    expect(sound.isMuted()).toBe(!before);
+    sound.toggleMute();
+    expect(sound.isMuted()).toBe(before);
   });
 });

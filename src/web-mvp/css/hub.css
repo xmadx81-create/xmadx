@@ -2515,6 +2515,23 @@ body {
   background: rgba(128,203,196,0.1);
   border: 1px solid rgba(128,203,196,0.2);
   font-size: 0.6rem;
+  cursor: help;
+}
+.passive-tag.unlocked {
+  color: #80cbc4;
+  background: rgba(128,203,196,0.15);
+  border-color: rgba(128,203,196,0.3);
+}
+.passive-tag.locked {
+  color: #666;
+  background: rgba(100,100,100,0.1);
+  border-color: rgba(100,100,100,0.15);
+  opacity: 0.7;
+}
+.passive-lv {
+  font-size: 0.5rem;
+  margin-left: 2px;
+  opacity: 0.6;
 }
 .growth-list {
   grid-column: 1 / -1;
@@ -3137,6 +3154,126 @@ body {
 .battle-log .log-move { color: var(--player-blue); }
 .battle-log .log-skill { color: #a855f7; }
 .battle-log .log-system { color: var(--legendary-gold); }
+
+/* ── Turn Order Bar ── */
+.turn-order-bar {
+  display: flex;
+  gap: 3px;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 6px;
+  margin: 4px 0;
+  overflow-x: auto;
+  align-items: center;
+}
+.turn-order-bar::-webkit-scrollbar { height: 0; }
+.to-unit {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.to-unit:hover { transform: scale(1.2); z-index: 2; }
+.to-unit img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.to-initial {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: var(--bg-card);
+  border-radius: 50%;
+}
+.to-player { border: 2px solid var(--player-blue); }
+.to-enemy { border: 2px solid var(--blood-red); }
+.to-acted { opacity: 0.35; filter: grayscale(0.5); }
+.to-selected { border-color: #ffd700 !important; box-shadow: 0 0 6px rgba(255,215,0,0.5); }
+.to-check {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  font-size: 0.45rem;
+  background: rgba(0,0,0,0.7);
+  color: #4caf50;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── In-Battle Minimap ── */
+.battle-minimap {
+  position: absolute;
+  top: 48px;
+  right: 4px;
+  z-index: 30;
+  transition: opacity 0.2s;
+}
+.battle-minimap.collapsed .minimap-content { display: none; }
+.btn-minimap-toggle {
+  display: block;
+  background: rgba(26, 21, 32, 0.9);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  margin-left: auto;
+}
+.btn-minimap-toggle:hover { background: rgba(69, 123, 157, 0.3); }
+.minimap-content {
+  background: rgba(10, 10, 20, 0.92);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 4px;
+  margin-top: 2px;
+  backdrop-filter: blur(4px);
+}
+.mm-grid {
+  display: grid;
+  gap: 0;
+}
+.mm-tile {
+  width: 6px;
+  height: 6px;
+  position: relative;
+}
+.mm-floor { background: #2a2a4a; }
+.mm-wall { background: #0a0a15; }
+.mm-forest { background: #1a3a1a; }
+.mm-mountain { background: #3a3a3a; }
+.mm-swamp { background: #2a1f1a; }
+.mm-ice { background: #1a2a3a; }
+.mm-graveyard { background: #1a1a25; }
+.mm-hotspring { background: #2a1a1a; }
+.mm-blood_storage { background: #3d1a1e; }
+.mm-desk { background: #3d2e1a; }
+.mm-entrance { background: #1a3d2e; }
+.mm-dungeon { background: #12121a; }
+.mm-bridge { background: #2a2520; }
+.mm-valley { background: #0a1a0a; }
+.mm-road { background: #1e1e28; }
+.mm-dot {
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+}
+.mm-dot.player { background: var(--player-blue); box-shadow: 0 0 3px var(--player-blue); }
+.mm-dot.enemy { background: var(--blood-red); box-shadow: 0 0 3px var(--blood-red); }
 
 /* ── Stage Select / Mission Briefing ── */
 .stage-select {
