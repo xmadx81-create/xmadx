@@ -942,8 +942,9 @@ function renderBattle() {
         }
 
         const nameTag = unit.name.length > 4 ? unit.name.slice(0, 4) : unit.name;
+        const rarityClass = unit.rarity === 'legendary' ? ' rarity-legendary' : unit.rarity === 'rare' ? ' rarity-rare' : '';
         unitHtml = `
-          <div class="unit ${unit.team}${actedClass}" data-uid="${unit.uid}">
+          <div class="unit ${unit.team}${actedClass}${rarityClass}" data-uid="${unit.uid}">
             <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
             <div class="unit-initial ${unit.team}" style="display:none">${unit.name[0]}</div>
@@ -1543,6 +1544,18 @@ async function doAttack(attacker, defender) {
   if (!result.ok) return;
 
   renderBattle();
+
+  const atkUnitEl = document.querySelector(`.tile[data-x="${attacker.x}"][data-y="${attacker.y}"] .unit`);
+  if (atkUnitEl) {
+    const dx = (defender.x - attacker.x) * 12;
+    const dy = (defender.y - attacker.y) * 12;
+    atkUnitEl.style.setProperty('--lunge-x', `${dx}px`);
+    atkUnitEl.style.setProperty('--lunge-y', `${dy}px`);
+    atkUnitEl.classList.add('unit-lunge');
+    await delay(250);
+    atkUnitEl.classList.remove('unit-lunge');
+  }
+
   await showCombatWidget(attacker, defender, result);
 
   const defTile = document.querySelector(`.tile[data-x="${defender.x}"][data-y="${defender.y}"]`);
@@ -1585,8 +1598,12 @@ async function doAttack(attacker, defender) {
     attacker._battleKills = (attacker._battleKills || 0) + 1;
     progressQuest(gameSave, 'kill');
     saveGame(gameSave);
+    if (defTile) showDeathEffect(defTile);
   }
-  if (result.attackerDied) appendLog(`  💀 ${attacker.name} 전사!`);
+  if (result.attackerDied) {
+    appendLog(`  💀 ${attacker.name} 전사!`);
+    if (atkTile) showDeathEffect(atkTile);
+  }
 
   // XP & Level Up
   if (result.xpGains) {
@@ -1624,6 +1641,27 @@ function showFloatingText(tileEl, text, type) {
   ft.textContent = text;
   tileEl.appendChild(ft);
   setTimeout(() => ft.remove(), 1000);
+}
+
+function showDeathEffect(tileEl) {
+  const fx = document.createElement('div');
+  fx.className = 'death-effect';
+  tileEl.appendChild(fx);
+  for (let i = 0; i < 6; i++) {
+    const p = document.createElement('div');
+    p.className = 'death-particle';
+    p.style.setProperty('--angle', `${i * 60 + Math.random() * 30}deg`);
+    p.style.setProperty('--dist', `${20 + Math.random() * 15}px`);
+    fx.appendChild(p);
+  }
+  setTimeout(() => fx.remove(), 800);
+}
+
+function scrollToTile(x, y) {
+  const viewport = document.getElementById('battle-viewport');
+  if (!viewport) return;
+  const tile = viewport.querySelector(`.tile[data-x="${x}"][data-y="${y}"]`);
+  if (tile) tile.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
 }
 
 function showCombatWidget(attacker, defender, result) {
@@ -1681,9 +1719,13 @@ function showCombatWidget(attacker, defender, result) {
 
 function showSkillOverlay(name, category) {
   const overlay = document.getElementById('skill-overlay');
-  overlay.className = `skill-overlay ${category === '촉' ? 'human' : 'blood'}`;
+  const typeClass = category === '촉' ? 'sense-human' : category === 'ult' ? 'sense-ult' : 'sense-blood';
+  overlay.className = `skill-overlay ${typeClass}`;
   document.getElementById('skill-overlay-name').textContent = `「${name}」`;
   overlay.style.display = 'flex';
+  overlay.style.animation = 'none';
+  overlay.offsetHeight;
+  overlay.style.animation = '';
   setTimeout(() => { overlay.style.display = 'none'; }, 1200);
 }
 
@@ -1795,10 +1837,17 @@ function endTurn() {
         const unit = getUnitByUid(battleState, a.unit);
         const target = getUnitByUid(battleState, a.target);
         renderBattle();
-        if (unit) highlightEnemyAction(unit);
+        if (unit) {
+          highlightEnemyAction(unit);
+          scrollToTile(unit.x, unit.y);
+        }
         appendLog(`⚔ ${unit?.name || '적'} → ${target?.name || '?'}: ${a.damage}${a.critical ? ' 크리티컬!' : ''}`);
         if (a.counterDamage > 0) appendLog(`  ↩ ${target?.name} 반격: ${a.counterDamage}`);
-        if (a.defenderDied) appendLog(`  💀 ${target?.name} 전사!`);
+        if (a.defenderDied) {
+          appendLog(`  💀 ${target?.name} 전사!`);
+          const deadTile = target ? document.querySelector(`.tile[data-x="${target.x}"][data-y="${target.y}"]`) : null;
+          if (deadTile) showDeathEffect(deadTile);
+        }
         if (a.attackerDied) {
           appendLog(`  💀 ${unit?.name} 반격으로 전사!`);
           if (target) {
@@ -1807,12 +1856,19 @@ function endTurn() {
             progressQuest(gameSave, 'kill');
             saveGame(gameSave);
           }
+          const deadTile = unit ? document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`) : null;
+          if (deadTile) showDeathEffect(deadTile);
         }
         const defTile = target ? document.querySelector(`.tile[data-x="${target.x}"][data-y="${target.y}"]`) : null;
         if (defTile && !a.evaded) {
           showFloatingText(defTile, `-${a.damage}`, a.critical ? 'critical' : 'damage');
           defTile.classList.add('damage-shake');
           setTimeout(() => defTile.classList.remove('damage-shake'), 400);
+          const viewport = document.getElementById('battle-viewport');
+          if (viewport) {
+            viewport.classList.add(a.critical ? 'screen-shake-heavy' : 'screen-shake');
+            setTimeout(() => viewport.classList.remove('screen-shake', 'screen-shake-heavy'), 400);
+          }
         }
         if (a.counterDamage > 0) {
           const atkTile = unit ? document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`) : null;
@@ -2010,22 +2066,33 @@ function handleBattleEnd(result) {
     const mvp = [...playerUnits].sort((a, b) => (b._battleKills || 0) - (a._battleKills || 0))[0];
     const unitSummary = playerUnits.map(u => {
       const lvInfo = u.level > 1 ? ` Lv.${u.level}` : '';
-      const status = u.hp > 0 ? `HP ${u.hp}/${u.maxHp}` : '💀 전사';
+      const hpPct = u.hp > 0 ? Math.round(u.hp / u.maxHp * 100) : 0;
+      const hpBar = u.hp > 0 ? `<div class="result-hp-bar"><div class="result-hp-fill" style="width:${hpPct}%"></div></div>` : '';
+      const status = u.hp > 0 ? `${u.hp}/${u.maxHp}` : '전사';
       const kills = u._battleKills || 0;
       const isMvp = u.uid === mvp?.uid && kills > 0;
       return `<div class="result-unit ${u.hp <= 0 ? 'result-dead' : ''} ${isMvp ? 'result-mvp' : ''}">
-        <span class="result-unit-name">${isMvp ? '👑 ' : ''}${u.name}${lvInfo}</span>
-        <span class="result-unit-status">${status}${kills > 0 ? ` · ${kills}킬` : ''}</span>
+        <div class="result-unit-left">
+          <div class="result-unit-portrait"><img src="${portraitSrc(`assets/portraits/${u.id}`)}" onerror="this.parentElement.textContent='${u.name[0]}'" /></div>
+          <div>
+            <div class="result-unit-name">${isMvp ? '👑 ' : ''}${u.name}${lvInfo}</div>
+            <div class="result-unit-status">${status}${kills > 0 ? ` · ${kills}킬` : ''}</div>
+          </div>
+        </div>
+        ${hpBar}
       </div>`;
     }).join('');
 
     const totalEnemies = battleState.units.filter(u => u.team === 'enemy').length;
-    const playerLost = playerUnits.filter(u => u.hp <= 0).length;
     const weatherLabel = battleState.weather?.id !== 'clear' ? ` · ${battleState.weather.icon} ${battleState.weather.name}` : '';
+
+    const starsHtml = Array.from({ length: 3 }, (_, i) =>
+      `<span class="result-star ${i < stars ? 'earned' : 'empty'}" style="animation-delay:${i * 0.2}s">${i < stars ? '⭐' : '☆'}</span>`
+    ).join('');
 
     text.innerHTML = `
       <div class="result-story">${battleState.stage.storyOutro || '모든 적을 제압했습니다!'}</div>
-      <div class="result-stars">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
+      <div class="result-stars">${starsHtml}</div>
       <div class="result-summary">
         <span>${turns}턴</span> · <span>생존 ${survivors.length}/${playerUnits.length}</span> · <span>처치 ${enemiesDefeated}/${totalEnemies}</span>${weatherLabel}
       </div>
@@ -2089,6 +2156,7 @@ function handleBattleEnd(result) {
 
   saveGame(gameSave);
   overlay.style.display = 'flex';
+  requestAnimationFrame(() => overlay.classList.add('active'));
 
   const retryBtn = document.getElementById('btn-result-retry');
   const nextWaveBtn = document.getElementById('btn-result-next-wave');
@@ -2102,8 +2170,9 @@ function handleBattleEnd(result) {
     if (towIdx >= 0) STAGES.splice(towIdx, 1);
   };
 
+  const closeOverlay = () => { overlay.classList.remove('active'); overlay.style.display = 'none'; };
   document.getElementById('btn-result-ok').onclick = () => {
-    overlay.style.display = 'none';
+    closeOverlay();
     if (towerMode) exitTower();
     battleState = null;
     document.getElementById('battle-screen').style.display = 'none';
@@ -2113,7 +2182,7 @@ function handleBattleEnd(result) {
     renderStageSelect();
   };
   retryBtn.onclick = () => {
-    overlay.style.display = 'none';
+    closeOverlay();
     const stageId = battleState.stageId;
     battleState = null;
     document.getElementById('battle-screen').style.display = 'none';
@@ -2122,7 +2191,7 @@ function handleBattleEnd(result) {
   };
   if (nextWaveBtn) {
     nextWaveBtn.onclick = () => {
-      overlay.style.display = 'none';
+      closeOverlay();
       battleState = null;
       startTowerWave();
     };
@@ -2150,7 +2219,14 @@ function handleBattleEnd(result) {
 function appendLog(msg) {
   const log = document.getElementById('battle-log');
   const entry = document.createElement('div');
-  entry.className = 'log-entry';
+  let cls = 'log-entry';
+  if (msg.includes('💀') || msg.includes('전사')) cls += ' log-kill';
+  else if (msg.includes('⚔') || msg.includes('데미지') || msg.includes('반격')) cls += ' log-damage';
+  else if (msg.includes('회복') || msg.includes('+') && msg.includes('HP')) cls += ' log-heal';
+  else if (msg.includes('✦') || msg.includes('스킬') || msg.includes('궁극기')) cls += ' log-skill';
+  else if (msg.includes('⬆') || msg.includes('Lv.')) cls += ' log-levelup';
+  else if (msg.includes('🎁') || msg.includes('드롭')) cls += ' log-loot';
+  entry.className = cls;
   entry.textContent = msg;
   log.appendChild(entry);
   while (log.children.length > 100) log.removeChild(log.firstChild);
