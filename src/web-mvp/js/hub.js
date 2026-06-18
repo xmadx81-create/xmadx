@@ -901,6 +901,9 @@ function renderBattle() {
           const seIcons = unit.statusEffects.map(s => s.type === 'stun' ? '💫' : '🐌').join('');
           buffIcons += `<div class="unit-status-icon">${seIcons}</div>`;
         }
+        if (unit.rarity === 'legendary' && unit.team === 'enemy') {
+          buffIcons += `<div class="unit-leader-icon">👑</div>`;
+        }
 
         unitHtml = `
           <div class="unit ${unit.team}${actedClass}" data-uid="${unit.uid}">
@@ -1322,13 +1325,15 @@ function showCommandPanel(attacker, defender) {
                     forecast.canKill ? '<span class="cmd-kill-maybe">처치 가능</span>' : '';
   const counterBadge = forecast.counterKillsYou ? '<span class="cmd-counter-danger">반격 위험!</span>' :
                        forecast.canCounter ? `<span class="cmd-counter-info">반격 ~${forecast.counterDmg}</span>` : '';
+  const shieldBadge = preview.invuln ? '<span class="cmd-invuln">⭐무적</span>' :
+                      preview.shield > 0 ? `<span class="cmd-shield">🛡${preview.shield}</span>` : '';
 
   // Basic attack option
   html += `
     <button class="cmd-option" data-cmd="basic">
       <div class="cmd-illust-slot">${typeIcon[attacker.attackType] || '⚔️'}</div>
       <div class="cmd-info">
-        <div class="cmd-name">기본 공격${preview.flanking > 0 ? ` <span class="cmd-flank">협공+${preview.flanking}</span>` : ''} ${killBadge}</div>
+        <div class="cmd-name">기본 공격${preview.flanking > 0 ? ` <span class="cmd-flank">협공+${preview.flanking}</span>` : ''} ${shieldBadge} ${killBadge}</div>
         <div class="cmd-type">${typeLabel[attacker.attackType] || '물리'} · MP 0</div>
         <div class="cmd-dmg">예상 ${preview.minDmg}~${preview.maxDmg} <span class="cmd-crit">CRT ${Math.round(preview.critDmg)}</span></div>
       </div>
@@ -1688,7 +1693,7 @@ function showUnitListPanel() {
     const hpColor = u.hp <= 0 ? 'dead' : hpPct > 60 ? '' : hpPct > 30 ? 'medium' : 'low';
     const acted = u.acted ? ' acted' : '';
     const buffCount = (u.buffs?.length || 0);
-    return `<div class="ulp-unit ${u.team}${acted} ${u.hp <= 0 ? 'ulp-dead' : ''}">
+    return `<div class="ulp-unit ${u.team}${acted} ${u.hp <= 0 ? 'ulp-dead' : ''}" data-uid="${u.uid}">
       <span class="ulp-name">${u.name}</span>
       <div class="ulp-hp-bar"><div class="ulp-hp-fill ${hpColor}" style="width:${hpPct}%"></div></div>
       <span class="ulp-hp-text">${u.hp}/${u.maxHp}</span>
@@ -1702,6 +1707,20 @@ function showUnitListPanel() {
     <div class="ulp-section"><div class="ulp-label">🔵 아군</div>${playerUnits.map(renderUnit).join('')}</div>
     <div class="ulp-section"><div class="ulp-label">🔴 적</div>${enemyUnits.map(renderUnit).join('')}</div>
   `;
+  content.querySelectorAll('.ulp-unit').forEach(el => {
+    el.addEventListener('click', () => {
+      const uid = el.dataset.uid;
+      const unit = getUnitByUid(battleState, uid);
+      if (unit && unit.hp > 0) {
+        selectedUid = unit.uid;
+        highlightedTiles = [];
+        showUnitDetail(unit);
+        if (unit.team === 'player' && !unit.acted && battleState.phase === 'player_phase') showActionMenu(unit);
+        renderBattle();
+        panel.style.display = 'none';
+      }
+    });
+  });
   panel.style.display = '';
 }
 
@@ -1935,11 +1954,15 @@ function handleBattleEnd(result) {
       </div>`;
     }).join('');
 
+    const totalEnemies = battleState.units.filter(u => u.team === 'enemy').length;
+    const playerLost = playerUnits.filter(u => u.hp <= 0).length;
+    const weatherLabel = battleState.weather?.id !== 'clear' ? ` · ${battleState.weather.icon} ${battleState.weather.name}` : '';
+
     text.innerHTML = `
       <div class="result-story">${battleState.stage.storyOutro || '모든 적을 제압했습니다!'}</div>
       <div class="result-stars">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
       <div class="result-summary">
-        <span>${turns}턴</span> · <span>생존 ${survivors.length}/${playerUnits.length}</span> · <span>처치 ${enemiesDefeated}</span>
+        <span>${turns}턴</span> · <span>생존 ${survivors.length}/${playerUnits.length}</span> · <span>처치 ${enemiesDefeated}/${totalEnemies}</span>${weatherLabel}
       </div>
       <div class="result-units">${unitSummary}</div>
     `;
@@ -2049,6 +2072,7 @@ function appendLog(msg) {
   entry.className = 'log-entry';
   entry.textContent = msg;
   log.appendChild(entry);
+  while (log.children.length > 100) log.removeChild(log.firstChild);
   log.scrollTop = log.scrollHeight;
 }
 

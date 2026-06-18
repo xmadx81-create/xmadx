@@ -1244,3 +1244,103 @@ describe('buff system', () => {
     expect(unit.buffs[0].turns).toBe(2);
   });
 });
+
+// ── Revive Edge Case Tests ──
+
+describe('revive edge case', () => {
+  it('부활 대상이 없으면 ok: false를 반환하고 MP/쿨다운을 복구한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const support = state.units.find(u => u.team === 'player' && u.role === 'support');
+    if (support) {
+      support.level = 10;
+      support.mp = support.maxMp;
+      const reviveIdx = support.ultimates?.findIndex(u => u.type === 'revive');
+      if (reviveIdx >= 0) {
+        const mpBefore = support.mp;
+        const result = executeUltimate(state, support, reviveIdx);
+        expect(result.ok).toBe(false);
+        expect(result.reason).toBe('부활 대상 없음');
+        expect(support.mp).toBe(mpBefore);
+        expect(support.acted).toBe(false);
+        expect(support.ultimates[reviveIdx].currentCooldown).toBe(0);
+      }
+    }
+  });
+
+  it('전사한 아군이 있으면 부활이 성공한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const support = state.units.find(u => u.team === 'player' && u.role === 'support');
+    const other = state.units.find(u => u.team === 'player' && u.uid !== support?.uid);
+    if (support && other) {
+      support.level = 10;
+      support.mp = support.maxMp;
+      other.hp = 0;
+      const reviveIdx = support.ultimates?.findIndex(u => u.type === 'revive');
+      if (reviveIdx >= 0) {
+        const result = executeUltimate(state, support, reviveIdx);
+        expect(result.ok).toBe(true);
+        expect(other.hp).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+// ── Leader Aura Tests ──
+
+describe('leader aura', () => {
+  it('레전더리 적이 있는 스테이지에서 적 전체가 ATK+2 DEF+1 버프를 받는다', () => {
+    const legendaryStage = STAGES.find(s =>
+      s.enemyUnits.some(eu => {
+        const c = CHARACTERS.find(ch => ch.id === eu.charId);
+        return c && c.rarity === 'legendary';
+      })
+    );
+    if (legendaryStage) {
+      const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+      const state = createBattleState(legendaryStage.id, chars.map(c => c.id), null, 1.0);
+      const buffedEnemies = state.units.filter(u => u.team === 'enemy' && u._leaderBuff);
+      expect(buffedEnemies.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('레전더리 적이 없는 스테이지에서는 리더 버프가 없다', () => {
+    const noLegendStage = STAGES.find(s =>
+      !s.enemyUnits.some(eu => {
+        const c = CHARACTERS.find(ch => ch.id === eu.charId);
+        return c && c.rarity === 'legendary';
+      })
+    );
+    if (noLegendStage) {
+      const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+      const state = createBattleState(noLegendStage.id, chars.map(c => c.id), null, 1.0);
+      const buffedEnemies = state.units.filter(u => u.team === 'enemy' && u._leaderBuff);
+      expect(buffedEnemies.length).toBe(0);
+    }
+  });
+});
+
+// ── Preview Damage Shield/Invuln Tests ──
+
+describe('previewDamage extended', () => {
+  it('실드가 있는 대상의 프리뷰에 shield 값이 포함된다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    defender.shield = 15;
+    const preview = previewDamage(state, attacker, defender);
+    expect(preview.shield).toBe(15);
+  });
+
+  it('무적 대상의 프리뷰에 invuln이 true이다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    defender.invuln = true;
+    const preview = previewDamage(state, attacker, defender);
+    expect(preview.invuln).toBe(true);
+  });
+});
