@@ -707,7 +707,16 @@ function openTowerDeploy() {
   openDeploy(towerStage.id);
 }
 
+let towerSurvivorHP = null;
+
 function startTowerWave() {
+  if (battleState) {
+    towerSurvivorHP = {};
+    battleState.units.filter(u => u.team === 'player' && u.hp > 0).forEach(u => {
+      const charId = u.charId || u.id;
+      towerSurvivorHP[charId] = { hp: u.hp, maxHp: u.maxHp, mp: u.mp };
+    });
+  }
   const oldTowerId = STAGES.findIndex(s => s.id === `tower-${towerWave}`);
   if (oldTowerId >= 0) STAGES.splice(oldTowerId, 1);
   towerWave++;
@@ -715,6 +724,17 @@ function startTowerWave() {
   STAGES.push(nextStage);
   currentStageId = nextStage.id;
   startBattle();
+  if (towerSurvivorHP && battleState) {
+    battleState.units.filter(u => u.team === 'player').forEach(u => {
+      const charId = u.charId || u.id;
+      const prev = towerSurvivorHP[charId];
+      if (prev) {
+        u.hp = Math.min(u.maxHp, prev.hp);
+        u.mp = Math.min(u.maxMp, prev.mp);
+      }
+    });
+    towerSurvivorHP = null;
+  }
 }
 
 // ── Battle Start ──
@@ -1152,12 +1172,20 @@ function onSkillBtn() {
 
 function executeSkillOnTarget(attacker, target) {
   undoMoveData = null;
+  const enemiesBefore = battleState.units.filter(u => u.team !== attacker.team && u.hp > 0).length;
   const result = activateSense(battleState, attacker, target);
   if (result.ok) {
     showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
     appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
     result.effects.forEach(e => appendLog(`  → ${e}`));
     progressQuest(gameSave, 'skill');
+
+    const enemiesAfter = battleState.units.filter(u => u.team !== attacker.team && u.hp > 0).length;
+    const kills = enemiesBefore - enemiesAfter;
+    if (kills > 0 && attacker.team === 'player') {
+      gameSave.stats.totalKills += kills;
+      for (let i = 0; i < kills; i++) progressQuest(gameSave, 'kill');
+    }
     saveGame(gameSave);
 
     const vc = checkVictory(battleState);
@@ -1385,6 +1413,7 @@ async function doSkillAttack(attacker, defender) {
 
 async function doUltimate(unit, ultIndex) {
   undoMoveData = null;
+  const enemiesBefore = battleState.units.filter(u => u.team !== unit.team && u.hp > 0).length;
   const result = executeUltimate(battleState, unit, ultIndex);
   if (!result.ok) return;
 
@@ -1392,6 +1421,13 @@ async function doUltimate(unit, ultIndex) {
   appendLog(`🌟 ${unit.name}의 궁극기 「${result.name}」!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
   progressQuest(gameSave, 'ultimate');
+
+  const enemiesAfter = battleState.units.filter(u => u.team !== unit.team && u.hp > 0).length;
+  const kills = enemiesBefore - enemiesAfter;
+  if (kills > 0 && unit.team === 'player') {
+    gameSave.stats.totalKills += kills;
+    for (let i = 0; i < kills; i++) progressQuest(gameSave, 'kill');
+  }
   saveGame(gameSave);
 
   renderBattle();
@@ -1935,6 +1971,7 @@ function renderStats() {
       <div class="stat-item"><span>승률</span><strong>${s.totalBattles ? Math.round(s.wins/s.totalBattles*100) : 0}%</strong></div>
       <div class="stat-item"><span>총 처치</span><strong>${s.totalKills}</strong></div>
       <div class="stat-item"><span>출석</span><strong>${quests.attendance}일</strong></div>
+      <div class="stat-item"><span>🗼 탑 최고</span><strong>${gameSave.towerBest || 0}층</strong></div>
     </div>
   `;
 
