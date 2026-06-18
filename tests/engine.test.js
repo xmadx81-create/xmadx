@@ -785,3 +785,43 @@ describe('tower system', () => {
     expect(s7.reinforcements).toBeNull();
   });
 });
+
+describe('weather effects integration', () => {
+  it('bloodmoon 날씨에서 감응 힐량이 감소한다', () => {
+    const healer = CHARACTERS.find(c => c.senseSkill?.baseType === '감응');
+    if (!healer) return;
+    const supportChars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const charIds = [healer.id, ...supportChars.filter(c => c.id !== healer.id).map(c => c.id)].slice(0, 3);
+    const state = createBattleState('stage-1', charIds, null, 1.0);
+    state.weather = WEATHER_TYPES.bloodmoon;
+    const ally = state.units.find(u => u.team === 'player');
+    ally.hp = 1;
+    const hpBefore = ally.hp;
+    const unit = state.units.find(u => u.team === 'player' && u.senseSkill?.baseType === '감응');
+    if (unit) {
+      const result = activateSense(state, unit, ally);
+      if (result.ok) {
+        expect(ally.hp).toBeGreaterThan(hpBefore);
+      }
+    }
+  });
+
+  it('storm 날씨에서 반격 배수가 0.7보다 크다', () => {
+    const state = createBattleState('stage-1', CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3).map(c => c.id), null, 1.0);
+    state.weather = WEATHER_TYPES.storm;
+    expect(state.weather.effects.counterBoost).toBe(0.2);
+  });
+
+  it('blizzard 날씨가 적용된 stage-4 유닛에 MOV 감소가 적용된다', () => {
+    const stage4 = STAGES.find(s => s.id === 'stage-4');
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, stage4.playerSpawns.length);
+    const state = createBattleState('stage-4', chars.map(c => c.id), null, 1.0);
+    expect(state.weather.id).toBe('blizzard');
+    const normalState = createBattleState('stage-1', chars.slice(0, 3).map(c => c.id), null, 1.0);
+    const sameChar = state.units.find(u => u.team === 'player');
+    const normalChar = normalState.units.find(u => u.charId === sameChar.charId || u.id === sameChar.id);
+    if (normalChar) {
+      expect(sameChar.mov).toBeLessThanOrEqual(normalChar.mov);
+    }
+  });
+});

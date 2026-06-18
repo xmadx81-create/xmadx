@@ -488,7 +488,8 @@ export function executeUltimate(state, unit, ultIndex) {
         dmg = Math.max(1, dmg - target.def);
         if (target.invuln) dmg = 0;
         target.hp = Math.max(0, target.hp - dmg);
-        const heal = Math.floor(dmg * 0.5);
+        let heal = Math.floor(dmg * 0.5);
+        if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
         unit.hp = Math.min(unit.maxHp, unit.hp + heal);
         result.effects.push(`${target.name}에게 ${dmg}, 흡혈 +${heal}`);
       }
@@ -497,7 +498,8 @@ export function executeUltimate(state, unit, ultIndex) {
     case 'team_heal':
       allies.concat([unit]).forEach(a => {
         if (a.hp > 0 && a.hp < a.maxHp) {
-          const heal = Math.floor(a.maxHp * (ult.powerMult || 0.3));
+          let heal = Math.floor(a.maxHp * (ult.powerMult || 0.3));
+          if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
           a.hp = Math.min(a.maxHp, a.hp + heal);
           result.effects.push(`${a.name} HP +${heal}`);
         }
@@ -1410,8 +1412,11 @@ function calcCombatResult(state, attacker, defender, isCounter = false) {
   const critical = Math.random() < (attacker.crt || 0.1);
   const critMult = critical ? 1.5 : 1.0;
 
-  // Counter reduction
-  const counterMult = isCounter ? 0.7 : 1.0;
+  // Counter reduction + weather counter boost
+  let counterMult = isCounter ? 0.7 : 1.0;
+  if (isCounter && state?.weather?.effects?.counterBoost) {
+    counterMult += state.weather.effects.counterBoost;
+  }
 
   // Team synergy multiplier (player units only, capped at 1.5× for balance)
   let synergyMult = 1.0;
@@ -1500,7 +1505,8 @@ export function attackUnit(state, attacker, defender) {
 
     // Relic: lifesteal
     if (attacker.relic?.condition === 'on_attack' && attacker.relic.effect.lifesteal) {
-      const heal = Math.floor(damage * attacker.relic.effect.lifesteal);
+      let heal = Math.floor(damage * attacker.relic.effect.lifesteal);
+      if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
       if (heal > 0) {
         attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
         state.log.push(`  흡혈 +${heal} HP`);
@@ -1509,7 +1515,8 @@ export function attackUnit(state, attacker, defender) {
 
     // Relic: kill heal
     if (defenderDied && attacker.relic?.condition === 'on_kill' && attacker.relic.effect.killHeal) {
-      const heal = Math.floor(attacker.maxHp * attacker.relic.effect.killHeal);
+      let heal = Math.floor(attacker.maxHp * attacker.relic.effect.killHeal);
+      if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
       attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
       state.log.push(`  처치 회복 +${heal} HP`);
     }
@@ -1689,7 +1696,8 @@ export function activateSense(state, unit, chosenTarget) {
       case '감응': {
         const target = chosenTarget || allyUnits.filter(a => a.hp < a.maxHp)
           .sort((a, b) => manhattanDist(a, unit) - manhattanDist(b, unit))[0] || unit;
-        const heal = sense.power + Math.floor(Math.random() * 4);
+        let heal = sense.power + Math.floor(Math.random() * 4);
+        if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
         target.hp = Math.min(target.maxHp, target.hp + heal);
         if (target.dots && target.dots.length > 0) {
           cleanseDOT(target);
@@ -1723,7 +1731,8 @@ export function activateSense(state, unit, chosenTarget) {
         break;
       }
       case '공감': {
-        const healAmount = Math.floor(sense.power * 0.7);
+        let healAmount = Math.floor(sense.power * 0.7);
+        if (state.weather?.effects?.healReduction) healAmount = Math.max(1, Math.floor(healAmount * (1 - state.weather.effects.healReduction)));
         allyUnits.forEach(ally => {
           const dist = manhattanDist(ally, unit);
           if (dist <= 3 && ally.hp < ally.maxHp) {
@@ -1803,7 +1812,8 @@ export function activateSense(state, unit, chosenTarget) {
           target.hp -= dmg;
           if (target.hp <= 0) target.hp = 0;
           applyDOT(target, 'bleed', Math.floor(sense.power * 0.25), 2);
-          const heal = Math.floor(dmg * 0.5);
+          let heal = Math.floor(dmg * 0.5);
+          if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
           unit.hp = Math.min(unit.maxHp, unit.hp + heal);
           const bleedDmg = Math.floor(sense.power * 0.25);
           result.effects.push(`${target.name}에게 ${dmg} 데미지 + 출혈 ${bleedDmg}/턴, 흡혈 +${heal}`);
