@@ -875,6 +875,7 @@ function renderBattle() {
       let unitHtml = '';
       if (unit) {
         const hpPct = Math.round((unit.hp / unit.maxHp) * 100);
+        const shieldPct = unit.shield > 0 ? Math.min(100 - hpPct, Math.round((unit.shield / unit.maxHp) * 100)) : 0;
         const hpColor = hpPct > 60 ? '' : hpPct > 30 ? ' medium' : ' low';
         const actedClass = unit.acted ? ' acted' : '';
         // 🔵 제갈량: 버프/디버프 아이콘 시각화
@@ -906,7 +907,7 @@ function renderBattle() {
             <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
             <div class="unit-initial" style="display:none">${unit.name[0]}</div>
-            <div class="unit-hp-bar"><div class="unit-hp-fill${hpColor}" style="width:${hpPct}%"></div></div>
+            <div class="unit-hp-bar"><div class="unit-hp-fill${hpColor}" style="width:${hpPct}%"></div>${shieldPct > 0 ? `<div class="unit-shield-fill" style="width:${shieldPct}%;left:${hpPct}%"></div>` : ''}</div>
             ${buffIcons}
           </div>`;
       }
@@ -1805,15 +1806,22 @@ function endTurn() {
     if (dotSnapshot.length > 0) {
       renderBattle();
       dotSnapshot.forEach(snap => {
+        const u = getUnitByUid(battleState, snap.uid);
         const tile = document.querySelector(`.tile[data-x="${snap.x}"][data-y="${snap.y}"]`);
         if (tile) {
           snap.dots.forEach(d => {
             const label = d.type === 'poison' ? '🟢' : '🩸';
             showFloatingText(tile, `${label}-${d.damage}`, 'dot');
           });
+          if (u && u.hp <= 0) {
+            appendLog(`☠ ${u.name} — 지속 피해로 전사!`);
+            showFloatingText(tile, '💀전사!', 'damage');
+          }
         }
       });
       await delay(600 / battleSpeed);
+      const vcDot = checkVictory(battleState);
+      if (vcDot) { handleBattleEnd(vcDot); return; }
     }
 
     const stunnedPlayers = battleState.units.filter(u => u.team === 'player' && u.hp > 0 && isStunned(u));
