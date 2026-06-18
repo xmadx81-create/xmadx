@@ -9,6 +9,7 @@ const DEFAULT_SAVE = {
   quests: { daily: [], weekly: [], monthly: null, lastDailyReset: null, lastWeeklyReset: null, attendance: 0, lastLogin: null },
   stats: { wins: 0, losses: 0, totalBattles: 0, totalKills: 0 },
   towerBest: 0,
+  lastTeam: [],
 };
 
 export function loadGame() {
@@ -19,6 +20,7 @@ export function loadGame() {
     if (!save.stageClears) save.stageClears = {};
     if (!save.inventory) save.inventory = [];
     if (save.towerBest === undefined) save.towerBest = 0;
+    if (!save.lastTeam) save.lastTeam = [];
     return save;
   } catch { return { ...DEFAULT_SAVE }; }
 }

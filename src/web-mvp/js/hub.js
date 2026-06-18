@@ -11,6 +11,7 @@ import {
   getSkillTargetType, getSkillTargets,
   isStunned,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
+  getKillForecast,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost } from './save.js';
 
@@ -274,6 +275,23 @@ function openDeploy(stageId) {
     document.getElementById('stage-select').style.display = '';
   };
   document.getElementById('btn-deploy-start').onclick = () => startBattle();
+
+  const quickBtn = document.getElementById('btn-deploy-quick');
+  if (quickBtn) {
+    const lastTeam = gameSave.lastTeam || [];
+    const validLast = lastTeam.filter(id => CHARACTERS.find(c => c.id === id && c.faction !== 'kartein'));
+    if (validLast.length > 0) {
+      quickBtn.style.display = '';
+      quickBtn.onclick = () => {
+        deploySelected = validLast.slice(0, maxUnits);
+        renderDeployBench(maxUnits);
+        updateDeployUI(maxUnits);
+        renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
+      };
+    } else {
+      quickBtn.style.display = 'none';
+    }
+  }
 }
 
 function renderMapPreview(stage) {
@@ -393,6 +411,12 @@ function renderRoleBalance(selectedIds) {
 }
 
 let deploySort = 'name';
+
+function updateDeployUI(maxUnits) {
+  document.getElementById('deploy-count').textContent = deploySelected.length;
+  document.getElementById('btn-deploy-start').disabled = deploySelected.length === 0;
+  updateDeploySynergy();
+}
 
 function renderDeployRoster(filter) {
   const stage = STAGES.find(s => s.id === currentStageId);
@@ -740,6 +764,8 @@ function startTowerWave() {
 // ── Battle Start ──
 
 function startBattle() {
+  gameSave.lastTeam = [...deploySelected];
+  saveGame(gameSave);
   const centerBuff = getCenterBuff(gameSave);
   const units = deploySelected.map(id => {
     const c = CHARACTERS.find(ch => ch.id === id);
@@ -1267,22 +1293,29 @@ function showCommandPanel(attacker, defender) {
   const list = document.getElementById('command-list');
 
   const preview = previewDamage(battleState, attacker, defender);
+  const forecast = getKillForecast(battleState, attacker, defender);
   const typeLabel = { physical: '물리', mental: '정신', blood: '혈액' };
   const typeIcon = { physical: '⚔️', mental: '🧠', blood: '🩸' };
 
   let html = '';
+
+  const killBadge = forecast.guaranteedKill ? '<span class="cmd-kill">확정 처치</span>' :
+                    forecast.canKill ? '<span class="cmd-kill-maybe">처치 가능</span>' : '';
+  const counterBadge = forecast.counterKillsYou ? '<span class="cmd-counter-danger">반격 위험!</span>' :
+                       forecast.canCounter ? `<span class="cmd-counter-info">반격 ~${forecast.counterDmg}</span>` : '';
 
   // Basic attack option
   html += `
     <button class="cmd-option" data-cmd="basic">
       <div class="cmd-illust-slot">${typeIcon[attacker.attackType] || '⚔️'}</div>
       <div class="cmd-info">
-        <div class="cmd-name">기본 공격${preview.flanking > 0 ? ` <span class="cmd-flank">협공+${preview.flanking}</span>` : ''}</div>
+        <div class="cmd-name">기본 공격${preview.flanking > 0 ? ` <span class="cmd-flank">협공+${preview.flanking}</span>` : ''} ${killBadge}</div>
         <div class="cmd-type">${typeLabel[attacker.attackType] || '물리'} · MP 0</div>
         <div class="cmd-dmg">예상 ${preview.minDmg}~${preview.maxDmg} <span class="cmd-crit">CRT ${Math.round(preview.critDmg)}</span></div>
       </div>
       <div class="cmd-meta">
         <span class="cmd-eva">회피 ${Math.round((preview.eva || 0) * 100)}%</span>
+        ${counterBadge}
       </div>
     </button>`;
 
@@ -1698,6 +1731,12 @@ function endTurn() {
         a.effects?.forEach(e => appendLog(`  → ${e}`));
         showSkillOverlay(a.name, 'ult');
         await delay(1000 / battleSpeed);
+      } else if (a.type === 'phase_shift') {
+        const unit = getUnitByUid(battleState, a.unit);
+        renderBattle();
+        appendLog(`⭐ ${unit?.name || '?'} 위상 전환! 1턴간 무적`);
+        showReinforceBanner(`⭐ ${unit?.name || '?'} 위상 전환!`);
+        await delay(1200 / battleSpeed);
       } else if (a.type === 'enrage') {
         const unit = getUnitByUid(battleState, a.unit);
         renderBattle();

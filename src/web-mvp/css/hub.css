@@ -5004,6 +5004,50 @@ body {
   cursor: help;
 }
 
+/* ── Kill Forecast Badges ── */
+.cmd-kill {
+  background: var(--blood-red);
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+  animation: cmd-kill-pulse 0.8s ease-in-out infinite;
+}
+@keyframes cmd-kill-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.cmd-kill-maybe {
+  background: var(--accent-gold);
+  color: #1a1a2e;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+}
+.cmd-counter-danger {
+  background: var(--blood-red);
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 9px;
+  display: block;
+  margin-top: 2px;
+}
+.cmd-counter-info {
+  color: var(--text-secondary);
+  font-size: 9px;
+  display: block;
+  margin-top: 2px;
+}
+
+/* ── Quick Deploy Button ── */
+#btn-deploy-quick {
+  background: linear-gradient(135deg, var(--accent-blue), var(--player-dark));
+  border: 1px solid var(--accent-blue);
+}
+
 /* ── Tower Stage Card ── */
 .stage-tower {
   border-left: 3px solid var(--legendary-gold) !important;
