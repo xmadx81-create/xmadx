@@ -79,8 +79,8 @@ describe('cardToUnit', () => {
   it('신규 전투 스탯이 포함된다 (crt, eva, pen, attackType)', () => {
     const char = CHARACTERS.find(c => c.id === 'park-harin');
     const unit = cardToUnit(char, 0, 0);
-    expect(unit.crt).toBe(0.10);
-    expect(unit.eva).toBe(0);
+    expect(unit.crt).toBe(0.05);
+    expect(unit.eva).toBe(0.03);
     expect(unit.pen).toBe(0);
     expect(unit.attackType).toBe('mental');
     expect(unit.equipment).toEqual({ weapon: null, armor: null, accessory: null });
@@ -101,7 +101,7 @@ describe('equipment system', () => {
     const baseAtk = unit.atk;
     equipItem(unit, 'baton');
     expect(unit.atk).toBe(baseAtk + 4);
-    expect(unit.crt).toBeCloseTo(0.15);
+    expect(unit.crt).toBeCloseTo(0.10);
     expect(unit.equipment.weapon.name).toBe('보안봉');
   });
 
@@ -1716,6 +1716,42 @@ describe('사운드 모듈', () => {
     expect(sound.isMuted()).toBe(!before);
     sound.toggleMute();
     expect(sound.isMuted()).toBe(before);
+  });
+});
+
+describe('역할별 스탯 차별화', () => {
+  it('evasive_dps는 EVA 15%, tank은 EVA 2%', () => {
+    const evasive = CHARACTERS.find(c => c.role === 'evasive_dps');
+    const tank = CHARACTERS.find(c => c.role === 'tank');
+    const eUnit = cardToUnit(evasive, 0, 0);
+    const tUnit = cardToUnit(tank, 0, 0);
+    expect(eUnit.eva).toBe(0.15);
+    expect(tUnit.eva).toBe(0.02);
+    expect(eUnit.eva).toBeGreaterThan(tUnit.eva);
+  });
+
+  it('ranged_dps는 RNG 2, melee_dps는 RNG 1', () => {
+    const ranged = CHARACTERS.find(c => c.role === 'ranged_dps');
+    const melee = CHARACTERS.find(c => c.role === 'melee_dps');
+    const rUnit = cardToUnit(ranged, 0, 0);
+    const mUnit = cardToUnit(melee, 0, 0);
+    expect(rUnit.rng).toBe(2);
+    expect(mUnit.rng).toBe(1);
+  });
+
+  it('breaker는 PEN 2, support는 PEN 0', () => {
+    const breaker = CHARACTERS.find(c => c.role === 'breaker');
+    const support = CHARACTERS.find(c => c.role === 'support');
+    const bUnit = cardToUnit(breaker, 0, 0);
+    const sUnit = cardToUnit(support, 0, 0);
+    expect(bUnit.pen).toBe(2);
+    expect(sUnit.pen).toBe(0);
+  });
+
+  it('ranged_dps는 CRT가 melee_dps 이상이다', () => {
+    const ranged = CHARACTERS.find(c => c.role === 'ranged_dps');
+    const melee = CHARACTERS.find(c => c.role === 'melee_dps');
+    expect(cardToUnit(ranged, 0, 0).crt).toBeGreaterThanOrEqual(cardToUnit(melee, 0, 0).crt);
   });
 });
 

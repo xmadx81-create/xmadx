@@ -39,14 +39,14 @@ const RARITY_MOV        = { common: 3,  uncommon: 3,  rare: 2,  legendary: 2 };
 // ── Role Modifiers ─────────────────────────────────────────────────────
 
 export const ROLE_MODIFIERS = {
-  tank:           { hp: 1.5,  atk: 0.7, def: 1.5, mov: 2, rng: 1 },
-  melee_dps:      { hp: 0.9,  atk: 1.4, def: 0.8, mov: 3, rng: 1 },
-  ranged_dps:     { hp: 0.8,  atk: 1.3, def: 0.7, mov: 2, rng: 2 },
-  support:        { hp: 1.0,  atk: 0.6, def: 1.0, mov: 3, rng: 2 },
-  bruiser:        { hp: 1.3,  atk: 1.1, def: 1.2, mov: 2, rng: 1 },
-  battle_support: { hp: 1.0,  atk: 1.0, def: 0.9, mov: 3, rng: 2 },
-  evasive_dps:    { hp: 0.85, atk: 1.2, def: 1.1, mov: 3, rng: 1 },
-  breaker:        { hp: 1.3,  atk: 1.4, def: 1.2, mov: 3, rng: null },
+  tank:           { hp: 1.5,  atk: 0.7, def: 1.5, mov: 2, rng: 1, crt: 0.05, eva: 0.02, pen: 0 },
+  melee_dps:      { hp: 0.9,  atk: 1.4, def: 0.8, mov: 3, rng: 1, crt: 0.12, eva: 0.05, pen: 1 },
+  ranged_dps:     { hp: 0.8,  atk: 1.3, def: 0.7, mov: 2, rng: 2, crt: 0.15, eva: 0.03, pen: 0 },
+  support:        { hp: 1.0,  atk: 0.6, def: 1.0, mov: 3, rng: 2, crt: 0.05, eva: 0.03, pen: 0 },
+  bruiser:        { hp: 1.3,  atk: 1.1, def: 1.2, mov: 2, rng: 1, crt: 0.10, eva: 0.04, pen: 1 },
+  battle_support: { hp: 1.0,  atk: 1.0, def: 0.9, mov: 3, rng: 2, crt: 0.08, eva: 0.04, pen: 0 },
+  evasive_dps:    { hp: 0.85, atk: 1.2, def: 1.1, mov: 3, rng: 1, crt: 0.15, eva: 0.15, pen: 0 },
+  breaker:        { hp: 1.3,  atk: 1.4, def: 1.2, mov: 3, rng: null, crt: 0.10, eva: 0.03, pen: 2 },
 };
 
 // ── Ultimates (2 per role) ────────────────────────────────────────────
@@ -725,9 +725,9 @@ export function cardToUnit(charData, x, y) {
     def,
     mov,
     rng,
-    crt: 0.10,
-    eva: 0,
-    pen: 0,
+    crt: mod?.crt ?? 0.10,
+    eva: mod?.eva ?? 0,
+    pen: mod?.pen ?? 0,
     attackType: getAttackType(charData, role),
     equipment: { weapon: null, armor: null, accessory: null },
     relic: null,
