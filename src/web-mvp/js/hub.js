@@ -363,20 +363,25 @@ function renderEnemyIntel(stage) {
       <span class="intel-count">${enemies.length}명 · Lv.${eLv}</span>
     </div>
     ${reinforceInfo}
-    <div class="intel-list">${enemies.map(e => `
+    <div class="intel-list">${enemies.map(e => {
+      const threat = e.charData.rarity === 'legendary' ? '<span class="intel-threat boss">👑 보스</span>' :
+                     e.charData.rarity === 'rare' ? '<span class="intel-threat elite">⚠ 강적</span>' : '';
+      const skillInfo = e.charData.sense ? `<div class="intel-skill">${SENSE_TYPES[e.charData.sense.baseType]?.icon || '?'} ${e.charData.sense.name}</div>` : '';
+      return `
       <div class="intel-unit">
         <div class="intel-portrait"><img src="${portraitSrc(`assets/portraits/${e.id}`)}" onerror="this.style.display='none'" /></div>
         <div class="intel-info">
-          <div class="intel-name">${e.name}</div>
+          <div class="intel-name">${e.name} ${threat}</div>
           <div class="intel-role">${roleLabel[e.charData.role] || e.charData.role}</div>
+          ${skillInfo}
         </div>
         <div class="intel-stats">
           <span>HP${e.maxHp}</span>
           <span>ATK${e.atk}</span>
           <span>DEF${e.def}</span>
         </div>
-      </div>
-    `).join('')}</div>
+      </div>`;
+    }).join('')}</div>
   `;
 }
 
@@ -2216,5 +2221,47 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-speed').addEventListener('click', toggleBattleSpeed);
   document.getElementById('ulp-close').addEventListener('click', () => {
     document.getElementById('unit-list-panel').style.display = 'none';
+  });
+
+  document.getElementById('btn-save-export').addEventListener('click', () => {
+    const data = JSON.stringify(gameSave, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `redledger-save-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('btn-save-import').addEventListener('click', () => {
+    document.getElementById('save-import-input').click();
+  });
+  document.getElementById('save-import-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!imported.stats || !imported.cards) { alert('유효하지 않은 세이브 파일입니다.'); return; }
+        if (!confirm('현재 진행을 덮어쓰시겠습니까?')) return;
+        Object.assign(gameSave, imported);
+        saveGame(gameSave);
+        renderStats();
+        renderStageSelect();
+        initGallery();
+        alert('세이브를 불러왔습니다!');
+      } catch { alert('파일을 읽을 수 없습니다.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('btn-save-reset').addEventListener('click', () => {
+    if (!confirm('정말 초기화하시겠습니까? 모든 진행이 삭제됩니다.')) return;
+    if (!confirm('되돌릴 수 없습니다. 계속하시겠습니까?')) return;
+    localStorage.removeItem('redledger_save');
+    location.reload();
   });
 });

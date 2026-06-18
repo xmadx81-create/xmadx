@@ -223,13 +223,31 @@
 
           <h3>촉(觸) vs 혈(血) 스킬</h3>
           <p>각 캐릭터는 고유 특수 스킬을 보유합니다. 사용 후 <strong>3턴 쿨다운</strong>.</p>
+          <h4>촉(觸) — 인간의 감각</h4>
           <ul>
-            <li>👁 <strong>예감</strong> — 아군 DEF 버프</li>
-            <li>⚡ <strong>직감</strong> — 적 직접 데미지</li>
-            <li>🔗 <strong>감응</strong> — 아군 회복</li>
-            <li>🩸 <strong>혈각</strong> — 적 ATK 디버프</li>
-            <li>🔥 <strong>투지</strong> — 자신 ATK/DEF 버프</li>
-            <li>💛 <strong>공감</strong> — 광역 회복</li>
+            <li>👁 <strong>예감</strong> — 아군 DEF 버프 (↔혈향)</li>
+            <li>⚡ <strong>직감</strong> — 적 직접 데미지 (↔혈압)</li>
+            <li>🔗 <strong>감응</strong> — 아군 회복 + 상태이상 해제 (↔혈유)</li>
+            <li>🩸 <strong>혈각</strong> — 적 ATK 디버프 (↔혈식)</li>
+            <li>🔥 <strong>투지</strong> — 자신 ATK/DEF 버프 (↔혈기)</li>
+            <li>💛 <strong>공감</strong> — 광역 회복 + 상태이상 해제 (↔혈맹)</li>
+          </ul>
+          <h4>혈(血) — 뱀파이어의 힘</h4>
+          <ul>
+            <li>👊 <strong>혈압</strong> — 적 단일 고데미지</li>
+            <li>🌬 <strong>혈향</strong> — 적 독/출혈 부여</li>
+            <li>⛓ <strong>혈맹</strong> — 아군 ATK 버프</li>
+            <li>🌑 <strong>혈식</strong> — 적 DEF 관통 데미지</li>
+            <li>💀 <strong>혈기</strong> — 자가 회복 + 출혈 부여</li>
+            <li>🫦 <strong>혈유</strong> — 적 둔화 + 데미지</li>
+          </ul>
+
+          <h3>전투 팁</h3>
+          <ul>
+            <li><strong>협공</strong> — 방어자 인접 아군 1명당 ATK +2 추가</li>
+            <li><strong>지형 활용</strong> — 숲(DEF+1), 묘지(ATK+2), 온천(매턴 HP+5), 늪(DEF-1)</li>
+            <li><strong>위험 범위</strong> — 🔴 버튼으로 적의 공격 가능 범위 확인</li>
+            <li><strong>킬 예보</strong> — 공격 전 "확정 처치" / "반격 위험" 표시 확인</li>
           </ul>
 
           <h3>상태이상</h3>
@@ -277,6 +295,15 @@
         <div id="stats-summary"></div>
         <h3>최근 기록</h3>
         <div id="stats-history"></div>
+        <div class="save-management">
+          <h3>세이브 관리</h3>
+          <div class="save-actions">
+            <button id="btn-save-export" class="btn-secondary">📥 내보내기</button>
+            <button id="btn-save-import" class="btn-secondary">📤 가져오기</button>
+            <button id="btn-save-reset" class="btn-danger">🗑 초기화</button>
+          </div>
+          <input type="file" id="save-import-input" accept=".json" style="display:none" />
+        </div>
       </div>
     </section>
 
