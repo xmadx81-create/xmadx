@@ -5075,6 +5075,27 @@ body {
   color: var(--text-secondary);
 }
 
+/* ── Stage Lock ── */
+.stage-locked {
+  opacity: 0.5;
+  pointer-events: none;
+  position: relative;
+}
+.stage-locked::after {
+  content: '이전 스테이지를 클리어하세요';
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* ── Buff Floating Text ── */
+.float-text.buff {
+  color: var(--accent-gold);
+  font-weight: bold;
+}
+
 /* ── Stage Weather Badge ── */
 .stage-weather {
   background: rgba(100, 150, 255, 0.15);
