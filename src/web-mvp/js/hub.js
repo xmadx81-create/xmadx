@@ -726,6 +726,20 @@ function updateDeploySynergy() {
     `<span class="synergy-pair ${p.grade.toLowerCase()}">${p.a}↔${p.b} ${p.grade}</span>`
   ).join('');
 
+  const stage = STAGES.find(s => s.id === currentStageId);
+  const enemyCpEl = document.getElementById('synergy-enemy-cp');
+  if (enemyCpEl && stage) {
+    const enemyUnits = stage.enemyUnits.map(eu => {
+      const c = CHARACTERS.find(ch => ch.id === eu.charId);
+      return c ? cardToUnit(c, 0, 0) : null;
+    }).filter(Boolean);
+    const enemyCP = enemyUnits.reduce((sum, u) => sum + getCombatPower(u), 0);
+    const ratio = teamData.total > 0 ? (teamData.total / enemyCP).toFixed(1) : '?';
+    const diffClass = ratio >= 1.2 ? 'cp-advantage' : ratio >= 0.8 ? 'cp-even' : 'cp-disadvantage';
+    enemyCpEl.innerHTML = `적 전투력 <strong>${enemyCP}</strong> · 비율 <strong class="${diffClass}">×${ratio}</strong>`;
+    enemyCpEl.style.display = '';
+  }
+
   panel.style.display = '';
 }
 
@@ -747,7 +761,10 @@ function startTowerWave() {
     towerSurvivorHP = {};
     battleState.units.filter(u => u.team === 'player' && u.hp > 0).forEach(u => {
       const charId = u.charId || u.id;
-      towerSurvivorHP[charId] = { hp: u.hp, maxHp: u.maxHp, mp: u.mp };
+      const waveHeal = Math.floor(u.maxHp * 0.2);
+      const healedHp = Math.min(u.maxHp, u.hp + waveHeal);
+      const mpRestore = Math.min(u.maxMp, u.mp + 2);
+      towerSurvivorHP[charId] = { hp: healedHp, maxHp: u.maxHp, mp: mpRestore };
     });
   }
   const oldTowerId = STAGES.findIndex(s => s.id === `tower-${towerWave}`);
@@ -1539,6 +1556,7 @@ async function doAttack(attacker, defender) {
   if (result.defenderDied) {
     appendLog(`  💀 ${defender.name} 전사!`);
     gameSave.stats.totalKills++;
+    attacker._battleKills = (attacker._battleKills || 0) + 1;
     progressQuest(gameSave, 'kill');
     saveGame(gameSave);
   }
@@ -1945,12 +1963,15 @@ function handleBattleEnd(result) {
     const stars = turns <= 5 ? 3 : turns <= 8 ? 2 : 1;
     recordStageClear(gameSave, battleState.stageId, turns);
 
+    const mvp = [...playerUnits].sort((a, b) => (b._battleKills || 0) - (a._battleKills || 0))[0];
     const unitSummary = playerUnits.map(u => {
       const lvInfo = u.level > 1 ? ` Lv.${u.level}` : '';
       const status = u.hp > 0 ? `HP ${u.hp}/${u.maxHp}` : '💀 전사';
-      return `<div class="result-unit ${u.hp <= 0 ? 'result-dead' : ''}">
-        <span class="result-unit-name">${u.name}${lvInfo}</span>
-        <span class="result-unit-status">${status}</span>
+      const kills = u._battleKills || 0;
+      const isMvp = u.uid === mvp?.uid && kills > 0;
+      return `<div class="result-unit ${u.hp <= 0 ? 'result-dead' : ''} ${isMvp ? 'result-mvp' : ''}">
+        <span class="result-unit-name">${isMvp ? '👑 ' : ''}${u.name}${lvInfo}</span>
+        <span class="result-unit-status">${status}${kills > 0 ? ` · ${kills}킬` : ''}</span>
       </div>`;
     }).join('');
 
