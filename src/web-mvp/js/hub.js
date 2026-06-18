@@ -10,6 +10,7 @@ import {
   EQUIPMENT, RELICS, equipItem, equipRelic,
   getSkillTargetType, getSkillTargets,
   isStunned,
+  WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost } from './save.js';
 
@@ -27,6 +28,8 @@ let commandTarget = null;
 let dangerZoneActive = false;
 let undoMoveData = null;
 let battleSpeed = 1;
+let towerMode = false;
+let towerWave = 0;
 
 // ── Gallery ──
 
@@ -193,8 +196,30 @@ function renderStageSelect() {
       </div>
     </div>`;
   }).join('');
+  const towerBest = gameSave.towerBest || 0;
+  const towerInfo = towerBest > 0 ? `<span class="stage-clear-info">최고 ${towerBest}층</span>` : '';
+  list.innerHTML += `<div class="stage-card stage-tower" data-stage="tower">
+    <div class="stage-num">🗼</div>
+    <div class="stage-info">
+      <div class="stage-name">무한의 탑 <span class="stage-lv">∞</span></div>
+      <div class="stage-desc">끝없는 웨이브에 도전하라. 몇 층까지 오를 수 있는가?</div>
+      <div class="stage-meta">
+        <span class="stage-stars">★★★★★</span>
+        <span class="stage-enemy-count">무한</span>
+        <span class="stage-deploy-count">출전 4명</span>
+      </div>
+      ${towerInfo}
+    </div>
+  </div>`;
+
   list.querySelectorAll('.stage-card').forEach(el => {
-    el.addEventListener('click', () => openDeploy(el.dataset.stage));
+    el.addEventListener('click', () => {
+      if (el.dataset.stage === 'tower') {
+        openTowerDeploy();
+      } else {
+        openDeploy(el.dataset.stage);
+      }
+    });
   });
 }
 
@@ -671,6 +696,27 @@ function updateDeploySynergy() {
   panel.style.display = '';
 }
 
+// ── Tower Mode ──
+
+function openTowerDeploy() {
+  towerMode = true;
+  towerWave = 1;
+  const towerStage = generateTowerStage(1);
+  currentStageId = towerStage.id;
+  STAGES.push(towerStage);
+  openDeploy(towerStage.id);
+}
+
+function startTowerWave() {
+  const oldTowerId = STAGES.findIndex(s => s.id === `tower-${towerWave}`);
+  if (oldTowerId >= 0) STAGES.splice(oldTowerId, 1);
+  towerWave++;
+  const nextStage = generateTowerStage(towerWave);
+  STAGES.push(nextStage);
+  currentStageId = nextStage.id;
+  startBattle();
+}
+
 // ── Battle Start ──
 
 function startBattle() {
@@ -837,6 +883,26 @@ function updateHUD() {
     phaseEl.className = 'phase-indicator enemy';
   }
   document.getElementById('btn-end-turn').disabled = battleState.phase !== 'player_phase';
+
+  const weatherEl = document.getElementById('hud-weather');
+  if (weatherEl) {
+    const w = battleState.weather;
+    if (w && w.id !== 'clear') {
+      weatherEl.textContent = `${w.icon} ${w.name}`;
+      weatherEl.title = w.desc;
+      weatherEl.style.display = '';
+    } else {
+      weatherEl.style.display = 'none';
+    }
+  }
+
+  const weatherOverlay = document.getElementById('weather-overlay');
+  if (weatherOverlay) {
+    weatherOverlay.className = 'weather-overlay';
+    if (battleState.weather && battleState.weather.id !== 'clear') {
+      weatherOverlay.classList.add(`weather-${battleState.weather.id}`);
+    }
+  }
 }
 
 // ── Unit Detail Panel ──
@@ -1780,23 +1846,40 @@ function handleBattleEnd(result) {
 
     if (battleState.stageId === 'stage-4') progressQuest(gameSave, 'clear_stage4');
   } else {
-    title.textContent = '패배...';
+    title.textContent = towerMode ? `무한의 탑 — ${towerWave}층에서 패배` : '패배...';
     box.className = 'battle-result-box lose';
+    const loseStory = towerMode
+      ? `탑의 ${towerWave}층에서 쓰러졌습니다. 최고 기록: ${Math.max(gameSave.towerBest || 0, towerWave - 1)}층`
+      : '모든 아군이 전사했습니다. 다시 도전하세요.';
     text.innerHTML = `
-      <div class="result-story">모든 아군이 전사했습니다. 다시 도전하세요.</div>
+      <div class="result-story">${loseStory}</div>
       <div class="result-summary">${battleState.turnNumber}턴 · 처치 ${enemiesDefeated}</div>
     `;
     gameSave.stats.losses++;
+    if (towerMode) {
+      const cleared = towerWave - 1;
+      if (cleared > (gameSave.towerBest || 0)) gameSave.towerBest = cleared;
+    }
   }
 
   saveGame(gameSave);
   overlay.style.display = 'flex';
 
   const retryBtn = document.getElementById('btn-result-retry');
-  retryBtn.style.display = result === 'lose' ? '' : 'none';
+  const nextWaveBtn = document.getElementById('btn-result-next-wave');
+  retryBtn.style.display = result === 'lose' && !towerMode ? '' : 'none';
+  if (nextWaveBtn) nextWaveBtn.style.display = result === 'win' && towerMode ? '' : 'none';
+
+  const exitTower = () => {
+    towerMode = false;
+    towerWave = 0;
+    const towIdx = STAGES.findIndex(s => s.id && s.id.startsWith('tower-'));
+    if (towIdx >= 0) STAGES.splice(towIdx, 1);
+  };
 
   document.getElementById('btn-result-ok').onclick = () => {
     overlay.style.display = 'none';
+    if (towerMode) exitTower();
     battleState = null;
     document.getElementById('battle-screen').style.display = 'none';
     document.getElementById('stage-select').style.display = '';
@@ -1812,6 +1895,13 @@ function handleBattleEnd(result) {
     cancelSelection();
     openDeploy(stageId);
   };
+  if (nextWaveBtn) {
+    nextWaveBtn.onclick = () => {
+      overlay.style.display = 'none';
+      battleState = null;
+      startTowerWave();
+    };
+  }
 }
 
 // ── Battle Log ──

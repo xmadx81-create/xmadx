@@ -8,6 +8,7 @@ const DEFAULT_SAVE = {
   stageClears: {},
   quests: { daily: [], weekly: [], monthly: null, lastDailyReset: null, lastWeeklyReset: null, attendance: 0, lastLogin: null },
   stats: { wins: 0, losses: 0, totalBattles: 0, totalKills: 0 },
+  towerBest: 0,
 };
 
 export function loadGame() {
@@ -17,6 +18,7 @@ export function loadGame() {
     const save = JSON.parse(raw);
     if (!save.stageClears) save.stageClears = {};
     if (!save.inventory) save.inventory = [];
+    if (save.towerBest === undefined) save.towerBest = 0;
     return save;
   } catch { return { ...DEFAULT_SAVE }; }
 }

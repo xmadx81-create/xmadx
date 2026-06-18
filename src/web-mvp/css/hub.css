@@ -4943,6 +4943,76 @@ body {
   margin-left: 2px;
 }
 
+/* ── Weather Overlay ── */
+.weather-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 5;
+  transition: opacity 0.5s;
+}
+.weather-rain {
+  background: repeating-linear-gradient(
+    100deg,
+    transparent,
+    transparent 10px,
+    rgba(100, 150, 255, 0.06) 10px,
+    rgba(100, 150, 255, 0.06) 11px
+  );
+  animation: weather-rain-fall 0.4s linear infinite;
+}
+@keyframes weather-rain-fall {
+  from { background-position: 0 0; }
+  to { background-position: -5px 20px; }
+}
+.weather-fog {
+  background: radial-gradient(ellipse at center, rgba(200,200,220,0.15) 0%, transparent 70%);
+}
+.weather-blizzard {
+  background: repeating-linear-gradient(
+    120deg,
+    transparent,
+    transparent 8px,
+    rgba(200, 220, 255, 0.08) 8px,
+    rgba(200, 220, 255, 0.08) 9px
+  );
+  animation: weather-snow-fall 0.6s linear infinite;
+}
+@keyframes weather-snow-fall {
+  from { background-position: 0 0; }
+  to { background-position: 10px 15px; }
+}
+.weather-bloodmoon {
+  background: radial-gradient(ellipse at 30% 20%, rgba(200, 30, 30, 0.12) 0%, transparent 60%);
+}
+.weather-storm {
+  background: linear-gradient(180deg, rgba(60, 60, 100, 0.15) 0%, transparent 50%);
+  animation: weather-storm-flash 3s ease-in-out infinite;
+}
+@keyframes weather-storm-flash {
+  0%, 90%, 100% { opacity: 1; }
+  92% { opacity: 0.4; }
+  94% { opacity: 1; }
+}
+
+.hud-weather {
+  background: rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text-primary);
+  cursor: help;
+}
+
+/* ── Tower Stage Card ── */
+.stage-tower {
+  border-left: 3px solid var(--legendary-gold) !important;
+  background: linear-gradient(135deg, var(--bg-card) 0%, rgba(212, 168, 67, 0.1) 100%);
+}
+.stage-tower .stage-num {
+  font-size: 20px;
+}
+
 /* ── Accessibility: Reduce Motion ── */
 @media (prefers-reduced-motion: reduce) {
   .tile.move-range,
