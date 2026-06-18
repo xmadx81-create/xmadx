@@ -4840,6 +4840,104 @@ body {
   font-size: 11px;
   font-weight: bold;
 }
+.float-text.stun {
+  color: #ffd700;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* ── Status Effect Icons ── */
+.unit-status-icon {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  font-size: 10px;
+  line-height: 1;
+  text-shadow: 0 0 3px rgba(0,0,0,0.8);
+  z-index: 3;
+}
+.dot-stun {
+  background: rgba(255, 215, 0, 0.2);
+  border: 1px solid rgba(255, 215, 0, 0.5);
+  color: #ffd700;
+}
+.dot-slow {
+  background: rgba(100, 149, 237, 0.2);
+  border: 1px solid rgba(100, 149, 237, 0.5);
+  color: #6495ed;
+}
+
+/* ── Card Synthesis ── */
+.sheet-synth {
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(255, 215, 0, 0.08);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 8px;
+}
+.synth-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+.synth-level {
+  color: #ffd700;
+  font-weight: bold;
+}
+.synth-count {
+  color: var(--text-secondary);
+}
+.synth-btn {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  background: rgba(255, 215, 0, 0.15);
+  color: #ffd700;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+.synth-btn:hover:not(:disabled) {
+  background: rgba(255, 215, 0, 0.3);
+  box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+}
+.synth-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Victory Rewards ── */
+.result-rewards {
+  margin-top: 10px;
+  padding: 8px;
+  background: rgba(255, 215, 0, 0.08);
+  border-radius: 6px;
+}
+.reward-title {
+  font-size: 0.8rem;
+  color: #ffd700;
+  margin-bottom: 6px;
+}
+.reward-card {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin: 2px;
+}
+.reward-common { background: rgba(150,150,150,0.2); color: #aaa; }
+.reward-uncommon { background: rgba(75,155,110,0.2); color: #4b9b6e; }
+.reward-rare { background: rgba(74,127,181,0.2); color: #4a7fb5; }
+.reward-legendary { background: rgba(233,196,106,0.2); color: #e9c46a; }
+
+/* ── Speed Button ── */
+#btn-speed {
+  font-weight: bold;
+  min-width: 32px;
+}
 .ulp-dots {
   font-size: 10px;
   margin-left: 2px;
