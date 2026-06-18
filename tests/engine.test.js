@@ -16,7 +16,7 @@ import {
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE,
 } from '../src/web-mvp/js/engine.js';
-import { checkAchievements, ACHIEVEMENTS } from '../src/web-mvp/js/save.js';
+import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
 
 describe('TILE_TYPES', () => {
@@ -1780,6 +1780,44 @@ describe('설정 시스템', () => {
     Object.values(WEATHER_TYPES).forEach(w => {
       expect(w.name).toBeTruthy();
       expect(w.icon).toBeTruthy();
+    });
+  });
+});
+
+describe('Starter Deck', () => {
+  it('빈 세이브에 스타터 덱 3장이 추가된다', () => {
+    const save = { cards: {} };
+    ensureStarterDeck(save);
+    const ids = Object.keys(save.cards);
+    expect(ids.length).toBe(3);
+    expect(ids).toContain('kim-doyun');
+    expect(ids).toContain('choi-minseo');
+    expect(ids).toContain('kwon-jihye');
+    ids.forEach(id => {
+      expect(save.cards[id].level).toBe(1);
+      expect(save.cards[id].count).toBe(1);
+    });
+  });
+
+  it('이미 카드가 있는 세이브는 스타터 덱을 추가하지 않는다', () => {
+    const save = { cards: { 'park-harin': { level: 2, xp: 0, count: 1 } } };
+    ensureStarterDeck(save);
+    expect(Object.keys(save.cards).length).toBe(1);
+    expect(save.cards['kim-doyun']).toBeUndefined();
+  });
+
+  it('스타터 캐릭터 3명은 각각 다른 팩션이다', () => {
+    const starterIds = ['kim-doyun', 'choi-minseo', 'kwon-jihye'];
+    const factions = starterIds.map(id => CHARACTERS.find(c => c.id === id).faction);
+    expect(factions).toContain('center');
+    expect(factions).toContain('neutral');
+  });
+
+  it('스타터 캐릭터는 모두 common 레어리티다', () => {
+    const starterIds = ['kim-doyun', 'choi-minseo', 'kwon-jihye'];
+    starterIds.forEach(id => {
+      const char = CHARACTERS.find(c => c.id === id);
+      expect(char.rarity).toBe('common');
     });
   });
 });
