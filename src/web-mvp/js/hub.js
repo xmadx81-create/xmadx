@@ -31,6 +31,7 @@ let undoMoveData = null;
 let battleSpeed = 1;
 let towerMode = false;
 let towerWave = 0;
+let battleLogHistory = [];
 
 // ── Gallery ──
 
@@ -829,6 +830,7 @@ function startBattle() {
   document.getElementById('deploy-screen').style.display = 'none';
   document.getElementById('battle-screen').style.display = '';
   document.getElementById('battle-log').innerHTML = '';
+  battleLogHistory = [];
   dangerZoneActive = false;
   undoMoveData = null;
   battleSpeed = 1;
@@ -889,6 +891,18 @@ function renderBattle() {
       const unit = units.find(u => u.hp > 0 && u.x === c && u.y === r);
       const selectedClass = (selectedUid && unit && unit.uid === selectedUid) ? ' selected' : '';
 
+      let moveCostHtml = '';
+      if (highlight?.cls === 'move-range' && !unit) {
+        const tInfo = TILE_TYPES[tileType];
+        if (tInfo && tInfo.movCost > 1) {
+          moveCostHtml = `<div class="move-cost">${tInfo.movCost}</div>`;
+        }
+        if (tInfo?.defBonus) {
+          const sign = tInfo.defBonus > 0 ? '+' : '';
+          moveCostHtml += `<div class="move-terrain-hint">${sign}${tInfo.defBonus}DEF</div>`;
+        }
+      }
+
       let unitHtml = '';
       if (unit) {
         const hpPct = Math.round((unit.hp / unit.maxHp) * 100);
@@ -932,7 +946,7 @@ function renderBattle() {
           </div>`;
       }
 
-      html += `<div class="tile ${tileType}${highlightClass}${dangerClass}${selectedClass}" data-x="${c}" data-y="${r}">${unitHtml}</div>`;
+      html += `<div class="tile ${tileType}${highlightClass}${dangerClass}${selectedClass}" data-x="${c}" data-y="${r}">${unitHtml}${moveCostHtml}</div>`;
     }
   }
   grid.innerHTML = html;
@@ -2083,6 +2097,22 @@ function handleBattleEnd(result) {
       startTowerWave();
     };
   }
+
+  const logBtn = document.getElementById('btn-result-log');
+  const logViewer = document.getElementById('result-log-viewer');
+  if (logBtn && logViewer) {
+    logBtn.onclick = () => {
+      if (logViewer.style.display === 'none') {
+        document.getElementById('result-log-content').innerHTML =
+          battleLogHistory.map(msg => `<div class="log-entry">${msg}</div>`).join('');
+        logViewer.style.display = '';
+        logBtn.textContent = '📋 기록 닫기';
+      } else {
+        logViewer.style.display = 'none';
+        logBtn.textContent = '📋 전과 기록';
+      }
+    };
+  }
 }
 
 // ── Battle Log ──
@@ -2095,6 +2125,7 @@ function appendLog(msg) {
   log.appendChild(entry);
   while (log.children.length > 100) log.removeChild(log.firstChild);
   log.scrollTop = log.scrollHeight;
+  battleLogHistory.push(msg);
 }
 
 // ── Init ──

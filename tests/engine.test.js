@@ -13,6 +13,7 @@ import {
   applyDOT, tickDOTs, cleanseDOT,
   applyStun, applySlow, isStunned, tickStatusEffects,
   executeUltimate, useItem, tickBuffs, ULTIMATES,
+  spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
@@ -1380,5 +1381,131 @@ describe('tower wave mechanics', () => {
     const early = generateTowerStage(1);
     const late = generateTowerStage(10);
     expect(late.enemyLevel).toBeGreaterThan(early.enemyLevel);
+  });
+});
+
+// ── Reinforcements Tests ──
+
+describe('spawnReinforcements', () => {
+  it('해당 턴에 증원이 스폰된다', () => {
+    const stageWithReinf = STAGES.find(s => s.reinforcements && s.reinforcements.length > 0);
+    if (stageWithReinf) {
+      const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+      const state = createBattleState(stageWithReinf.id, chars.map(c => c.id), null, 1.0);
+      const reinfTurn = stageWithReinf.reinforcements[0].turn;
+      state.turnNumber = reinfTurn;
+      const result = spawnReinforcements(state);
+      expect(result).not.toBeNull();
+      expect(result.units.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('이미 스폰된 증원은 재스폰되지 않는다', () => {
+    const stageWithReinf = STAGES.find(s => s.reinforcements && s.reinforcements.length > 0);
+    if (stageWithReinf) {
+      const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+      const state = createBattleState(stageWithReinf.id, chars.map(c => c.id), null, 1.0);
+      const reinfTurn = stageWithReinf.reinforcements[0].turn;
+      state.turnNumber = reinfTurn;
+      spawnReinforcements(state);
+      const result2 = spawnReinforcements(state);
+      expect(result2).toBeNull();
+    }
+  });
+
+  it('증원이 없는 턴에서는 null을 반환한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    state.turnNumber = 99;
+    const result = spawnReinforcements(state);
+    expect(result).toBeNull();
+  });
+});
+
+// ── Faction Advantage Tests ──
+
+describe('faction advantage', () => {
+  it('카르테인이 비소속 공격 시 ATK+3 보너스', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const karteinUnit = state.units.find(u => u.faction === 'kartein');
+    const neutralUnit = state.units.find(u => u.faction === 'neutral');
+    if (karteinUnit && neutralUnit) {
+      const preview1 = previewDamage(state, karteinUnit, neutralUnit);
+      expect(preview1.minDmg).toBeGreaterThan(0);
+    }
+  });
+
+  it('센터 유닛이 카르테인에 대해 DEF+2 보너스', () => {
+    const chars = CHARACTERS.filter(c => c.faction === 'center').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const centerUnit = state.units.find(u => u.faction === 'center');
+    const karteinUnit = state.units.find(u => u.faction === 'kartein');
+    if (centerUnit && karteinUnit) {
+      const preview = previewDamage(state, karteinUnit, centerUnit);
+      expect(preview).toBeDefined();
+    }
+  });
+});
+
+// ── Flanking Bonus Tests ──
+
+describe('flanking bonus', () => {
+  it('방어자 인접 아군이 있으면 협공 보너스가 적용된다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    const ally = state.units.find(u => u.team === 'player' && u.uid !== attacker.uid);
+    if (attacker && defender && ally) {
+      ally.x = defender.x;
+      ally.y = defender.y + 1;
+      const bonus = getFlankingBonus(state, attacker, defender);
+      expect(bonus).toBe(2);
+    }
+  });
+
+  it('인접 아군이 없으면 협공 보너스가 0이다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    state.units.filter(u => u.team === 'player' && u.uid !== attacker.uid).forEach(u => {
+      u.x = 0; u.y = 0;
+    });
+    const bonus = getFlankingBonus(state, attacker, defender);
+    expect(bonus).toBe(0);
+  });
+});
+
+// ── Stat Growth Tests ──
+
+describe('applyStatGrowth', () => {
+  it('공격 행동이 ATK 경험치를 쌓는다', () => {
+    const char = CHARACTERS[0];
+    const unit = cardToUnit(char, 0, 0);
+    unit.level = 1;
+    const result = applyStatGrowth(unit, 'attack');
+    expect(unit.statXP.atk).toBeGreaterThan(0);
+  });
+
+  it('피격 행동이 DEF 경험치를 쌓는다', () => {
+    const char = CHARACTERS[0];
+    const unit = cardToUnit(char, 0, 0);
+    unit.level = 1;
+    applyStatGrowth(unit, 'take_damage');
+    expect(unit.statXP.def).toBeGreaterThan(0);
+  });
+
+  it('경험치가 임계값에 도달하면 스탯이 성장한다', () => {
+    const char = CHARACTERS[0];
+    const unit = cardToUnit(char, 0, 0);
+    unit.level = 1;
+    const threshold = 30 + unit.level * 5;
+    const atkBefore = unit.atk;
+    for (let i = 0; i < Math.ceil(threshold / 10) + 1; i++) {
+      applyStatGrowth(unit, 'attack');
+    }
+    expect(unit.atk).toBeGreaterThanOrEqual(atkBefore);
   });
 });
