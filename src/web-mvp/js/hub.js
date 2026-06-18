@@ -13,7 +13,7 @@ import {
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
   getKillForecast,
 } from './engine.js';
-import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost } from './save.js';
+import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS } from './save.js';
 
 let gameSave = loadGame();
 refreshQuests(gameSave);
@@ -179,6 +179,8 @@ function renderStageSelect() {
     const difficulty = Math.min(5, Math.ceil((s.enemyLevel || 1) / 2));
     const stars = '★'.repeat(difficulty) + '☆'.repeat(5 - difficulty);
     const hasReinforce = s.reinforcements ? `<span class="stage-reinforce">⚠증원</span>` : '';
+    const weatherInfo = s.weather && s.weather !== 'clear' && WEATHER_TYPES[s.weather]
+      ? `<span class="stage-weather" title="${WEATHER_TYPES[s.weather].desc}">${WEATHER_TYPES[s.weather].icon}${WEATHER_TYPES[s.weather].name}</span>` : '';
     const clearData = gameSave.stageClears?.[s.id];
     const clearStars = clearData ? '⭐'.repeat(clearData.stars) + '☆'.repeat(3 - clearData.stars) : '';
     const clearInfo = clearData ? `<span class="stage-clear-info">${clearStars} ${clearData.bestTurns}턴 (${clearData.clears}회)</span>` : '';
@@ -192,6 +194,7 @@ function renderStageSelect() {
           <span class="stage-enemy-count">적 ${enemyCount}명</span>
           <span class="stage-deploy-count">출전 ${maxDeploy}명</span>
           ${hasReinforce}
+          ${weatherInfo}
         </div>
         ${clearInfo}
       </div>
@@ -239,7 +242,9 @@ function openDeploy(stageId) {
 
   document.getElementById('stage-select').style.display = 'none';
   document.getElementById('deploy-screen').style.display = '';
-  document.getElementById('deploy-stage-name').textContent = `${stage.name} — 유닛 편성`;
+  const weatherTag = stage.weather && stage.weather !== 'clear' && WEATHER_TYPES[stage.weather]
+    ? ` ${WEATHER_TYPES[stage.weather].icon} ${WEATHER_TYPES[stage.weather].name}` : '';
+  document.getElementById('deploy-stage-name').textContent = `${stage.name}${weatherTag} — 유닛 편성`;
   document.getElementById('deploy-max').textContent = maxUnits;
   document.getElementById('deploy-count').textContent = '0';
 
@@ -918,7 +923,8 @@ function renderBattle() {
 
 function updateHUD() {
   if (!battleState) return;
-  document.getElementById('hud-stage').textContent = battleState.stage.name;
+  const towerLabel = towerMode ? ` [${towerWave}층]` : '';
+  document.getElementById('hud-stage').textContent = battleState.stage.name + towerLabel;
   document.getElementById('hud-turn').textContent = `턴 ${battleState.turnNumber}`;
   const phaseEl = document.getElementById('phase-indicator');
   if (battleState.phase === 'player_phase') {
@@ -1762,7 +1768,17 @@ function endTurn() {
       .filter(u => u.hp > 0 && u.dots && u.dots.length > 0)
       .map(u => ({ uid: u.uid, x: u.x, y: u.y, dots: u.dots.map(d => ({ ...d })) }));
 
-    endEnemyPhase(battleState);
+    const phaseResult = endEnemyPhase(battleState);
+
+    if (phaseResult?.terrainHealed?.length > 0) {
+      renderBattle();
+      phaseResult.terrainHealed.forEach(h => {
+        const tile = document.querySelector(`.tile[data-x="${h.x}"][data-y="${h.y}"]`);
+        if (tile) showFloatingText(tile, `♨+${h.heal}`, 'heal');
+        appendLog(`♨ ${h.name} 온천 회복 +${h.heal}`);
+      });
+      await delay(500 / battleSpeed);
+    }
 
     if (dotSnapshot.length > 0) {
       renderBattle();
@@ -1937,6 +1953,22 @@ function handleBattleEnd(result) {
     }
   }
 
+  const newAchievements = checkAchievements(gameSave);
+  if (newAchievements.length > 0) {
+    const rarityKoShort = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
+    newAchievements.forEach(a => {
+      a.reward.forEach(rarity => {
+        const rc = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+        addCard(gameSave, rc.id, rarity);
+      });
+    });
+    const achHtml = newAchievements.map(a =>
+      `<div class="achievement-unlock">🏆 <strong>${a.name}</strong> — ${a.desc}<br>
+       <span class="achievement-reward">${a.reward.map(r => rarityKoShort[r]).join(', ')} 카드 획득!</span></div>`
+    ).join('');
+    text.innerHTML += `<div class="result-achievements">${achHtml}</div>`;
+  }
+
   saveGame(gameSave);
   overlay.style.display = 'flex';
 
@@ -2025,10 +2057,21 @@ function renderStats() {
     `).join('');
   };
 
+  const achHtml = ACHIEVEMENTS.map(a => {
+    const done = gameSave.achievements[a.id];
+    return `<div class="quest-item ${done ? 'quest-done' : ''}">
+      <span class="quest-name">${a.name}</span>
+      <span class="quest-progress">${a.desc}</span>
+      ${done ? '<span class="quest-check">🏆</span>' : ''}
+    </div>`;
+  }).join('');
+
   document.getElementById('stats-history').innerHTML = `
     ${renderQuestList(quests.daily, '📋 일일 퀘스트')}
     ${renderQuestList(quests.weekly, '📅 주간 퀘스트')}
     ${quests.monthly ? renderQuestList([quests.monthly], '🏆 월간 퀘스트') : ''}
+    <h4>🏆 업적 (${Object.keys(gameSave.achievements).length}/${ACHIEVEMENTS.length})</h4>
+    ${achHtml}
   `;
 }
 

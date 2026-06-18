@@ -9,8 +9,9 @@ import {
   getMbtiPairScore, getMbtiSynergyGrade, getTeamSynergy, getTeamCP,
   gainXP, rollLoot, SECRET_COMBOS, getTerrainEffect,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
-  getKillForecast,
+  getKillForecast, applyTerrainHealing,
 } from '../src/web-mvp/js/engine.js';
+import { checkAchievements, ACHIEVEMENTS } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
 
 describe('TILE_TYPES', () => {
@@ -869,5 +870,67 @@ describe('boss phase shift', () => {
       const phaseShift = actions.find(a => a.type === 'phase_shift' && a.unit === boss.uid);
       expect(phaseShift).toBeDefined();
     }
+  });
+});
+
+describe('terrain healing with weather', () => {
+  it('applyTerrainHealing이 회복된 유닛 배열을 반환한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-6', chars.map(c => c.id), null, 1.0);
+    state.units.forEach(u => { if (u.hp > 1) u.hp = 1; });
+    const healed = applyTerrainHealing(state);
+    expect(Array.isArray(healed)).toBe(true);
+  });
+
+  it('bloodmoon 날씨에서 온천 회복이 감소한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-6', chars.map(c => c.id), null, 1.0);
+    const hotspringUnit = state.units.find(u => {
+      const tile = state.map.tiles[u.y]?.[u.x];
+      return tile && tile.type === 'hotspring';
+    });
+    if (hotspringUnit) {
+      hotspringUnit.hp = 1;
+      state.weather = WEATHER_TYPES.bloodmoon;
+      applyTerrainHealing(state);
+      expect(hotspringUnit.hp).toBeGreaterThan(1);
+    }
+  });
+});
+
+describe('achievements', () => {
+  it('12개의 업적이 정의되어 있다', () => {
+    expect(ACHIEVEMENTS.length).toBe(12);
+  });
+
+  it('첫 승리 업적이 조건 충족 시 해금된다', () => {
+    const save = {
+      stats: { wins: 1, losses: 0, totalBattles: 1, totalKills: 0 },
+      cards: {}, stageClears: {}, quests: { attendance: 0 }, achievements: {},
+    };
+    const unlocked = checkAchievements(save);
+    const firstBlood = unlocked.find(a => a.id === 'first-blood');
+    expect(firstBlood).toBeDefined();
+    expect(save.achievements['first-blood']).toBeDefined();
+  });
+
+  it('이미 해금된 업적은 중복 해금되지 않는다', () => {
+    const save = {
+      stats: { wins: 1, losses: 0, totalBattles: 1, totalKills: 0 },
+      cards: {}, stageClears: {}, quests: { attendance: 0 },
+      achievements: { 'first-blood': { unlockedAt: '2026-01-01' } },
+    };
+    const unlocked = checkAchievements(save);
+    expect(unlocked.find(a => a.id === 'first-blood')).toBeUndefined();
+  });
+
+  it('킬 50 업적이 조건 충족 시 해금된다', () => {
+    const save = {
+      stats: { wins: 0, losses: 0, totalBattles: 0, totalKills: 50 },
+      cards: {}, stageClears: {}, quests: { attendance: 0 }, achievements: {},
+    };
+    const unlocked = checkAchievements(save);
+    expect(unlocked.find(a => a.id === 'slayer-50')).toBeDefined();
+    expect(unlocked.find(a => a.id === 'slayer-10')).toBeDefined();
   });
 });
