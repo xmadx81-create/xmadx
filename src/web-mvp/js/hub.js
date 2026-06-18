@@ -103,6 +103,19 @@ function showCardPopup(cardId) {
     </div>`;
   })() : '';
   const loreHtml = card.lore ? `<div class="sheet-lore"><p>${card.lore}</p></div>` : '';
+  const roleLabel = { tank:'탱커', melee_dps:'근접 딜러', ranged_dps:'원거리 딜러', support:'서포터', bruiser:'브루저', battle_support:'전투 지원', evasive_dps:'암살자', breaker:'브레이커' };
+  const mbti = CHARACTER_MBTI[card.id] || '????';
+  const unit = cardToUnit(card, 0, 0);
+
+  const statBar = (label, val, max, color, suffix = '') => {
+    const pct = Math.min(100, Math.round(val / max * 100));
+    const highlight = pct >= 70 ? ' stat-high' : '';
+    return `<div class="stat-bar-row${highlight}">
+      <span class="stat-bar-label">${label}</span>
+      <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <span class="stat-bar-val">${val}${suffix}</span>
+    </div>`;
+  };
 
   document.getElementById('popup-details').innerHTML = `
     <div class="sheet-handle"></div>
@@ -110,15 +123,20 @@ function showCardPopup(cardId) {
       <div class="sheet-badges">
         <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
         <span class="rarity-badge ${card.rarity}">${(rarityKo[card.rarity] || card.rarity).toUpperCase()}</span>
+        <span class="role-badge">${roleLabel[card.role] || card.role}</span>
+        <span class="mbti-badge">${mbti}</span>
       </div>
       <h2>${card.name}</h2>
       <p class="sheet-title">${card.title}</p>
     </div>
-    <div class="sheet-stats">
-      <div class="stat"><span class="stat-label">HP</span><span class="stat-val">${card.power * 12 + ({common:10,uncommon:20,rare:35,legendary:50}[card.rarity]||0)}</span></div>
-      <div class="stat"><span class="stat-label">ATK</span><span class="stat-val">${card.power * 4 + ({common:2,uncommon:4,rare:6,legendary:10}[card.rarity]||0)}</span></div>
-      <div class="stat"><span class="stat-label">DEF</span><span class="stat-val">${Math.floor(card.cost/2) + ({common:1,uncommon:2,rare:3,legendary:5}[card.rarity]||0)}</span></div>
-      <div class="stat"><span class="stat-label">MOV</span><span class="stat-val">${{common:3,uncommon:3,rare:2,legendary:2}[card.rarity]||3}</span></div>
+    <div class="sheet-stats-v2">
+      ${statBar('HP', unit.maxHp, 150, '#e94560')}
+      ${statBar('ATK', unit.atk, 40, '#ff6b35')}
+      ${statBar('DEF', unit.def, 15, '#457b9d')}
+      ${statBar('CRT', Math.round(unit.crt * 100), 30, '#e9c46a', '%')}
+      ${statBar('EVA', Math.round(unit.eva * 100), 30, '#7ec8e3', '%')}
+      ${statBar('MOV', unit.mov, 4, '#4b9b6e')}
+      ${statBar('RNG', unit.rng, 3, '#c77dff')}
     </div>
     ${senseHtml}
     ${loreHtml}
@@ -596,15 +614,22 @@ function showDeployDetail(charId) {
         <span class="mbti-badge">${mbti}</span>
       </div>
     </div>
-    <div class="dd-stats">
-      <div class="dd-stat"><span>HP</span><strong>${unit.maxHp}</strong></div>
-      <div class="dd-stat"><span>ATK</span><strong>${unit.atk}</strong></div>
-      <div class="dd-stat"><span>DEF</span><strong>${unit.def}</strong></div>
-      <div class="dd-stat"><span>CRT</span><strong>${Math.round(unit.crt * 100)}%</strong></div>
-      <div class="dd-stat"><span>EVA</span><strong>${Math.round((unit.eva || 0) * 100)}%</strong></div>
-      <div class="dd-stat"><span>MOV</span><strong>${unit.mov}</strong></div>
-      <div class="dd-stat"><span>RNG</span><strong>${unit.rng}</strong></div>
-      <div class="dd-stat dd-cp"><span>전투력</span><strong>${cp}</strong></div>
+    <div class="dd-stats-v2">
+      ${(() => {
+        const sb = (label, val, max, color, suffix = '') => {
+          const pct = Math.min(100, Math.round(val / max * 100));
+          const hi = pct >= 70 ? ' stat-high' : '';
+          return `<div class="stat-bar-row${hi}"><span class="stat-bar-label">${label}</span><div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${color}"></div></div><span class="stat-bar-val">${val}${suffix}</span></div>`;
+        };
+        return sb('HP', unit.maxHp, 150, '#e94560') +
+               sb('ATK', unit.atk, 40, '#ff6b35') +
+               sb('DEF', unit.def, 15, '#457b9d') +
+               sb('CRT', Math.round(unit.crt * 100), 30, '#e9c46a', '%') +
+               sb('EVA', Math.round((unit.eva || 0) * 100), 30, '#7ec8e3', '%') +
+               sb('MOV', unit.mov, 4, '#4b9b6e') +
+               sb('RNG', unit.rng, 3, '#c77dff') +
+               `<div class="stat-bar-row stat-high"><span class="stat-bar-label">CP</span><div class="stat-bar-track"><div class="stat-bar-fill" style="width:${Math.min(100, Math.round(cp / 300 * 100))}%;background:linear-gradient(90deg,#e9c46a,#e94560)"></div></div><span class="stat-bar-val">${cp}</span></div>`;
+      })()}
     </div>
     ${senseInfo ? `<div class="dd-sense"><span class="sense-icon">${senseInfo.icon || '?'}</span> <strong>「${c.sense.name}」</strong> ${c.sense.baseType} Lv.${c.sense.power}<br><span class="dd-sense-flavor">${c.sense.flavor}</span></div>` : ''}
     ${unit.ultimates ? `<div class="dd-ults">${unit.ultimates.map(u => `<div class="dd-ult"><span>${u.icon}</span> ${u.name} <span class="dd-ult-lv">Lv.${u.unlockLevel}</span></div>`).join('')}</div>` : ''}
