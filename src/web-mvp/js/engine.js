@@ -880,6 +880,7 @@ export const STAGES = [
   {
     id: 'stage-4',
     name: '빙결의 숲',
+    weather: 'blizzard',
     description: '겨울 산림 속 카르테인 전초기지. 빙판과 숲이 이동을 방해한다.',
     storyIntro: '도시 외곽의 동결된 숲. 카르테인의 보급로를 차단하기 위해 깊숙이 들어왔다. 나뭇가지 사이로 은발이 스친다.',
     storyOutro: '전초기지를 파괴했다. 하지만 숲 깊은 곳에서 더 강한 기운이 느껴진다.',
@@ -911,6 +912,7 @@ export const STAGES = [
   {
     id: 'stage-5',
     name: '계곡의 다리',
+    weather: 'rain',
     description: '깊은 계곡을 가로지르는 오래된 다리. 양쪽에서 적이 밀려온다.',
     storyIntro: '카르테인 본거지로 향하는 유일한 길. 좁은 다리 위에서 적의 매복이 시작됐다.',
     storyOutro: '다리를 건넜다. 계곡 너머로 카르테인의 성이 보인다. 최종 결전이 다가오고 있다.',
@@ -947,6 +949,7 @@ export const STAGES = [
   {
     id: 'stage-6',
     name: '묘지의 온천',
+    weather: 'fog',
     description: '고대 뱀파이어들의 묘지. 온천에서 회복하며 싸워라.',
     storyIntro: '카르테인 선조들의 묘지. 기이하게도 뜨거운 온천이 솟아오르고 있다. 묘비 사이로 적들이 깨어난다.',
     storyOutro: '묘지의 수호자를 물리쳤다. 고대의 비밀이 담긴 석판을 발견했다.',
@@ -1014,10 +1017,79 @@ export const STAGES = [
       { turn: 5, units: [{ charId: 'otto-brandt', x: 5, y: 0 }], message: '🔴 옥좌 뒤에서 암살자 출현!' },
     ],
     victoryCondition: 'defeat_all',
+    weather: 'bloodmoon',
   },
 ];
 
-// ── Battle State Factory ────────────────────────────────────────────────
+// 🔴 사마의: 날씨 시스템
+export const WEATHER_TYPES = {
+  clear:     { id: 'clear',     name: '맑음',   icon: '☀️', desc: '효과 없음', effects: {} },
+  rain:      { id: 'rain',      name: '비',     icon: '🌧️', desc: '원거리 ATK-2, 전체 EVA+5%', effects: { rangedAtkPenalty: 2, evaBonus: 0.05 } },
+  fog:       { id: 'fog',       name: '안개',   icon: '🌫️', desc: '사거리 2→1, 원거리 ATK-3', effects: { rngReduction: 1, rangedAtkPenalty: 3 } },
+  blizzard:  { id: 'blizzard',  name: '눈보라', icon: '❄️', desc: '전체 MOV-1, 빙판 EVA+10%', effects: { movPenalty: 1, iceEvaBonus: 0.1 } },
+  bloodmoon: { id: 'bloodmoon', name: '혈월',   icon: '🌑', desc: '카르테인 ATK+3, 회복 효과 -30%', effects: { karteinAtkBonus: 3, healReduction: 0.3 } },
+  storm:     { id: 'storm',     name: '폭풍',   icon: '⛈️', desc: '전체 CRT+10%, 반격 데미지 +20%', effects: { crtBonus: 0.1, counterBoost: 0.2 } },
+};
+
+export function applyWeatherToUnit(unit, weather, state) {
+  if (!weather || weather.id === 'clear') return;
+  const fx = weather.effects;
+  if (fx.rangedAtkPenalty && unit.rng >= 2) unit.atk = Math.max(1, unit.atk - fx.rangedAtkPenalty);
+  if (fx.evaBonus) unit.eva += fx.evaBonus;
+  if (fx.rngReduction && unit.rng >= 2) unit.rng = Math.max(1, unit.rng - fx.rngReduction);
+  if (fx.movPenalty) unit.mov = Math.max(1, unit.mov - fx.movPenalty);
+  if (fx.karteinAtkBonus && unit.faction === 'kartein') unit.atk += fx.karteinAtkBonus;
+  if (fx.crtBonus) unit.crt += fx.crtBonus;
+}
+
+// 🔴🔵 무한의 탑 — 웨이브 스테이지 생성기
+export function generateTowerStage(wave) {
+  const cols = 10, rows = 8;
+  const tiles = ['floor', 'floor', 'floor', 'floor', 'floor', 'forest', 'graveyard', 'swamp', 'ice', 'hotspring'];
+  const mapData = [];
+  for (let r = 0; r < rows; r++) {
+    mapData[r] = [];
+    for (let c = 0; c < cols; c++) {
+      if ((r === 0 || r === rows - 1) && (c === 0 || c === cols - 1)) { mapData[r][c] = 'wall'; continue; }
+      mapData[r][c] = Math.random() < 0.15 ? tiles[Math.floor(Math.random() * tiles.length)] : 'floor';
+    }
+  }
+
+  const enemyPool = CHARACTERS.filter(c => c.faction === 'kartein');
+  const enemyCount = Math.min(8, 2 + Math.floor(wave * 0.8));
+  const enemyUnits = [];
+  for (let i = 0; i < enemyCount; i++) {
+    const char = enemyPool[Math.floor(Math.random() * enemyPool.length)];
+    let x, y;
+    do {
+      x = 5 + Math.floor(Math.random() * (cols - 6));
+      y = Math.floor(Math.random() * (rows - 2)) + 1;
+    } while (enemyUnits.some(e => e.x === x && e.y === y) || mapData[y][x] === 'wall');
+    enemyUnits.push({ charId: char.id, x, y });
+  }
+
+  const weathers = Object.keys(WEATHER_TYPES);
+  const weather = wave <= 2 ? 'clear' : weathers[Math.floor(Math.random() * weathers.length)];
+
+  return {
+    id: `tower-${wave}`,
+    name: `무한의 탑 ${wave}층`,
+    description: `웨이브 ${wave} — 적 ${enemyCount}명`,
+    storyIntro: wave === 1 ? '탑의 문이 열렸다. 끝이 보이지 않는 나선 계단이 이어진다.' : null,
+    storyOutro: null,
+    enemyLevel: Math.min(20, wave + 1),
+    mapData,
+    playerSpawns: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 2 }],
+    enemyUnits,
+    victoryCondition: 'defeat_all',
+    weather,
+    reinforcements: wave >= 5 && wave % 3 === 0 ? [{
+      turn: 3,
+      units: [{ charId: enemyPool[Math.floor(Math.random() * enemyPool.length)].id, x: cols - 2, y: rows - 2 }],
+      message: '🔴 탑 수호자 증원!'
+    }] : null,
+  };
+}
 
 export function createBattleState(stageId, playerCharIds, centerBuff, teamSynergyMult) {
   const stage = STAGES.find(s => s.id === stageId);
@@ -1077,7 +1149,9 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
     relicIdx++;
   });
 
-  return {
+  const weatherId = stage.weather || 'clear';
+  const weather = WEATHER_TYPES[weatherId] || WEATHER_TYPES.clear;
+  const state = {
     stageId,
     stage,
     map,
@@ -1089,7 +1163,14 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
     victoryCondition: stage.victoryCondition,
     result: null,
     teamSynergyMult: teamSynergyMult || 1.0,
+    weather,
   };
+
+  if (weather.id !== 'clear') {
+    units.forEach(u => applyWeatherToUnit(u, weather, state));
+  }
+
+  return state;
 }
 
 // ── Turn Phase Management ───────────────────────────────────────────────

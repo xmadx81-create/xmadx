@@ -8,6 +8,7 @@ import {
   getCombatPower, previewDamage, previewSkillDamage,
   getMbtiPairScore, getMbtiSynergyGrade, getTeamSynergy, getTeamCP,
   gainXP, rollLoot, SECRET_COMBOS, getTerrainEffect,
+  WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
 
@@ -675,5 +676,112 @@ describe('expanded stages', () => {
     expect(flat).toContain('forest');
     expect(flat).toContain('mountain');
     expect(flat).toContain('ice');
+  });
+});
+
+describe('weather system', () => {
+  it('6가지 날씨 타입이 정의되어 있다', () => {
+    expect(Object.keys(WEATHER_TYPES)).toHaveLength(6);
+    expect(WEATHER_TYPES.clear).toBeDefined();
+    expect(WEATHER_TYPES.rain).toBeDefined();
+    expect(WEATHER_TYPES.fog).toBeDefined();
+    expect(WEATHER_TYPES.blizzard).toBeDefined();
+    expect(WEATHER_TYPES.bloodmoon).toBeDefined();
+    expect(WEATHER_TYPES.storm).toBeDefined();
+  });
+
+  it('날씨 타입에 필수 필드가 있다', () => {
+    Object.values(WEATHER_TYPES).forEach(w => {
+      expect(w.id).toBeDefined();
+      expect(w.name).toBeDefined();
+      expect(w.icon).toBeDefined();
+      expect(w.desc).toBeDefined();
+      expect(w.effects).toBeDefined();
+    });
+  });
+
+  it('rain이 원거리 유닛의 ATK를 감소시킨다', () => {
+    const char = CHARACTERS.find(c => c.role === 'ranged_dps');
+    const unit = cardToUnit(char, 0, 0);
+    expect(unit.rng).toBeGreaterThanOrEqual(2);
+    const origAtk = unit.atk;
+    applyWeatherToUnit(unit, WEATHER_TYPES.rain, {});
+    expect(unit.atk).toBe(Math.max(1, origAtk - 2));
+    expect(unit.eva).toBeGreaterThan(0);
+  });
+
+  it('blizzard가 MOV를 감소시킨다', () => {
+    const char = CHARACTERS[0];
+    const unit = cardToUnit(char, 0, 0);
+    const origMov = unit.mov;
+    applyWeatherToUnit(unit, WEATHER_TYPES.blizzard, {});
+    expect(unit.mov).toBe(Math.max(1, origMov - 1));
+  });
+
+  it('clear 날씨는 효과가 없다', () => {
+    const char = CHARACTERS[0];
+    const unit = cardToUnit(char, 0, 0);
+    const origAtk = unit.atk;
+    const origMov = unit.mov;
+    applyWeatherToUnit(unit, WEATHER_TYPES.clear, {});
+    expect(unit.atk).toBe(origAtk);
+    expect(unit.mov).toBe(origMov);
+  });
+
+  it('일부 스테이지에 날씨가 설정되어 있다', () => {
+    const withWeather = STAGES.filter(s => s.weather && s.weather !== 'clear');
+    expect(withWeather.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('날씨가 설정된 스테이지의 battleState에 weather가 포함된다', () => {
+    const stage4 = STAGES.find(s => s.id === 'stage-4');
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, stage4.playerSpawns.length);
+    const state = createBattleState('stage-4', chars.map(c => c.id), null, 1.0);
+    expect(state.weather).toBeDefined();
+    expect(state.weather.id).toBe('blizzard');
+  });
+});
+
+describe('tower system', () => {
+  it('generateTowerStage가 유효한 스테이지를 반환한다', () => {
+    const stage = generateTowerStage(1);
+    expect(stage.id).toBe('tower-1');
+    expect(stage.mapData.length).toBe(8);
+    expect(stage.mapData[0].length).toBe(10);
+    expect(stage.playerSpawns.length).toBe(4);
+    expect(stage.enemyUnits.length).toBeGreaterThanOrEqual(2);
+    expect(stage.victoryCondition).toBe('defeat_all');
+  });
+
+  it('웨이브가 높을수록 적이 많아진다', () => {
+    const stage1 = generateTowerStage(1);
+    const stage5 = generateTowerStage(5);
+    expect(stage5.enemyUnits.length).toBeGreaterThanOrEqual(stage1.enemyUnits.length);
+  });
+
+  it('웨이브 3+ 부터 날씨가 랜덤 적용될 수 있다', () => {
+    const stage1 = generateTowerStage(1);
+    expect(stage1.weather).toBe('clear');
+    const stage2 = generateTowerStage(2);
+    expect(stage2.weather).toBe('clear');
+  });
+
+  it('적 레벨이 웨이브에 따라 스케일링된다', () => {
+    const s3 = generateTowerStage(3);
+    expect(s3.enemyLevel).toBe(4);
+    const s10 = generateTowerStage(10);
+    expect(s10.enemyLevel).toBe(11);
+  });
+
+  it('적 레벨이 20을 초과하지 않는다', () => {
+    const s30 = generateTowerStage(30);
+    expect(s30.enemyLevel).toBeLessThanOrEqual(20);
+  });
+
+  it('웨이브 5+ 에서 3의 배수 웨이브에 증원이 있다', () => {
+    const s6 = generateTowerStage(6);
+    expect(s6.reinforcements).not.toBeNull();
+    const s7 = generateTowerStage(7);
+    expect(s7.reinforcements).toBeNull();
   });
 });
