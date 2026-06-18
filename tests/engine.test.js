@@ -9,6 +9,7 @@ import {
   getMbtiPairScore, getMbtiSynergyGrade, getTeamSynergy, getTeamCP,
   gainXP, rollLoot, SECRET_COMBOS, getTerrainEffect,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
+  getKillForecast,
 } from '../src/web-mvp/js/engine.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
 
@@ -822,6 +823,51 @@ describe('weather effects integration', () => {
     const normalChar = normalState.units.find(u => u.charId === sameChar.charId || u.id === sameChar.id);
     if (normalChar) {
       expect(sameChar.mov).toBeLessThanOrEqual(normalChar.mov);
+    }
+  });
+});
+
+describe('kill forecast', () => {
+  it('getKillForecast가 처치 가능 여부를 반환한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    const forecast = getKillForecast(state, attacker, defender);
+    expect(forecast).toHaveProperty('canKill');
+    expect(forecast).toHaveProperty('guaranteedKill');
+    expect(forecast).toHaveProperty('canCounter');
+    expect(forecast).toHaveProperty('counterDmg');
+    expect(forecast).toHaveProperty('counterKillsYou');
+    expect(typeof forecast.canKill).toBe('boolean');
+    expect(typeof forecast.counterDmg).toBe('number');
+  });
+
+  it('HP 1인 적은 확정 처치로 판정된다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    defender.hp = 1;
+    const forecast = getKillForecast(state, attacker, defender);
+    expect(forecast.guaranteedKill).toBe(true);
+    expect(forecast.canKill).toBe(true);
+  });
+});
+
+describe('boss phase shift', () => {
+  it('보스 HP 50% 이하 시 무적 페이즈가 발동된다', () => {
+    const stage7 = STAGES.find(s => s.id === 'stage-7');
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, stage7.playerSpawns.length);
+    const state = createBattleState('stage-7', chars.map(c => c.id), null, 1.0);
+    const boss = state.units.find(u => u.team === 'enemy' && u.rarity === 'legendary');
+    if (boss) {
+      boss.hp = Math.floor(boss.maxHp * 0.5);
+      state.phase = 'enemy_phase';
+      state.units.filter(u => u.team === 'enemy').forEach(u => u.acted = false);
+      const actions = runEnemyPhase(state);
+      const phaseShift = actions.find(a => a.type === 'phase_shift' && a.unit === boss.uid);
+      expect(phaseShift).toBeDefined();
     }
   });
 });

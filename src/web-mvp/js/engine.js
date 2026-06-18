@@ -1970,6 +1970,15 @@ export function runEnemyPhase(state) {
 
     if (!priorityTarget) continue;
 
+    // 🔴 사마의: 보스 무적 페이즈 — HP 50% 이하 시 1턴 무적 (1회)
+    if (enemy.rarity === 'legendary' && !enemy._phaseShield && enemy.hp <= enemy.maxHp * 0.5) {
+      enemy._phaseShield = true;
+      enemy.invuln = true;
+      enemy.buffs.push({ stat: '_invuln', val: 0, turns: 1 });
+      state.log.push(`⭐ ${enemy.name}의 위상 전환! 1턴간 무적!`);
+      actions.push({ type: 'phase_shift', unit: enemy.uid });
+    }
+
     // 🔴 사마의: 보스 분노 — HP 30% 이하 시 ATK 폭증 (1회)
     if (enemy.rarity === 'legendary' && !enemy._enraged && enemy.hp <= enemy.maxHp * 0.3) {
       enemy._enraged = true;
@@ -2033,6 +2042,9 @@ export function runEnemyPhase(state) {
       }
     }
 
+    // 🔴 사마의: 치명상 적 후퇴 AI (HP 25% 이하, 비보스 → 회복 지형으로 도주)
+    const isRetreating = enemy.rarity !== 'legendary' && enemy.hp <= enemy.maxHp * 0.25;
+
     // 🔴 사마의: 전략적 이동 — 타겟에 접근하되 방어 지형 선호
     const movRange = getMovementRange(state, enemy);
     if (movRange.length === 0) {
@@ -2043,7 +2055,18 @@ export function runEnemyPhase(state) {
     let bestTile = null;
     let bestTileScore = -Infinity;
     for (const tile of movRange) {
-      const score = scoreMoveTile(state, tile, priorityTarget);
+      let score;
+      if (isRetreating) {
+        const terrain = getTerrainEffect(state.map, tile.x, tile.y);
+        score = (terrain.healPerTurn || 0) * 50 + (terrain.defBonus || 0) * 10 + (terrain.evaBonus || 0) * 40;
+        const nearestPlayer = players.reduce((best, p) => {
+          const d = manhattanDist(tile, p);
+          return d > (best || 0) ? d : best;
+        }, 0);
+        score += nearestPlayer * 5;
+      } else {
+        score = scoreMoveTile(state, tile, priorityTarget);
+      }
       if (score > bestTileScore) {
         bestTileScore = score;
         bestTile = tile;
@@ -2135,6 +2158,20 @@ export function getAttackTargets(state, unit) {
   return atkRange
     .map(t => getUnitAt(state, t.x, t.y))
     .filter(target => target && target.team !== unit.team && target.hp > 0);
+}
+
+export function getKillForecast(state, attacker, defender) {
+  const preview = previewDamage(state, attacker, defender);
+  const canKill = preview.maxDmg >= defender.hp;
+  const guaranteedKill = preview.minDmg >= defender.hp;
+  const canCounter = isInRange(defender, attacker.x, attacker.y) && defender.hp > 0;
+  let counterDmg = 0;
+  if (canCounter) {
+    const raw = Math.max(1, Math.floor(defender.atk * 0.7) - attacker.def);
+    counterDmg = raw + Math.floor(defender.atk * 0.1);
+  }
+  const counterKillsYou = canCounter && counterDmg >= attacker.hp;
+  return { canKill, guaranteedKill, canCounter, counterDmg, counterKillsYou };
 }
 
 // ── Utility: Get unit by UID ────────────────────────────────────────────
