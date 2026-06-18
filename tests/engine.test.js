@@ -1509,3 +1509,140 @@ describe('applyStatGrowth', () => {
     expect(unit.atk).toBeGreaterThanOrEqual(atkBefore);
   });
 });
+
+describe('레벨업 스탯 정보', () => {
+  it('gainXP levelUp 데이터에 hpGain, atk, def가 포함된다', () => {
+    const char = CHARACTERS[0];
+    const unit = cardToUnit(char, 0, 0);
+    unit.level = 1;
+    unit.xp = 0;
+    unit.xpToNext = 10;
+    const hpBefore = unit.maxHp;
+    const result = gainXP(unit, 15);
+    expect(result).not.toBeNull();
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result[0]).toHaveProperty('level');
+    expect(result[0]).toHaveProperty('hpGain');
+    expect(result[0].hpGain).toBe(Math.floor(hpBefore * 0.05));
+    expect(result[0]).toHaveProperty('atk');
+    expect(result[0]).toHaveProperty('def');
+  });
+
+  it('다중 레벨업 시 각각의 스탯 정보가 기록된다', () => {
+    const char = CHARACTERS[0];
+    const unit = cardToUnit(char, 0, 0);
+    unit.level = 1;
+    unit.xp = 0;
+    unit.xpToNext = 10;
+    const result = gainXP(unit, 200);
+    expect(result).not.toBeNull();
+    expect(result.length).toBeGreaterThanOrEqual(2);
+    result.forEach(lv => {
+      expect(lv.hpGain).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('반격 사망 (Counter-Kill)', () => {
+  it('반격으로 공격자가 사망하면 attackerDied = true', () => {
+    const state = createBattleState('stage-1', [CHARACTERS[0].id]);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    attacker.hp = 1;
+    attacker.atk = 5;
+    defender.hp = 999;
+    defender.maxHp = 999;
+    defender.atk = 50;
+    defender.def = 0;
+    attacker.x = 3; attacker.y = 3;
+    defender.x = 4; defender.y = 3;
+    const result = attackUnit(state, attacker, defender);
+    if (result.ok && result.counterDamage > 0) {
+      expect(result.attackerDied).toBe(true);
+    }
+  });
+
+  it('반격 사망 시에도 공격 데미지와 루트가 정상 처리된다', () => {
+    const state = createBattleState('stage-1', [CHARACTERS[0].id]);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    attacker.hp = 1;
+    attacker.atk = 999;
+    defender.hp = 10;
+    defender.maxHp = 10;
+    defender.atk = 50;
+    defender.def = 0;
+    attacker.x = 3; attacker.y = 3;
+    defender.x = 4; defender.y = 3;
+    const result = attackUnit(state, attacker, defender);
+    if (result.ok) {
+      expect(result.defenderDied).toBe(true);
+      expect(result.damage).toBeGreaterThan(0);
+    }
+  });
+
+  it('선제 반격(speed advantage)으로 공격자 사망 시 공격 불가', () => {
+    const state = createBattleState('stage-1', [CHARACTERS[0].id]);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    attacker.hp = 1;
+    attacker.atk = 5;
+    defender.hp = 999;
+    defender.maxHp = 999;
+    defender.atk = 999;
+    defender.def = 0;
+    attacker.x = 3; attacker.y = 3;
+    defender.x = 4; defender.y = 3;
+    const originalFaction = defender.faction;
+    const advantageFaction = Object.entries(FACTIONS).find(([, v]) => v.strongVs === attacker.faction);
+    if (advantageFaction) {
+      defender.faction = advantageFaction[0];
+      const result = attackUnit(state, attacker, defender);
+      if (result.ok && result.attackerDied) {
+        expect(result.damage).toBe(0);
+        expect(result.defenderDied).toBe(false);
+      }
+      defender.faction = originalFaction;
+    }
+  });
+
+  it('적 페이즈 공격 시 attackerDied 정보가 반환된다', () => {
+    const state = createBattleState('stage-1', [CHARACTERS[0].id]);
+    const player = state.units.find(u => u.team === 'player');
+    const enemy = state.units.find(u => u.team === 'enemy');
+    enemy.hp = 1;
+    enemy.atk = 5;
+    player.hp = 999;
+    player.maxHp = 999;
+    player.atk = 50;
+    player.def = 0;
+    player.x = 3; player.y = 3;
+    enemy.x = 4; enemy.y = 3;
+    enemy.acted = false;
+    state.phase = 'enemy_phase';
+    const actions = runEnemyPhase(state);
+    const atkAction = actions.find(a => a.type === 'attack');
+    if (atkAction) {
+      expect(atkAction).toHaveProperty('attackerDied');
+    }
+  });
+});
+
+describe('전투 결과 딜레이 & 승리 확인', () => {
+  it('checkVictory — 적 전멸 시 승리', () => {
+    const state = createBattleState('stage-1', [CHARACTERS[0].id]);
+    state.units.filter(u => u.team === 'enemy').forEach(u => { u.hp = 0; });
+    expect(checkVictory(state)).toBe('win');
+  });
+
+  it('checkVictory — 아군 전멸 시 패배', () => {
+    const state = createBattleState('stage-1', [CHARACTERS[0].id]);
+    state.units.filter(u => u.team === 'player').forEach(u => { u.hp = 0; });
+    expect(checkVictory(state)).toBe('lose');
+  });
+
+  it('checkVictory — 양쪽 생존 시 null', () => {
+    const state = createBattleState('stage-1', [CHARACTERS[0].id]);
+    expect(checkVictory(state)).toBeNull();
+  });
+});

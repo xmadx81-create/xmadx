@@ -1586,8 +1586,8 @@ async function doAttack(attacker, defender) {
     result.xpGains.forEach(g => {
       g.levelUps.forEach(lv => {
         const u = getUnitByUid(battleState, g.unit);
-        if (u) showLevelUp(u.name, lv.level);
-        appendLog(`⬆ ${u?.name || '?'} Lv.${lv.level} 달성!`);
+        if (u) showLevelUp(u.name, lv);
+        appendLog(`⬆ ${u?.name || '?'} Lv.${lv.level} 달성! (ATK+2 DEF+1 HP+${lv.hpGain})`);
       });
     });
   }
@@ -1603,7 +1603,7 @@ async function doAttack(attacker, defender) {
   renderBattle();
 
   const vc = checkVictory(battleState);
-  if (vc) { setTimeout(() => handleBattleEnd(vc), 600); return; }
+  if (vc) { setTimeout(() => handleBattleEnd(vc), 1200); return; }
 
   cancelSelection();
   checkAutoEndTurn();
@@ -1690,10 +1690,14 @@ function showLootDrop(loot) {
   setTimeout(() => { el.style.display = 'none'; }, 2000);
 }
 
-function showLevelUp(name, level) {
+function showLevelUp(name, levelData) {
   const el = document.getElementById('levelup-popup');
   document.getElementById('levelup-name').textContent = name;
-  document.getElementById('levelup-level').textContent = `Lv.${level}`;
+  document.getElementById('levelup-level').textContent = `Lv.${levelData.level}`;
+  const statsEl = document.getElementById('levelup-stats');
+  if (statsEl) {
+    statsEl.innerHTML = `<span class="ls-atk">ATK+2</span><span class="ls-def">DEF+1</span><span class="ls-hp">HP+${levelData.hpGain}</span>`;
+  }
   el.style.display = '';
   el.style.animation = 'none';
   el.offsetHeight;
@@ -1786,12 +1790,26 @@ function endTurn() {
         renderBattle();
         if (unit) highlightEnemyAction(unit);
         appendLog(`⚔ ${unit?.name || '적'} → ${target?.name || '?'}: ${a.damage}${a.critical ? ' 크리티컬!' : ''}`);
+        if (a.counterDamage > 0) appendLog(`  ↩ ${target?.name} 반격: ${a.counterDamage}`);
         if (a.defenderDied) appendLog(`  💀 ${target?.name} 전사!`);
+        if (a.attackerDied) {
+          appendLog(`  💀 ${unit?.name} 반격으로 전사!`);
+          if (target) {
+            target._battleKills = (target._battleKills || 0) + 1;
+            gameSave.stats.totalKills++;
+            progressQuest(gameSave, 'kill');
+            saveGame(gameSave);
+          }
+        }
         const defTile = target ? document.querySelector(`.tile[data-x="${target.x}"][data-y="${target.y}"]`) : null;
         if (defTile && !a.evaded) {
           showFloatingText(defTile, `-${a.damage}`, a.critical ? 'critical' : 'damage');
           defTile.classList.add('damage-shake');
           setTimeout(() => defTile.classList.remove('damage-shake'), 400);
+        }
+        if (a.counterDamage > 0) {
+          const atkTile = unit ? document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`) : null;
+          if (atkTile) setTimeout(() => showFloatingText(atkTile, `-${a.counterDamage}`, 'damage'), 300);
         }
         await delay(600 / battleSpeed);
       } else if (a.type === 'move') {
