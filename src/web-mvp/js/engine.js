@@ -522,7 +522,10 @@ export function executeUltimate(state, unit, ultIndex) {
         dead.acted = true;
         result.effects.push(`${dead.name} 부활! HP ${dead.hp}`);
       } else {
-        result.effects.push('부활 대상 없음');
+        unit.mp += ult.mpCost;
+        ult.currentCooldown = 0;
+        unit.acted = false;
+        return { ok: false, reason: '부활 대상 없음' };
       }
       break;
     }
@@ -1161,6 +1164,16 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
     relicIdx++;
   });
 
+  // 🔴 사마의: 리더 아우라 — 레전더리 적이 있으면 아군 적 전체 강화
+  const leaders = units.filter(u => u.team === 'enemy' && u.rarity === 'legendary');
+  if (leaders.length > 0) {
+    units.filter(u => u.team === 'enemy' && u.hp > 0).forEach(u => {
+      u.atk += 2;
+      u.def += 1;
+      u._leaderBuff = true;
+    });
+  }
+
   const weatherId = stage.weather || 'clear';
   const weather = WEATHER_TYPES[weatherId] || WEATHER_TYPES.clear;
   const state = {
@@ -1624,7 +1637,7 @@ export function previewDamage(state, attacker, defender) {
   const maxDmg = Math.max(1, Math.floor((rawDamage + maxVariance) * typeMult));
   const critDmg = Math.max(1, Math.floor((rawDamage + maxVariance) * typeMult * 1.5));
 
-  return { minDmg, maxDmg, critDmg, crt: attacker.crt, eva: defender.eva, flanking };
+  return { minDmg, maxDmg, critDmg, crt: attacker.crt, eva: defender.eva, flanking, shield: defender.shield || 0, invuln: !!defender.invuln };
 }
 
 export function previewSkillDamage(unit) {

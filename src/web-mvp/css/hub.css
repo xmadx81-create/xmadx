@@ -5107,6 +5107,40 @@ body {
   margin-top: 2px;
 }
 
+.cmd-shield {
+  background: rgba(100, 180, 255, 0.2);
+  color: #60a5fa;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 9px;
+}
+.cmd-invuln {
+  background: rgba(255, 215, 0, 0.2);
+  color: #ffd700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 9px;
+  animation: hpLowPulse 1s ease-in-out infinite;
+}
+
+.unit-leader-icon {
+  position: absolute;
+  top: -4px;
+  right: -2px;
+  font-size: 0.6rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 2px rgba(255, 215, 0, 0.8));
+  pointer-events: none;
+}
+
+.ulp-unit {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.ulp-unit:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 /* ── Quick Deploy Button ── */
 #btn-deploy-quick {
   background: linear-gradient(135deg, var(--accent-blue), var(--player-dark));
