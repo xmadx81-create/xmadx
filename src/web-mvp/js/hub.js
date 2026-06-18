@@ -868,7 +868,7 @@ function showPhaseBanner(text, type) {
   const banner = document.getElementById('phase-banner');
   const span = document.getElementById('phase-banner-text');
   span.textContent = text;
-  banner.className = `phase-banner ${type || ''}`;
+  banner.className = `phase-banner ${type ? type + '-phase' : ''}`;
   banner.style.display = 'flex';
   setTimeout(() => { banner.style.display = 'none'; }, 1500);
 }
@@ -941,12 +941,14 @@ function renderBattle() {
           buffIcons += `<div class="unit-leader-icon">👑</div>`;
         }
 
+        const nameTag = unit.name.length > 4 ? unit.name.slice(0, 4) : unit.name;
         unitHtml = `
           <div class="unit ${unit.team}${actedClass}" data-uid="${unit.uid}">
             <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
-            <div class="unit-initial" style="display:none">${unit.name[0]}</div>
-            <div class="unit-hp-bar"><div class="unit-hp-fill${hpColor}" style="width:${hpPct}%"></div>${shieldPct > 0 ? `<div class="unit-shield-fill" style="width:${shieldPct}%;left:${hpPct}%"></div>` : ''}</div>
+            <div class="unit-initial ${unit.team}" style="display:none">${unit.name[0]}</div>
+            <div class="unit-hp-bar"><div class="unit-hp-fill${hpColor}" style="width:${hpPct}%"></div>${shieldPct > 0 ? `<div class="unit-shield-fill" style="width:${shieldPct}%;left:${hpPct}%"></div>` : ''}<span class="unit-hp-num">${unit.hp}</span></div>
+            <div class="unit-name-tag ${unit.team}">${nameTag}</div>
             ${buffIcons}
           </div>`;
       }
@@ -973,10 +975,10 @@ function updateHUD() {
   const phaseEl = document.getElementById('phase-indicator');
   if (battleState.phase === 'player_phase') {
     phaseEl.textContent = '아군 턴';
-    phaseEl.className = 'phase-indicator player';
+    phaseEl.className = 'phase-indicator player-phase';
   } else {
     phaseEl.textContent = '적 턴';
-    phaseEl.className = 'phase-indicator enemy';
+    phaseEl.className = 'phase-indicator enemy-phase';
   }
   document.getElementById('btn-end-turn').disabled = battleState.phase !== 'player_phase';
 
@@ -1553,6 +1555,11 @@ async function doAttack(attacker, defender) {
     showFloatingText(defTile, label, result.critical ? 'critical' : (result.penetrated ? 'penetrate' : 'damage'));
     defTile.classList.add('damage-shake');
     setTimeout(() => defTile.classList.remove('damage-shake'), 400);
+    const viewport = document.getElementById('battle-viewport');
+    if (viewport) {
+      viewport.classList.add(result.critical ? 'screen-shake-heavy' : 'screen-shake');
+      setTimeout(() => viewport.classList.remove('screen-shake', 'screen-shake-heavy'), 400);
+    }
   }
 
   if (result.counterDamage > 0 && atkTile) {
