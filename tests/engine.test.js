@@ -1718,3 +1718,32 @@ describe('사운드 모듈', () => {
     expect(sound.isMuted()).toBe(before);
   });
 });
+
+describe('설정 시스템', () => {
+  it('STAGES가 7개 존재하고 각각 필수 필드를 갖는다', () => {
+    expect(STAGES.length).toBe(7);
+    STAGES.forEach(s => {
+      expect(s.id).toBeTruthy();
+      expect(s.name).toBeTruthy();
+      expect(s.enemyUnits.length).toBeGreaterThan(0);
+      expect(s.playerSpawns.length).toBeGreaterThan(0);
+      expect(typeof s.enemyLevel).toBe('number');
+    });
+  });
+
+  it('generateTowerStage가 웨이브 번호에 따라 적 레벨을 증가시킨다', () => {
+    const w1 = generateTowerStage(1);
+    const w5 = generateTowerStage(5);
+    const w10 = generateTowerStage(10);
+    expect(w1.enemyLevel).toBeLessThan(w5.enemyLevel);
+    expect(w5.enemyLevel).toBeLessThan(w10.enemyLevel);
+  });
+
+  it('WEATHER_TYPES가 6종 이상의 날씨를 포함한다', () => {
+    expect(Object.keys(WEATHER_TYPES).length).toBeGreaterThanOrEqual(6);
+    Object.values(WEATHER_TYPES).forEach(w => {
+      expect(w.name).toBeTruthy();
+      expect(w.icon).toBeTruthy();
+    });
+  });
+});

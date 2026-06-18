@@ -839,10 +839,10 @@ function startBattle() {
   battleLogHistory = [];
   dangerZoneActive = false;
   undoMoveData = null;
-  battleSpeed = 1;
+  battleSpeed = gameSave.settings?.battleSpeed || 1;
   document.getElementById('btn-danger-zone').classList.remove('active');
   const speedBtn = document.getElementById('btn-speed');
-  if (speedBtn) { speedBtn.textContent = '1×'; speedBtn.classList.remove('active'); }
+  if (speedBtn) { speedBtn.textContent = `${battleSpeed}×`; speedBtn.classList.toggle('active', battleSpeed > 1); }
 
   showStory(battleState.stage.storyIntro, () => {
     showPhaseBanner('아군 턴', 'player');
@@ -871,7 +871,7 @@ function showPhaseBanner(text, type) {
   span.textContent = text;
   banner.className = `phase-banner ${type ? type + '-phase' : ''}`;
   banner.style.display = 'flex';
-  setTimeout(() => { banner.style.display = 'none'; }, 1500);
+  setTimeout(() => { banner.style.display = 'none'; }, 1500 / battleSpeed);
 }
 
 // ── Render Battle Grid ──
@@ -1554,7 +1554,7 @@ async function doSkillAttack(attacker, defender) {
   renderBattle();
 
   const vc = checkVictory(battleState);
-  if (vc) { setTimeout(() => handleBattleEnd(vc), 600); return; }
+  if (vc) { setTimeout(() => handleBattleEnd(vc), 600 / battleSpeed); return; }
 
   commandTarget = null;
   cancelSelection();
@@ -1583,7 +1583,7 @@ async function doUltimate(unit, ultIndex) {
   renderBattle();
 
   const vc = checkVictory(battleState);
-  if (vc) { setTimeout(() => handleBattleEnd(vc), 600); return; }
+  if (vc) { setTimeout(() => handleBattleEnd(vc), 600 / battleSpeed); return; }
 
   commandTarget = null;
   cancelSelection();
@@ -1606,7 +1606,7 @@ async function doAttack(attacker, defender) {
     atkUnitEl.style.setProperty('--lunge-x', `${dx}px`);
     atkUnitEl.style.setProperty('--lunge-y', `${dy}px`);
     atkUnitEl.classList.add('unit-lunge');
-    await delay(250);
+    await delay(250 / battleSpeed);
     atkUnitEl.classList.remove('unit-lunge');
   }
 
@@ -1623,16 +1623,16 @@ async function doAttack(attacker, defender) {
     showFloatingText(defTile, label, result.critical ? 'critical' : (result.penetrated ? 'penetrate' : 'damage'));
     result.critical ? sfxCritical() : sfxHit();
     defTile.classList.add('damage-shake');
-    setTimeout(() => defTile.classList.remove('damage-shake'), 400);
+    setTimeout(() => defTile.classList.remove('damage-shake'), 400 / battleSpeed);
     const viewport = document.getElementById('battle-viewport');
     if (viewport) {
       viewport.classList.add(result.critical ? 'screen-shake-heavy' : 'screen-shake');
-      setTimeout(() => viewport.classList.remove('screen-shake', 'screen-shake-heavy'), 400);
+      setTimeout(() => viewport.classList.remove('screen-shake', 'screen-shake-heavy'), 400 / battleSpeed);
     }
   }
 
   if (result.counterDamage > 0 && atkTile) {
-    setTimeout(() => showFloatingText(atkTile, `-${result.counterDamage}`, 'damage'), 500);
+    setTimeout(() => showFloatingText(atkTile, `-${result.counterDamage}`, 'damage'), 500 / battleSpeed);
   }
 
   if (result.evaded) {
@@ -1645,7 +1645,7 @@ async function doAttack(attacker, defender) {
   }
   if (result.counterDamage) appendLog(`  ↩ 반격: ${result.counterDamage}`);
   if (result.relicHeal > 0 && atkTile) {
-    setTimeout(() => showFloatingText(atkTile, `+${result.relicHeal}`, 'heal'), 700);
+    setTimeout(() => showFloatingText(atkTile, `+${result.relicHeal}`, 'heal'), 700 / battleSpeed);
     appendLog(`  💎 유물 회복 +${result.relicHeal}`);
   }
   if (result.defenderDied) {
@@ -1686,7 +1686,7 @@ async function doAttack(attacker, defender) {
   renderBattle();
 
   const vc = checkVictory(battleState);
-  if (vc) { setTimeout(() => handleBattleEnd(vc), 1200); return; }
+  if (vc) { setTimeout(() => handleBattleEnd(vc), 1200 / battleSpeed); return; }
 
   cancelSelection();
   checkAutoEndTurn();
@@ -1699,7 +1699,7 @@ function showFloatingText(tileEl, text, type) {
   ft.className = `float-text ${type}`;
   ft.textContent = text;
   tileEl.appendChild(ft);
-  setTimeout(() => ft.remove(), 1000);
+  setTimeout(() => ft.remove(), 1000 / battleSpeed);
 }
 
 function showDeathEffect(tileEl) {
@@ -1713,7 +1713,7 @@ function showDeathEffect(tileEl) {
     p.style.setProperty('--dist', `${20 + Math.random() * 15}px`);
     fx.appendChild(p);
   }
-  setTimeout(() => fx.remove(), 800);
+  setTimeout(() => fx.remove(), 800 / battleSpeed);
 }
 
 function scrollToTile(x, y) {
@@ -1772,7 +1772,7 @@ function showCombatWidget(attacker, defender, result) {
   return new Promise(resolve => {
     const dismiss = () => { w.style.display = 'none'; resolve(); };
     w.onclick = dismiss;
-    setTimeout(dismiss, 2000);
+    setTimeout(dismiss, 2000 / battleSpeed);
   });
 }
 
@@ -1786,7 +1786,7 @@ function showSkillOverlay(name, category) {
   overlay.style.animation = 'none';
   overlay.offsetHeight;
   overlay.style.animation = '';
-  setTimeout(() => { overlay.style.display = 'none'; }, 1200);
+  setTimeout(() => { overlay.style.display = 'none'; }, 1200 / battleSpeed);
 }
 
 function showLootDrop(loot) {
@@ -1796,7 +1796,7 @@ function showLootDrop(loot) {
   el.style.animation = 'none';
   el.offsetHeight;
   el.style.animation = '';
-  setTimeout(() => { el.style.display = 'none'; }, 2000);
+  setTimeout(() => { el.style.display = 'none'; }, 2000 / battleSpeed);
 }
 
 function showLevelUp(name, levelData) {
@@ -1811,15 +1811,14 @@ function showLevelUp(name, levelData) {
   el.style.animation = 'none';
   el.offsetHeight;
   el.style.animation = '';
-  setTimeout(() => { el.style.display = 'none'; }, 2500);
+  setTimeout(() => { el.style.display = 'none'; }, 2500 / battleSpeed);
 }
 
-// 🔴 사마의: 증원 배너
 function showReinforceBanner(msg) {
   const el = document.getElementById('reinforce-banner');
   document.getElementById('reinforce-text').textContent = msg;
   el.style.display = 'flex';
-  setTimeout(() => { el.style.display = 'none'; }, 2500);
+  setTimeout(() => { el.style.display = 'none'; }, 2500 / battleSpeed);
 }
 
 // 🔵 제갈량: 위험 범위 토글
@@ -1878,7 +1877,7 @@ function showUnitListPanel() {
 
 function checkAutoEndTurn() {
   if (battleState && allPlayerUnitsActed(battleState)) {
-    setTimeout(() => endTurn(), 400);
+    setTimeout(() => endTurn(), 400 / battleSpeed);
   }
 }
 
@@ -1891,6 +1890,7 @@ function endTurn() {
 
   setTimeout(async () => {
     const actions = runEnemyPhase(battleState);
+    const cameraTrack = gameSave.settings?.cameraTrack !== false;
 
     for (const a of actions) {
       if (a.type === 'attack') {
@@ -1899,7 +1899,7 @@ function endTurn() {
         renderBattle();
         if (unit) {
           highlightEnemyAction(unit);
-          scrollToTile(unit.x, unit.y);
+          if (cameraTrack) scrollToTile(unit.x, unit.y);
         }
         appendLog(`⚔ ${unit?.name || '적'} → ${target?.name || '?'}: ${a.damage}${a.critical ? ' 크리티컬!' : ''}`);
         if (a.counterDamage > 0) appendLog(`  ↩ ${target?.name} 반격: ${a.counterDamage}`);
@@ -2047,10 +2047,13 @@ function endTurn() {
 }
 
 function toggleBattleSpeed() {
-  battleSpeed = battleSpeed === 1 ? 2 : 1;
+  battleSpeed = battleSpeed === 1 ? 2 : battleSpeed === 2 ? 3 : 1;
   const btn = document.getElementById('btn-speed');
   btn.textContent = `${battleSpeed}×`;
   btn.classList.toggle('active', battleSpeed > 1);
+  gameSave.settings = gameSave.settings || {};
+  gameSave.settings.battleSpeed = battleSpeed;
+  saveGame(gameSave);
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -2349,12 +2352,73 @@ function renderStats() {
   `;
 }
 
+function renderSettings() {
+  gameSave.settings = gameSave.settings || {};
+  const s = gameSave.settings;
+
+  const sfxBtn = document.getElementById('setting-sfx');
+  const bgmBtn = document.getElementById('setting-bgm');
+  const camBtn = document.getElementById('setting-camera');
+
+  if (sfxBtn) {
+    sfxBtn.textContent = isMuted() ? 'OFF' : 'ON';
+    sfxBtn.classList.toggle('off', isMuted());
+    sfxBtn.onclick = () => {
+      toggleMute();
+      sfxBtn.textContent = isMuted() ? 'OFF' : 'ON';
+      sfxBtn.classList.toggle('off', isMuted());
+      s.muted = isMuted();
+      saveGame(gameSave);
+    };
+  }
+
+  if (bgmBtn) {
+    bgmBtn.textContent = s.bgmOff ? 'OFF' : 'ON';
+    bgmBtn.classList.toggle('off', !!s.bgmOff);
+    bgmBtn.onclick = () => {
+      s.bgmOff = !s.bgmOff;
+      bgmBtn.textContent = s.bgmOff ? 'OFF' : 'ON';
+      bgmBtn.classList.toggle('off', s.bgmOff);
+      saveGame(gameSave);
+    };
+  }
+
+  if (camBtn) {
+    const camOn = s.cameraTrack !== false;
+    camBtn.textContent = camOn ? 'ON' : 'OFF';
+    camBtn.classList.toggle('off', !camOn);
+    camBtn.onclick = () => {
+      s.cameraTrack = s.cameraTrack === false ? true : false;
+      camBtn.textContent = s.cameraTrack !== false ? 'ON' : 'OFF';
+      camBtn.classList.toggle('off', s.cameraTrack === false);
+      saveGame(gameSave);
+    };
+  }
+
+  document.querySelectorAll('.setting-speed').forEach(btn => {
+    const spd = parseInt(btn.dataset.speed);
+    btn.classList.toggle('active', spd === (s.battleSpeed || 1));
+    btn.onclick = () => {
+      s.battleSpeed = spd;
+      battleSpeed = spd;
+      document.querySelectorAll('.setting-speed').forEach(b => b.classList.toggle('active', parseInt(b.dataset.speed) === spd));
+      saveGame(gameSave);
+    };
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', () => initAudio(), { once: true });
+
+  gameSave.settings = gameSave.settings || {};
+  battleSpeed = gameSave.settings.battleSpeed || 1;
+  if (gameSave.settings.muted) toggleMute();
+
   initTabs();
   initGallery();
   renderStageSelect();
   renderStats();
+  renderSettings();
 
   const attend = getAttendanceReward(gameSave.quests.attendance);
   if (attend) {
@@ -2426,6 +2490,50 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btn-save-reset').addEventListener('click', () => {
+    if (!confirm('정말 초기화하시겠습니까? 모든 진행이 삭제됩니다.')) return;
+    if (!confirm('되돌릴 수 없습니다. 계속하시겠습니까?')) return;
+    localStorage.removeItem('redledger_save');
+    location.reload();
+  });
+
+  const exportSave = () => {
+    const data = JSON.stringify(gameSave, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `redledger-save-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const importSave = (file) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!imported.stats || !imported.cards) { alert('유효하지 않은 세이브 파일입니다.'); return; }
+        if (!confirm('현재 진행을 덮어쓰시겠습니까?')) return;
+        Object.assign(gameSave, imported);
+        saveGame(gameSave);
+        renderStats();
+        renderStageSelect();
+        initGallery();
+        renderSettings();
+        alert('세이브를 불러왔습니다!');
+      } catch { alert('파일을 읽을 수 없습니다.'); }
+    };
+    reader.readAsText(file);
+  };
+
+  document.getElementById('btn-settings-export')?.addEventListener('click', exportSave);
+  document.getElementById('btn-settings-import')?.addEventListener('click', () => {
+    document.getElementById('settings-import-input').click();
+  });
+  document.getElementById('settings-import-input')?.addEventListener('change', (e) => {
+    if (e.target.files[0]) importSave(e.target.files[0]);
+    e.target.value = '';
+  });
+  document.getElementById('btn-settings-reset')?.addEventListener('click', () => {
     if (!confirm('정말 초기화하시겠습니까? 모든 진행이 삭제됩니다.')) return;
     if (!confirm('되돌릴 수 없습니다. 계속하시겠습니까?')) return;
     localStorage.removeItem('redledger_save');

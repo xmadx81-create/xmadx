@@ -22,6 +22,7 @@
       <button class="nav-btn" data-tab="play">전투</button>
       <button class="nav-btn" data-tab="rules">규칙서</button>
       <button class="nav-btn" data-tab="stats">전적</button>
+      <button class="nav-btn" data-tab="settings">설정</button>
     </nav>
 
     <main class="hub-content">
@@ -415,6 +416,59 @@
         <div class="levelup-stats" id="levelup-stats"></div>
       </div>
     </div>
+
+    <!-- 설정 -->
+    <section id="tab-settings" class="tab-panel">
+      <div class="settings-content">
+        <h2>설정</h2>
+
+        <div class="settings-group">
+          <h3>오디오</h3>
+          <div class="setting-row">
+            <span class="setting-label">효과음</span>
+            <button id="setting-sfx" class="setting-toggle">ON</button>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">BGM</span>
+            <button id="setting-bgm" class="setting-toggle">ON</button>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3>전투</h3>
+          <div class="setting-row">
+            <span class="setting-label">전투 속도</span>
+            <div class="setting-speed-group">
+              <button class="setting-speed" data-speed="1">1x</button>
+              <button class="setting-speed" data-speed="2">2x</button>
+              <button class="setting-speed" data-speed="3">3x</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">적 턴 카메라 추적</span>
+            <button id="setting-camera" class="setting-toggle">ON</button>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3>세이브 관리</h3>
+          <div class="save-actions">
+            <button id="btn-settings-export" class="btn-secondary">내보내기</button>
+            <button id="btn-settings-import" class="btn-secondary">가져오기</button>
+            <button id="btn-settings-reset" class="btn-danger">초기화</button>
+          </div>
+          <input type="file" id="settings-import-input" accept=".json" style="display:none" />
+        </div>
+
+        <div class="settings-group">
+          <h3>정보</h3>
+          <div class="settings-info">
+            <p>헌혈의 집 — Red Ledger v0.21</p>
+            <p>백십자재단 &copy; 2026</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <footer class="hub-footer">
       <p>백십자재단 &copy; 2026 — 모든 헌혈은 자발적입니다</p>

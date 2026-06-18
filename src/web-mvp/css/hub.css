@@ -5830,6 +5830,136 @@ body {
   font-weight: bold;
 }
 
+/* ── Settings Tab ── */
+.settings-content {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.settings-content h2 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  color: var(--text-primary);
+}
+
+.settings-group {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.settings-group h3 {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+}
+
+.setting-row + .setting-row {
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.setting-label {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.setting-toggle {
+  background: var(--accent-green);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 1rem;
+  font-size: 0.85rem;
+  font-weight: bold;
+  cursor: pointer;
+  min-width: 52px;
+  transition: background 0.2s;
+}
+
+.setting-toggle.off {
+  background: var(--text-secondary);
+}
+
+.setting-speed-group {
+  display: flex;
+  gap: 4px;
+}
+
+.setting-speed {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.setting-speed.active {
+  background: var(--accent-red);
+  color: #fff;
+  border-color: var(--accent-red);
+}
+
+.setting-speed:hover:not(.active) {
+  border-color: var(--accent-red);
+  color: var(--text-primary);
+}
+
+.settings-group .save-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.settings-group .save-actions .btn-secondary,
+.settings-group .save-actions .btn-danger {
+  flex: 1;
+  min-width: 100px;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+
+.settings-group .save-actions .btn-secondary {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.settings-group .save-actions .btn-danger {
+  background: rgba(220,50,50,0.15);
+  color: #e55;
+  border-color: rgba(220,50,50,0.3);
+}
+
+.settings-info {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.settings-info p {
+  margin: 0.2rem 0;
+}
+
 /* ── Accessibility: Reduce Motion ── */
 @media (prefers-reduced-motion: reduce) {
   .tile.move-range,
