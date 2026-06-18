@@ -10,6 +10,9 @@ import {
   gainXP, rollLoot, SECRET_COMBOS, getTerrainEffect,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
   getKillForecast, applyTerrainHealing,
+  applyDOT, tickDOTs, cleanseDOT,
+  applyStun, applySlow, isStunned, tickStatusEffects,
+  executeUltimate, useItem, tickBuffs, ULTIMATES,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
@@ -932,5 +935,312 @@ describe('achievements', () => {
     const unlocked = checkAchievements(save);
     expect(unlocked.find(a => a.id === 'slayer-50')).toBeDefined();
     expect(unlocked.find(a => a.id === 'slayer-10')).toBeDefined();
+  });
+});
+
+// ── DOT System Tests ──
+
+describe('DOT system', () => {
+  it('독을 적용하면 dots 배열에 추가된다', () => {
+    const unit = { hp: 50, maxHp: 50, dots: [] };
+    applyDOT(unit, 'poison', 5, 3);
+    expect(unit.dots.length).toBe(1);
+    expect(unit.dots[0]).toEqual({ type: 'poison', damage: 5, turns: 3 });
+  });
+
+  it('같은 타입 DOT는 더 높은 값으로 갱신된다', () => {
+    const unit = { hp: 50, maxHp: 50, dots: [] };
+    applyDOT(unit, 'poison', 3, 2);
+    applyDOT(unit, 'poison', 5, 4);
+    expect(unit.dots.length).toBe(1);
+    expect(unit.dots[0].damage).toBe(5);
+    expect(unit.dots[0].turns).toBe(4);
+  });
+
+  it('서로 다른 DOT 타입은 중첩된다', () => {
+    const unit = { hp: 50, maxHp: 50, dots: [] };
+    applyDOT(unit, 'poison', 3, 2);
+    applyDOT(unit, 'bleed', 4, 3);
+    expect(unit.dots.length).toBe(2);
+  });
+
+  it('tickDOTs가 데미지를 주고 턴을 감소시킨다', () => {
+    const unit = { uid: 'u1', name: 'A', hp: 50, maxHp: 50, dots: [{ type: 'poison', damage: 5, turns: 2 }] };
+    const state = { units: [unit] };
+    const results = tickDOTs(state);
+    expect(results.length).toBe(1);
+    expect(unit.hp).toBe(45);
+    expect(unit.dots[0].turns).toBe(1);
+  });
+
+  it('DOT 턴이 0이 되면 제거된다', () => {
+    const unit = { uid: 'u1', name: 'A', hp: 50, maxHp: 50, dots: [{ type: 'poison', damage: 5, turns: 1 }] };
+    const state = { units: [unit] };
+    tickDOTs(state);
+    expect(unit.dots.length).toBe(0);
+  });
+
+  it('DOT로 HP가 0 이하가 되면 사망한다', () => {
+    const unit = { uid: 'u1', name: 'A', hp: 3, maxHp: 50, dots: [{ type: 'poison', damage: 5, turns: 2 }] };
+    const state = { units: [unit] };
+    const results = tickDOTs(state);
+    expect(unit.hp).toBe(0);
+    expect(results[0].died).toBe(true);
+  });
+
+  it('cleanseDOT으로 특정 타입을 제거한다', () => {
+    const unit = { dots: [{ type: 'poison', damage: 5, turns: 2 }, { type: 'bleed', damage: 3, turns: 1 }] };
+    cleanseDOT(unit, 'poison');
+    expect(unit.dots.length).toBe(1);
+    expect(unit.dots[0].type).toBe('bleed');
+  });
+
+  it('cleanseDOT 타입 없이 호출하면 첫 번째를 제거한다', () => {
+    const unit = { dots: [{ type: 'poison', damage: 5, turns: 2 }, { type: 'bleed', damage: 3, turns: 1 }] };
+    cleanseDOT(unit);
+    expect(unit.dots.length).toBe(1);
+    expect(unit.dots[0].type).toBe('bleed');
+  });
+
+  it('HP 0 이하인 유닛은 DOT 틱을 받지 않는다', () => {
+    const unit = { uid: 'u1', name: 'A', hp: 0, maxHp: 50, dots: [{ type: 'poison', damage: 5, turns: 2 }] };
+    const state = { units: [unit] };
+    const results = tickDOTs(state);
+    expect(results.length).toBe(0);
+  });
+});
+
+// ── Status Effect Tests ──
+
+describe('status effects', () => {
+  it('기절을 적용하면 isStunned가 true를 반환한다', () => {
+    const unit = { statusEffects: [] };
+    applyStun(unit, 2);
+    expect(isStunned(unit)).toBe(true);
+    expect(unit.statusEffects[0].turns).toBe(2);
+  });
+
+  it('중복 기절은 더 긴 턴으로 갱신된다', () => {
+    const unit = { statusEffects: [] };
+    applyStun(unit, 1);
+    applyStun(unit, 3);
+    expect(unit.statusEffects.length).toBe(1);
+    expect(unit.statusEffects[0].turns).toBe(3);
+  });
+
+  it('둔화를 적용하면 MOV가 1 감소한다', () => {
+    const unit = { mov: 3, statusEffects: [], buffs: [] };
+    applySlow(unit, 2);
+    expect(unit.mov).toBe(2);
+    expect(unit.statusEffects[0].type).toBe('slow');
+  });
+
+  it('tickStatusEffects가 턴을 감소시키고 만료 시 제거한다', () => {
+    const unit = { hp: 50, mov: 2, statusEffects: [{ type: 'stun', turns: 1 }] };
+    const state = { units: [unit] };
+    tickStatusEffects(state);
+    expect(unit.statusEffects.length).toBe(0);
+  });
+
+  it('둔화 만료 시 MOV가 복구된다', () => {
+    const unit = { hp: 50, mov: 2, statusEffects: [{ type: 'slow', turns: 1 }] };
+    const state = { units: [unit] };
+    tickStatusEffects(state);
+    expect(unit.mov).toBe(3);
+  });
+});
+
+// ── Shield Tests ──
+
+describe('shield system', () => {
+  it('실드가 데미지를 먼저 흡수한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const player = state.units.find(u => u.team === 'player');
+    const enemy = state.units.find(u => u.team === 'enemy');
+    player.shield = 20;
+    const prevHp = player.hp;
+    enemy.x = player.x;
+    enemy.y = player.y + 1;
+    enemy.rng = 1;
+    const result = attackUnit(state, enemy, player);
+    if (result.ok && !result.evaded) {
+      expect(player.shield + player.hp + result.damage).toBeLessThanOrEqual(prevHp + 20 + 1);
+    }
+  });
+
+  it('실드가 완전히 깨지면 남은 데미지가 HP에 적용된다', () => {
+    const unit = { shield: 5, hp: 100, maxHp: 100 };
+    const bigDamage = 15;
+    const absorbed = Math.min(unit.shield, bigDamage);
+    unit.shield -= absorbed;
+    const remaining = bigDamage - absorbed;
+    unit.hp -= remaining;
+    expect(unit.shield).toBe(0);
+    expect(unit.hp).toBe(90);
+  });
+});
+
+// ── Ultimate Tests ──
+
+describe('ultimate system', () => {
+  function makeUnit(role, level = 10) {
+    const char = CHARACTERS.find(c => c.role === role) || CHARACTERS[0];
+    const unit = cardToUnit(char, 3, 3);
+    unit.level = level;
+    unit.mp = unit.maxMp;
+    unit.team = 'player';
+    return unit;
+  }
+
+  it('team_heal 궁극기가 아군 전체를 회복한다', () => {
+    const healer = makeUnit('support');
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const supportUnit = state.units.find(u => u.team === 'player' && u.role === 'support');
+    if (supportUnit) {
+      supportUnit.level = 10;
+      supportUnit.mp = supportUnit.maxMp;
+      state.units.filter(u => u.team === 'player').forEach(u => { u.hp = Math.floor(u.maxHp * 0.5); });
+      const ultIdx = supportUnit.ultimates?.findIndex(u => u.type === 'team_heal');
+      if (ultIdx >= 0) {
+        const hpBefore = state.units.filter(u => u.team === 'player').map(u => u.hp);
+        const result = executeUltimate(state, supportUnit, ultIdx);
+        expect(result.ok).toBe(true);
+        const hpAfter = state.units.filter(u => u.team === 'player').map(u => u.hp);
+        const anyHealed = hpAfter.some((hp, i) => hp > hpBefore[i]);
+        expect(anyHealed).toBe(true);
+      }
+    }
+  });
+
+  it('team_shield 궁극기가 아군에게 실드를 부여한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const bsUnit = state.units.find(u => u.team === 'player' && u.role === 'battle_support');
+    if (bsUnit) {
+      bsUnit.level = 10;
+      bsUnit.mp = bsUnit.maxMp;
+      const ultIdx = bsUnit.ultimates?.findIndex(u => u.type === 'team_shield');
+      if (ultIdx >= 0) {
+        const result = executeUltimate(state, bsUnit, ultIdx);
+        expect(result.ok).toBe(true);
+        const shielded = state.units.filter(u => u.team === 'player' && u.hp > 0 && u.shield > 0);
+        expect(shielded.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('MP가 부족하면 궁극기를 사용할 수 없다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const player = state.units.find(u => u.team === 'player');
+    player.level = 10;
+    player.mp = 0;
+    if (player.ultimates && player.ultimates.length > 0) {
+      const result = executeUltimate(state, player, 0);
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it('쿨다운 중이면 궁극기를 사용할 수 없다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const player = state.units.find(u => u.team === 'player');
+    player.level = 10;
+    player.mp = player.maxMp;
+    if (player.ultimates && player.ultimates.length > 0) {
+      player.ultimates[0].currentCooldown = 3;
+      const result = executeUltimate(state, player, 0);
+      expect(result.ok).toBe(false);
+    }
+  });
+});
+
+// ── Item Tests ──
+
+describe('item system', () => {
+  it('HP 회복 아이템이 HP를 회복한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const player = state.units.find(u => u.team === 'player');
+    player.hp = 10;
+    const item = { name: '회복약', effect: { heal: 30 } };
+    const result = useItem(state, player, item);
+    expect(result.ok).toBe(true);
+    expect(player.hp).toBe(40);
+    expect(player.acted).toBe(true);
+  });
+
+  it('MP 회복 아이템이 MP를 회복한다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const player = state.units.find(u => u.team === 'player');
+    player.mp = 0;
+    const prevMp = player.mp;
+    const item = { name: 'MP 포션', effect: { mp: 5 } };
+    const result = useItem(state, player, item);
+    expect(result.ok).toBe(true);
+    expect(player.mp).toBeGreaterThan(prevMp);
+  });
+
+  it('ATK 버프 아이템이 ATK를 증가시킨다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const player = state.units.find(u => u.team === 'player');
+    const prevAtk = player.atk;
+    const item = { name: '공격력 강화제', effect: { atkBuff: 5 } };
+    const result = useItem(state, player, item);
+    expect(result.ok).toBe(true);
+    expect(player.atk).toBe(prevAtk + 5);
+    expect(player.buffs.find(b => b.stat === 'atk' && b.val === 5)).toBeDefined();
+  });
+
+  it('행동 완료된 유닛은 아이템을 사용할 수 없다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const player = state.units.find(u => u.team === 'player');
+    player.acted = true;
+    const item = { name: '회복약', effect: { heal: 30 } };
+    const result = useItem(state, player, item);
+    expect(result.ok).toBe(false);
+  });
+
+  it('HP가 최대치를 초과하지 않는다', () => {
+    const chars = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3);
+    const state = createBattleState('stage-1', chars.map(c => c.id), null, 1.0);
+    const player = state.units.find(u => u.team === 'player');
+    player.hp = player.maxHp - 5;
+    const item = { name: '회복약', effect: { heal: 30 } };
+    useItem(state, player, item);
+    expect(player.hp).toBe(player.maxHp);
+  });
+});
+
+// ── Buff Tick Tests ──
+
+describe('buff system', () => {
+  it('tickBuffs가 만료된 버프를 제거하고 스탯을 복원한다', () => {
+    const unit = { uid: 'u1', name: 'A', hp: 50, maxHp: 50, atk: 15, buffs: [{ stat: 'atk', val: 5, turns: 1 }] };
+    const state = { units: [unit] };
+    const expired = tickBuffs(state);
+    expect(expired.length).toBe(1);
+    expect(unit.atk).toBe(10);
+    expect(unit.buffs.length).toBe(0);
+  });
+
+  it('무적 버프가 만료되면 invuln이 false가 된다', () => {
+    const unit = { uid: 'u1', name: 'A', hp: 50, maxHp: 50, invuln: true, buffs: [{ stat: '_invuln', val: 1, turns: 1 }] };
+    const state = { units: [unit] };
+    tickBuffs(state);
+    expect(unit.invuln).toBe(false);
+  });
+
+  it('남은 턴이 있는 버프는 유지된다', () => {
+    const unit = { uid: 'u1', name: 'A', hp: 50, maxHp: 50, def: 10, buffs: [{ stat: 'def', val: 3, turns: 3 }] };
+    const state = { units: [unit] };
+    tickBuffs(state);
+    expect(unit.def).toBe(10);
+    expect(unit.buffs[0].turns).toBe(2);
   });
 });

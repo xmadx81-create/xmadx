@@ -574,8 +574,9 @@ export function tickDOTs(state) {
   state.units.forEach(u => {
     if (u.hp <= 0 || !u.dots || u.dots.length === 0) return;
     u.dots = u.dots.filter(d => {
-      u.hp = Math.max(1, u.hp - d.damage);
-      dotDamage.push({ uid: u.uid, name: u.name, type: d.type, damage: d.damage });
+      u.hp = Math.max(0, u.hp - d.damage);
+      const died = u.hp <= 0;
+      dotDamage.push({ uid: u.uid, name: u.name, type: d.type, damage: d.damage, died });
       d.turns--;
       return d.turns > 0;
     });
