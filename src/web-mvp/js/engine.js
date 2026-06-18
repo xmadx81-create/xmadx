@@ -536,6 +536,7 @@ export function executeUltimate(state, unit, ultIndex) {
 // ── Buff Tick (end of round) ──────────────────────────────────────────
 
 export function tickBuffs(state) {
+  const expired = [];
   state.units.forEach(u => {
     if (u.hp <= 0 || !u.buffs) return;
     u.buffs = u.buffs.filter(b => {
@@ -545,13 +546,15 @@ export function tickBuffs(state) {
         else if (b.stat === 'eva' || b.stat === 'crt') { u[b.stat] = Math.max(0, (u[b.stat] || 0) - b.val); }
         else if (b.val < 0) { u[b.stat] = (u[b.stat] || 0) - b.val; }
         else { u[b.stat] = Math.max(0, (u[b.stat] || 0) - b.val); }
+        const statLabel = { atk: 'ATK', def: 'DEF', eva: 'EVA', crt: 'CRT', _invuln: '무적' };
+        expired.push({ uid: u.uid, name: u.name, stat: statLabel[b.stat] || b.stat });
         return false;
       }
       return true;
     });
-    // Tick ultimate cooldowns
     if (u.ultimates) u.ultimates.forEach(ult => { if (ult.currentCooldown > 0) ult.currentCooldown--; });
   });
+  return expired;
 }
 
 // 🔴 사마의: DOT 시스템 (독/출혈)
@@ -1203,7 +1206,7 @@ export function endEnemyPhase(state) {
   });
   const terrainHealed = applyTerrainHealing(state);
   tickCooldowns(state);
-  tickBuffs(state);
+  const expiredBuffs = tickBuffs(state);
   tickStatusEffects(state);
   const dotResults = tickDOTs(state);
   if (dotResults.length > 0) {
@@ -1219,7 +1222,7 @@ export function endEnemyPhase(state) {
     u.acted = true;
     state.log.push(`💫 ${u.name}은 기절 상태! 이번 턴 행동 불가`);
   });
-  return { terrainHealed };
+  return { terrainHealed, expiredBuffs };
 }
 
 // ── Movement (BFS) ──────────────────────────────────────────────────────
@@ -1456,6 +1459,7 @@ export function attackUnit(state, attacker, defender) {
   let evaded = false;
   let penetrated = false;
   let counterEvaded = false;
+  let relicHeal = 0;
 
   // Speed advantage: defender counters first
   if (defenderCountersFirst && isInRange(defender, attacker.x, attacker.y)) {
@@ -1516,6 +1520,7 @@ export function attackUnit(state, attacker, defender) {
       if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
       if (heal > 0) {
         attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+        relicHeal += heal;
         state.log.push(`  흡혈 +${heal} HP`);
       }
     }
@@ -1525,6 +1530,7 @@ export function attackUnit(state, attacker, defender) {
       let heal = Math.floor(attacker.maxHp * attacker.relic.effect.killHeal);
       if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
       attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+      relicHeal += heal;
       state.log.push(`  처치 회복 +${heal} HP`);
     }
   }
@@ -1569,13 +1575,14 @@ export function attackUnit(state, attacker, defender) {
     if (defXP) xpGains.push({ unit: defender.uid, levelUps: defXP });
   }
 
-  // Loot drop on kill
+  // Loot drop on kill (guaranteed for legendary enemies)
   let loot = null;
   if (defenderDied) {
     loot = rollLoot();
+    if (!loot && defender.rarity === 'legendary') loot = rollLoot();
   }
 
-  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated, xpGains, loot };
+  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated, xpGains, loot, relicHeal };
 }
 
 // ── Damage Preview (non-destructive estimate) ─────────────────────────

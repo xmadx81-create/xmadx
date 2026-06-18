@@ -184,8 +184,10 @@ function renderStageSelect() {
     const clearData = gameSave.stageClears?.[s.id];
     const clearStars = clearData ? '⭐'.repeat(clearData.stars) + '☆'.repeat(3 - clearData.stars) : '';
     const clearInfo = clearData ? `<span class="stage-clear-info">${clearStars} ${clearData.bestTurns}턴 (${clearData.clears}회)</span>` : '';
-    return `<div class="stage-card ${clearData ? 'stage-cleared' : ''}" data-stage="${s.id}">
-      <div class="stage-num">${i + 1}</div>
+    const prevStage = i > 0 ? STAGES[i - 1] : null;
+    const locked = prevStage && !gameSave.stageClears?.[prevStage.id];
+    return `<div class="stage-card ${clearData ? 'stage-cleared' : ''} ${locked ? 'stage-locked' : ''}" data-stage="${locked ? '' : s.id}">
+      <div class="stage-num">${locked ? '🔒' : i + 1}</div>
       <div class="stage-info">
         <div class="stage-name">${s.name} <span class="stage-lv">Lv.${s.enemyLevel || 1}</span></div>
         <div class="stage-desc">${s.description}</div>
@@ -218,10 +220,12 @@ function renderStageSelect() {
 
   list.querySelectorAll('.stage-card').forEach(el => {
     el.addEventListener('click', () => {
-      if (el.dataset.stage === 'tower') {
+      const sid = el.dataset.stage;
+      if (!sid) return;
+      if (sid === 'tower') {
         openTowerDeploy();
       } else {
-        openDeploy(el.dataset.stage);
+        openDeploy(sid);
       }
     });
   });
@@ -1260,8 +1264,16 @@ function onItemBtn() {
         saveGame(gameSave);
         appendLog(`🧪 ${unit.name}: ${result.name} 사용`);
         result.effects.forEach(e => appendLog(`  → ${e}`));
-        cancelSelection();
         renderBattle();
+        const utile = document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`);
+        if (utile) {
+          const effectKey = Object.keys(item.effect)[0];
+          const label = effectKey === 'heal' ? `+${item.effect.heal}HP` :
+                        effectKey === 'mp' ? `+${item.effect.mp}MP` :
+                        effectKey === 'xp' ? `+${item.effect.xp}XP` : '✦버프';
+          showFloatingText(utile, label, effectKey === 'heal' || effectKey === 'mp' ? 'heal' : 'buff');
+        }
+        cancelSelection();
         checkAutoEndTurn();
       }
     });
@@ -1514,6 +1526,10 @@ async function doAttack(attacker, defender) {
     appendLog(`⚔ ${attacker.name} → ${defender.name}: ${result.damage}${tags.length ? ' ' + tags.join(' ') + '!' : ''}`);
   }
   if (result.counterDamage) appendLog(`  ↩ 반격: ${result.counterDamage}`);
+  if (result.relicHeal > 0 && atkTile) {
+    setTimeout(() => showFloatingText(atkTile, `+${result.relicHeal}`, 'heal'), 700);
+    appendLog(`  💎 유물 회복 +${result.relicHeal}`);
+  }
   if (result.defenderDied) {
     appendLog(`  💀 ${defender.name} 전사!`);
     gameSave.stats.totalKills++;
@@ -1769,6 +1785,12 @@ function endTurn() {
       .map(u => ({ uid: u.uid, x: u.x, y: u.y, dots: u.dots.map(d => ({ ...d })) }));
 
     const phaseResult = endEnemyPhase(battleState);
+
+    if (phaseResult?.expiredBuffs?.length > 0) {
+      phaseResult.expiredBuffs.forEach(b => {
+        appendLog(`⏳ ${b.name}의 ${b.stat} 버프 종료`);
+      });
+    }
 
     if (phaseResult?.terrainHealed?.length > 0) {
       renderBattle();
