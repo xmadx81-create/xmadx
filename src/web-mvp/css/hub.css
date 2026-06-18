@@ -4087,6 +4087,17 @@ body {
   color: #ffd700;
   font-weight: bold;
 }
+.levelup-stats {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #ccc;
+}
+.levelup-stats .ls-atk { color: #e93961; }
+.levelup-stats .ls-def { color: #5ca8ff; }
+.levelup-stats .ls-hp { color: #4caf50; }
 
 /* ── Stats & Quests ── */
 .center-info {
