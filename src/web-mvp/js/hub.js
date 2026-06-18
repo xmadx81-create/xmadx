@@ -11,9 +11,10 @@ import {
   getSkillTargetType, getSkillTargets,
   isStunned,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
-  getKillForecast,
+  getKillForecast, PASSIVE_TREE,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS } from './save.js';
+import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, toggleMute, isMuted } from './sound.js';
 
 let gameSave = loadGame();
 refreshQuests(gameSave);
@@ -1002,6 +1003,55 @@ function updateHUD() {
       weatherOverlay.classList.add(`weather-${battleState.weather.id}`);
     }
   }
+  renderTurnOrder();
+  renderBattleMinimap();
+}
+
+function renderTurnOrder() {
+  if (!battleState) return;
+  const bar = document.getElementById('turn-order-bar');
+  if (!bar) return;
+  const units = battleState.units.filter(u => u.hp > 0);
+  bar.innerHTML = units.map(u => {
+    const actedCls = u.acted ? ' to-acted' : '';
+    const teamCls = u.team === 'player' ? 'to-player' : 'to-enemy';
+    const selectedCls = selectedUid === u.uid ? ' to-selected' : '';
+    const hpPct = Math.round(u.hp / u.maxHp * 100);
+    return `<div class="to-unit ${teamCls}${actedCls}${selectedCls}" data-uid="${u.uid}" title="${u.name} HP${hpPct}%">
+      <img src="${portraitSrc(`assets/portraits/${u.id}`)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+      <span class="to-initial" style="display:none">${u.name[0]}</span>
+      ${u.acted ? '<div class="to-check">✓</div>' : ''}
+    </div>`;
+  }).join('');
+  bar.querySelectorAll('.to-unit').forEach(el => {
+    el.addEventListener('click', () => {
+      const uid = el.dataset.uid;
+      const unit = getUnitByUid(battleState, uid);
+      if (unit) {
+        scrollToTile(unit.x, unit.y);
+        showUnitDetail(unit);
+      }
+    });
+  });
+}
+
+function renderBattleMinimap() {
+  if (!battleState) return;
+  const content = document.getElementById('minimap-content');
+  if (!content) return;
+  const { map, units } = battleState;
+  let html = `<div class="mm-grid" style="grid-template-columns:repeat(${map.cols},1fr)">`;
+  for (let r = 0; r < map.rows; r++) {
+    for (let c = 0; c < map.cols; c++) {
+      const tile = map.tiles[r][c];
+      const unit = units.find(u => u.hp > 0 && u.x === c && u.y === r);
+      let dot = '';
+      if (unit) dot = `<div class="mm-dot ${unit.team}"></div>`;
+      html += `<div class="mm-tile mm-${tile.type}">${dot}</div>`;
+    }
+  }
+  html += '</div>';
+  content.innerHTML = html;
 }
 
 // ── Unit Detail Panel ──
@@ -1023,8 +1073,12 @@ function showUnitDetail(unit) {
     .map(s => unit.equipment?.[s]?.name)
     .filter(Boolean);
   const relicName = unit.relic?.name || '';
-  const passiveHtml = (unit.passivesApplied && unit.passivesApplied.length)
-    ? `<div class="passive-list">패시브: ${unit.passivesApplied.map(p => `<span class="passive-tag">${p}</span>`).join('')}</div>` : '';
+  const roleTree = PASSIVE_TREE[unit.role] || [];
+  const passiveHtml = roleTree.length > 0
+    ? `<div class="passive-list">패시브: ${roleTree.map(p => {
+        const unlocked = unit.passivesApplied?.includes(p.name);
+        return `<span class="passive-tag ${unlocked ? 'unlocked' : 'locked'}" title="${p.stat === 'eva' || p.stat === 'crt' ? `${p.stat.toUpperCase()} +${Math.round(p.val * 100)}%` : `${p.stat.toUpperCase()} +${p.val}`}">${unlocked ? '' : '🔒'}${p.name}<small class="passive-lv">Lv.${p.lv}</small></span>`;
+      }).join('')}</div>` : '';
   const shieldHtml = unit.shield > 0 ? `<div class="equip-list">🛡️ 실드: ${unit.shield}</div>` : '';
   const invulnHtml = unit.invuln ? `<div class="equip-list" style="color:#ffd700">⭐ 무적 상태</div>` : '';
   const buffListHtml = (unit.buffs && unit.buffs.length > 0)
@@ -1563,9 +1617,11 @@ async function doAttack(attacker, defender) {
 
   if (result.evaded) {
     if (defTile) showFloatingText(defTile, '회피!', 'evade');
+    sfxEvade();
   } else if (defTile) {
     const label = result.penetrated ? `관통! -${result.damage}` : `-${result.damage}`;
     showFloatingText(defTile, label, result.critical ? 'critical' : (result.penetrated ? 'penetrate' : 'damage'));
+    result.critical ? sfxCritical() : sfxHit();
     defTile.classList.add('damage-shake');
     setTimeout(() => defTile.classList.remove('damage-shake'), 400);
     const viewport = document.getElementById('battle-viewport');
@@ -1599,10 +1655,12 @@ async function doAttack(attacker, defender) {
     progressQuest(gameSave, 'kill');
     saveGame(gameSave);
     if (defTile) showDeathEffect(defTile);
+    sfxDeath();
   }
   if (result.attackerDied) {
     appendLog(`  💀 ${attacker.name} 전사!`);
     if (atkTile) showDeathEffect(atkTile);
+    sfxDeath();
   }
 
   // XP & Level Up
@@ -1612,6 +1670,7 @@ async function doAttack(attacker, defender) {
         const u = getUnitByUid(battleState, g.unit);
         if (u) showLevelUp(u.name, lv);
         appendLog(`⬆ ${u?.name || '?'} Lv.${lv.level} 달성! (ATK+2 DEF+1 HP+${lv.hpGain})`);
+        sfxLevelUp();
       });
     });
   }
@@ -1718,6 +1777,7 @@ function showCombatWidget(attacker, defender, result) {
 }
 
 function showSkillOverlay(name, category) {
+  sfxSkill();
   const overlay = document.getElementById('skill-overlay');
   const typeClass = category === '촉' ? 'sense-human' : category === 'ult' ? 'sense-ult' : 'sense-blood';
   overlay.className = `skill-overlay ${typeClass}`;
@@ -2100,6 +2160,7 @@ function handleBattleEnd(result) {
     `;
     gameSave.stats.wins++;
     progressQuest(gameSave, 'win');
+    sfxWin();
 
     const rewardCards = [];
     const randomChar = () => CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
@@ -2132,6 +2193,7 @@ function handleBattleEnd(result) {
       <div class="result-summary">${battleState.turnNumber}턴 · 처치 ${enemiesDefeated}</div>
     `;
     gameSave.stats.losses++;
+    sfxLose();
     if (towerMode) {
       const cleared = towerWave - 1;
       if (cleared > (gameSave.towerBest || 0)) gameSave.towerBest = cleared;
@@ -2288,6 +2350,7 @@ function renderStats() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('click', () => initAudio(), { once: true });
   initTabs();
   initGallery();
   renderStageSelect();
@@ -2320,6 +2383,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-danger-zone').addEventListener('click', toggleDangerZone);
   document.getElementById('btn-unit-list').addEventListener('click', showUnitListPanel);
   document.getElementById('btn-speed').addEventListener('click', toggleBattleSpeed);
+  document.getElementById('btn-minimap-toggle')?.addEventListener('click', () => {
+    document.getElementById('battle-minimap')?.classList.toggle('collapsed');
+  });
   document.getElementById('ulp-close').addEventListener('click', () => {
     document.getElementById('unit-list-panel').style.display = 'none';
   });

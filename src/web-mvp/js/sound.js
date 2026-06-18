@@ -107,3 +107,37 @@ export function sfxEquip() {
   setTimeout(() => playSfx(330, 0.1, 'square'), 80);
   setTimeout(() => playSfx(392, 0.15, 'square'), 160);
 }
+
+export function sfxHit() {
+  playSfx(180, 0.08, 'sawtooth');
+  setTimeout(() => playSfx(120, 0.12, 'square'), 40);
+}
+
+export function sfxCritical() {
+  playSfx(300, 0.06, 'sawtooth');
+  setTimeout(() => playSfx(450, 0.08, 'triangle'), 50);
+  setTimeout(() => playSfx(600, 0.1, 'sine'), 100);
+}
+
+export function sfxDeath() {
+  playSfx(200, 0.3, 'sawtooth');
+  setTimeout(() => playSfx(150, 0.3, 'sawtooth'), 100);
+  setTimeout(() => playSfx(100, 0.4, 'sawtooth'), 200);
+}
+
+export function sfxSkill() {
+  playSfx(523, 0.15, 'sine');
+  setTimeout(() => playSfx(659, 0.12, 'sine'), 80);
+  setTimeout(() => playSfx(784, 0.2, 'triangle'), 160);
+}
+
+export function sfxEvade() {
+  playSfx(800, 0.06, 'sine');
+  setTimeout(() => playSfx(600, 0.06, 'sine'), 60);
+}
+
+export function sfxLevelUp() {
+  [523, 659, 784, 1047].forEach((f, i) => {
+    setTimeout(() => playSfx(f, 0.15, 'sine'), i * 80);
+  });
+}
