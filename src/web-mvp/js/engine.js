@@ -69,7 +69,7 @@ export const ULTIMATES = {
     { id: 'ult-revive', name: '부활', icon: '✨', type: 'revive', mpCost: 10, powerMult: 0.5, cooldown: 8, unlockLevel: 8, desc: '전사한 아군 1명 HP 50%로 부활' },
   ],
   bruiser: [
-    { id: 'ult-quake', name: '지진 강타', icon: '💢', type: 'aoe_damage', mpCost: 7, powerMult: 1.5, range: 1, cooldown: 4, unlockLevel: 5, desc: '인접 적 전체 ATK×1.5 데미지' },
+    { id: 'ult-quake', name: '지진 강타', icon: '💢', type: 'aoe_stun', mpCost: 7, powerMult: 1.5, range: 1, cooldown: 4, unlockLevel: 5, desc: '인접 적 ATK×1.5 + 1턴 기절' },
     { id: 'ult-blood-fury', name: '혈전사', icon: '🩸', type: 'lifesteal_attack', mpCost: 8, powerMult: 2.0, cooldown: 5, unlockLevel: 8, desc: 'ATK×2.0 + 50% 흡혈' },
   ],
   battle_support: [
@@ -81,7 +81,7 @@ export const ULTIMATES = {
     { id: 'ult-phantom', name: '환영', icon: '👻', type: 'self_eva_buff', mpCost: 8, power: 0.5, duration: 2, cooldown: 5, unlockLevel: 8, desc: '2턴간 회피율 +50%' },
   ],
   breaker: [
-    { id: 'ult-armor-break', name: '갑파쇄', icon: '💎', type: 'def_break', mpCost: 7, power: 0, cooldown: 4, unlockLevel: 5, desc: '적 DEF를 0으로 만듦 (2턴)' },
+    { id: 'ult-armor-break', name: '갑파쇄', icon: '💎', type: 'def_break_slow', mpCost: 7, power: 0, cooldown: 4, unlockLevel: 5, desc: '적 DEF→0 (2턴) + 둔화 2턴' },
     { id: 'ult-soul-crush', name: '혼쇄', icon: '☠️', type: 'true_damage', mpCost: 10, powerMult: 3.0, cooldown: 6, unlockLevel: 8, desc: '방어 완전 무시 ATK×3.0' },
   ],
 };
@@ -455,6 +455,32 @@ export function executeUltimate(state, unit, ultIndex) {
       });
       break;
     }
+    case 'aoe_stun': {
+      const r = ult.range || 1;
+      enemies.forEach(e => {
+        const dist = Math.abs(e.x - unit.x) + Math.abs(e.y - unit.y);
+        if (dist <= r) {
+          let dmg = Math.floor(unit.atk * (ult.powerMult || 1));
+          dmg = Math.max(1, dmg - e.def);
+          if (e.invuln) dmg = 0;
+          e.hp = Math.max(0, e.hp - dmg);
+          if (e.hp > 0) applyStun(e, 1);
+          result.effects.push(`${e.name}에게 ${dmg}${e.hp <= 0 ? ' 전사!' : ' + 기절!'}`)
+        }
+      });
+      break;
+    }
+    case 'def_break_slow': {
+      const target = enemies.sort((a,b) => b.def - a.def)[0];
+      if (target) {
+        const origDef = target.def;
+        target.def = 0;
+        target.buffs.push({ stat: 'def', val: -origDef, turns: 2 });
+        applySlow(target, 2);
+        result.effects.push(`${target.name} DEF → 0 + 둔화 (2턴)`);
+      }
+      break;
+    }
     case 'lifesteal_attack': {
       const target = enemies.sort((a,b) => a.hp - b.hp)[0];
       if (target) {
@@ -489,16 +515,6 @@ export function executeUltimate(state, unit, ultIndex) {
         result.effects.push(`${dead.name} 부활! HP ${dead.hp}`);
       } else {
         result.effects.push('부활 대상 없음');
-      }
-      break;
-    }
-    case 'def_break': {
-      const target = enemies.sort((a,b) => b.def - a.def)[0];
-      if (target) {
-        const origDef = target.def;
-        target.def = 0;
-        target.buffs.push({ stat: 'def', val: -origDef, turns: 2 });
-        result.effects.push(`${target.name} DEF → 0 (2턴)`);
       }
       break;
     }
@@ -565,6 +581,43 @@ export function cleanseDOT(unit, type) {
     unit.dots.shift();
   }
   return unit.dots.length < before;
+}
+
+// 🔴 사마의: 기절/둔화 상태이상
+export function applyStun(unit, turns = 1) {
+  if (!unit.statusEffects) unit.statusEffects = [];
+  const existing = unit.statusEffects.find(s => s.type === 'stun');
+  if (existing) { existing.turns = Math.max(existing.turns, turns); }
+  else { unit.statusEffects.push({ type: 'stun', turns }); }
+}
+
+export function applySlow(unit, turns = 2) {
+  if (!unit.statusEffects) unit.statusEffects = [];
+  const existing = unit.statusEffects.find(s => s.type === 'slow');
+  if (existing) { existing.turns = Math.max(existing.turns, turns); }
+  else {
+    unit.statusEffects.push({ type: 'slow', turns });
+    unit.mov = Math.max(1, unit.mov - 1);
+    unit.buffs.push({ stat: 'mov', val: -1, turns });
+  }
+}
+
+export function isStunned(unit) {
+  return unit.statusEffects?.some(s => s.type === 'stun') || false;
+}
+
+export function tickStatusEffects(state) {
+  state.units.forEach(u => {
+    if (!u.statusEffects || u.hp <= 0) return;
+    u.statusEffects = u.statusEffects.filter(s => {
+      s.turns--;
+      if (s.turns <= 0) {
+        if (s.type === 'slow') u.mov += 1;
+        return false;
+      }
+      return true;
+    });
+  });
 }
 
 // 🔵 제갈량: 스킬 타겟 시스템
@@ -677,6 +730,7 @@ export function cardToUnit(charData, x, y) {
     invuln: false,
     buffs: [],
     dots: [],
+    statusEffects: [],
 
     senseSkill: charData.sense ? {
       name: charData.sense.name,
@@ -1061,6 +1115,7 @@ export function endEnemyPhase(state) {
   applyTerrainHealing(state);
   tickCooldowns(state);
   tickBuffs(state);
+  tickStatusEffects(state);
   const dotResults = tickDOTs(state);
   if (dotResults.length > 0) {
     dotResults.forEach(d => {
@@ -1071,6 +1126,10 @@ export function endEnemyPhase(state) {
   state.turnNumber++;
   state.phase = 'player_phase';
   state.log.push(`── 턴 ${state.turnNumber}: 플레이어 페이즈 ──`);
+  state.units.filter(u => u.team === 'player' && u.hp > 0 && isStunned(u)).forEach(u => {
+    u.acted = true;
+    state.log.push(`💫 ${u.name}은 기절 상태! 이번 턴 행동 불가`);
+  });
 }
 
 // ── Movement (BFS) ──────────────────────────────────────────────────────
@@ -1798,6 +1857,13 @@ export function runEnemyPhase(state) {
 
   for (const enemy of enemies) {
     if (enemy.acted) continue;
+
+    if (isStunned(enemy)) {
+      enemy.acted = true;
+      state.log.push(`💫 ${enemy.name}은 기절 상태! 행동 불가`);
+      actions.push({ type: 'stunned', unit: enemy.uid });
+      continue;
+    }
 
     // 🔴 사마의: 전략적 타겟 선정 (힐러 우선 > 처치 가능 > 약체 > 가까운 적)
     let priorityTarget = null;

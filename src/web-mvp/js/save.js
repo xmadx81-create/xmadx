@@ -37,6 +37,23 @@ export function addCard(save, charId, rarity) {
   updateCenterLevel(save);
 }
 
+export function synthesizeCard(save, charId) {
+  const card = save.cards[charId];
+  if (!card) return { ok: false, reason: '카드 없음' };
+  const cost = card.level < 3 ? 3 : card.level < 5 ? 4 : 5;
+  if (card.count < cost) return { ok: false, reason: `카드 ${cost}장 필요 (현재 ${card.count}장)` };
+  card.count -= (cost - 1);
+  card.level++;
+  card.xp = 0;
+  save.centerXP += card.level * 10;
+  updateCenterLevel(save);
+  return { ok: true, newLevel: card.level, cost, remaining: card.count };
+}
+
+export function getSynthesisCost(level) {
+  return level < 3 ? 3 : level < 5 ? 4 : 5;
+}
+
 function updateCenterLevel(save) {
   const totalCardLevels = Object.values(save.cards).reduce((s, c) => s + c.level * c.count, 0);
   save.centerXP = Math.max(save.centerXP, totalCardLevels);

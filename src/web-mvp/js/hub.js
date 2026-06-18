@@ -9,8 +9,9 @@ import {
   spawnReinforcements, getDangerZone,
   EQUIPMENT, RELICS, equipItem, equipRelic,
   getSkillTargetType, getSkillTargets,
+  isStunned,
 } from './engine.js';
-import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear } from './save.js';
+import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost } from './save.js';
 
 let gameSave = loadGame();
 refreshQuests(gameSave);
@@ -25,6 +26,7 @@ let currentStageId = null;
 let commandTarget = null;
 let dangerZoneActive = false;
 let undoMoveData = null;
+let battleSpeed = 1;
 
 // ── Gallery ──
 
@@ -115,7 +117,37 @@ function showCardPopup(cardId) {
     ${senseHtml}
     ${loreHtml}
     <p class="sheet-flavor">${card.flavor}</p>
+    ${(() => {
+      const cardData = gameSave.cards[card.id];
+      if (!cardData || cardData.count <= 0) return '';
+      const cost = getSynthesisCost(cardData.level);
+      const canSynth = cardData.count >= cost;
+      return `<div class="sheet-synth">
+        <div class="synth-info">
+          <span class="synth-level">Lv.${cardData.level}</span>
+          <span class="synth-count">보유 ${cardData.count}장</span>
+        </div>
+        <button class="synth-btn ${canSynth ? '' : 'synth-disabled'}" data-synth-id="${card.id}" ${canSynth ? '' : 'disabled'}>
+          ⬆ 합성 강화 (${cost}장 필요)
+        </button>
+      </div>`;
+    })()}
   `;
+
+  document.querySelectorAll('.synth-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const charId = btn.dataset.synthId;
+      const result = synthesizeCard(gameSave, charId);
+      if (result.ok) {
+        saveGame(gameSave);
+        const charName = CHARACTERS.find(c => c.id === charId)?.name || charId;
+        showLevelUp(charName, result.newLevel);
+        showCardPopup(charId);
+        renderGalleryCards(document.getElementById('card-gallery'), CHARACTERS);
+      }
+    });
+  });
+
   overlay.style.display = 'flex';
 }
 
@@ -681,7 +713,10 @@ function startBattle() {
   document.getElementById('battle-log').innerHTML = '';
   dangerZoneActive = false;
   undoMoveData = null;
+  battleSpeed = 1;
   document.getElementById('btn-danger-zone').classList.remove('active');
+  const speedBtn = document.getElementById('btn-speed');
+  if (speedBtn) { speedBtn.textContent = '1×'; speedBtn.classList.remove('active'); }
 
   showStory(battleState.stage.storyIntro, () => {
     showPhaseBanner('아군 턴', 'player');
@@ -759,6 +794,10 @@ function renderBattle() {
         if (unit.dots && unit.dots.length > 0) {
           const dotIcons = unit.dots.map(d => d.type === 'poison' ? '🟢' : '🩸').join('');
           buffIcons += `<div class="unit-dot-icon">${dotIcons}</div>`;
+        }
+        if (unit.statusEffects && unit.statusEffects.length > 0) {
+          const seIcons = unit.statusEffects.map(s => s.type === 'stun' ? '💫' : '🐌').join('');
+          buffIcons += `<div class="unit-status-icon">${seIcons}</div>`;
         }
 
         unitHtml = `
@@ -852,6 +891,10 @@ function showUnitDetail(unit) {
     ${unit.dots && unit.dots.length > 0 ? `<div class="dot-list">${unit.dots.map(d => {
       const label = d.type === 'poison' ? '🟢독' : '🩸출혈';
       return `<span class="dot-tag dot-${d.type}">${label} ${d.damage}/턴 <small>${d.turns}턴</small></span>`;
+    }).join('')}</div>` : ''}
+    ${unit.statusEffects && unit.statusEffects.length > 0 ? `<div class="dot-list">${unit.statusEffects.map(s => {
+      const label = s.type === 'stun' ? '💫기절' : '🐌둔화';
+      return `<span class="dot-tag dot-${s.type}">${label} <small>${s.turns}턴</small></span>`;
     }).join('')}</div>` : ''}
     ${growthHtml ? `<div class="growth-list">성장: ${growthHtml}</div>` : ''}
   `;
@@ -1536,29 +1579,38 @@ function endTurn() {
           defTile.classList.add('damage-shake');
           setTimeout(() => defTile.classList.remove('damage-shake'), 400);
         }
-        await delay(600);
+        await delay(600 / battleSpeed);
       } else if (a.type === 'move') {
         const unit = getUnitByUid(battleState, a.unit);
         renderBattle();
         appendLog(`적 ${unit?.name || '?'} 이동`);
-        await delay(300);
+        await delay(300 / battleSpeed);
       } else if (a.type === 'sense') {
         renderBattle();
         appendLog(`✦ 적 스킬: ${a.skillName}`);
         showSkillOverlay(a.skillName, 'blood');
-        await delay(800);
+        await delay(800 / battleSpeed);
       } else if (a.type === 'ultimate') {
         renderBattle();
         appendLog(`🌟 적 궁극기: ${a.name}`);
         a.effects?.forEach(e => appendLog(`  → ${e}`));
         showSkillOverlay(a.name, 'ult');
-        await delay(1000);
+        await delay(1000 / battleSpeed);
       } else if (a.type === 'enrage') {
         const unit = getUnitByUid(battleState, a.unit);
         renderBattle();
         appendLog(`🔥 ${unit?.name || '?'} 분노! ATK +${a.atkBoost}`);
         showReinforceBanner(`🔥 ${unit?.name || '?'} 분노 발동!`);
-        await delay(1200);
+        await delay(1200 / battleSpeed);
+      } else if (a.type === 'stunned') {
+        const unit = getUnitByUid(battleState, a.unit);
+        renderBattle();
+        if (unit) {
+          const tile = document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`);
+          if (tile) showFloatingText(tile, '💫기절!', 'stun');
+        }
+        appendLog(`💫 ${unit?.name || '?'} 기절 — 행동 불가`);
+        await delay(500 / battleSpeed);
       }
 
       const vc = checkVictory(battleState);
@@ -1582,7 +1634,18 @@ function endTurn() {
           });
         }
       });
-      await delay(600);
+      await delay(600 / battleSpeed);
+    }
+
+    const stunnedPlayers = battleState.units.filter(u => u.team === 'player' && u.hp > 0 && isStunned(u));
+    if (stunnedPlayers.length > 0) {
+      renderBattle();
+      stunnedPlayers.forEach(u => {
+        appendLog(`💫 ${u.name} 기절 — 이번 턴 행동 불가`);
+        const tile = document.querySelector(`.tile[data-x="${u.x}"][data-y="${u.y}"]`);
+        if (tile) showFloatingText(tile, '💫기절!', 'stun');
+      });
+      await delay(600 / battleSpeed);
     }
 
     const reinforcement = spawnReinforcements(battleState);
@@ -1590,12 +1653,20 @@ function endTurn() {
       renderBattle();
       showReinforceBanner(reinforcement.message);
       reinforcement.units.forEach(u => appendLog(`🔴 증원: ${u.name} 등장!`));
-      await delay(2000);
+      await delay(2000 / battleSpeed);
     }
 
     showPhaseBanner('아군 턴', 'player');
     renderBattle();
-  }, 800);
+    checkAutoEndTurn();
+  }, 800 / battleSpeed);
+}
+
+function toggleBattleSpeed() {
+  battleSpeed = battleSpeed === 1 ? 2 : 1;
+  const btn = document.getElementById('btn-speed');
+  btn.textContent = `${battleSpeed}×`;
+  btn.classList.toggle('active', battleSpeed > 1);
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -1687,7 +1758,26 @@ function handleBattleEnd(result) {
     `;
     gameSave.stats.wins++;
     progressQuest(gameSave, 'win');
-    addCard(gameSave, CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id, 'common');
+
+    const rewardCards = [];
+    const randomChar = () => CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+    if (stars === 3) {
+      rewardCards.push({ char: randomChar(), rarity: 'rare' });
+      rewardCards.push({ char: randomChar(), rarity: 'uncommon' });
+      rewardCards.push({ char: randomChar(), rarity: 'common' });
+    } else if (stars === 2) {
+      rewardCards.push({ char: randomChar(), rarity: 'uncommon' });
+      rewardCards.push({ char: randomChar(), rarity: 'common' });
+    } else {
+      rewardCards.push({ char: randomChar(), rarity: 'common' });
+    }
+    const rewardHtml = rewardCards.map(r => {
+      addCard(gameSave, r.char.id, r.rarity);
+      const rarityKoShort = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
+      return `<span class="reward-card reward-${r.rarity}">${r.char.name} (${rarityKoShort[r.rarity]})</span>`;
+    }).join('');
+    text.innerHTML += `<div class="result-rewards"><div class="reward-title">🎁 보상</div>${rewardHtml}</div>`;
+
     if (battleState.stageId === 'stage-4') progressQuest(gameSave, 'clear_stage4');
   } else {
     title.textContent = '패배...';
@@ -1808,6 +1898,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-end-turn').addEventListener('click', endTurn);
   document.getElementById('btn-danger-zone').addEventListener('click', toggleDangerZone);
   document.getElementById('btn-unit-list').addEventListener('click', showUnitListPanel);
+  document.getElementById('btn-speed').addEventListener('click', toggleBattleSpeed);
   document.getElementById('ulp-close').addEventListener('click', () => {
     document.getElementById('unit-list-panel').style.display = 'none';
   });
