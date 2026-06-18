@@ -377,14 +377,20 @@ export function getTerrainEffect(map, x, y) {
 }
 
 export function applyTerrainHealing(state) {
+  const healed = [];
   state.units.forEach(u => {
     if (u.hp <= 0) return;
     const effect = getTerrainEffect(state.map, u.x, u.y);
     if (effect.healPerTurn > 0 && u.hp < u.maxHp) {
-      u.hp = Math.min(u.maxHp, u.hp + effect.healPerTurn);
-      state.log.push(`♨ ${u.name} 온천 회복 +${effect.healPerTurn} HP`);
+      let heal = effect.healPerTurn;
+      if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
+      const actual = Math.min(heal, u.maxHp - u.hp);
+      u.hp += actual;
+      state.log.push(`♨ ${u.name} 온천 회복 +${actual} HP`);
+      healed.push({ uid: u.uid, x: u.x, y: u.y, heal: actual, name: u.name });
     }
   });
+  return healed;
 }
 
 // ── Ultimate Execution ─────────────────────────────────────────────────
@@ -1195,7 +1201,7 @@ export function endEnemyPhase(state) {
   state.units.forEach(u => {
     if (u.hp > 0) u.mp = Math.min(u.maxMp, u.mp + 2);
   });
-  applyTerrainHealing(state);
+  const terrainHealed = applyTerrainHealing(state);
   tickCooldowns(state);
   tickBuffs(state);
   tickStatusEffects(state);
@@ -1213,6 +1219,7 @@ export function endEnemyPhase(state) {
     u.acted = true;
     state.log.push(`💫 ${u.name}은 기절 상태! 이번 턴 행동 불가`);
   });
+  return { terrainHealed };
 }
 
 // ── Movement (BFS) ──────────────────────────────────────────────────────

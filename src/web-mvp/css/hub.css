@@ -5057,6 +5057,39 @@ body {
   font-size: 20px;
 }
 
+/* ── Achievement Badges ── */
+.result-achievements {
+  margin-top: 10px;
+  padding: 8px;
+  background: rgba(212, 168, 67, 0.1);
+  border: 1px solid var(--accent-gold);
+  border-radius: 8px;
+}
+.achievement-unlock {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--accent-gold);
+}
+.achievement-reward {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ── Stage Weather Badge ── */
+.stage-weather {
+  background: rgba(100, 150, 255, 0.15);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  color: var(--accent-blue);
+}
+
+/* ── Heal Floating Text ── */
+.float-text.heal {
+  color: var(--accent-green);
+  font-weight: bold;
+}
+
 /* ── Accessibility: Reduce Motion ── */
 @media (prefers-reduced-motion: reduce) {
   .tile.move-range,

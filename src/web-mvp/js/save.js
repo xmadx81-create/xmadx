@@ -10,6 +10,7 @@ const DEFAULT_SAVE = {
   stats: { wins: 0, losses: 0, totalBattles: 0, totalKills: 0 },
   towerBest: 0,
   lastTeam: [],
+  achievements: {},
 };
 
 export function loadGame() {
@@ -21,6 +22,7 @@ export function loadGame() {
     if (!save.inventory) save.inventory = [];
     if (save.towerBest === undefined) save.towerBest = 0;
     if (!save.lastTeam) save.lastTeam = [];
+    if (!save.achievements) save.achievements = {};
     return save;
   } catch { return { ...DEFAULT_SAVE }; }
 }
@@ -50,6 +52,7 @@ export function synthesizeCard(save, charId) {
   card.level++;
   card.xp = 0;
   save.centerXP += card.level * 10;
+  save.synthCount = (save.synthCount || 0) + 1;
   updateCenterLevel(save);
   return { ok: true, newLevel: card.level, cost, remaining: card.count };
 }
@@ -193,6 +196,40 @@ export function saveCharProgress(save, battleUnits) {
       card.xp = u.xp;
     }
   });
+}
+
+// ── Achievements ──
+
+const ACHIEVEMENTS = [
+  { id: 'first-blood', name: '첫 번째 승리', desc: '전투에서 승리하라', check: s => s.stats.wins >= 1, reward: ['uncommon'] },
+  { id: 'veteran', name: '백전노장', desc: '10회 전투', check: s => s.stats.totalBattles >= 10, reward: ['rare'] },
+  { id: 'slayer-10', name: '사냥꾼', desc: '적 10명 처치', check: s => s.stats.totalKills >= 10, reward: ['uncommon'] },
+  { id: 'slayer-50', name: '학살자', desc: '적 50명 처치', check: s => s.stats.totalKills >= 50, reward: ['rare', 'uncommon'] },
+  { id: 'collector-5', name: '수집가', desc: '카드 5종 보유', check: s => Object.keys(s.cards).length >= 5, reward: ['uncommon'] },
+  { id: 'collector-20', name: '도감 마스터', desc: '카드 20종 보유', check: s => Object.keys(s.cards).length >= 20, reward: ['rare', 'rare'] },
+  { id: 'tower-3', name: '탑 등반가', desc: '무한의 탑 3층 돌파', check: s => (s.towerBest || 0) >= 3, reward: ['rare'] },
+  { id: 'tower-10', name: '탑의 정복자', desc: '무한의 탑 10층 돌파', check: s => (s.towerBest || 0) >= 10, reward: ['legendary'] },
+  { id: 'perfect', name: '완벽한 승리', desc: '3성 클리어 달성', check: s => Object.values(s.stageClears || {}).some(c => c.stars === 3), reward: ['uncommon', 'common'] },
+  { id: 'all-clear', name: '카르테인 토벌', desc: '모든 스테이지 클리어', check: s => {
+    const stageIds = ['stage-1','stage-2','stage-3','stage-4','stage-5','stage-6','stage-7'];
+    return stageIds.every(id => s.stageClears?.[id]);
+  }, reward: ['legendary', 'rare'] },
+  { id: 'synth-1', name: '연금술사', desc: '카드 합성 1회', check: s => (s.synthCount || 0) >= 1, reward: ['common', 'common'] },
+  { id: 'attend-7', name: '개근상', desc: '7일 출석', check: s => s.quests.attendance >= 7, reward: ['rare'] },
+];
+
+export { ACHIEVEMENTS };
+
+export function checkAchievements(save) {
+  const newlyUnlocked = [];
+  ACHIEVEMENTS.forEach(a => {
+    if (save.achievements[a.id]) return;
+    if (a.check(save)) {
+      save.achievements[a.id] = { unlockedAt: new Date().toISOString() };
+      newlyUnlocked.push(a);
+    }
+  });
+  return newlyUnlocked;
 }
 
 export function recordStageClear(save, stageId, turnCount) {
