@@ -6394,6 +6394,106 @@ body {
   100% { opacity: 0; transform: translateX(-50%) translateY(-30px); }
 }
 
+/* ── Synthesis Section ── */
+.synth-section {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0.8rem; margin-bottom: 0.8rem;
+}
+.synth-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 0.6rem;
+}
+.synth-title { font-weight: 700; font-size: 1rem; color: var(--text-primary); }
+.synth-bulk-btn {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #fff; border: none; padding: 6px 14px; border-radius: 6px;
+  font-weight: 600; font-size: 0.82rem; cursor: pointer;
+  transition: opacity 0.2s;
+}
+.synth-bulk-btn:hover { opacity: 0.85; }
+.synth-bulk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.synth-empty {
+  color: var(--text-secondary); font-size: 0.85rem;
+  text-align: center; padding: 1rem 0;
+}
+.synth-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+}
+.synth-card {
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.5rem; text-align: center;
+  transition: border-color 0.2s;
+}
+.synth-card:hover { border-color: var(--accent-gold); }
+.synth-card-top {
+  display: flex; align-items: center; gap: 0.3rem;
+  justify-content: center; margin-bottom: 0.3rem;
+  padding-bottom: 0.3rem; border-bottom: 1px solid var(--border);
+}
+.rarity-border-legendary { border-color: #fbbf24 !important; }
+.rarity-border-rare { border-color: #a78bfa !important; }
+.rarity-border-uncommon { border-color: #60a5fa !important; }
+.rarity-border-common { border-color: var(--border) !important; }
+.synth-card-icon { font-size: 0.9rem; }
+.synth-card-name {
+  font-weight: 600; font-size: 0.82rem; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.synth-card-info {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.4rem;
+}
+.synth-card-cost { color: var(--accent-gold); font-weight: 600; }
+.synth-card-btn {
+  width: 100%; background: var(--accent-red); color: #fff; border: none;
+  padding: 5px 0; border-radius: 5px; font-weight: 600;
+  font-size: 0.8rem; cursor: pointer; transition: background 0.2s;
+}
+.synth-card-btn:hover { background: #d04558; }
+
+.synth-all-details {
+  margin-top: 0.6rem; font-size: 0.82rem;
+}
+.synth-all-details summary {
+  cursor: pointer; color: var(--text-secondary);
+  font-weight: 600; padding: 0.3rem 0;
+}
+.synth-all-details summary:hover { color: var(--text-primary); }
+.synth-status-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.3rem; margin-top: 0.4rem;
+}
+.synth-status-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 8px; border-radius: 4px; font-size: 0.78rem;
+  color: var(--text-secondary); background: var(--bg-primary);
+}
+.synth-status-row.synth-ready {
+  color: var(--accent-gold); background: rgba(251,191,36,0.08);
+  font-weight: 600;
+}
+
+/* Bulk Synth Result Popup */
+.synth-bulk-result {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 300; background: var(--bg-card);
+  border: 2px solid var(--accent-gold); border-radius: 12px;
+  padding: 1.2rem; min-width: 250px; max-width: 350px;
+  max-height: 60vh; overflow-y: auto;
+  animation: milestonePopIn 0.4s ease-out;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.synth-bulk-header {
+  font-weight: 700; font-size: 1rem; color: var(--accent-gold);
+  text-align: center; margin-bottom: 0.6rem;
+  padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+}
+.synth-bulk-item {
+  padding: 3px 0; font-size: 0.85rem; color: var(--text-primary);
+}
+
 /* ── Unit Level Badge (Battle Tile) ── */
 .unit-lv-badge {
   position: absolute; top: 1px; right: 1px;
