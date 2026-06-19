@@ -6336,6 +6336,64 @@ body {
 }
 .ob-start-btn:hover { background: #d04558; }
 
+/* ── Collection Progress ── */
+.collection-progress {
+  padding: 0.5rem 0; margin-bottom: 0.5rem;
+}
+.coll-bar {
+  height: 8px; background: var(--bg-card); border-radius: 4px;
+  overflow: hidden; margin-bottom: 4px;
+  border: 1px solid var(--border);
+}
+.coll-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-gold));
+  border-radius: 4px; transition: width 0.4s ease;
+}
+.coll-text {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.78rem; color: var(--text-secondary);
+}
+.coll-rarity { display: flex; gap: 0.5rem; font-size: 0.75rem; }
+
+/* ── Skill Particles ── */
+.skill-particle {
+  position: absolute; width: 5px; height: 5px;
+  border-radius: 50%; z-index: 20; pointer-events: none;
+  background: var(--color, #60a5fa);
+  top: 50%; left: 50%;
+  animation: skillParticleBurst 0.6s ease-out var(--delay, 0s) forwards;
+}
+@keyframes skillParticleBurst {
+  0% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+  100% {
+    transform: translate(
+      calc(-50% + cos(var(--angle)) * var(--dist)),
+      calc(-50% + sin(var(--angle)) * var(--dist))
+    ) scale(0);
+    opacity: 0;
+  }
+}
+
+/* ── Combat Milestone Toast ── */
+.milestone-toast {
+  position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
+  z-index: 200; padding: 8px 20px; border-radius: 8px;
+  font-weight: 700; font-size: 1rem; color: #fff;
+  pointer-events: none; white-space: nowrap;
+  animation: milestonePopIn 0.5s ease-out, milestonePopOut 0.4s ease-in 1.2s forwards;
+}
+.milestone-toast.first-blood { background: #dc2626; }
+.milestone-toast.kill-streak { background: #d97706; }
+.milestone-toast.boss-kill  { background: #7c3aed; }
+@keyframes milestonePopIn {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.5) translateY(20px); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+}
+@keyframes milestonePopOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-30px); }
+}
+
 /* ── Unit Level Badge (Battle Tile) ── */
 .unit-lv-badge {
   position: absolute; top: 1px; right: 1px;
@@ -6413,7 +6471,9 @@ body {
   .skill-overlay,
   .result-star.earned,
   .rarity-legendary-glow,
-  .tile.enemy-acting {
+  .tile.enemy-acting,
+  .skill-particle,
+  .milestone-toast {
     animation: none;
   }
 }
