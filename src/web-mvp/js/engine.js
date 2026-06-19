@@ -1527,6 +1527,7 @@ export function attackUnit(state, attacker, defender) {
   let penetrated = false;
   let counterEvaded = false;
   let relicHeal = 0;
+  const relicProcs = [];
 
   // Speed advantage: defender counters first
   if (defenderCountersFirst && isInRange(defender, attacker.x, attacker.y)) {
@@ -1545,6 +1546,14 @@ export function attackUnit(state, attacker, defender) {
       }
       state.log.push(`${defender.name}의 선제 반격! ${attacker.name}에게 ${counterDamage} 데미지`);
     }
+  }
+
+  // Relic: conditional stat procs (tracked for UI feedback)
+  if (attacker.relic?.condition === 'full_hp' && attacker.hp >= attacker.maxHp) {
+    relicProcs.push({ name: attacker.relic.name, type: 'fullHp', value: attacker.relic.effect.atkMult });
+  }
+  if (attacker.relic?.condition === 'low_hp' && attacker.hp <= attacker.maxHp * 0.25) {
+    relicProcs.push({ name: attacker.relic.name, type: 'lowHp', value: attacker.relic.effect.atkMult });
   }
 
   // Primary attack
@@ -1588,6 +1597,7 @@ export function attackUnit(state, attacker, defender) {
       if (heal > 0) {
         attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
         relicHeal += heal;
+        relicProcs.push({ name: attacker.relic.name, type: 'lifesteal', value: heal });
         state.log.push(`  흡혈 +${heal} HP`);
       }
     }
@@ -1598,6 +1608,7 @@ export function attackUnit(state, attacker, defender) {
       if (state.weather?.effects?.healReduction) heal = Math.max(1, Math.floor(heal * (1 - state.weather.effects.healReduction)));
       attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
       relicHeal += heal;
+      relicProcs.push({ name: attacker.relic.name, type: 'killHeal', value: heal });
       state.log.push(`  처치 회복 +${heal} HP`);
     }
   }
@@ -1649,7 +1660,7 @@ export function attackUnit(state, attacker, defender) {
     if (!loot && defender.rarity === 'legendary') loot = rollLoot();
   }
 
-  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated, xpGains, loot, relicHeal, breakdown: evaded ? undefined : atkResult.breakdown };
+  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated, xpGains, loot, relicHeal, relicProcs, breakdown: evaded ? undefined : atkResult.breakdown };
 }
 
 // ── Damage Preview (non-destructive estimate) ─────────────────────────
@@ -1693,7 +1704,7 @@ export function previewDamage(state, attacker, defender) {
   return { minDmg, maxDmg, critDmg, crt: attacker.crt, eva: defender.eva, flanking, shield: defender.shield || 0, invuln: !!defender.invuln };
 }
 
-export function previewSkillDamage(unit) {
+export function previewSkillDamage(unit, state) {
   if (!unit.senseSkill) return null;
   const sense = unit.senseSkill;
   const senseInfo = SENSE_TYPES[sense.baseType];
@@ -1704,16 +1715,31 @@ export function previewSkillDamage(unit) {
   const buffTypes = ['예감', '투지', '혈맹'];
   const debuffTypes = ['혈각', '혈향', '혈유'];
 
+  const weather = state?.weather;
+  let weatherMod = 0;
+  let weatherLabel = null;
+  if (weather && weather.id !== 'clear') {
+    if (weather.effects.rangedAtkPenalty && unit.rng >= 2) {
+      weatherMod = -weather.effects.rangedAtkPenalty;
+      weatherLabel = `${weather.icon} ${weatherMod}`;
+    }
+  }
+
   const atkBonus = unit.atk ? Math.floor(unit.atk * 0.3) : 0;
   if (dmgTypes.includes(sense.baseType)) {
-    const baseDmg = sense.power + atkBonus;
+    const baseDmg = sense.power + atkBonus + weatherMod;
     const minDmg = Math.max(1, baseDmg - 3);
-    const maxDmg = baseDmg + 3;
-    return { type: 'damage', value: sense.power, minDmg, maxDmg, range: sense.baseType === '혈식' ? '광역 2칸' : '2칸' };
+    const maxDmg = Math.max(1, baseDmg + 3);
+    return { type: 'damage', value: sense.power, minDmg, maxDmg, weatherMod, weatherLabel, range: sense.baseType === '혈식' ? '광역 2칸' : '2칸' };
   }
   if (healTypes.includes(sense.baseType)) {
-    const healAmt = sense.baseType === '공감' ? Math.floor(sense.power * 0.7) : sense.power;
-    return { type: 'heal', value: healAmt, range: sense.baseType === '공감' ? '광역 3칸' : '가장 가까운 아군' };
+    let healAmt = sense.baseType === '공감' ? Math.floor(sense.power * 0.7) : sense.power;
+    let healWeatherLabel = null;
+    if (weather?.effects?.healReduction) {
+      healAmt = Math.max(1, Math.floor(healAmt * (1 - weather.effects.healReduction)));
+      healWeatherLabel = `${weather.icon} -${Math.round(weather.effects.healReduction * 100)}%`;
+    }
+    return { type: 'heal', value: healAmt, weatherLabel: healWeatherLabel, range: sense.baseType === '공감' ? '광역 3칸' : '가장 가까운 아군' };
   }
   if (buffTypes.includes(sense.baseType)) {
     return { type: 'buff', value: Math.floor(sense.power * 0.5), range: sense.baseType === '투지' ? '자신' : '2칸 아군' };

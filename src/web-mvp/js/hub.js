@@ -1543,11 +1543,17 @@ function _renderBattleImpl() {
         if (unit.shield > 0) buffIcons += `<div class="unit-shield-icon">🛡${unit.shield}</div>`;
         if (unit.invuln) buffIcons += `<div class="unit-invuln-icon">⭐</div>`;
         if (unit.dots && unit.dots.length > 0) {
-          const dotIcons = unit.dots.map(d => d.type === 'poison' ? '🟢' : '🩸').join('');
+          const dotIcons = unit.dots.map(d => {
+            const icon = d.type === 'poison' ? '🟢' : '🩸';
+            return `<span class="status-badge dot-${d.type}" title="${d.type === 'poison' ? '독' : '출혈'} ${d.turns}턴">${icon}</span>`;
+          }).join('');
           buffIcons += `<div class="unit-dot-icon">${dotIcons}</div>`;
         }
         if (unit.statusEffects && unit.statusEffects.length > 0) {
-          const seIcons = unit.statusEffects.map(s => s.type === 'stun' ? '💫' : '🐌').join('');
+          const seIcons = unit.statusEffects.map(s => {
+            const icon = s.type === 'stun' ? '💫' : '🐌';
+            return `<span class="status-badge se-${s.type}" title="${s.type === 'stun' ? '기절' : '둔화'} ${s.turns}턴">${icon}</span>`;
+          }).join('');
           buffIcons += `<div class="unit-status-icon">${seIcons}</div>`;
         }
         if (unit.rarity === 'legendary' && unit.team === 'enemy') {
@@ -1605,7 +1611,7 @@ function updateHUD() {
   if (weatherEl) {
     const w = battleState.weather;
     if (w && w.id !== 'clear') {
-      weatherEl.textContent = `${w.icon} ${w.name}`;
+      weatherEl.innerHTML = `${w.icon} ${w.name} <span class="weather-effects-summary">${w.desc}</span>`;
       weatherEl.title = w.desc;
       weatherEl.style.display = '';
     } else {
@@ -2071,15 +2077,16 @@ function showCommandPanel(attacker, defender) {
   if (attacker.senseSkill) {
     const sense = attacker.senseSkill;
     const senseInfo = SENSE_TYPES[sense.baseType];
-    const skillPreview = previewSkillDamage(attacker);
+    const skillPreview = previewSkillDamage(attacker, battleState);
     const canUse = sense.cooldown === 0 && attacker.mp >= (sense.mpCost || 0);
     const cooldownText = sense.cooldown > 0 ? `쿨다운 ${sense.cooldown}턴` : '';
     const mpText = `MP ${sense.mpCost || 0}`;
 
     let effectText = '';
     if (skillPreview) {
-      if (skillPreview.type === 'damage') effectText = `데미지 ${skillPreview.minDmg}~${skillPreview.maxDmg} · ${skillPreview.range}`;
-      else if (skillPreview.type === 'heal') effectText = `회복 ~${skillPreview.value} · ${skillPreview.range}`;
+      const wTag = skillPreview.weatherLabel ? ` <span class="cmd-weather-mod">${skillPreview.weatherLabel}</span>` : '';
+      if (skillPreview.type === 'damage') effectText = `데미지 ${skillPreview.minDmg}~${skillPreview.maxDmg}${wTag} · ${skillPreview.range}`;
+      else if (skillPreview.type === 'heal') effectText = `회복 ~${skillPreview.value}${wTag} · ${skillPreview.range}`;
       else if (skillPreview.type === 'buff') effectText = `버프 +${skillPreview.value} · ${skillPreview.range}`;
       else if (skillPreview.type === 'debuff') effectText = `디버프 -${skillPreview.value} · ${skillPreview.range}`;
     }
@@ -2317,9 +2324,17 @@ async function doAttack(attacker, defender) {
     }
   }
   if (result.counterDamage) appendLog(`  ↩ 반격: ${result.counterDamage}`);
-  if (result.relicHeal > 0 && atkTile) {
-    setTimeout(() => showFloatingText(atkTile, `+${result.relicHeal}`, 'heal'), 700 / battleSpeed);
-    appendLog(`  💎 유물 회복 +${result.relicHeal}`);
+  if (result.relicProcs && result.relicProcs.length > 0) {
+    result.relicProcs.forEach(proc => {
+      if (proc.type === 'lifesteal' || proc.type === 'killHeal') {
+        if (atkTile) setTimeout(() => showFloatingText(atkTile, `💎+${proc.value}`, 'heal'), 700 / battleSpeed);
+        showMilestoneToast(`💎 ${proc.name} 발동!`, 'relic-proc');
+        sfxBuff();
+      } else if (proc.type === 'fullHp' || proc.type === 'lowHp') {
+        showMilestoneToast(`💎 ${proc.name} 발동!`, 'relic-proc');
+      }
+    });
+    if (result.relicHeal > 0) appendLog(`  💎 유물 회복 +${result.relicHeal}`);
   }
   if (result.defenderDied) {
     showCharQuote(defender, 'death');
