@@ -2319,3 +2319,82 @@ describe('유대 시스템', () => {
     expect(buff.def).toBe(0);
   });
 });
+
+// ── 유물 발동 반환 ──
+
+describe('유물 발동 정보', () => {
+  function makeUnit(id, overrides = {}) {
+    const char = CHARACTERS.find(c => c.id === id) || CHARACTERS[0];
+    return cardToUnit(char, 1, { team: 'player', x: 3, y: 3, ...overrides });
+  }
+
+  it('흡혈 유물 발동 시 relicProcs에 기록된다', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    const attacker = state.units.find(u => u.team === 'player');
+    attacker.x = 3; attacker.y = 3;
+    attacker.atk = 30;
+    attacker.crt = 0;
+    equipRelic(attacker, 'blood-pact');
+    const defender = state.units.find(u => u.team === 'enemy');
+    defender.x = 4; defender.y = 3;
+    defender.eva = 0;
+    defender.def = 5;
+    const result = attackUnit(state, attacker, defender);
+    expect(result.ok).toBe(true);
+    if (!result.evaded && result.damage >= 10) {
+      expect(result.relicProcs.some(p => p.type === 'lifesteal')).toBe(true);
+      expect(result.relicHeal).toBeGreaterThan(0);
+    }
+  });
+
+  it('풀HP 유물 발동 시 relicProcs에 fullHp가 기록된다', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    const attacker = state.units.find(u => u.team === 'player');
+    attacker.x = 3; attacker.y = 3;
+    attacker.hp = attacker.maxHp;
+    equipRelic(attacker, 'first-resolve');
+    const defender = state.units.find(u => u.team === 'enemy');
+    defender.x = 4; defender.y = 3;
+    const result = attackUnit(state, attacker, defender);
+    expect(result.relicProcs).toBeDefined();
+    expect(result.relicProcs.some(p => p.type === 'fullHp')).toBe(true);
+  });
+
+  it('유물 없으면 relicProcs가 빈 배열이다', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    const attacker = state.units.find(u => u.team === 'player');
+    attacker.x = 3; attacker.y = 3;
+    attacker.relic = null;
+    const defender = state.units.find(u => u.team === 'enemy');
+    defender.x = 4; defender.y = 3;
+    const result = attackUnit(state, attacker, defender);
+    expect(result.relicProcs).toEqual([]);
+  });
+});
+
+// ── 스킬 프리뷰 날씨 보정 ──
+
+describe('스킬 프리뷰 날씨 보정', () => {
+  it('비 날씨에서 원거리 스킬 데미지가 감소한다', () => {
+    const char = CHARACTERS.find(c => c.rng >= 2 && c.sense);
+    if (!char) return;
+    const unit = cardToUnit(char, 3, { team: 'player' });
+    const clearPreview = previewSkillDamage(unit, { weather: WEATHER_TYPES.clear });
+    const rainState = { weather: WEATHER_TYPES.rain };
+    const rainPreview = previewSkillDamage(unit, rainState);
+    if (clearPreview?.type === 'damage' && rainPreview?.type === 'damage') {
+      expect(rainPreview.maxDmg).toBeLessThanOrEqual(clearPreview.maxDmg);
+      expect(rainPreview.weatherLabel).toBeTruthy();
+    }
+  });
+
+  it('맑은 날씨에서 weatherLabel이 null이다', () => {
+    const char = CHARACTERS.find(c => c.sense);
+    if (!char) return;
+    const unit = cardToUnit(char, 3, { team: 'player' });
+    const preview = previewSkillDamage(unit, { weather: WEATHER_TYPES.clear });
+    if (preview) {
+      expect(preview.weatherLabel).toBeFalsy();
+    }
+  });
+});

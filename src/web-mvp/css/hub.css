@@ -5931,12 +5931,21 @@ body {
 }
 
 .hud-weather {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.15);
   border-radius: 8px;
   padding: 2px 8px;
   font-size: 11px;
   color: var(--text-primary);
   cursor: help;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.weather-effects-summary {
+  font-size: 9px;
+  color: var(--text-secondary);
+  opacity: 0.85;
+  white-space: nowrap;
 }
 
 /* ── Kill Forecast Badges ── */
@@ -6752,6 +6761,39 @@ body {
   }
 
   .unit-lunge,
+/* ── Relic Proc Toast ── */
+.milestone-toast.relic-proc {
+  background: linear-gradient(135deg, #6a0dad, #9b30ff);
+  border: 1px solid #c77dff;
+  color: #fff;
+  animation: milestone-enter 0.4s ease-out forwards;
+}
+
+/* ── Weather Mod Badge (Skill Preview) ── */
+.cmd-weather-mod {
+  font-size: 9px;
+  color: #ff9800;
+  background: rgba(255,152,0,0.15);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+
+/* ── Status Badges (DOT / SE) ── */
+.status-badge {
+  display: inline-block;
+  font-size: 8px;
+  line-height: 1;
+  animation: status-pulse 1.2s ease-in-out infinite;
+}
+.status-badge.se-stun {
+  animation: status-pulse 0.6s ease-in-out infinite;
+}
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
+}
+
   .death-effect,
   .death-effect::before,
   .death-particle,
@@ -6764,7 +6806,8 @@ body {
   .nav-badge,
   .tower-milestone,
   .enemy-action-queue,
-  .char-speech-bubble {
+  .char-speech-bubble,
+  .status-badge {
     animation: none;
   }
 }
