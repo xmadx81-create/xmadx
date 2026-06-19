@@ -29,6 +29,31 @@ export const TILE_TYPES = {
 
 export const FACTIONS = { CENTER: 'center', KARTEIN: 'kartein', NEUTRAL: 'neutral' };
 
+export const FACTION_SYNERGY = {
+  center:  [{ count: 3, stat: 'def', val: 2, label: '센터 결속: DEF+2' }, { count: 5, stat: 'maxHp', val: 15, label: '센터 수호: HP+15' }],
+  kartein: [{ count: 2, stat: 'atk', val: 2, label: '카르테인 압박: ATK+2' }, { count: 4, stat: 'crt', val: 0.05, label: '카르테인 사냥: CRT+5%' }],
+  neutral: [{ count: 2, stat: 'mov', val: 1, label: '비소속 네트워크: MOV+1' }, { count: 4, stat: 'eva', val: 0.05, label: '비소속 민첩: EVA+5%' }],
+};
+
+export function applyFactionSynergy(units) {
+  const playerUnits = units.filter(u => u.team === 'player' && u.hp > 0);
+  const counts = {};
+  playerUnits.forEach(u => { counts[u.faction] = (counts[u.faction] || 0) + 1; });
+  const applied = [];
+  Object.entries(FACTION_SYNERGY).forEach(([faction, tiers]) => {
+    tiers.forEach(t => {
+      if ((counts[faction] || 0) >= t.count) {
+        playerUnits.filter(u => u.faction === faction).forEach(u => {
+          if (t.stat === 'maxHp') { u.maxHp += t.val; u.hp += t.val; }
+          else { u[t.stat] = (u[t.stat] || 0) + t.val; }
+        });
+        applied.push(t.label);
+      }
+    });
+  });
+  return applied;
+}
+
 // ── Rarity → Stat Bonus Tables ──────────────────────────────────────────
 
 const RARITY_HP_BONUS   = { common: 10, uncommon: 20, rare: 35, legendary: 50 };
@@ -1194,6 +1219,8 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
   if (weather.id !== 'clear') {
     units.forEach(u => applyWeatherToUnit(u, weather, state));
   }
+
+  state.factionSynergies = applyFactionSynergy(units);
 
   return state;
 }
