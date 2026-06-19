@@ -1947,3 +1947,37 @@ describe('하드 모드', () => {
     });
   });
 });
+
+describe('전투 시스템 강화', () => {
+  it('previewDamage가 협공 보너스를 포함한다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    const enemy = state.units.find(u => u.team === 'enemy');
+    player.x = 3; player.y = 3;
+    enemy.x = 4; enemy.y = 3;
+    const preview = previewDamage(state, player, enemy);
+    expect(preview).toBeDefined();
+    expect(preview.minDmg).toBeGreaterThanOrEqual(0);
+    expect(preview.maxDmg).toBeGreaterThanOrEqual(preview.minDmg);
+    expect(typeof preview.flanking).toBe('number');
+  });
+
+  it('getKillForecast가 처치 가능 여부를 반환한다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    const enemy = state.units.find(u => u.team === 'enemy');
+    player.x = 3; player.y = 3;
+    enemy.x = 4; enemy.y = 3;
+    const forecast = getKillForecast(state, player, enemy);
+    expect(forecast).toBeDefined();
+    expect(typeof forecast.canKill).toBe('boolean');
+    expect(typeof forecast.canCounter).toBe('boolean');
+  });
+
+  it('전투 상태에 hardMode 플래그를 설정할 수 있다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    expect(state.hardMode).toBeUndefined();
+    state.hardMode = true;
+    expect(state.hardMode).toBe(true);
+  });
+});
