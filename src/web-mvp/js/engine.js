@@ -1704,8 +1704,12 @@ export function previewSkillDamage(unit) {
   const buffTypes = ['예감', '투지', '혈맹'];
   const debuffTypes = ['혈각', '혈향', '혈유'];
 
+  const atkBonus = unit.atk ? Math.floor(unit.atk * 0.3) : 0;
   if (dmgTypes.includes(sense.baseType)) {
-    return { type: 'damage', value: sense.power, range: sense.baseType === '혈식' ? '광역 2칸' : '2칸' };
+    const baseDmg = sense.power + atkBonus;
+    const minDmg = Math.max(1, baseDmg - 3);
+    const maxDmg = baseDmg + 3;
+    return { type: 'damage', value: sense.power, minDmg, maxDmg, range: sense.baseType === '혈식' ? '광역 2칸' : '2칸' };
   }
   if (healTypes.includes(sense.baseType)) {
     const healAmt = sense.baseType === '공감' ? Math.floor(sense.power * 0.7) : sense.power;
