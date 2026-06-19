@@ -371,11 +371,23 @@ function showCardPopup(cardId) {
       ${statBar('HP', unit.maxHp, 150, '#e94560')}
       ${statBar('ATK', unit.atk, 40, '#ff6b35')}
       ${statBar('DEF', unit.def, 15, '#457b9d')}
+      ${statBar('PEN', unit.pen || 0, 10, '#f97316')}
       ${statBar('CRT', Math.round(unit.crt * 100), 30, '#e9c46a', '%')}
       ${statBar('EVA', Math.round(unit.eva * 100), 30, '#7ec8e3', '%')}
       ${statBar('MOV', unit.mov, 4, '#4b9b6e')}
       ${statBar('RNG', unit.rng, 3, '#c77dff')}
     </div>
+    ${(() => {
+      const eqSlots = { weapon: '🗡', armor: '🛡', accessory: '💍' };
+      const eqList = Object.entries(unit.equipment || {}).filter(([,v]) => v);
+      const relicInfo = unit.relic ? `<div class="sheet-equip-item relic">💎 ${unit.relic.name} <span class="equip-desc">${unit.relic.desc}</span></div>` : '';
+      if (eqList.length === 0 && !unit.relic) return '';
+      return `<div class="sheet-equip">
+        <div class="equip-title">장비</div>
+        ${eqList.map(([slot, item]) => `<div class="sheet-equip-item">${eqSlots[slot] || '📦'} ${item.name} <span class="equip-stats">${Object.entries(item.stats).map(([k,v]) => `${k.toUpperCase()}+${typeof v === 'number' && v < 1 ? Math.round(v*100)+'%' : v}`).join(' ')}</span></div>`).join('')}
+        ${relicInfo}
+      </div>`;
+    })()}
     ${senseHtml}
     ${(() => {
       const tree = PASSIVE_TREE[card.role];
@@ -450,7 +462,17 @@ function initTabs() {
 
 function renderStageSelect() {
   const list = document.getElementById('stage-list');
-  list.innerHTML = STAGES.map((s, i) => {
+  const totalStages = STAGES.length;
+  const clearedCount = STAGES.filter(s => gameSave.stageClears?.[s.id]).length;
+  const threeStarCount = STAGES.filter(s => gameSave.stageClears?.[s.id]?.stars === 3).length;
+  const pct = Math.round(clearedCount / totalStages * 100);
+  list.innerHTML = `<div class="stage-progress">
+    <div class="stage-progress-bar"><div class="stage-progress-fill" style="width:${pct}%"></div></div>
+    <div class="stage-progress-text">
+      <span>진행 ${clearedCount}/${totalStages} (${pct}%)</span>
+      <span>⭐×3: ${threeStarCount}</span>
+    </div>
+  </div>` + STAGES.map((s, i) => {
     const enemyCount = s.enemyUnits.length;
     const maxDeploy = s.playerSpawns.length;
     const difficulty = Math.min(5, Math.ceil((s.enemyLevel || 1) / 2));
@@ -476,6 +498,7 @@ function renderStageSelect() {
           ${weatherInfo}
         </div>
         ${clearInfo}
+        ${clearData && clearData.stars === 3 ? `<button class="stage-sweep-btn" data-sweep="${s.id}">⚡ 소탕</button>` : ''}
         ${clearData ? `<button class="stage-hard-btn ${gameSave.hardClears?.[s.id] ? 'hard-cleared' : ''}" data-hard="${s.id}">🔥 하드${gameSave.hardClears?.[s.id] ? ' ✓' : ''}</button>` : ''}
       </div>
     </div>`;
@@ -516,6 +539,61 @@ function renderStageSelect() {
       openDeploy(baseId, true);
     });
   });
+
+  list.querySelectorAll('.stage-sweep-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      doSweep(btn.dataset.sweep);
+    });
+  });
+}
+
+function doSweep(stageId) {
+  const stage = STAGES.find(s => s.id === stageId);
+  if (!stage) return;
+  const clearData = gameSave.stageClears?.[stageId];
+  if (!clearData || clearData.stars < 3) return;
+
+  gameSave.stats.totalBattles++;
+  gameSave.stats.wins++;
+  progressQuest(gameSave, 'battle');
+  progressQuest(gameSave, 'win');
+  if (stageId === 'stage-4') progressQuest(gameSave, 'clear_stage4');
+  recordStageClear(gameSave, stageId, clearData.bestTurns);
+
+  const randomChar = () => CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+  const rewardCards = [
+    { char: randomChar(), rarity: 'rare' },
+    { char: randomChar(), rarity: 'uncommon' },
+    { char: randomChar(), rarity: 'common' },
+  ];
+  const rarityKo = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
+  rewardCards.forEach(r => addCard(gameSave, r.char.id, r.rarity));
+  gameSave.recruitTickets = (gameSave.recruitTickets || 0) + 2;
+
+  const newAch = checkAchievements(gameSave);
+  newAch.forEach(a => a.reward.forEach(rarity => {
+    const rc = randomChar();
+    addCard(gameSave, rc.id, rarity);
+  }));
+  saveGame(gameSave);
+
+  const toast = document.createElement('div');
+  toast.className = 'sweep-result';
+  toast.innerHTML = `
+    <div class="sweep-header">⚡ ${stage.name} 소탕 완료!</div>
+    <div class="sweep-rewards">
+      ${rewardCards.map(r => `<span class="reward-card reward-${r.rarity}">${r.char.name} (${rarityKo[r.rarity]})</span>`).join('')}
+      <span class="reward-card reward-uncommon">🎫 모집권 ×2</span>
+    </div>
+    ${newAch.length > 0 ? `<div class="sweep-ach">${newAch.map(a => `🏆 ${a.name}`).join(' ')}</div>` : ''}
+  `;
+  document.body.appendChild(toast);
+  sfxCollect();
+  setTimeout(() => toast.remove(), 2500);
+
+  renderStageSelect();
+  updateNavBadges();
 }
 
 // ── Deploy Screen ──
@@ -2177,6 +2255,17 @@ async function doAttack(attacker, defender) {
     if (result.penetrated) tags.push('관통');
     if (result.critical) tags.push('크리티컬');
     appendLog(`⚔ ${attacker.name} → ${defender.name}: ${result.damage}${tags.length ? ' ' + tags.join(' ') + '!' : ''}`);
+    if (result.breakdown) {
+      const b = result.breakdown;
+      const parts = [`ATK${b.baseAtk}-DEF${b.baseDef}`];
+      if (b.terrainAtk) parts.push(`지형+${b.terrainAtk}`);
+      if (b.flanking) parts.push(`협공+${b.flanking}`);
+      if (b.factionAtk) parts.push(`팩션+${b.factionAtk}`);
+      if (b.pen) parts.push(`관통${b.pen}`);
+      if (b.critMult > 1) parts.push(`크리×1.5`);
+      if (b.synergyMult !== 1) parts.push(`시너지×${b.synergyMult}`);
+      appendLog(`  📊 ${parts.join(' · ')}`);
+    }
   }
   if (result.counterDamage) appendLog(`  ↩ 반격: ${result.counterDamage}`);
   if (result.relicHeal > 0 && atkTile) {

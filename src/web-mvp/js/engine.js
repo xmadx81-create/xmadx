@@ -1490,7 +1490,20 @@ function calcCombatResult(state, attacker, defender, isCounter = false) {
 
   const damage = Math.max(1, Math.floor((rawDamage + variance) * typeMult * critMult * counterMult * synergyMult));
 
-  return { damage, critical, evaded: false, penetrated };
+  const breakdown = {
+    baseAtk: attacker.atk,
+    baseDef: defender.def,
+    terrainAtk: atkPower - attacker.atk - getFlankingBonus(state, attacker, defender) - faction.atkBonus,
+    terrainDef: defPower - defender.def - faction.defBonus,
+    flanking: getFlankingBonus(state, attacker, defender),
+    factionAtk: faction.atkBonus,
+    factionDef: faction.defBonus,
+    pen,
+    critMult,
+    synergyMult: Math.round(synergyMult * 100) / 100,
+  };
+
+  return { damage, critical, evaded: false, penetrated, breakdown };
 }
 
 export function attackUnit(state, attacker, defender) {
@@ -1636,7 +1649,7 @@ export function attackUnit(state, attacker, defender) {
     if (!loot && defender.rarity === 'legendary') loot = rollLoot();
   }
 
-  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated, xpGains, loot, relicHeal };
+  return { ok: true, damage, critical, counterDamage, defenderDied, attackerDied, evaded, penetrated, xpGains, loot, relicHeal, breakdown: evaded ? undefined : atkResult.breakdown };
 }
 
 // ── Damage Preview (non-destructive estimate) ─────────────────────────

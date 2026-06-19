@@ -2190,3 +2190,37 @@ describe('무한의 탑 보상 스케일링', () => {
     expect(r.milestone).toBeNull();
   });
 });
+
+describe('데미지 상세 분해', () => {
+  it('공격 결과에 breakdown이 포함된다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    const enemy = state.units.find(u => u.team === 'enemy');
+    player.x = 3; player.y = 3;
+    enemy.x = 4; enemy.y = 3;
+    enemy.eva = 0;
+    const result = attackUnit(state, player, enemy);
+    expect(result.ok).toBe(true);
+    if (!result.evaded) {
+      expect(result.breakdown).toBeDefined();
+      expect(result.breakdown.baseAtk).toBe(player.atk);
+      expect(result.breakdown.baseDef).toBe(enemy.def);
+      expect(typeof result.breakdown.flanking).toBe('number');
+      expect(typeof result.breakdown.pen).toBe('number');
+    }
+  });
+
+  it('회피 시에도 에러가 없다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    const enemy = state.units.find(u => u.team === 'enemy');
+    player.x = 3; player.y = 3;
+    enemy.x = 4; enemy.y = 3;
+    enemy.eva = 1;
+    const result = attackUnit(state, player, enemy);
+    expect(result.ok).toBe(true);
+    if (result.evaded) {
+      expect(result.breakdown).toBeUndefined();
+    }
+  });
+});

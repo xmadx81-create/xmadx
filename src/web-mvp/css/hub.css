@@ -6440,6 +6440,68 @@ body {
 }
 .stats-details summary:hover { color: var(--accent-gold); }
 
+/* ── Stage Progress ── */
+.stage-progress {
+  padding: 0.4rem 0; margin-bottom: 0.6rem;
+}
+.stage-progress-bar {
+  height: 6px; background: var(--bg-card); border-radius: 3px;
+  overflow: hidden; border: 1px solid var(--border); margin-bottom: 4px;
+}
+.stage-progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-gold));
+  border-radius: 3px; transition: width 0.4s ease;
+}
+.stage-progress-text {
+  display: flex; justify-content: space-between;
+  font-size: 0.75rem; color: var(--text-secondary);
+}
+
+/* ── Sweep Button & Result ── */
+.stage-sweep-btn {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #fff; border: none; padding: 4px 10px; border-radius: 5px;
+  font-weight: 600; font-size: 0.75rem; cursor: pointer;
+  margin-right: 0.3rem; transition: opacity 0.2s;
+}
+.stage-sweep-btn:hover { opacity: 0.85; }
+.sweep-result {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 300; background: var(--bg-card);
+  border: 2px solid #10b981; border-radius: 12px;
+  padding: 1.2rem; min-width: 260px; max-width: 360px;
+  text-align: center;
+  animation: milestonePopIn 0.4s ease-out;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.sweep-header {
+  font-weight: 700; font-size: 1.1rem; color: #10b981;
+  margin-bottom: 0.5rem;
+}
+.sweep-rewards {
+  display: flex; flex-wrap: wrap; gap: 0.3rem; justify-content: center;
+  margin-bottom: 0.4rem;
+}
+.sweep-ach { color: var(--accent-gold); font-weight: 600; font-size: 0.85rem; }
+
+/* ── Equipment Preview in Card Popup ── */
+.sheet-equip {
+  margin-top: 0.5rem; padding: 0.4rem; background: var(--bg-primary);
+  border-radius: 6px; border: 1px solid var(--border);
+}
+.equip-title {
+  font-weight: 700; font-size: 0.82rem; color: var(--text-secondary);
+  margin-bottom: 0.3rem;
+}
+.sheet-equip-item {
+  font-size: 0.8rem; color: var(--text-primary);
+  padding: 2px 0; display: flex; gap: 0.4rem; align-items: center;
+}
+.sheet-equip-item.relic { color: var(--accent-gold); }
+.equip-stats { color: var(--text-secondary); font-size: 0.72rem; }
+.equip-desc { color: var(--text-secondary); font-size: 0.72rem; font-style: italic; }
+
 /* ── Synthesis Section ── */
 .synth-section {
   background: var(--bg-card); border: 1px solid var(--border);
