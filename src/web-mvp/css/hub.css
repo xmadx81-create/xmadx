@@ -119,6 +119,87 @@ body {
 .filter-btn:hover { border-color: var(--accent-gold); }
 .filter-btn.active { background: var(--accent-gold); color: var(--bg-primary); border-color: var(--accent-gold); }
 
+.recruit-section {
+  background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.1));
+  border: 1px solid rgba(139,92,246,0.3);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.recruit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.recruit-title {
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+.recruit-tickets {
+  font-size: 0.8rem;
+  color: #a78bfa;
+  font-weight: bold;
+}
+.recruit-btns {
+  display: flex;
+  gap: 8px;
+}
+.recruit-btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  background: rgba(139,92,246,0.2);
+  border: 1px solid rgba(139,92,246,0.4);
+  color: #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+.recruit-btn:hover:not(:disabled) {
+  background: rgba(139,92,246,0.4);
+  transform: scale(1.02);
+}
+.recruit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.recruit-btn.recruit-multi {
+  background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(236,72,153,0.2));
+  border-color: rgba(236,72,153,0.4);
+}
+.recruit-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.attend-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+.attend-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.05);
+}
+.attend-card.attend-legendary { background: rgba(255,215,0,0.15); border-left: 3px solid #ffd700; }
+.attend-card.attend-rare { background: rgba(139,92,246,0.15); border-left: 3px solid #a78bfa; }
+.attend-card.attend-uncommon { background: rgba(59,130,246,0.15); border-left: 3px solid #60a5fa; }
+.attend-card.attend-common { background: rgba(255,255,255,0.05); border-left: 3px solid #94a3b8; }
+.attend-icon { font-size: 1.2rem; }
+.attend-name { font-weight: bold; flex: 1; }
+.attend-rarity { font-size: 0.7rem; opacity: 0.7; }
+.attendance-box { text-align: center; }
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
