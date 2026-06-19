@@ -18,7 +18,8 @@
     </header>
 
     <nav class="hub-nav">
-      <button class="nav-btn active" data-tab="gallery">카드 도감<span class="nav-badge" id="badge-gallery"></span></button>
+      <button class="nav-btn active" data-tab="home">홈</button>
+      <button class="nav-btn" data-tab="gallery">카드 도감<span class="nav-badge" id="badge-gallery"></span></button>
       <button class="nav-btn" data-tab="play">전투</button>
       <button class="nav-btn" data-tab="rules">규칙서</button>
       <button class="nav-btn" data-tab="stats">전적<span class="nav-badge" id="badge-stats"></span></button>
@@ -26,8 +27,13 @@
     </nav>
 
     <main class="hub-content">
+      <!-- 홈 대시보드 -->
+      <section id="tab-home" class="tab-panel active">
+        <div id="home-dashboard" class="home-dashboard"></div>
+      </section>
+
       <!-- 카드 도감 -->
-      <section id="tab-gallery" class="tab-panel active">
+      <section id="tab-gallery" class="tab-panel">
         <div id="collection-progress" class="collection-progress"></div>
         <div class="filter-bar">
           <button class="filter-btn active" data-filter="all">전체</button>
