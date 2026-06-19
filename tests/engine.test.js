@@ -14,7 +14,7 @@ import {
   applyStun, applySlow, isStunned, tickStatusEffects,
   executeUltimate, useItem, tickBuffs, ULTIMATES,
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
-  PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy,
+  PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy, getDangerZone,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -2478,5 +2478,86 @@ describe('팩션 시너지 적용', () => {
     const baseAtk = units[0].atk;
     applyFactionSynergy(units);
     expect(units[0].atk).toBe(baseAtk + 2);
+  });
+});
+
+// ── rollLoot 테스트 ──
+
+describe('rollLoot 시스템', () => {
+  it('아이템을 반환한다', () => {
+    const loot = rollLoot();
+    expect(loot).toBeDefined();
+    expect(loot.id).toBeDefined();
+    expect(loot.name).toBeDefined();
+    expect(loot.effect).toBeDefined();
+  });
+
+  it('100번 굴리면 다양한 아이템이 나온다', () => {
+    const ids = new Set();
+    for (let i = 0; i < 100; i++) ids.add(rollLoot().id);
+    expect(ids.size).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// ── useItem 버프 테스트 ──
+
+describe('useItem 버프', () => {
+  it('ATK 버프 아이템이 공격력을 올린다', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    const unit = state.units.find(u => u.team === 'player');
+    const baseAtk = unit.atk;
+    const item = { name: '공격의 보석', effect: { atkBuff: 3 } };
+    const result = useItem(state, unit, item);
+    expect(result.ok).toBe(true);
+    expect(unit.atk).toBe(baseAtk + 3);
+    expect(unit.buffs.some(b => b.stat === 'atk' && b.val === 3)).toBe(true);
+  });
+
+  it('행동 완료 유닛은 아이템 사용 불가', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    const unit = state.units.find(u => u.team === 'player');
+    unit.acted = true;
+    const item = { name: '포션', effect: { heal: 20 } };
+    const result = useItem(state, unit, item);
+    expect(result.ok).toBe(false);
+  });
+});
+
+// ── getDangerZone 테스트 ──
+
+describe('getDangerZone', () => {
+  it('적 유닛 주변에 위험 타일이 생긴다', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    const enemies = state.units.filter(u => u.team === 'enemy' && u.hp > 0);
+    expect(enemies.length).toBeGreaterThan(0);
+    const dangerTiles = getDangerZone(state);
+    expect(dangerTiles.length).toBeGreaterThan(0);
+  });
+
+  it('적이 없으면 위험 타일이 없다', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    state.units.filter(u => u.team === 'enemy').forEach(u => u.hp = 0);
+    const dangerTiles = getDangerZone(state);
+    expect(dangerTiles.length).toBe(0);
+  });
+
+  it('위험 타일은 좌표 객체 배열이다', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    const dangerTiles = getDangerZone(state);
+    if (dangerTiles.length > 0) {
+      expect(dangerTiles[0]).toHaveProperty('x');
+      expect(dangerTiles[0]).toHaveProperty('y');
+    }
+  });
+});
+
+// ── spawnReinforcements 테스트 ──
+
+describe('spawnReinforcements', () => {
+  it('해당 턴이 아니면 증원이 없다', () => {
+    const state = createBattleState('stage-1', ['kim-doyun']);
+    state.turnNumber = 999;
+    const result = spawnReinforcements(state);
+    expect(result).toBeNull();
   });
 });

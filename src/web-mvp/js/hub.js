@@ -5,7 +5,7 @@ import {
   runEnemyPhase, checkVictory, allPlayerUnitsActed,
   STAGES, TILE_TYPES, getLivingUnits, getUnitByUid, getCombatPower,
   previewDamage, previewSkillDamage, getFlankingBonus,
-  getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate, useItem,
+  getTeamSynergy, getTeamCP, cardToUnit, gainXP, executeUltimate, useItem, SECRET_COMBOS,
   spawnReinforcements, getDangerZone,
   EQUIPMENT, RELICS, equipItem, equipRelic,
   getSkillTargetType, getSkillTargets,
@@ -680,6 +680,8 @@ function openDeploy(stageId, hard = false) {
       renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
     };
   }
+  const synergyBtn = document.getElementById('btn-synergy-guide');
+  if (synergyBtn) synergyBtn.onclick = showSynergyGuide;
 }
 
 function autoFillTeam(maxUnits) {
@@ -715,6 +717,41 @@ function autoFillTeam(maxUnits) {
   }
 
   return bestTeam;
+}
+
+function showSynergyGuide() {
+  const popup = document.getElementById('card-popup');
+  const portrait = document.getElementById('popup-portrait');
+  const details = document.getElementById('popup-details');
+  portrait.innerHTML = `<div style="font-size:2rem;text-align:center;padding:20px">📖</div>`;
+
+  const mbtiTable = `
+    <h3>MBTI 궁합표</h3>
+    <div class="synergy-guide-info">같은 N/S × 다른 E/I = 높은 시너지<br>완전 반대 = 최고 시너지 (S급)</div>
+    <h3>시크릿 콤보</h3>
+    <div class="synergy-guide-combos">
+      ${SECRET_COMBOS.map(c => {
+        const chars = c.mbtis.map(m => {
+          const ch = CHARACTERS.find(ch => CHARACTER_MBTI[ch.id] === m);
+          return ch ? ch.name : m;
+        });
+        return `<div class="synergy-combo-row">
+          <span class="synergy-combo-name">「${c.name}」</span>
+          <span class="synergy-combo-mult">×${c.mult}</span>
+          <span class="synergy-combo-mbtis">${c.mbtis.join('+')}</span>
+          <span class="synergy-combo-hint">${chars.slice(0, 2).join(', ')}…</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <h3>팩션 시너지</h3>
+    <div class="synergy-guide-factions">
+      ${Object.entries(FACTION_SYNERGY).map(([f, tiers]) =>
+        tiers.map(t => `<div class="synergy-faction-row"><span>${t.label}</span> <span>(${t.count}명)</span></div>`).join('')
+      ).join('')}
+    </div>
+  `;
+  details.innerHTML = `<h2>시너지 도감</h2>${mbtiTable}`;
+  popup.style.display = 'flex';
 }
 
 function renderPresetButtons(maxUnits) {
@@ -2282,6 +2319,15 @@ async function doAttack(attacker, defender) {
   if (attacker.team === 'player' && result.damage > 0) playerTurnDmg += result.damage;
   if (attacker.team === 'player' && result.defenderDied) playerTurnKills++;
   if (attacker.team === 'player') showCharQuote(attacker, 'attack');
+  if (!result.evaded && result.damage > 0) {
+    attacker._dmgDealt = (attacker._dmgDealt || 0) + result.damage;
+    defender._dmgTaken = (defender._dmgTaken || 0) + result.damage;
+  }
+  if (result.counterDamage > 0) {
+    defender._dmgDealt = (defender._dmgDealt || 0) + result.counterDamage;
+    attacker._dmgTaken = (attacker._dmgTaken || 0) + result.counterDamage;
+  }
+  if (result.relicHeal > 0) attacker._healDone = (attacker._healDone || 0) + result.relicHeal;
   if (!result.evaded && result.damage > 0 && defender.hp > 0) showCharQuote(defender, 'hit');
 
   renderBattle();
@@ -3009,6 +3055,9 @@ function handleBattleEnd(result) {
       const status = u.hp > 0 ? `${u.hp}/${u.maxHp}` : '전사';
       const kills = u._battleKills || 0;
       const xpEarned = u._battleXP || 0;
+      const dmgDealt = u._dmgDealt || 0;
+      const dmgTaken = u._dmgTaken || 0;
+      const healDone = u._healDone || 0;
       const isMvp = u.uid === mvp?.uid && kills > 0;
       const xpPct = Math.min(100, Math.round(u.xp / u.xpToNext * 100));
       return `<div class="result-unit ${u.hp <= 0 ? 'result-dead' : ''} ${isMvp ? 'result-mvp' : ''}">
@@ -3017,6 +3066,7 @@ function handleBattleEnd(result) {
           <div>
             <div class="result-unit-name">${isMvp ? '👑 ' : ''}${u.name}${lvInfo}</div>
             <div class="result-unit-status">${status}${kills > 0 ? ` · ${kills}킬` : ''}${xpEarned > 0 ? ` · +${xpEarned}XP` : ''}</div>
+            <div class="result-unit-combat">${dmgDealt > 0 ? `⚔${dmgDealt}` : ''}${dmgTaken > 0 ? ` 🛡${dmgTaken}` : ''}${healDone > 0 ? ` 💚${healDone}` : ''}</div>
           </div>
         </div>
         ${hpBar}
