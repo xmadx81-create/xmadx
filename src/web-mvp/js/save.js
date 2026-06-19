@@ -12,6 +12,7 @@ const DEFAULT_SAVE = {
   lastTeam: [],
   achievements: {},
   onboarded: false,
+  recruitTickets: 3,
 };
 
 const STARTER_DECK = ['kim-doyun', 'choi-minseo', 'kwon-jihye'];
@@ -245,6 +246,21 @@ export function checkAchievements(save) {
     }
   });
   return newlyUnlocked;
+}
+
+export function doRecruit(save, characters, count = 1) {
+  if ((save.recruitTickets || 0) < count) return { ok: false, reason: '모집권 부족' };
+  save.recruitTickets -= count;
+  const results = [];
+  for (let i = 0; i < count; i++) {
+    const roll = Math.random();
+    const rarity = roll < 0.02 ? 'legendary' : roll < 0.12 ? 'rare' : roll < 0.40 ? 'uncommon' : 'common';
+    const pool = characters.filter(c => c.rarity === rarity);
+    const char = pool[Math.floor(Math.random() * pool.length)] || characters[Math.floor(Math.random() * characters.length)];
+    addCard(save, char.id, rarity);
+    results.push({ name: char.name, id: char.id, rarity });
+  }
+  return { ok: true, results };
 }
 
 export function recordStageClear(save, stageId, turnCount) {

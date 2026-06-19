@@ -13,7 +13,7 @@ import {
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
 } from './engine.js';
-import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck } from './save.js';
+import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
 
 let gameSave = loadGame();
@@ -34,6 +34,8 @@ let towerMode = false;
 let towerWave = 0;
 let currentHardMode = false;
 let battleLogHistory = [];
+let playerTurnDmg = 0;
+let playerTurnKills = 0;
 
 // ── Gallery ──
 
@@ -62,8 +64,35 @@ function refreshGallery() {
   renderGalleryCards(document.getElementById('card-gallery'), getFilteredGallery());
 }
 
+function updateRecruitUI() {
+  const el = document.getElementById('recruit-ticket-count');
+  if (el) el.textContent = `🎫 ${gameSave.recruitTickets || 0}`;
+  const btn1 = document.getElementById('btn-recruit-1');
+  const btn10 = document.getElementById('btn-recruit-10');
+  if (btn1) btn1.disabled = (gameSave.recruitTickets || 0) < 1;
+  if (btn10) btn10.disabled = (gameSave.recruitTickets || 0) < 10;
+}
+
+function doRecruitUI(count) {
+  const result = doRecruit(gameSave, CHARACTERS, count);
+  if (!result.ok) return;
+  saveGame(gameSave);
+  updateRecruitUI();
+  sfxCollect();
+  const rarityKo = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
+  const resultEl = document.getElementById('recruit-result');
+  resultEl.innerHTML = result.results.map(r =>
+    `<span class="reward-card reward-${r.rarity}">${r.name} (${rarityKo[r.rarity]})</span>`
+  ).join('');
+  resultEl.style.display = '';
+  refreshGallery();
+}
+
 function initGallery() {
   refreshGallery();
+  updateRecruitUI();
+  document.getElementById('btn-recruit-1')?.addEventListener('click', () => doRecruitUI(1));
+  document.getElementById('btn-recruit-10')?.addEventListener('click', () => doRecruitUI(10));
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -1000,6 +1029,8 @@ function startBattle() {
   document.getElementById('battle-log').innerHTML = '';
   battleLogHistory = [];
   battleQuestCompleted = [];
+  playerTurnDmg = 0;
+  playerTurnKills = 0;
   dangerZoneActive = false;
   undoMoveData = null;
   battleSpeed = gameSave.settings?.battleSpeed || 1;
@@ -1044,6 +1075,32 @@ function showOnboarding(callback) {
     overlay.classList.remove('active');
     setTimeout(() => overlay.remove(), 300);
     if (callback) callback();
+  });
+}
+
+function showAttendancePopup(day, cards) {
+  const rarityKo = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
+  const rarityIcon = { common: '🃏', uncommon: '🎴', rare: '💎', legendary: '👑' };
+  const overlay = document.createElement('div');
+  overlay.className = 'onboarding-overlay';
+  overlay.innerHTML = `
+    <div class="onboarding-box attendance-box">
+      <h3>📅 출석 ${day}일 보상!</h3>
+      <div class="attend-cards">
+        ${cards.map(c => `<div class="attend-card attend-${c.rarity}">
+          <span class="attend-icon">${rarityIcon[c.rarity] || '🃏'}</span>
+          <span class="attend-name">${c.name}</span>
+          <span class="attend-rarity">${rarityKo[c.rarity]}</span>
+        </div>`).join('')}
+      </div>
+      <button class="ob-start-btn">받기</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('active'));
+  overlay.querySelector('.ob-start-btn').addEventListener('click', () => {
+    overlay.classList.remove('active');
+    setTimeout(() => overlay.remove(), 300);
   });
 }
 
@@ -1826,6 +1883,8 @@ async function doAttack(attacker, defender) {
   undoMoveData = null;
   const result = attackUnit(battleState, attacker, defender);
   if (!result.ok) return;
+  if (attacker.team === 'player' && result.damage > 0) playerTurnDmg += result.damage;
+  if (attacker.team === 'player' && result.defenderDied) playerTurnKills++;
 
   renderBattle();
 
@@ -2125,6 +2184,9 @@ function checkAutoEndTurn() {
 function endTurn() {
   if (!battleState || battleState.phase !== 'player_phase') return;
 
+  if (playerTurnDmg > 0) {
+    appendLog(`📊 아군 턴 요약: 총 ${playerTurnDmg} 데미지${playerTurnKills > 0 ? ` · ${playerTurnKills} 처치` : ''}`);
+  }
   endPlayerPhase(battleState);
   showPhaseBanner('적 턴', 'enemy');
   document.getElementById('btn-end-turn').disabled = true;
@@ -2290,6 +2352,8 @@ function endTurn() {
       appendLog(`📊 적 턴 요약: 총 ${totalEnemyDmg} 데미지${enemyKills > 0 ? ` · ${enemyKills} 처치` : ''}`);
     }
     appendLogSeparator(`── 턴 ${battleState.turnNumber} · 아군 페이즈 ──`);
+    playerTurnDmg = 0;
+    playerTurnKills = 0;
     showPhaseBanner('아군 턴', 'player');
     renderBattle();
     checkAutoEndTurn();
@@ -2454,7 +2518,9 @@ function handleBattleEnd(result) {
       const rarityKoShort = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
       return `<span class="reward-card reward-${r.rarity}">${r.char.name} (${rarityKoShort[r.rarity]})</span>`;
     }).join('');
-    text.innerHTML += `<div class="result-rewards"><div class="reward-title">🎁 보상 카드</div>${rewardHtml}</div>`;
+    const ticketReward = battleState.hardMode ? 3 : stars === 3 ? 2 : 1;
+    gameSave.recruitTickets = (gameSave.recruitTickets || 0) + ticketReward;
+    text.innerHTML += `<div class="result-rewards"><div class="reward-title">🎁 보상 카드</div>${rewardHtml}<span class="reward-card reward-uncommon">🎫 모집권 ×${ticketReward}</span></div>`;
 
     if (battleState._battleLoot && battleState._battleLoot.length > 0) {
       const itemIcon = { heal: '🧪', mp: '💧', atkBuff: '⚔️', defBuff: '🛡️', crtBuff: '🎯', xp: '💎' };
@@ -2766,13 +2832,16 @@ document.addEventListener('DOMContentLoaded', () => {
   renderSettings();
 
   const attend = getAttendanceReward(gameSave.quests.attendance);
-  if (attend) {
-    appendLog(`🎁 출석 ${gameSave.quests.attendance}일 보상!`);
+  if (attend && gameSave.quests.lastAttendanceReward !== gameSave.quests.attendance) {
+    gameSave.quests.lastAttendanceReward = gameSave.quests.attendance;
+    const rewardedCards = [];
     attend.cards.forEach(rarity => {
       const randomChar = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
       addCard(gameSave, randomChar.id, rarity);
+      rewardedCards.push({ name: randomChar.name, rarity });
     });
     saveGame(gameSave);
+    showAttendancePopup(gameSave.quests.attendance, rewardedCards);
   }
 
   document.getElementById('popup-close').addEventListener('click', () => {

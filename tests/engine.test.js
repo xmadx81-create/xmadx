@@ -16,7 +16,7 @@ import {
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy,
 } from '../src/web-mvp/js/engine.js';
-import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame } from '../src/web-mvp/js/save.js';
+import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
 
 describe('TILE_TYPES', () => {
@@ -1979,5 +1979,38 @@ describe('전투 시스템 강화', () => {
     expect(state.hardMode).toBeUndefined();
     state.hardMode = true;
     expect(state.hardMode).toBe(true);
+  });
+});
+
+describe('모집 시스템', () => {
+  it('모집권이 충분하면 카드를 획득한다', () => {
+    const save = { cards: {}, recruitTickets: 5 };
+    const result = doRecruit(save, CHARACTERS, 1);
+    expect(result.ok).toBe(true);
+    expect(result.results.length).toBe(1);
+    expect(save.recruitTickets).toBe(4);
+    expect(result.results[0].name).toBeTruthy();
+    expect(result.results[0].rarity).toBeTruthy();
+  });
+
+  it('모집권이 부족하면 실패한다', () => {
+    const save = { cards: {}, recruitTickets: 0 };
+    const result = doRecruit(save, CHARACTERS, 1);
+    expect(result.ok).toBe(false);
+  });
+
+  it('10연차 모집이 10장의 카드를 준다', () => {
+    const save = { cards: {}, recruitTickets: 10 };
+    const result = doRecruit(save, CHARACTERS, 10);
+    expect(result.ok).toBe(true);
+    expect(result.results.length).toBe(10);
+    expect(save.recruitTickets).toBe(0);
+  });
+
+  it('모집 결과가 세이브에 카드를 추가한다', () => {
+    const save = { cards: {}, centerXP: 0, centerLevel: 1, recruitTickets: 3 };
+    const result = doRecruit(save, CHARACTERS, 3);
+    expect(result.ok).toBe(true);
+    expect(Object.keys(save.cards).length).toBeGreaterThan(0);
   });
 });
