@@ -124,6 +124,7 @@
             <div id="deploy-presets" class="deploy-presets"></div>
             <div class="deploy-actions">
               <button id="btn-deploy-quick" class="btn-secondary" style="display:none">⚡ 지난 팀</button>
+              <button id="btn-deploy-auto" class="btn-secondary">🤖 최적 편성</button>
               <button id="btn-deploy-back" class="btn-secondary">뒤로</button>
               <button id="btn-deploy-start" class="btn-primary" disabled>출격!</button>
             </div>
@@ -142,6 +143,7 @@
             <button class="hud-btn" id="btn-speed" title="전투 속도">1×</button>
             <button class="hud-btn" id="btn-auto" title="자동 전투">▶자동</button>
             <span class="hud-weather" id="hud-weather" style="display:none"></span>
+            <div class="enemy-action-queue" id="enemy-action-queue" style="display:none"></div>
           </div>
 
           <!-- 날씨 오버레이 -->
@@ -212,6 +214,13 @@
           <button id="btn-end-turn" class="turn-end-btn">턴 종료</button>
 
           <!-- 전투 로그 -->
+          <div class="log-filter-bar">
+            <button class="log-filter-btn active" data-logf="all">전체</button>
+            <button class="log-filter-btn" data-logf="damage">⚔</button>
+            <button class="log-filter-btn" data-logf="skill">✦</button>
+            <button class="log-filter-btn" data-logf="heal">💚</button>
+            <button class="log-filter-btn" data-logf="kill">💀</button>
+          </div>
           <div id="battle-log" class="battle-log"></div>
         </div>
       </section>

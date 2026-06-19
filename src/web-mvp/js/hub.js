@@ -670,6 +670,51 @@ function openDeploy(stageId, hard = false) {
   }
 
   renderPresetButtons(maxUnits);
+
+  const autoBtn = document.getElementById('btn-deploy-auto');
+  if (autoBtn) {
+    autoBtn.onclick = () => {
+      deploySelected = autoFillTeam(maxUnits);
+      renderDeployBench(maxUnits);
+      updateDeployUI(maxUnits);
+      renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
+    };
+  }
+}
+
+function autoFillTeam(maxUnits) {
+  const owned = CHARACTERS.filter(c => c.faction !== 'kartein' && gameSave.cards[c.id]?.count > 0);
+  if (owned.length === 0) return CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, maxUnits).map(c => c.id);
+
+  const scored = owned.map(c => {
+    const card = gameSave.cards[c.id];
+    const unit = cardToUnit(c, 0, 0);
+    const cp = getCombatPower(unit);
+    const lvBonus = (card.level || 1) * 10;
+    const rarityBonus = { legendary: 40, rare: 20, uncommon: 10, common: 0 }[c.rarity] || 0;
+    return { id: c.id, score: cp + lvBonus + rarityBonus };
+  }).sort((a, b) => b.score - a.score);
+
+  const candidates = scored.slice(0, Math.min(maxUnits * 2, scored.length));
+  let bestTeam = candidates.slice(0, maxUnits).map(c => c.id);
+  let bestScore = 0;
+
+  const tryCombo = (ids) => {
+    const units = ids.map(id => cardToUnit(CHARACTERS.find(c => c.id === id), 0, 0));
+    const synResult = getTeamSynergy(units);
+    const totalCP = ids.reduce((s, id) => s + (candidates.find(c => c.id === id)?.score || 0), 0);
+    return totalCP * (0.7 + synResult.teamMult * 0.3);
+  };
+
+  bestScore = tryCombo(bestTeam);
+  for (let i = 0; i < 20; i++) {
+    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+    const team = shuffled.slice(0, maxUnits).map(c => c.id);
+    const score = tryCombo(team);
+    if (score > bestScore) { bestScore = score; bestTeam = team; }
+  }
+
+  return bestTeam;
 }
 
 function renderPresetButtons(maxUnits) {
@@ -2031,7 +2076,7 @@ function showCommandPanel(attacker, defender) {
 
     let effectText = '';
     if (skillPreview) {
-      if (skillPreview.type === 'damage') effectText = `데미지 ~${skillPreview.value} · ${skillPreview.range}`;
+      if (skillPreview.type === 'damage') effectText = `데미지 ${skillPreview.minDmg}~${skillPreview.maxDmg} · ${skillPreview.range}`;
       else if (skillPreview.type === 'heal') effectText = `회복 ~${skillPreview.value} · ${skillPreview.range}`;
       else if (skillPreview.type === 'buff') effectText = `버프 +${skillPreview.value} · ${skillPreview.range}`;
       else if (skillPreview.type === 'debuff') effectText = `디버프 -${skillPreview.value} · ${skillPreview.range}`;
@@ -2574,10 +2619,12 @@ function endTurn() {
     const actions = runEnemyPhase(battleState);
     const cameraTrack = gameSave.settings?.cameraTrack !== false;
 
-    for (const a of actions) {
+    for (let ai = 0; ai < actions.length; ai++) {
+      const a = actions[ai];
       if (a.type === 'attack') {
         const unit = getUnitByUid(battleState, a.unit);
         const target = getUnitByUid(battleState, a.target);
+        showEnemyActionQueue(`${unit?.name || '적'} → ${target?.name || '?'} 공격 (${ai + 1}/${actions.length})`);
         renderBattle();
         if (unit) {
           highlightEnemyAction(unit);
@@ -2619,15 +2666,18 @@ function endTurn() {
         await delay(600 / battleSpeed);
       } else if (a.type === 'move') {
         const unit = getUnitByUid(battleState, a.unit);
+        showEnemyActionQueue(`${unit?.name || '적'} 이동 (${ai + 1}/${actions.length})`);
         renderBattle();
         appendLog(`적 ${unit?.name || '?'} 이동`);
         await delay(300 / battleSpeed);
       } else if (a.type === 'sense') {
+        showEnemyActionQueue(`적 스킬: ${a.skillName} (${ai + 1}/${actions.length})`);
         renderBattle();
         appendLog(`✦ 적 스킬: ${a.skillName}`);
         showSkillOverlay(a.skillName, 'blood');
         await delay(800 / battleSpeed);
       } else if (a.type === 'ultimate') {
+        showEnemyActionQueue(`적 궁극기: ${a.name} (${ai + 1}/${actions.length})`);
         renderBattle();
         appendLog(`🌟 적 궁극기: ${a.name}`);
         a.effects?.forEach(e => appendLog(`  → ${e}`));
@@ -2664,6 +2714,7 @@ function endTurn() {
       .filter(u => u.hp > 0 && u.dots && u.dots.length > 0)
       .map(u => ({ uid: u.uid, x: u.x, y: u.y, dots: u.dots.map(d => ({ ...d })) }));
 
+    hideEnemyActionQueue();
     const phaseResult = endEnemyPhase(battleState);
 
     if (phaseResult?.expiredBuffs?.length > 0) {
@@ -2859,6 +2910,17 @@ function highlightEnemyAction(unit) {
     tile.classList.add('enemy-acting');
     setTimeout(() => tile.classList.remove('enemy-acting'), 600);
   }
+}
+
+function showEnemyActionQueue(actionText) {
+  const el = document.getElementById('enemy-action-queue');
+  if (!el) return;
+  el.textContent = actionText;
+  el.style.display = '';
+}
+function hideEnemyActionQueue() {
+  const el = document.getElementById('enemy-action-queue');
+  if (el) el.style.display = 'none';
 }
 
 // ── Battle End ──
@@ -3118,22 +3180,38 @@ function appendLogSeparator(text) {
   log.scrollTop = log.scrollHeight;
 }
 
+let logFilterMode = 'all';
+
 function appendLog(msg) {
   const log = document.getElementById('battle-log');
   const entry = document.createElement('div');
   let cls = 'log-entry';
-  if (msg.includes('💀') || msg.includes('전사')) cls += ' log-kill';
-  else if (msg.includes('⚔') || msg.includes('데미지') || msg.includes('반격')) cls += ' log-damage';
-  else if (msg.includes('회복') || msg.includes('+') && msg.includes('HP')) cls += ' log-heal';
-  else if (msg.includes('✦') || msg.includes('스킬') || msg.includes('궁극기')) cls += ' log-skill';
+  let category = 'other';
+  if (msg.includes('💀') || msg.includes('전사')) { cls += ' log-kill'; category = 'kill'; }
+  else if (msg.includes('⚔') || msg.includes('데미지') || msg.includes('반격') || msg.includes('📊')) { cls += ' log-damage'; category = 'damage'; }
+  else if (msg.includes('회복') || (msg.includes('+') && msg.includes('HP'))) { cls += ' log-heal'; category = 'heal'; }
+  else if (msg.includes('✦') || msg.includes('스킬') || msg.includes('궁극기') || msg.includes('🌟')) { cls += ' log-skill'; category = 'skill'; }
   else if (msg.includes('⬆') || msg.includes('Lv.')) cls += ' log-levelup';
   else if (msg.includes('🎁') || msg.includes('드롭')) cls += ' log-loot';
   entry.className = cls;
+  entry.dataset.cat = category;
   entry.textContent = msg;
+  if (logFilterMode !== 'all' && category !== logFilterMode) entry.style.display = 'none';
   log.appendChild(entry);
-  while (log.children.length > 100) log.removeChild(log.firstChild);
+  while (log.children.length > 150) log.removeChild(log.firstChild);
   log.scrollTop = log.scrollHeight;
   battleLogHistory.push(msg);
+}
+
+function setLogFilter(mode) {
+  logFilterMode = mode;
+  const log = document.getElementById('battle-log');
+  if (!log) return;
+  Array.from(log.children).forEach(el => {
+    if (el.classList.contains('log-separator')) { el.style.display = ''; return; }
+    if (mode === 'all') { el.style.display = ''; return; }
+    el.style.display = el.dataset.cat === mode ? '' : 'none';
+  });
 }
 
 // ── Quest Toast ──
@@ -3326,6 +3404,14 @@ document.addEventListener('DOMContentLoaded', () => {
   renderStageSelect();
   renderStats();
   renderSettings();
+
+  document.querySelectorAll('.log-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.log-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setLogFilter(btn.dataset.logf);
+    });
+  });
 
   const attend = getAttendanceReward(gameSave.quests.attendance);
   if (attend && gameSave.quests.lastAttendanceReward !== gameSave.quests.attendance) {

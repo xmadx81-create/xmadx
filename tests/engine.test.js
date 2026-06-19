@@ -2224,3 +2224,44 @@ describe('데미지 상세 분해', () => {
     }
   });
 });
+
+describe('스킬 데미지 미리보기 개선', () => {
+  it('데미지 타입 스킬이 minDmg/maxDmg을 포함한다', () => {
+    const dmgChar = CHARACTERS.find(c => c.sense && ['직감', '혈압', '혈식', '혈기'].includes(c.sense.baseType));
+    if (!dmgChar) return;
+    const unit = cardToUnit(dmgChar, 0, 0);
+    const preview = previewSkillDamage(unit);
+    expect(preview).not.toBeNull();
+    expect(preview.type).toBe('damage');
+    expect(preview.minDmg).toBeDefined();
+    expect(preview.maxDmg).toBeDefined();
+    expect(preview.maxDmg).toBeGreaterThanOrEqual(preview.minDmg);
+  });
+
+  it('회복 타입 스킬은 minDmg/maxDmg을 포함하지 않는다', () => {
+    const healChar = CHARACTERS.find(c => c.sense && ['감응', '공감'].includes(c.sense.baseType));
+    if (!healChar) return;
+    const unit = cardToUnit(healChar, 0, 0);
+    const preview = previewSkillDamage(unit);
+    expect(preview).not.toBeNull();
+    expect(preview.type).toBe('heal');
+    expect(preview.minDmg).toBeUndefined();
+  });
+});
+
+describe('자동 최적 편성', () => {
+  it('getTeamSynergy가 팀에 대해 시너지 객체를 반환한다', () => {
+    const units = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3).map(c => cardToUnit(c, 0, 0));
+    const synergy = getTeamSynergy(units);
+    expect(synergy.teamMult).toBeGreaterThan(0);
+    expect(synergy.avgGrade).toBeDefined();
+    expect(synergy.pairDetails.length).toBeGreaterThan(0);
+  });
+
+  it('getTeamCP가 양수 total을 반환한다', () => {
+    const units = CHARACTERS.filter(c => c.faction !== 'kartein').slice(0, 3).map(c => cardToUnit(c, 0, 0));
+    const cp = getTeamCP(units);
+    expect(cp.total).toBeGreaterThan(0);
+    expect(cp.individual).toBeGreaterThan(0);
+  });
+});

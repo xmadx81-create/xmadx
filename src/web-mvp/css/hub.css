@@ -6394,6 +6394,32 @@ body {
   100% { opacity: 0; transform: translateX(-50%) translateY(-30px); }
 }
 
+/* ── Enemy Action Queue ── */
+.enemy-action-queue {
+  position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%);
+  background: rgba(230,57,70,0.9); color: #fff;
+  font-size: 0.72rem; font-weight: 600; white-space: nowrap;
+  padding: 2px 10px; border-radius: 4px;
+  animation: badgePulse 1.5s ease-in-out infinite;
+  z-index: 10;
+}
+
+/* ── Log Filter Bar ── */
+.log-filter-bar {
+  display: flex; gap: 3px; padding: 3px 0; flex-wrap: wrap;
+}
+.log-filter-btn {
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-secondary); padding: 2px 8px;
+  border-radius: 4px; font-size: 0.7rem; cursor: pointer;
+  transition: all 0.2s;
+}
+.log-filter-btn:hover { border-color: var(--accent-gold); }
+.log-filter-btn.active {
+  background: var(--accent-gold); color: var(--bg-primary);
+  border-color: var(--accent-gold);
+}
+
 /* ── Nav Badge ── */
 .nav-btn { position: relative; }
 .nav-badge {
@@ -6683,7 +6709,8 @@ body {
   .skill-particle,
   .milestone-toast,
   .nav-badge,
-  .tower-milestone {
+  .tower-milestone,
+  .enemy-action-queue {
     animation: none;
   }
 }
