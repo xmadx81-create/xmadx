@@ -1573,6 +1573,7 @@ describe('반격 사망 (Counter-Kill)', () => {
     defender.maxHp = 10;
     defender.atk = 50;
     defender.def = 0;
+    defender.eva = 0;
     attacker.x = 3; attacker.y = 3;
     defender.x = 4; defender.y = 3;
     const result = attackUnit(state, attacker, defender);
