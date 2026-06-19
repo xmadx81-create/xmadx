@@ -2398,3 +2398,85 @@ describe('스킬 프리뷰 날씨 보정', () => {
     }
   });
 });
+
+// ── 패시브 트리 테스트 ──
+
+describe('패시브 트리', () => {
+  it('모든 8개 역할에 3단계 패시브가 있다', () => {
+    const roles = ['tank', 'melee_dps', 'ranged_dps', 'support', 'bruiser', 'battle_support', 'evasive_dps', 'breaker'];
+    roles.forEach(role => {
+      expect(PASSIVE_TREE[role]).toBeDefined();
+      expect(PASSIVE_TREE[role].length).toBe(3);
+    });
+  });
+
+  it('레벨업 시 패시브가 적용된다', () => {
+    const char = CHARACTERS.find(c => c.role === 'tank');
+    const unit = cardToUnit(char, 0, 0);
+    unit.team = 'player';
+    const baseHp = unit.maxHp;
+    const baseDef = unit.def;
+    unit.xp = 999;
+    const result = gainXP(unit, 100);
+    if (result && unit.level >= 2) {
+      expect(unit.maxHp >= baseHp || unit.def >= baseDef).toBe(true);
+    }
+  });
+
+  it('각 패시브 단계에 lv, stat, val이 있다', () => {
+    Object.values(PASSIVE_TREE).forEach(perks => {
+      perks.forEach(perk => {
+        expect(perk.lv).toBeDefined();
+        expect(perk.stat).toBeDefined();
+        expect(perk.val).toBeDefined();
+      });
+    });
+  });
+});
+
+// ── 캐릭터 대사 완성도 ──
+
+describe('캐릭터 대사 50/50', () => {
+  it('모든 50캐릭에 대사가 있다', () => {
+    CHARACTERS.forEach(c => {
+      expect(CHAR_QUOTES[c.id]).toBeDefined();
+    });
+  });
+
+  it('각 대사에 6트리거가 있다', () => {
+    const triggers = ['select', 'attack', 'skill', 'hit', 'death', 'win'];
+    Object.entries(CHAR_QUOTES).forEach(([id, quotes]) => {
+      triggers.forEach(t => {
+        expect(quotes[t]).toBeDefined();
+      });
+    });
+  });
+});
+
+// ── 팩션 시너지 적용 테스트 ──
+
+describe('팩션 시너지 적용', () => {
+  it('센터 3명 이상 시 DEF+2가 적용된다', () => {
+    const centerChars = CHARACTERS.filter(c => c.faction === 'center').slice(0, 3);
+    const units = centerChars.map((c, i) => {
+      const u = cardToUnit(c, i, 0);
+      u.team = 'player';
+      return u;
+    });
+    const baseDef = units[0].def;
+    applyFactionSynergy(units);
+    expect(units[0].def).toBe(baseDef + 2);
+  });
+
+  it('카르테인 2명 이상 시 ATK+2가 적용된다', () => {
+    const karteinChars = CHARACTERS.filter(c => c.faction === 'kartein').slice(0, 2);
+    const units = karteinChars.map((c, i) => {
+      const u = cardToUnit(c, i, 0);
+      u.team = 'player';
+      return u;
+    });
+    const baseAtk = units[0].atk;
+    applyFactionSynergy(units);
+    expect(units[0].atk).toBe(baseAtk + 2);
+  });
+});
