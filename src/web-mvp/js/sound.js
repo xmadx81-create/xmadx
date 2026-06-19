@@ -141,3 +141,24 @@ export function sfxLevelUp() {
     setTimeout(() => playSfx(f, 0.15, 'sine'), i * 80);
   });
 }
+
+export function sfxBuff() {
+  playSfx(440, 0.1, 'sine');
+  setTimeout(() => playSfx(554, 0.08, 'sine'), 60);
+  setTimeout(() => playSfx(659, 0.12, 'sine'), 120);
+}
+
+export function sfxDebuff() {
+  playSfx(330, 0.12, 'sawtooth');
+  setTimeout(() => playSfx(262, 0.15, 'sawtooth'), 80);
+}
+
+export function sfxDot() {
+  playSfx(220, 0.06, 'square');
+  setTimeout(() => playSfx(185, 0.08, 'square'), 50);
+}
+
+export function sfxShield() {
+  playSfx(392, 0.08, 'triangle');
+  setTimeout(() => playSfx(523, 0.1, 'triangle'), 70);
+}

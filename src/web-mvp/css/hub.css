@@ -4840,6 +4840,27 @@ body {
   color: #ffd700;
   margin-top: 4px;
 }
+.stage-hard-btn {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 10px;
+  font-size: 0.65rem;
+  font-weight: bold;
+  color: #fff;
+  background: linear-gradient(135deg, #e53e3e, #c53030);
+  border: 1px solid #fc8181;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.stage-hard-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 8px rgba(229, 62, 62, 0.5);
+}
+.stage-hard-btn.hard-cleared {
+  background: linear-gradient(135deg, #805ad5, #6b46c1);
+  border-color: #b794f4;
+}
 
 /* ── Reinforce Warning in Deploy ── */
 .intel-skill {

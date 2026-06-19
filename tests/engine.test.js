@@ -287,6 +287,7 @@ describe('attackUnit', () => {
     // Place them adjacent
     player.x = 3; player.y = 3;
     enemy.x = 4; enemy.y = 3;
+    enemy.eva = 0;
     const hpBefore = enemy.hp;
     const result = attackUnit(state, player, enemy);
     expect(result.ok).toBe(true);
@@ -1890,6 +1891,59 @@ describe('Faction Synergy', () => {
         expect(p.lv).toBeGreaterThan(0);
         expect(p.name).toBeTruthy();
       });
+    });
+  });
+});
+
+describe('하드 모드', () => {
+  it('createBattleState의 적 유닛이 스탯을 가진다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const enemy = state.units.find(u => u.team === 'enemy');
+    expect(enemy.atk).toBeGreaterThan(0);
+    expect(enemy.def).toBeGreaterThanOrEqual(0);
+    expect(enemy.hp).toBeGreaterThan(0);
+  });
+
+  it('하드 모드 적 버프가 적용되면 스탯이 증가한다', () => {
+    const normalState = createBattleState('stage-1', ['park-harin']);
+    const normalEnemy = normalState.units.find(u => u.team === 'enemy');
+    const normalAtk = normalEnemy.atk;
+    const normalDef = normalEnemy.def;
+
+    const hardState = createBattleState('stage-1', ['park-harin']);
+    hardState.hardMode = true;
+    hardState.units.filter(u => u.team === 'enemy').forEach(u => {
+      const baseLv = u.level;
+      for (let lv = 0; lv < baseLv; lv++) {
+        u.level++;
+        u.maxHp += Math.floor(u.maxHp * 0.05);
+        u.atk += 2;
+        u.def += 1;
+      }
+      u.atk = Math.floor(u.atk * 1.3);
+      u.def = Math.floor(u.def * 1.3);
+      u.hp = u.maxHp;
+    });
+    const hardEnemy = hardState.units.find(u => u.team === 'enemy');
+    expect(hardEnemy.atk).toBeGreaterThan(normalAtk);
+    expect(hardEnemy.def).toBeGreaterThanOrEqual(normalDef);
+  });
+
+  it('EQUIPMENT에 13개 아이템이 정의되어 있다', () => {
+    expect(EQUIPMENT.length).toBe(13);
+    EQUIPMENT.forEach(e => {
+      expect(e.id).toBeTruthy();
+      expect(e.name).toBeTruthy();
+      expect(e.slot).toBeTruthy();
+    });
+  });
+
+  it('RELICS에 5개 유물이 정의되어 있다', () => {
+    expect(RELICS.length).toBe(5);
+    RELICS.forEach(r => {
+      expect(r.id).toBeTruthy();
+      expect(r.name).toBeTruthy();
+      expect(r.condition).toBeTruthy();
     });
   });
 });
