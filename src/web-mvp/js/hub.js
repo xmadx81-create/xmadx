@@ -14,7 +14,7 @@ import {
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck } from './save.js';
-import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, toggleMute, isMuted } from './sound.js';
+import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
 
 let gameSave = loadGame();
 refreshQuests(gameSave);
@@ -32,6 +32,7 @@ let undoMoveData = null;
 let battleSpeed = 1;
 let towerMode = false;
 let towerWave = 0;
+let currentHardMode = false;
 let battleLogHistory = [];
 
 // ── Gallery ──
@@ -281,6 +282,7 @@ function renderStageSelect() {
           ${weatherInfo}
         </div>
         ${clearInfo}
+        ${clearData ? `<button class="stage-hard-btn ${gameSave.hardClears?.[s.id] ? 'hard-cleared' : ''}" data-hard="${s.id}">🔥 하드${gameSave.hardClears?.[s.id] ? ' ✓' : ''}</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -301,7 +303,8 @@ function renderStageSelect() {
   </div>`;
 
   list.querySelectorAll('.stage-card').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('stage-hard-btn')) return;
       const sid = el.dataset.stage;
       if (!sid) return;
       if (sid === 'tower') {
@@ -311,14 +314,23 @@ function renderStageSelect() {
       }
     });
   });
+
+  list.querySelectorAll('.stage-hard-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const baseId = btn.dataset.hard;
+      openDeploy(baseId, true);
+    });
+  });
 }
 
 // ── Deploy Screen ──
 
 let deployPreviewChar = null;
 
-function openDeploy(stageId) {
+function openDeploy(stageId, hard = false) {
   currentStageId = stageId;
+  currentHardMode = hard;
   const stage = STAGES.find(s => s.id === stageId);
   if (!stage) return;
 
@@ -330,7 +342,8 @@ function openDeploy(stageId) {
   document.getElementById('deploy-screen').style.display = '';
   const weatherTag = stage.weather && stage.weather !== 'clear' && WEATHER_TYPES[stage.weather]
     ? ` ${WEATHER_TYPES[stage.weather].icon} ${WEATHER_TYPES[stage.weather].name}` : '';
-  document.getElementById('deploy-stage-name').textContent = `${stage.name}${weatherTag} — 유닛 편성`;
+  const hardTag = currentHardMode ? ' 🔥하드' : '';
+  document.getElementById('deploy-stage-name').textContent = `${stage.name}${hardTag}${weatherTag} — 유닛 편성`;
   document.getElementById('deploy-max').textContent = maxUnits;
   document.getElementById('deploy-count').textContent = '0';
 
@@ -917,6 +930,22 @@ function startBattle() {
   const teamData = units.length >= 2 ? getTeamCP(units) : null;
   const synergyMult = teamData ? teamData.synergy.teamMult : 1.0;
   battleState = createBattleState(currentStageId, deploySelected, centerBuff, synergyMult);
+  battleState.hardMode = currentHardMode;
+
+  if (currentHardMode) {
+    battleState.units.filter(u => u.team === 'enemy').forEach(u => {
+      const baseLv = u.level;
+      for (let lv = 0; lv < baseLv; lv++) {
+        u.level++;
+        u.maxHp += Math.floor(u.maxHp * 0.05);
+        u.atk += 2;
+        u.def += 1;
+      }
+      u.atk = Math.floor(u.atk * 1.3);
+      u.def = Math.floor(u.def * 1.3);
+      u.hp = u.maxHp;
+    });
+  }
 
   battleState.units.filter(u => u.team === 'player').forEach(u => {
     const charId = u.charId || u.id;
@@ -1703,6 +1732,7 @@ async function doSkillAttack(attacker, defender) {
   }
 
   showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
+  sfxBuff();
   appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
   trackQuest('skill');
@@ -2188,6 +2218,7 @@ function endTurn() {
           snap.dots.forEach(d => {
             const label = d.type === 'poison' ? '🟢' : '🩸';
             showFloatingText(tile, `${label}-${d.damage}`, 'dot');
+            sfxDot();
           });
           if (u && u.hp <= 0) {
             appendLog(`☠ ${u.name} — 지속 피해로 전사!`);
@@ -2304,6 +2335,10 @@ function handleBattleEnd(result) {
     const turns = battleState.turnNumber;
     const stars = turns <= 5 ? 3 : turns <= 8 ? 2 : 1;
     recordStageClear(gameSave, battleState.stageId, turns);
+    if (battleState.hardMode) {
+      if (!gameSave.hardClears) gameSave.hardClears = {};
+      gameSave.hardClears[battleState.stageId] = { stars, clears: (gameSave.hardClears[battleState.stageId]?.clears || 0) + 1 };
+    }
 
     const mvp = [...playerUnits].sort((a, b) => (b._battleKills || 0) - (a._battleKills || 0))[0];
     const unitSummary = playerUnits.map(u => {
@@ -2335,11 +2370,12 @@ function handleBattleEnd(result) {
       `<span class="result-star ${i < stars ? 'earned' : 'empty'}" style="animation-delay:${i * 0.2}s">${i < stars ? '⭐' : '☆'}</span>`
     ).join('');
 
+    const hardLabel = battleState.hardMode ? ' · 🔥 하드' : '';
     text.innerHTML = `
       <div class="result-story">${battleState.stage.storyOutro || '모든 적을 제압했습니다!'}</div>
       <div class="result-stars">${starsHtml}</div>
       <div class="result-summary">
-        <span>${turns}턴</span> · <span>생존 ${survivors.length}/${playerUnits.length}</span> · <span>처치 ${enemiesDefeated}/${totalEnemies}</span>${weatherLabel}
+        <span>${turns}턴</span> · <span>생존 ${survivors.length}/${playerUnits.length}</span> · <span>처치 ${enemiesDefeated}/${totalEnemies}</span>${weatherLabel}${hardLabel}
       </div>
       <div class="result-units">${unitSummary}</div>
     `;
@@ -2349,7 +2385,11 @@ function handleBattleEnd(result) {
 
     const rewardCards = [];
     const randomChar = () => CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
-    if (stars === 3) {
+    if (battleState.hardMode) {
+      rewardCards.push({ char: randomChar(), rarity: 'legendary' });
+      rewardCards.push({ char: randomChar(), rarity: 'rare' });
+      rewardCards.push({ char: randomChar(), rarity: 'rare' });
+    } else if (stars === 3) {
       rewardCards.push({ char: randomChar(), rarity: 'rare' });
       rewardCards.push({ char: randomChar(), rarity: 'uncommon' });
       rewardCards.push({ char: randomChar(), rarity: 'common' });
@@ -2568,7 +2608,28 @@ function renderStats() {
     </div>`;
   }).join('');
 
+  const itemIcon = { heal: '🧪', mp: '💧', atkBuff: '⚔️', defBuff: '🛡️', crtBuff: '🎯', xp: '💎' };
+  const inv = gameSave.inventory || [];
+  const invHtml = inv.length > 0
+    ? inv.map(item => {
+        const icon = itemIcon[Object.keys(item.effect)[0]] || '📦';
+        return `<div class="quest-item"><span class="quest-name">${icon} ${item.name}</span></div>`;
+      }).join('')
+    : '<div class="quest-item"><span class="quest-name" style="opacity:0.5">아이템 없음</span></div>';
+
+  const hardClears = gameSave.hardClears || {};
+  const hardCount = Object.keys(hardClears).length;
+  const hardHtml = hardCount > 0
+    ? Object.entries(hardClears).map(([sid, data]) => {
+        const stage = STAGES.find(st => st.id === sid);
+        return `<div class="quest-item quest-done"><span class="quest-name">🔥 ${stage?.name || sid}</span><span class="quest-progress">${data.clears}회</span></div>`;
+      }).join('')
+    : '';
+
   document.getElementById('stats-history').innerHTML = `
+    <h4>📦 인벤토리 (${inv.length})</h4>
+    ${invHtml}
+    ${hardCount > 0 ? `<h4>🔥 하드 클리어 (${hardCount})</h4>${hardHtml}` : ''}
     ${renderQuestList(quests.daily, '📋 일일 퀘스트')}
     ${renderQuestList(quests.weekly, '📅 주간 퀘스트')}
     ${quests.monthly ? renderQuestList([quests.monthly], '🏆 월간 퀘스트') : ''}
