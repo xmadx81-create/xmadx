@@ -9,7 +9,7 @@ import {
   getMbtiPairScore, getMbtiSynergyGrade, getTeamSynergy, getTeamCP,
   gainXP, rollLoot, SECRET_COMBOS, getTerrainEffect, XP_TABLE,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
-  getKillForecast, applyTerrainHealing,
+  getKillForecast, applyTerrainHealing, getTowerRewards,
   applyDOT, tickDOTs, cleanseDOT,
   applyStun, applySlow, isStunned, tickStatusEffects,
   executeUltimate, useItem, tickBuffs, ULTIMATES,
@@ -2152,5 +2152,41 @@ describe('카드 합성 시스템', () => {
     const save = { cards: { 'kim-doyun': { level: 1, xp: 0, count: 3 } }, centerXP: 0, centerLevel: 1 };
     synthesizeCard(save, 'kim-doyun');
     expect(save.synthCount).toBe(1);
+  });
+});
+
+describe('무한의 탑 보상 스케일링', () => {
+  it('낮은 웨이브에서 기본 보상을 준다', () => {
+    const r = getTowerRewards(1);
+    expect(r.cards).toEqual(['common', 'common']);
+    expect(r.tickets).toBe(1);
+    expect(r.milestone).toBeNull();
+  });
+
+  it('5층에서 마일스톤 보상을 준다', () => {
+    const r = getTowerRewards(5);
+    expect(r.cards.length).toBe(4);
+    expect(r.cards).toContain('uncommon');
+    expect(r.tickets).toBe(2);
+    expect(r.milestone).toBe(5);
+  });
+
+  it('10층에서 레어 보상을 준다', () => {
+    const r = getTowerRewards(10);
+    expect(r.cards).toContain('rare');
+    expect(r.tickets).toBe(3);
+    expect(r.milestone).toBe(10);
+  });
+
+  it('20층에서 전설 보상을 준다', () => {
+    const r = getTowerRewards(20);
+    expect(r.cards).toContain('legendary');
+    expect(r.tickets).toBe(3);
+    expect(r.milestone).toBe(20);
+  });
+
+  it('마일스톤이 아닌 층에서는 milestone이 null이다', () => {
+    const r = getTowerRewards(7);
+    expect(r.milestone).toBeNull();
   });
 });
