@@ -16,7 +16,7 @@ import {
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy,
 } from '../src/web-mvp/js/engine.js';
-import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit } from '../src/web-mvp/js/save.js';
+import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
 
 describe('TILE_TYPES', () => {
@@ -2088,5 +2088,69 @@ describe('전투 마일스톤 추적', () => {
     legendaryChars.forEach(c => {
       expect(c.rarity).toBe('legendary');
     });
+  });
+});
+
+describe('카드 합성 시스템', () => {
+  it('카드 3장 이상이면 합성 성공한다', () => {
+    const save = { cards: { 'kim-doyun': { level: 1, xp: 0, count: 3 } }, centerXP: 0, centerLevel: 1 };
+    const result = synthesizeCard(save, 'kim-doyun');
+    expect(result.ok).toBe(true);
+    expect(result.newLevel).toBe(2);
+    expect(save.cards['kim-doyun'].count).toBe(1);
+  });
+
+  it('카드가 부족하면 합성 실패한다', () => {
+    const save = { cards: { 'kim-doyun': { level: 1, xp: 0, count: 2 } }, centerXP: 0, centerLevel: 1 };
+    const result = synthesizeCard(save, 'kim-doyun');
+    expect(result.ok).toBe(false);
+  });
+
+  it('레벨에 따라 합성 비용이 증가한다', () => {
+    expect(getSynthesisCost(1)).toBe(3);
+    expect(getSynthesisCost(2)).toBe(3);
+    expect(getSynthesisCost(3)).toBe(4);
+    expect(getSynthesisCost(4)).toBe(4);
+    expect(getSynthesisCost(5)).toBe(5);
+  });
+
+  it('합성 후 XP가 리셋되고 센터 XP가 증가한다', () => {
+    const save = { cards: { 'kim-doyun': { level: 1, xp: 50, count: 3 } }, centerXP: 0, centerLevel: 1 };
+    synthesizeCard(save, 'kim-doyun');
+    expect(save.cards['kim-doyun'].xp).toBe(0);
+    expect(save.centerXP).toBeGreaterThan(0);
+  });
+
+  it('일괄 합성이 가능한 모든 카드를 합성한다', () => {
+    const save = {
+      cards: {
+        'kim-doyun': { level: 1, xp: 0, count: 6 },
+        'choi-minseo': { level: 1, xp: 0, count: 3 },
+        'kwon-jihye': { level: 1, xp: 0, count: 1 },
+      },
+      centerXP: 0, centerLevel: 1,
+    };
+    const results = [];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      Object.keys(save.cards).forEach(id => {
+        const d = save.cards[id];
+        if (d.count >= getSynthesisCost(d.level)) {
+          const r = synthesizeCard(save, id);
+          if (r.ok) { results.push({ id, newLevel: r.newLevel }); changed = true; }
+        }
+      });
+    }
+    expect(results.length).toBe(3);
+    expect(save.cards['kim-doyun'].level).toBe(3);
+    expect(save.cards['choi-minseo'].level).toBe(2);
+    expect(save.cards['kwon-jihye'].level).toBe(1);
+  });
+
+  it('synthCount가 합성 횟수를 추적한다', () => {
+    const save = { cards: { 'kim-doyun': { level: 1, xp: 0, count: 3 } }, centerXP: 0, centerLevel: 1 };
+    synthesizeCard(save, 'kim-doyun');
+    expect(save.synthCount).toBe(1);
   });
 });

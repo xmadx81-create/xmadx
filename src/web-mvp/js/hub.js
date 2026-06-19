@@ -64,6 +64,7 @@ function getFilteredGallery() {
 function refreshGallery() {
   renderGalleryCards(document.getElementById('card-gallery'), getFilteredGallery());
   updateCollectionProgress();
+  renderSynthSection();
 }
 
 function updateCollectionProgress() {
@@ -104,6 +105,126 @@ function doRecruitUI(count) {
   ).join('');
   resultEl.style.display = '';
   refreshGallery();
+}
+
+function renderSynthSection() {
+  const el = document.getElementById('synth-section');
+  if (!el) return;
+  const synthable = CHARACTERS.filter(c => {
+    const d = gameSave.cards[c.id];
+    if (!d || d.count <= 0) return false;
+    return d.count >= getSynthesisCost(d.level);
+  });
+  const allOwned = CHARACTERS.filter(c => {
+    const d = gameSave.cards[c.id];
+    return d && d.count > 0;
+  });
+  const rarityKo = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
+  const rarityIcon = { common: '⚪', uncommon: '🔵', rare: '💎', legendary: '👑' };
+
+  el.innerHTML = `
+    <div class="synth-header">
+      <span class="synth-title">⚗️ 카드 합성</span>
+      <button class="synth-bulk-btn" id="btn-synth-bulk" ${synthable.length === 0 ? 'disabled' : ''}>
+        일괄 합성 (${synthable.length}장)
+      </button>
+    </div>
+    ${synthable.length === 0
+      ? '<div class="synth-empty">합성 가능한 카드가 없습니다. 같은 카드를 여러 장 모으세요!</div>'
+      : `<div class="synth-grid">${synthable.map(c => {
+          const d = gameSave.cards[c.id];
+          const cost = getSynthesisCost(d.level);
+          return `<div class="synth-card" data-synth="${c.id}">
+            <div class="synth-card-top rarity-border-${c.rarity}">
+              <span class="synth-card-icon">${rarityIcon[c.rarity]}</span>
+              <span class="synth-card-name">${c.name}</span>
+            </div>
+            <div class="synth-card-info">
+              <span>Lv.${d.level} → Lv.${d.level + 1}</span>
+              <span class="synth-card-cost">${d.count}/${cost}장</span>
+            </div>
+            <button class="synth-card-btn" data-synth-id="${c.id}">합성</button>
+          </div>`;
+        }).join('')}</div>`
+    }
+    ${allOwned.length > 0 && synthable.length < allOwned.length ? `<details class="synth-all-details">
+      <summary>보유 카드 합성 현황 (${allOwned.length}종)</summary>
+      <div class="synth-status-grid">${allOwned.map(c => {
+        const d = gameSave.cards[c.id];
+        const cost = getSynthesisCost(d.level);
+        const ready = d.count >= cost;
+        return `<div class="synth-status-row ${ready ? 'synth-ready' : ''}">
+          <span>${rarityIcon[c.rarity]} ${c.name}</span>
+          <span>Lv.${d.level} · ${d.count}/${cost}장</span>
+        </div>`;
+      }).join('')}</div>
+    </details>` : ''}
+  `;
+
+  el.querySelectorAll('.synth-card-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const charId = btn.dataset.synthId;
+      const result = synthesizeCard(gameSave, charId);
+      if (result.ok) {
+        saveGame(gameSave);
+        sfxLevelUp();
+        const charName = CHARACTERS.find(c => c.id === charId)?.name || charId;
+        showSynthToast(charName, result.newLevel);
+        refreshGallery();
+      }
+    });
+  });
+
+  document.getElementById('btn-synth-bulk')?.addEventListener('click', () => {
+    const results = bulkSynthesize();
+    if (results.length > 0) {
+      saveGame(gameSave);
+      sfxLevelUp();
+      showBulkSynthResult(results);
+      refreshGallery();
+    }
+  });
+}
+
+function bulkSynthesize() {
+  const results = [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    CHARACTERS.forEach(c => {
+      const d = gameSave.cards[c.id];
+      if (!d || d.count <= 0) return;
+      if (d.count >= getSynthesisCost(d.level)) {
+        const r = synthesizeCard(gameSave, c.id);
+        if (r.ok) {
+          results.push({ name: c.name, id: c.id, newLevel: r.newLevel, cost: r.cost });
+          changed = true;
+        }
+      }
+    });
+  }
+  return results;
+}
+
+function showSynthToast(name, newLevel) {
+  const toast = document.createElement('div');
+  toast.className = 'milestone-toast kill-streak';
+  toast.textContent = `⬆ ${name} → Lv.${newLevel}!`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 1800);
+}
+
+function showBulkSynthResult(results) {
+  const toast = document.createElement('div');
+  toast.className = 'synth-bulk-result';
+  toast.innerHTML = `
+    <div class="synth-bulk-header">⚗️ 일괄 합성 완료! (${results.length}건)</div>
+    <div class="synth-bulk-list">${results.map(r =>
+      `<div class="synth-bulk-item">⬆ ${r.name} → Lv.${r.newLevel}</div>`
+    ).join('')}</div>
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
 }
 
 function initGallery() {
