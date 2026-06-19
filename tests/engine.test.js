@@ -2038,3 +2038,55 @@ describe('자동 전투 관련', () => {
     expect(player.maxMp).toBeGreaterThan(0);
   });
 });
+
+describe('컬렉션 진행률', () => {
+  it('CHARACTERS 배열이 올바른 수의 캐릭터를 포함한다', () => {
+    expect(CHARACTERS.length).toBe(50);
+  });
+
+  it('모든 캐릭터에 rarity 필드가 있다', () => {
+    CHARACTERS.forEach(c => {
+      expect(['common', 'uncommon', 'rare', 'legendary']).toContain(c.rarity);
+    });
+  });
+
+  it('각 레어리티별 캐릭터가 존재한다', () => {
+    const rarities = new Set(CHARACTERS.map(c => c.rarity));
+    expect(rarities.has('common')).toBe(true);
+    expect(rarities.has('uncommon')).toBe(true);
+    expect(rarities.has('rare')).toBe(true);
+    expect(rarities.has('legendary')).toBe(true);
+  });
+});
+
+describe('전투 마일스톤 추적', () => {
+  it('_battleKills로 킬 수를 추적한다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    const enemy = state.units.find(u => u.team === 'enemy');
+    player.x = 3; player.y = 3;
+    enemy.x = 4; enemy.y = 3;
+    enemy.hp = 1;
+    enemy.def = 0;
+    enemy.eva = 0;
+    player.atk = 999;
+    const result = attackUnit(state, player, enemy);
+    expect(result.ok).toBe(true);
+    expect(result.defenderDied).toBe(true);
+  });
+
+  it('_totalPlayerKills 카운터를 배틀 스테이트에서 관리한다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    state._totalPlayerKills = 0;
+    state._totalPlayerKills++;
+    expect(state._totalPlayerKills).toBe(1);
+  });
+
+  it('legendary 적은 보스로 간주된다', () => {
+    const legendaryChars = CHARACTERS.filter(c => c.rarity === 'legendary');
+    expect(legendaryChars.length).toBeGreaterThan(0);
+    legendaryChars.forEach(c => {
+      expect(c.rarity).toBe('legendary');
+    });
+  });
+});

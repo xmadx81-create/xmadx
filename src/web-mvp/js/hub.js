@@ -63,6 +63,23 @@ function getFilteredGallery() {
 
 function refreshGallery() {
   renderGalleryCards(document.getElementById('card-gallery'), getFilteredGallery());
+  updateCollectionProgress();
+}
+
+function updateCollectionProgress() {
+  const el = document.getElementById('collection-progress');
+  if (!el) return;
+  const total = CHARACTERS.length;
+  const owned = CHARACTERS.filter(c => gameSave.cards[c.id]?.count > 0).length;
+  const pct = Math.round(owned / total * 100);
+  const rarityCount = { legendary: 0, rare: 0, uncommon: 0, common: 0 };
+  CHARACTERS.forEach(c => { if (gameSave.cards[c.id]?.count > 0) rarityCount[c.rarity]++; });
+  el.innerHTML = `
+    <div class="coll-bar"><div class="coll-fill" style="width:${pct}%"></div></div>
+    <div class="coll-text">
+      <span>보유 <strong>${owned}/${total}</strong> (${pct}%)</span>
+      <span class="coll-rarity">👑${rarityCount.legendary} 💎${rarityCount.rare} 🔵${rarityCount.uncommon} ⚪${rarityCount.common}</span>
+    </div>`;
 }
 
 function updateRecruitUI() {
@@ -1193,7 +1210,15 @@ function showPhaseBanner(text, type) {
 
 // ── Render Battle Grid ──
 
+let _renderBattleRaf = null;
 function renderBattle() {
+  if (_renderBattleRaf) return;
+  _renderBattleRaf = requestAnimationFrame(() => {
+    _renderBattleRaf = null;
+    _renderBattleImpl();
+  });
+}
+function _renderBattleImpl() {
   if (!battleState) return;
   const { map, units } = battleState;
   const grid = document.getElementById('battle-grid');
@@ -1639,7 +1664,10 @@ function executeSkillOnTarget(attacker, target) {
   const enemiesBefore = battleState.units.filter(u => u.team !== attacker.team && u.hp > 0).length;
   const result = activateSense(battleState, attacker, target);
   if (result.ok) {
-    showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
+    const cat = SENSE_TYPES[attacker.senseSkill.baseType]?.category;
+    showSkillOverlay(attacker.senseSkill.name, cat);
+    const skillTile = document.querySelector(`.tile[data-x="${attacker.x}"][data-y="${attacker.y}"]`);
+    if (skillTile) showSkillParticles(skillTile, cat || '촉');
     appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
     result.effects.forEach(e => appendLog(`  → ${e}`));
     trackQuest('skill');
@@ -1886,7 +1914,10 @@ async function doSkillAttack(attacker, defender) {
     });
   }
 
-  showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
+  const cat2 = SENSE_TYPES[attacker.senseSkill.baseType]?.category;
+  showSkillOverlay(attacker.senseSkill.name, cat2);
+  const skillTile2 = document.querySelector(`.tile[data-x="${attacker.x}"][data-y="${attacker.y}"]`);
+  if (skillTile2) showSkillParticles(skillTile2, cat2 || '촉');
   sfxBuff();
   appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
@@ -1910,6 +1941,8 @@ async function doUltimate(unit, ultIndex) {
   if (!result.ok) return;
 
   showSkillOverlay(result.name, 'ult');
+  const ultTile = document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`);
+  if (ultTile) showSkillParticles(ultTile, 'ult');
   appendLog(`🌟 ${unit.name}의 궁극기 「${result.name}」!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
   trackQuest('ultimate');
@@ -2011,6 +2044,7 @@ async function doAttack(attacker, defender) {
     saveGame(gameSave);
     if (defTile) showDeathEffect(defTile);
     sfxDeath();
+    checkCombatMilestone(attacker, defender, result);
   }
   if (result.attackerDied) {
     appendLog(`  💀 ${attacker.name} 전사!`);
@@ -2153,6 +2187,47 @@ function showSkillOverlay(name, category) {
   overlay.offsetHeight;
   overlay.style.animation = '';
   setTimeout(() => { overlay.style.display = 'none'; }, 1200 / battleSpeed);
+}
+
+function showSkillParticles(tileEl, category) {
+  const colors = category === '촉' ? ['#60a5fa', '#93c5fd', '#3b82f6'] :
+                 category === 'ult' ? ['#fbbf24', '#f59e0b', '#fcd34d'] :
+                 ['#ef4444', '#f87171', '#dc2626'];
+  for (let i = 0; i < 8; i++) {
+    const p = document.createElement('div');
+    p.className = 'skill-particle';
+    p.style.setProperty('--angle', `${i * 45 + Math.random() * 20}deg`);
+    p.style.setProperty('--dist', `${15 + Math.random() * 20}px`);
+    p.style.setProperty('--color', colors[Math.floor(Math.random() * colors.length)]);
+    p.style.setProperty('--delay', `${Math.random() * 0.15}s`);
+    tileEl.appendChild(p);
+    setTimeout(() => p.remove(), 800 / battleSpeed);
+  }
+}
+
+function showMilestoneToast(text, type) {
+  const toast = document.createElement('div');
+  toast.className = `milestone-toast ${type}`;
+  toast.textContent = text;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 1800 / battleSpeed);
+}
+
+function checkCombatMilestone(attacker, defender, result) {
+  if (attacker.team !== 'player' || !result.defenderDied) return;
+  const totalKills = getLivingUnits(battleState, 'enemy')
+    .length === 0 ? battleState._totalPlayerKills : undefined;
+  battleState._totalPlayerKills = (battleState._totalPlayerKills || 0) + 1;
+  if (battleState._totalPlayerKills === 1) {
+    showMilestoneToast('⚡ First Blood!', 'first-blood');
+  }
+  const char = CHARACTERS.find(c => c.id === defender.charId);
+  if (char && char.rarity === 'legendary') {
+    showMilestoneToast(`👑 보스 처치! ${defender.name}`, 'boss-kill');
+  }
+  const streak = attacker._battleKills || 0;
+  if (streak === 3) showMilestoneToast(`🔥 ${attacker.name} 트리플 킬!`, 'kill-streak');
+  else if (streak === 5) showMilestoneToast(`💀 ${attacker.name} 펜타 킬!`, 'kill-streak');
 }
 
 function showLootDrop(loot) {
