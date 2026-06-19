@@ -1131,6 +1131,19 @@ export function generateTowerStage(wave) {
   };
 }
 
+export function getTowerRewards(wave) {
+  const cards = [];
+  if (wave >= 20) cards.push('legendary', 'rare', 'rare', 'uncommon');
+  else if (wave >= 15) cards.push('rare', 'rare', 'uncommon', 'uncommon');
+  else if (wave >= 10) cards.push('rare', 'uncommon', 'uncommon', 'common');
+  else if (wave >= 5) cards.push('uncommon', 'uncommon', 'common', 'common');
+  else if (wave >= 3) cards.push('uncommon', 'common', 'common');
+  else cards.push('common', 'common');
+  const tickets = wave >= 10 ? 3 : wave >= 5 ? 2 : 1;
+  const milestone = (wave === 5 || wave === 10 || wave === 15 || wave === 20) ? wave : null;
+  return { cards, tickets, milestone };
+}
+
 export function createBattleState(stageId, playerCharIds, centerBuff, teamSynergyMult) {
   const stage = STAGES.find(s => s.id === stageId);
   if (!stage) throw new Error(`Stage not found: ${stageId}`);

@@ -6394,6 +6394,52 @@ body {
   100% { opacity: 0; transform: translateX(-50%) translateY(-30px); }
 }
 
+/* ── Nav Badge ── */
+.nav-btn { position: relative; }
+.nav-badge {
+  position: absolute; top: 2px; right: 2px;
+  min-width: 16px; height: 16px; line-height: 16px;
+  font-size: 10px; font-weight: 700; text-align: center;
+  background: #dc2626; color: #fff; border-radius: 8px;
+  padding: 0 4px; display: none;
+  animation: badgePulse 2s ease-in-out infinite;
+}
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* ── Tower Milestone ── */
+.tower-milestone {
+  text-align: center; font-weight: 700; font-size: 1.1rem;
+  color: var(--accent-gold); padding: 0.6rem;
+  background: rgba(251,191,36,0.1); border: 1px solid var(--accent-gold);
+  border-radius: 8px; margin: 0.5rem 0;
+  animation: milestonePopIn 0.5s ease-out;
+}
+
+/* ── Character Stats Grid ── */
+.char-stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.3rem; margin-top: 0.3rem;
+}
+.char-stat-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;
+  background: var(--bg-card); color: var(--text-primary);
+}
+.char-stat-name { font-weight: 600; }
+.char-stat-info { color: var(--text-secondary); font-size: 0.75rem; }
+
+/* ── Stats Details ── */
+.stats-details { margin-bottom: 0.6rem; }
+.stats-details summary {
+  cursor: pointer; font-weight: 700; font-size: 0.9rem;
+  color: var(--text-primary); padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.stats-details summary:hover { color: var(--accent-gold); }
+
 /* ── Synthesis Section ── */
 .synth-section {
   background: var(--bg-card); border: 1px solid var(--border);
@@ -6573,7 +6619,9 @@ body {
   .rarity-legendary-glow,
   .tile.enemy-acting,
   .skill-particle,
-  .milestone-toast {
+  .milestone-toast,
+  .nav-badge,
+  .tower-milestone {
     animation: none;
   }
 }

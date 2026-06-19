@@ -12,6 +12,7 @@ import {
   isStunned,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
+  getTowerRewards,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -65,6 +66,7 @@ function refreshGallery() {
   renderGalleryCards(document.getElementById('card-gallery'), getFilteredGallery());
   updateCollectionProgress();
   renderSynthSection();
+  updateNavBadges();
 }
 
 function updateCollectionProgress() {
@@ -105,6 +107,30 @@ function doRecruitUI(count) {
   ).join('');
   resultEl.style.display = '';
   refreshGallery();
+}
+
+function updateNavBadges() {
+  const synthCount = CHARACTERS.filter(c => {
+    const d = gameSave.cards[c.id];
+    return d && d.count >= getSynthesisCost(d.level);
+  }).length;
+  const hasTickets = (gameSave.recruitTickets || 0) > 0;
+  const galleryBadge = document.getElementById('badge-gallery');
+  if (galleryBadge) {
+    const total = synthCount + (hasTickets ? 1 : 0);
+    galleryBadge.textContent = total > 0 ? total : '';
+    galleryBadge.style.display = total > 0 ? '' : 'none';
+  }
+
+  const quests = getQuestSummary(gameSave);
+  const completedQuests = [...(quests.daily || []), ...(quests.weekly || [])].filter(q => q.completed).length;
+  const newAch = ACHIEVEMENTS.filter(a => !gameSave.achievements[a.id] && a.check(gameSave)).length;
+  const statsBadge = document.getElementById('badge-stats');
+  if (statsBadge) {
+    const total = completedQuests + newAch;
+    statsBadge.textContent = total > 0 ? total : '';
+    statsBadge.style.display = total > 0 ? '' : 'none';
+  }
 }
 
 function renderSynthSection() {
@@ -2828,15 +2854,25 @@ function handleBattleEnd(result) {
     sfxWin();
 
     const rewardCards = [];
+    let ticketReward = 1;
     const randomChar = () => CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
-    if (battleState.hardMode) {
+    if (towerMode) {
+      const tRewards = getTowerRewards(towerWave);
+      tRewards.cards.forEach(r => rewardCards.push({ char: randomChar(), rarity: r }));
+      ticketReward = tRewards.tickets;
+      if (tRewards.milestone) {
+        text.innerHTML += `<div class="tower-milestone">🏅 ${tRewards.milestone}층 마일스톤 달성!</div>`;
+      }
+    } else if (battleState.hardMode) {
       rewardCards.push({ char: randomChar(), rarity: 'legendary' });
       rewardCards.push({ char: randomChar(), rarity: 'rare' });
       rewardCards.push({ char: randomChar(), rarity: 'rare' });
+      ticketReward = 3;
     } else if (stars === 3) {
       rewardCards.push({ char: randomChar(), rarity: 'rare' });
       rewardCards.push({ char: randomChar(), rarity: 'uncommon' });
       rewardCards.push({ char: randomChar(), rarity: 'common' });
+      ticketReward = 2;
     } else if (stars === 2) {
       rewardCards.push({ char: randomChar(), rarity: 'uncommon' });
       rewardCards.push({ char: randomChar(), rarity: 'common' });
@@ -2848,7 +2884,6 @@ function handleBattleEnd(result) {
       const rarityKoShort = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
       return `<span class="reward-card reward-${r.rarity}">${r.char.name} (${rarityKoShort[r.rarity]})</span>`;
     }).join('');
-    const ticketReward = battleState.hardMode ? 3 : stars === 3 ? 2 : 1;
     gameSave.recruitTickets = (gameSave.recruitTickets || 0) + ticketReward;
     text.innerHTML += `<div class="result-rewards"><div class="reward-title">🎁 보상 카드</div>${rewardHtml}<span class="reward-card reward-uncommon">🎫 모집권 ×${ticketReward}</span></div>`;
 
@@ -3096,15 +3131,42 @@ function renderStats() {
       }).join('')
     : '';
 
+  const ownedChars = CHARACTERS.filter(c => gameSave.cards[c.id]?.count > 0);
+  const rarityIcon = { legendary: '👑', rare: '💎', uncommon: '🔵', common: '⚪' };
+  const charHtml = ownedChars.length > 0
+    ? ownedChars.sort((a, b) => {
+        const ro = { legendary: 0, rare: 1, uncommon: 2, common: 3 };
+        return (ro[a.rarity] ?? 9) - (ro[b.rarity] ?? 9);
+      }).map(c => {
+        const d = gameSave.cards[c.id];
+        const cost = getSynthesisCost(d.level);
+        return `<div class="char-stat-row">
+          <span class="char-stat-name">${rarityIcon[c.rarity]} ${c.name}</span>
+          <span class="char-stat-info">Lv.${d.level} · ×${d.count} · ${d.count >= cost ? '✅합성가능' : `${d.count}/${cost}`}</span>
+        </div>`;
+      }).join('')
+    : '<div class="quest-item"><span class="quest-name" style="opacity:0.5">보유 카드 없음</span></div>';
+
   document.getElementById('stats-history').innerHTML = `
-    <h4>📦 인벤토리 (${inv.length})</h4>
-    ${invHtml}
-    ${hardCount > 0 ? `<h4>🔥 하드 클리어 (${hardCount})</h4>${hardHtml}` : ''}
-    ${renderQuestList(quests.daily, '📋 일일 퀘스트')}
-    ${renderQuestList(quests.weekly, '📅 주간 퀘스트')}
-    ${quests.monthly ? renderQuestList([quests.monthly], '🏆 월간 퀘스트') : ''}
-    <h4>🏆 업적 (${Object.keys(gameSave.achievements).length}/${ACHIEVEMENTS.length})</h4>
-    ${achHtml}
+    <details class="stats-details" open>
+      <summary>🃏 보유 캐릭터 (${ownedChars.length}/${CHARACTERS.length})</summary>
+      <div class="char-stat-grid">${charHtml}</div>
+    </details>
+    <details class="stats-details">
+      <summary>📦 인벤토리 (${inv.length})</summary>
+      ${invHtml}
+    </details>
+    ${hardCount > 0 ? `<details class="stats-details"><summary>🔥 하드 클리어 (${hardCount})</summary>${hardHtml}</details>` : ''}
+    <details class="stats-details" open>
+      <summary>📋 퀘스트</summary>
+      ${renderQuestList(quests.daily, '일일')}
+      ${renderQuestList(quests.weekly, '주간')}
+      ${quests.monthly ? renderQuestList([quests.monthly], '월간') : ''}
+    </details>
+    <details class="stats-details">
+      <summary>🏆 업적 (${Object.keys(gameSave.achievements).length}/${ACHIEVEMENTS.length})</summary>
+      ${achHtml}
+    </details>
   `;
 }
 
