@@ -289,22 +289,26 @@ function initGallery() {
 
 function portraitSrc(base) { return `${base}.png`; }
 
+const ROLE_ICON = { tank: '🛡', melee_dps: '⚔', ranged_dps: '🏹', support: '💚', battle_support: '⚡', breaker: '💥', evasive_dps: '🌀', bruiser: '🔨' };
+
 function renderGalleryCards(container, cards) {
   container.innerHTML = cards.map(card => {
     const cardData = gameSave.cards[card.id];
     const owned = cardData && cardData.count > 0;
     const lvDisplay = cardData && cardData.level > 1 ? `Lv.${cardData.level}` : '';
     const xpPct = cardData ? Math.round((cardData.xp || 0) / (cardData.level * 50) * 100) : 0;
+    const roleIco = ROLE_ICON[card.role] || '?';
     return `
     <div class="card ${owned ? 'card-owned' : ''}" data-rarity="${card.rarity}" data-id="${card.id}">
       <div class="card-portrait">
         <img src="${portraitSrc(card.portrait)}" alt="${card.name}"
              onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none';this.nextElementSibling.style.display='flex'}" />
         <div class="placeholder" style="display:none">${card.name[0]}</div>
+        <div class="card-rarity-dot r-${card.rarity}"></div>
         ${lvDisplay ? `<div class="card-lv-badge">${lvDisplay}</div>` : ''}
+        <div class="card-role-icon">${roleIco}</div>
       </div>
       <div class="card-info">
-        <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
         <div class="card-name">${card.name}</div>
         <div class="card-title">${card.title}</div>
         ${owned ? `<div class="card-xp-bar"><div class="card-xp-fill" style="width:${xpPct}%"></div></div>` : ''}
