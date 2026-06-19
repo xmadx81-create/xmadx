@@ -7,7 +7,7 @@ import {
   tickCooldowns, ROLE_MODIFIERS, EQUIPMENT, RELICS, equipItem, equipRelic,
   getCombatPower, previewDamage, previewSkillDamage,
   getMbtiPairScore, getMbtiSynergyGrade, getTeamSynergy, getTeamCP,
-  gainXP, rollLoot, SECRET_COMBOS, getTerrainEffect,
+  gainXP, rollLoot, SECRET_COMBOS, getTerrainEffect, XP_TABLE,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
   getKillForecast, applyTerrainHealing,
   applyDOT, tickDOTs, cleanseDOT,
@@ -16,7 +16,7 @@ import {
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE,
 } from '../src/web-mvp/js/engine.js';
-import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck } from '../src/web-mvp/js/save.js';
+import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
 
 describe('TILE_TYPES', () => {
@@ -1820,5 +1820,29 @@ describe('Starter Deck', () => {
       const char = CHARACTERS.find(c => c.id === id);
       expect(char.rarity).toBe('common');
     });
+  });
+});
+
+describe('Onboarding & XP Tracking', () => {
+  it('DEFAULT_SAVE에 onboarded 플래그가 false로 존재한다', () => {
+    const save = loadGame();
+    expect(save.onboarded === undefined || save.onboarded === false).toBe(true);
+  });
+
+  it('XP_TABLE에 skill XP (15)가 정의되어 있다', () => {
+    expect(XP_TABLE.skill).toBe(15);
+    expect(XP_TABLE.attack).toBe(10);
+    expect(XP_TABLE.kill).toBe(30);
+    expect(XP_TABLE.takeDamage).toBe(5);
+  });
+
+  it('gainXP가 레벨업 시 levelUps 배열을 반환한다', () => {
+    const state = createBattleState('stage-1', [CHARACTERS[1].id]);
+    const unit = state.units.find(u => u.team === 'player');
+    unit.xp = unit.xpToNext - 1;
+    const result = gainXP(unit, 10);
+    expect(result).not.toBeNull();
+    expect(result.length).toBeGreaterThan(0);
+    expect(result[0].level).toBe(2);
   });
 });

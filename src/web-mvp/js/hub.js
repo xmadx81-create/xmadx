@@ -912,9 +912,43 @@ function startBattle() {
   const speedBtn = document.getElementById('btn-speed');
   if (speedBtn) { speedBtn.textContent = `${battleSpeed}×`; speedBtn.classList.toggle('active', battleSpeed > 1); }
 
-  showStory(battleState.stage.storyIntro, () => {
+  const afterIntro = () => {
     showPhaseBanner('아군 턴', 'player');
     renderBattle();
+  };
+
+  if (!gameSave.onboarded) {
+    gameSave.onboarded = true;
+    saveGame(gameSave);
+    showOnboarding(() => showStory(battleState.stage.storyIntro, afterIntro));
+  } else {
+    showStory(battleState.stage.storyIntro, afterIntro);
+  }
+}
+
+// ── Onboarding ──
+
+function showOnboarding(callback) {
+  const overlay = document.createElement('div');
+  overlay.className = 'onboarding-overlay';
+  overlay.innerHTML = `
+    <div class="onboarding-box">
+      <h3>🎴 첫 전투 안내</h3>
+      <div class="onboarding-tips">
+        <div class="ob-tip"><span class="ob-icon">👆</span><span>아군 유닛을 터치하여 <strong>이동·공격·스킬</strong>을 선택하세요</span></div>
+        <div class="ob-tip"><span class="ob-icon">⚔️</span><span>적에게 인접하면 <strong>기본 공격</strong>, MP가 있으면 <strong>스킬</strong>을 쓸 수 있습니다</span></div>
+        <div class="ob-tip"><span class="ob-icon">🔄</span><span>모든 유닛이 행동하면 <strong>턴 종료</strong>를 눌러 적 턴으로 넘기세요</span></div>
+        <div class="ob-tip"><span class="ob-icon">🏆</span><span>적을 모두 처치하면 <strong>승리</strong>! 별 3개를 노려보세요</span></div>
+      </div>
+      <button class="ob-start-btn">전투 시작!</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('active'));
+  overlay.querySelector('.ob-start-btn').addEventListener('click', () => {
+    overlay.classList.remove('active');
+    setTimeout(() => overlay.remove(), 300);
+    if (callback) callback();
   });
 }
 
@@ -1615,6 +1649,16 @@ async function doSkillAttack(attacker, defender) {
   const result = activateSense(battleState, attacker, target);
   if (!result.ok) return;
 
+  const skillXPups = gainXP(attacker, 15);
+  attacker._battleXP = (attacker._battleXP || 0) + 15;
+  if (skillXPups) {
+    skillXPups.forEach(lv => {
+      showLevelUp(attacker.name, lv);
+      appendLog(`⬆ ${attacker.name} Lv.${lv.level} 달성! (ATK+2 DEF+1 HP+${lv.hpGain})`);
+      sfxLevelUp();
+    });
+  }
+
   showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
   appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
@@ -1642,10 +1686,21 @@ async function doUltimate(unit, ultIndex) {
   result.effects.forEach(e => appendLog(`  → ${e}`));
   progressQuest(gameSave, 'ultimate');
 
+  const ultXPups = gainXP(unit, 15);
+  unit._battleXP = (unit._battleXP || 0) + 15;
+  if (ultXPups) {
+    ultXPups.forEach(lv => {
+      showLevelUp(unit.name, lv);
+      appendLog(`⬆ ${unit.name} Lv.${lv.level} 달성! (ATK+2 DEF+1 HP+${lv.hpGain})`);
+      sfxLevelUp();
+    });
+  }
+
   const enemiesAfter = battleState.units.filter(u => u.team !== unit.team && u.hp > 0).length;
   const kills = enemiesBefore - enemiesAfter;
   if (kills > 0 && unit.team === 'player') {
     gameSave.stats.totalKills += kills;
+    unit._battleKills = (unit._battleKills || 0) + kills;
     for (let i = 0; i < kills; i++) progressQuest(gameSave, 'kill');
   }
   saveGame(gameSave);
@@ -1736,13 +1791,22 @@ async function doAttack(attacker, defender) {
   // XP & Level Up
   if (result.xpGains) {
     result.xpGains.forEach(g => {
+      const u = getUnitByUid(battleState, g.unit);
       g.levelUps.forEach(lv => {
-        const u = getUnitByUid(battleState, g.unit);
         if (u) showLevelUp(u.name, lv);
         appendLog(`⬆ ${u?.name || '?'} Lv.${lv.level} 달성! (ATK+2 DEF+1 HP+${lv.hpGain})`);
         sfxLevelUp();
       });
     });
+  }
+  if (!result.evaded && result.damage > 0) {
+    attacker._battleXP = (attacker._battleXP || 0) + 10;
+  }
+  if (result.defenderDied) {
+    attacker._battleXP = (attacker._battleXP || 0) + 30;
+  }
+  if (result.counterDamage > 0) {
+    defender._battleXP = (defender._battleXP || 0) + 5;
   }
 
   // Loot drop → save to inventory
@@ -1750,6 +1814,8 @@ async function doAttack(attacker, defender) {
     showLootDrop(result.loot);
     appendLog(`🎁 드롭: ${result.loot.name}`);
     gameSave.inventory.push(result.loot);
+    if (!battleState._battleLoot) battleState._battleLoot = [];
+    battleState._battleLoot.push(result.loot);
     saveGame(gameSave);
   }
 
@@ -2198,21 +2264,24 @@ function handleBattleEnd(result) {
 
     const mvp = [...playerUnits].sort((a, b) => (b._battleKills || 0) - (a._battleKills || 0))[0];
     const unitSummary = playerUnits.map(u => {
-      const lvInfo = u.level > 1 ? ` Lv.${u.level}` : '';
+      const lvInfo = ` Lv.${u.level}`;
       const hpPct = u.hp > 0 ? Math.round(u.hp / u.maxHp * 100) : 0;
       const hpBar = u.hp > 0 ? `<div class="result-hp-bar"><div class="result-hp-fill" style="width:${hpPct}%"></div></div>` : '';
       const status = u.hp > 0 ? `${u.hp}/${u.maxHp}` : '전사';
       const kills = u._battleKills || 0;
+      const xpEarned = u._battleXP || 0;
       const isMvp = u.uid === mvp?.uid && kills > 0;
+      const xpPct = Math.min(100, Math.round(u.xp / u.xpToNext * 100));
       return `<div class="result-unit ${u.hp <= 0 ? 'result-dead' : ''} ${isMvp ? 'result-mvp' : ''}">
         <div class="result-unit-left">
           <div class="result-unit-portrait"><img src="${portraitSrc(`assets/portraits/${u.id}`)}" onerror="this.parentElement.textContent='${u.name[0]}'" /></div>
           <div>
             <div class="result-unit-name">${isMvp ? '👑 ' : ''}${u.name}${lvInfo}</div>
-            <div class="result-unit-status">${status}${kills > 0 ? ` · ${kills}킬` : ''}</div>
+            <div class="result-unit-status">${status}${kills > 0 ? ` · ${kills}킬` : ''}${xpEarned > 0 ? ` · +${xpEarned}XP` : ''}</div>
           </div>
         </div>
         ${hpBar}
+        ${xpEarned > 0 ? `<div class="result-xp-bar"><div class="result-xp-fill" style="width:${xpPct}%"></div><span class="result-xp-label">${u.xp}/${u.xpToNext}</span></div>` : ''}
       </div>`;
     }).join('');
 
@@ -2252,7 +2321,16 @@ function handleBattleEnd(result) {
       const rarityKoShort = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
       return `<span class="reward-card reward-${r.rarity}">${r.char.name} (${rarityKoShort[r.rarity]})</span>`;
     }).join('');
-    text.innerHTML += `<div class="result-rewards"><div class="reward-title">🎁 보상</div>${rewardHtml}</div>`;
+    text.innerHTML += `<div class="result-rewards"><div class="reward-title">🎁 보상 카드</div>${rewardHtml}</div>`;
+
+    if (battleState._battleLoot && battleState._battleLoot.length > 0) {
+      const itemIcon = { heal: '🧪', mp: '💧', atkBuff: '⚔️', defBuff: '🛡️', crtBuff: '🎯', xp: '💎' };
+      const lootHtml = battleState._battleLoot.map(l => {
+        const icon = itemIcon[Object.keys(l.effect)[0]] || '📦';
+        return `<span class="reward-card reward-uncommon">${icon} ${l.name}</span>`;
+      }).join('');
+      text.innerHTML += `<div class="result-rewards"><div class="reward-title">📦 획득 아이템</div>${lootHtml}</div>`;
+    }
 
     if (battleState.stageId === 'stage-4') progressQuest(gameSave, 'clear_stage4');
   } else {

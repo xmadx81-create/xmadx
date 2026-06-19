@@ -5244,6 +5244,18 @@ body {
 }
 .result-unit-name { color: #eee; font-weight: 600; }
 .result-unit-status { color: #aaa; font-size: 0.7rem; }
+.result-xp-bar {
+  height: 4px; background: rgba(0,0,0,0.3); border-radius: 2px;
+  overflow: hidden; position: relative; margin-top: 2px;
+}
+.result-xp-fill {
+  height: 100%; background: #e9c46a; border-radius: 2px;
+  transition: width 0.8s ease-out;
+}
+.result-xp-label {
+  position: absolute; right: 2px; top: -10px;
+  font-size: 0.55rem; color: #e9c46a;
+}
 .result-unit.result-mvp {
   background: linear-gradient(135deg, rgba(255, 215, 0, 0.12), rgba(212, 168, 67, 0.08));
   border: 1px solid rgba(255, 215, 0, 0.35);
@@ -6033,6 +6045,34 @@ body {
 }
 
 /* ── Accessibility: Reduce Motion ── */
+/* ── Onboarding Overlay ── */
+.onboarding-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.3s;
+}
+.onboarding-overlay.active { opacity: 1; }
+.onboarding-box {
+  background: var(--bg-secondary); border: 1px solid var(--accent-gold);
+  border-radius: 12px; padding: 24px; max-width: 360px; width: 90%;
+  text-align: center;
+}
+.onboarding-box h3 { color: var(--accent-gold); margin-bottom: 16px; font-size: 1.2rem; }
+.onboarding-tips { text-align: left; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.ob-tip {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 0.85rem; color: var(--text-primary); line-height: 1.4;
+}
+.ob-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+.ob-tip strong { color: var(--accent-gold); }
+.ob-start-btn {
+  background: var(--accent-red); color: #fff; border: none;
+  padding: 10px 28px; border-radius: 8px; font-size: 1rem;
+  font-weight: 700; cursor: pointer; transition: background 0.2s;
+}
+.ob-start-btn:hover { background: #d04558; }
+
 /* ── Unit Level Badge (Battle Tile) ── */
 .unit-lv-badge {
   position: absolute; top: 1px; right: 1px;

@@ -11,6 +11,7 @@ const DEFAULT_SAVE = {
   towerBest: 0,
   lastTeam: [],
   achievements: {},
+  onboarded: false,
 };
 
 const STARTER_DECK = ['kim-doyun', 'choi-minseo', 'kwon-jihye'];
