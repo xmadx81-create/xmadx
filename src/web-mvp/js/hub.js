@@ -746,6 +746,17 @@ function renderPresetButtons(maxUnits) {
       const p = presets[idx];
       if (p) {
         deploySelected = p.ids.filter(id => CHARACTERS.find(c => c.id === id)).slice(0, maxUnits);
+        if (p.gear) {
+          Object.entries(p.gear).forEach(([charId, g]) => {
+            if (!gameSave.cards[charId]) return;
+            if (g.equipment) {
+              if (!gameSave.cards[charId].equipment) gameSave.cards[charId].equipment = {};
+              Object.assign(gameSave.cards[charId].equipment, g.equipment);
+            }
+            if (g.relic !== undefined) gameSave.cards[charId].relic = g.relic;
+          });
+          saveGame(gameSave);
+        }
         renderDeployBench(maxUnits);
         updateDeployUI(maxUnits);
         renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
@@ -767,7 +778,14 @@ function renderPresetButtons(maxUnits) {
     btn.addEventListener('click', () => {
       if (deploySelected.length === 0) return;
       const idx = +btn.dataset.save;
-      presets[idx] = { name: `팀 ${idx + 1}`, ids: [...deploySelected] };
+      const gear = {};
+      deploySelected.forEach(id => {
+        const card = gameSave.cards[id];
+        if (card) {
+          gear[id] = { equipment: card.equipment ? { ...card.equipment } : {}, relic: card.relic || null };
+        }
+      });
+      presets[idx] = { name: `팀 ${idx + 1}`, ids: [...deploySelected], gear };
       saveGame(gameSave);
       renderPresetButtons(maxUnits);
     });
