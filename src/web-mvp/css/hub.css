@@ -2240,11 +2240,29 @@ body {
   border-radius: 3px;
   overflow: hidden;
   position: absolute;
-  bottom: -2px;
+  bottom: 2px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
   border: 1px solid rgba(0,0,0,0.4);
+}
+.unit-mp-bar {
+  width: 38px;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 2px;
+  overflow: hidden;
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+}
+.unit-mp-fill {
+  height: 100%;
+  background: #60a5fa;
+  border-radius: 2px;
+  transition: width 0.2s;
 }
 
 .unit-hp-num {
@@ -3999,6 +4017,46 @@ body {
   border-radius: 3px;
   margin-bottom: 2px;
 }
+
+/* ── Team Presets ── */
+.deploy-presets {
+  margin: 6px 0;
+}
+.preset-header {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 4px;
+}
+.preset-list {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.preset-btn {
+  padding: 4px 8px;
+  font-size: 0.65rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: #ccc;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.preset-btn:hover { background: rgba(255,255,255,0.1); }
+.preset-filled {
+  border-color: rgba(59,130,246,0.4);
+  background: rgba(59,130,246,0.1);
+  color: #93c5fd;
+}
+.preset-name { font-weight: bold; }
+.preset-del {
+  margin-left: 4px;
+  opacity: 0.4;
+  font-weight: bold;
+  cursor: pointer;
+}
+.preset-del:hover { opacity: 1; color: #ef4444; }
 
 /* ── Deploy Actions ── */
 .deploy-actions {

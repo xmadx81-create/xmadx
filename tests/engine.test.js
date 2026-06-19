@@ -2014,3 +2014,27 @@ describe('모집 시스템', () => {
     expect(Object.keys(save.cards).length).toBeGreaterThan(0);
   });
 });
+
+describe('자동 전투 관련', () => {
+  it('유닛이 이동 범위와 공격 대상을 가진다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    const moveRange = getMovementRange(state, player);
+    expect(moveRange.length).toBeGreaterThan(0);
+  });
+
+  it('allPlayerUnitsActed가 모두 행동 시 true를 반환한다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const players = state.units.filter(u => u.team === 'player');
+    expect(allPlayerUnitsActed(state)).toBe(false);
+    players.forEach(u => { u.acted = true; });
+    expect(allPlayerUnitsActed(state)).toBe(true);
+  });
+
+  it('유닛의 MP가 올바르게 초기화된다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const player = state.units.find(u => u.team === 'player');
+    expect(player.mp).toBeGreaterThanOrEqual(0);
+    expect(player.maxMp).toBeGreaterThan(0);
+  });
+});

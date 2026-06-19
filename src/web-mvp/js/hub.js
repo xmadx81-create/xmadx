@@ -30,6 +30,7 @@ let commandTarget = null;
 let dangerZoneActive = false;
 let undoMoveData = null;
 let battleSpeed = 1;
+let autoBattle = false;
 let towerMode = false;
 let towerWave = 0;
 let currentHardMode = false;
@@ -425,6 +426,65 @@ function openDeploy(stageId, hard = false) {
       quickBtn.style.display = 'none';
     }
   }
+
+  renderPresetButtons(maxUnits);
+}
+
+function renderPresetButtons(maxUnits) {
+  const container = document.getElementById('deploy-presets');
+  if (!container) return;
+  gameSave.teamPresets = gameSave.teamPresets || [];
+  const presets = gameSave.teamPresets;
+
+  let html = '<div class="preset-header">📋 프리셋</div><div class="preset-list">';
+  for (let i = 0; i < 5; i++) {
+    const p = presets[i];
+    if (p) {
+      const names = p.ids.map(id => CHARACTERS.find(c => c.id === id)?.name || '?').join(', ');
+      html += `<button class="preset-btn preset-filled" data-idx="${i}" title="${names}">
+        <span class="preset-name">${p.name}</span>
+        <span class="preset-del" data-del="${i}">×</span>
+      </button>`;
+    } else {
+      html += `<button class="preset-btn preset-empty" data-save="${i}">빈 슬롯 ${i + 1}</button>`;
+    }
+  }
+  html += '</div>';
+  container.innerHTML = html;
+
+  container.querySelectorAll('.preset-filled').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      if (e.target.classList.contains('preset-del')) return;
+      const idx = +btn.dataset.idx;
+      const p = presets[idx];
+      if (p) {
+        deploySelected = p.ids.filter(id => CHARACTERS.find(c => c.id === id)).slice(0, maxUnits);
+        renderDeployBench(maxUnits);
+        updateDeployUI(maxUnits);
+        renderDeployRoster(document.querySelector('.roster-filter.active')?.dataset.rf || 'all');
+      }
+    });
+  });
+
+  container.querySelectorAll('.preset-del').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = +btn.dataset.del;
+      presets[idx] = null;
+      saveGame(gameSave);
+      renderPresetButtons(maxUnits);
+    });
+  });
+
+  container.querySelectorAll('.preset-empty').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (deploySelected.length === 0) return;
+      const idx = +btn.dataset.save;
+      presets[idx] = { name: `팀 ${idx + 1}`, ids: [...deploySelected] };
+      saveGame(gameSave);
+      renderPresetButtons(maxUnits);
+    });
+  });
 }
 
 function renderMapPreview(stage) {
@@ -1033,8 +1093,11 @@ function startBattle() {
   playerTurnKills = 0;
   dangerZoneActive = false;
   undoMoveData = null;
+  autoBattle = false;
   battleSpeed = gameSave.settings?.battleSpeed || 1;
   document.getElementById('btn-danger-zone').classList.remove('active');
+  const autoBtn = document.getElementById('btn-auto');
+  if (autoBtn) { autoBtn.textContent = '▶자동'; autoBtn.classList.remove('active'); }
   const speedBtn = document.getElementById('btn-speed');
   if (speedBtn) { speedBtn.textContent = `${battleSpeed}×`; speedBtn.classList.toggle('active', battleSpeed > 1); }
 
@@ -1199,12 +1262,15 @@ function renderBattle() {
         const nameTag = unit.name.length > 4 ? unit.name.slice(0, 4) : unit.name;
         const rarityClass = unit.rarity === 'legendary' ? ' rarity-legendary' : unit.rarity === 'rare' ? ' rarity-rare' : '';
         const lvBadge = `<div class="unit-lv-badge ${unit.team}">${unit.level}</div>`;
+        const mpPct = unit.maxMp > 0 ? Math.round((unit.mp / unit.maxMp) * 100) : 0;
+        const mpBar = unit.maxMp > 0 ? `<div class="unit-mp-bar"><div class="unit-mp-fill" style="width:${mpPct}%"></div></div>` : '';
         unitHtml = `
           <div class="unit ${unit.team}${actedClass}${rarityClass}" data-uid="${unit.uid}">
             <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
             <div class="unit-initial ${unit.team}" style="display:none">${unit.name[0]}</div>
             <div class="unit-hp-bar"><div class="unit-hp-fill${hpColor}" style="width:${hpPct}%"></div>${shieldPct > 0 ? `<div class="unit-shield-fill" style="width:${shieldPct}%;left:${hpPct}%"></div>` : ''}<span class="unit-hp-num">${unit.hp}</span></div>
+            ${mpBar}
             <div class="unit-name-tag ${unit.team}">${nameTag}</div>
             ${lvBadge}
             ${buffIcons}
@@ -2356,7 +2422,11 @@ function endTurn() {
     playerTurnKills = 0;
     showPhaseBanner('아군 턴', 'player');
     renderBattle();
-    checkAutoEndTurn();
+    if (autoBattle) {
+      setTimeout(() => runAutoBattle(), 500 / battleSpeed);
+    } else {
+      checkAutoEndTurn();
+    }
   }, 800 / battleSpeed);
 }
 
@@ -2368,6 +2438,70 @@ function toggleBattleSpeed() {
   gameSave.settings = gameSave.settings || {};
   gameSave.settings.battleSpeed = battleSpeed;
   saveGame(gameSave);
+}
+
+function toggleAutoBattle() {
+  autoBattle = !autoBattle;
+  const btn = document.getElementById('btn-auto');
+  btn.textContent = autoBattle ? '⏸자동' : '▶자동';
+  btn.classList.toggle('active', autoBattle);
+  if (autoBattle && battleState?.phase === 'player_phase') runAutoBattle();
+}
+
+async function runAutoBattle() {
+  if (!autoBattle || !battleState || battleState.phase !== 'player_phase') return;
+  const players = battleState.units.filter(u => u.team === 'player' && u.hp > 0 && !u.acted && !isStunned(u));
+  for (const unit of players) {
+    if (!autoBattle || !battleState || battleState.phase !== 'player_phase') break;
+    const vc = checkVictory(battleState);
+    if (vc) break;
+
+    const moveRange = getMovementRange(battleState, unit);
+    const targets = getAttackTargets(battleState, unit);
+    if (targets.length > 0) {
+      const target = targets.sort((a, b) => a.hp - b.hp)[0];
+      await doAttack(unit, target);
+      renderBattle();
+      await delay(400 / battleSpeed);
+    } else if (moveRange.length > 0) {
+      const enemies = battleState.units.filter(u => u.team === 'enemy' && u.hp > 0);
+      if (enemies.length > 0) {
+        const closestEnemy = enemies.sort((a, b) => {
+          const da = Math.abs(a.x - unit.x) + Math.abs(a.y - unit.y);
+          const db = Math.abs(b.x - unit.x) + Math.abs(b.y - unit.y);
+          return da - db;
+        })[0];
+        const bestTile = moveRange.sort((a, b) => {
+          const da = Math.abs(closestEnemy.x - a.x) + Math.abs(closestEnemy.y - a.y);
+          const db = Math.abs(closestEnemy.x - b.x) + Math.abs(closestEnemy.y - b.y);
+          return da - db;
+        })[0];
+        if (bestTile) {
+          moveUnit(battleState, unit, bestTile.x, bestTile.y);
+          renderBattle();
+          await delay(200 / battleSpeed);
+          const newTargets = getAttackTargets(battleState, unit);
+          if (newTargets.length > 0) {
+            const target = newTargets.sort((a, b) => a.hp - b.hp)[0];
+            await doAttack(unit, target);
+            renderBattle();
+            await delay(400 / battleSpeed);
+          } else {
+            unit.acted = true;
+          }
+        }
+      } else {
+        unit.acted = true;
+      }
+    } else {
+      unit.acted = true;
+    }
+    renderBattle();
+    await delay(200 / battleSpeed);
+  }
+  if (autoBattle && battleState?.phase === 'player_phase' && allPlayerUnitsActed(battleState)) {
+    endTurn();
+  }
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -2583,8 +2717,10 @@ function handleBattleEnd(result) {
   requestAnimationFrame(() => overlay.classList.add('active'));
 
   const retryBtn = document.getElementById('btn-result-retry');
+  const quickRetryBtn = document.getElementById('btn-result-quick-retry');
   const nextWaveBtn = document.getElementById('btn-result-next-wave');
   retryBtn.style.display = result === 'lose' && !towerMode ? '' : 'none';
+  quickRetryBtn.style.display = result === 'lose' && !towerMode && gameSave.lastTeam?.length > 0 ? '' : 'none';
   if (nextWaveBtn) nextWaveBtn.style.display = result === 'win' && towerMode ? '' : 'none';
 
   const exitTower = () => {
@@ -2608,10 +2744,23 @@ function handleBattleEnd(result) {
   retryBtn.onclick = () => {
     closeOverlay();
     const stageId = battleState.stageId;
+    const wasHard = battleState.hardMode;
     battleState = null;
     document.getElementById('battle-screen').style.display = 'none';
     cancelSelection();
-    openDeploy(stageId);
+    openDeploy(stageId, wasHard);
+  };
+  quickRetryBtn.onclick = () => {
+    closeOverlay();
+    const stageId = battleState.stageId;
+    const wasHard = battleState.hardMode;
+    battleState = null;
+    document.getElementById('battle-screen').style.display = 'none';
+    cancelSelection();
+    currentStageId = stageId;
+    currentHardMode = wasHard;
+    deploySelected = [...(gameSave.lastTeam || [])];
+    startBattle();
   };
   if (nextWaveBtn) {
     nextWaveBtn.onclick = () => {
@@ -2861,6 +3010,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-danger-zone').addEventListener('click', toggleDangerZone);
   document.getElementById('btn-unit-list').addEventListener('click', showUnitListPanel);
   document.getElementById('btn-speed').addEventListener('click', toggleBattleSpeed);
+  document.getElementById('btn-auto')?.addEventListener('click', toggleAutoBattle);
   document.getElementById('btn-minimap-toggle')?.addEventListener('click', () => {
     document.getElementById('battle-minimap')?.classList.toggle('collapsed');
   });
