@@ -14,7 +14,7 @@ import {
   applyStun, applySlow, isStunned, tickStatusEffects,
   executeUltimate, useItem, tickBuffs, ULTIMATES,
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
-  PASSIVE_TREE,
+  PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
@@ -1844,5 +1844,52 @@ describe('Onboarding & XP Tracking', () => {
     expect(result).not.toBeNull();
     expect(result.length).toBeGreaterThan(0);
     expect(result[0].level).toBe(2);
+  });
+});
+
+describe('Faction Synergy', () => {
+  it('FACTION_SYNERGY에 3개 팩션의 시너지가 정의되어 있다', () => {
+    expect(FACTION_SYNERGY.center).toBeDefined();
+    expect(FACTION_SYNERGY.kartein).toBeDefined();
+    expect(FACTION_SYNERGY.neutral).toBeDefined();
+    expect(FACTION_SYNERGY.center.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('applyFactionSynergy가 같은 팩션 유닛에만 보너스를 적용한다', () => {
+    const centerChars = CHARACTERS.filter(c => c.faction === 'center');
+    const ids = centerChars.slice(0, 3).map(c => c.id);
+    const state = createBattleState('stage-1', ids);
+    const playerBefore = state.units.filter(u => u.team === 'player').map(u => u.def);
+    expect(state.factionSynergies).toBeDefined();
+    expect(state.factionSynergies.length).toBeGreaterThan(0);
+    expect(state.factionSynergies.some(s => s.includes('센터'))).toBe(true);
+  });
+
+  it('팩션 수가 부족하면 시너지가 발동하지 않는다', () => {
+    const mixed = [
+      CHARACTERS.find(c => c.faction === 'center').id,
+      CHARACTERS.find(c => c.faction === 'kartein').id,
+      CHARACTERS.find(c => c.faction === 'neutral').id,
+    ];
+    const units = mixed.map(id => {
+      const c = CHARACTERS.find(ch => ch.id === id);
+      const u = cardToUnit(c, 0, 0);
+      u.team = 'player';
+      return u;
+    });
+    const applied = applyFactionSynergy(units);
+    expect(applied.length).toBe(0);
+  });
+
+  it('PASSIVE_TREE가 모든 8개 역할에 3단계 패시브를 정의한다', () => {
+    const roles = ['tank','melee_dps','ranged_dps','support','bruiser','battle_support','evasive_dps','breaker'];
+    roles.forEach(role => {
+      expect(PASSIVE_TREE[role]).toBeDefined();
+      expect(PASSIVE_TREE[role].length).toBe(3);
+      PASSIVE_TREE[role].forEach(p => {
+        expect(p.lv).toBeGreaterThan(0);
+        expect(p.name).toBeTruthy();
+      });
+    });
   });
 });

@@ -11,7 +11,7 @@ import {
   getSkillTargetType, getSkillTargets,
   isStunned,
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
-  getKillForecast, PASSIVE_TREE,
+  getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, toggleMute, isMuted } from './sound.js';
@@ -182,6 +182,25 @@ function showCardPopup(cardId) {
       ${statBar('RNG', unit.rng, 3, '#c77dff')}
     </div>
     ${senseHtml}
+    ${(() => {
+      const tree = PASSIVE_TREE[card.role];
+      if (!tree) return '';
+      const cardData = gameSave.cards[card.id];
+      const unitLv = cardData?.level || 1;
+      return `<div class="sheet-passives">
+        <div class="passive-title">패시브 트리</div>
+        ${tree.map(p => {
+          const unlocked = unitLv >= p.lv;
+          const statLabel = { maxHp:'HP', atk:'ATK', def:'DEF', crt:'CRT', eva:'EVA', pen:'PEN', rng:'RNG', maxMp:'MP', mov:'MOV' };
+          const valStr = (p.stat === 'crt' || p.stat === 'eva') ? `+${Math.round(p.val * 100)}%` : `+${p.val}`;
+          return `<div class="passive-node ${unlocked ? 'passive-unlocked' : 'passive-locked'}">
+            <span class="passive-lv">Lv.${p.lv}</span>
+            <span class="passive-name">${p.name}</span>
+            <span class="passive-val">${statLabel[p.stat] || p.stat} ${valStr}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+    })()}
     ${loreHtml}
     <p class="sheet-flavor">${card.flavor}</p>
     ${(() => {
@@ -676,6 +695,15 @@ function showDeployDetail(charId) {
     </div>
     ${senseInfo ? `<div class="dd-sense"><span class="sense-icon">${senseInfo.icon || '?'}</span> <strong>「${c.sense.name}」</strong> ${c.sense.baseType} Lv.${c.sense.power}<br><span class="dd-sense-flavor">${c.sense.flavor}</span></div>` : ''}
     ${unit.ultimates ? `<div class="dd-ults">${unit.ultimates.map(u => `<div class="dd-ult"><span>${u.icon}</span> ${u.name} <span class="dd-ult-lv">Lv.${u.unlockLevel}</span></div>`).join('')}</div>` : ''}
+    ${(() => {
+      const tree = PASSIVE_TREE[c.role];
+      if (!tree) return '';
+      const next = tree.find(p => unit.level < p.lv);
+      if (!next) return '<div class="dd-passive-hint">✅ 모든 패시브 해금 완료</div>';
+      const statLabel = { maxHp:'HP', atk:'ATK', def:'DEF', crt:'CRT', eva:'EVA', pen:'PEN', rng:'RNG', maxMp:'MP', mov:'MOV' };
+      const valStr = (next.stat === 'crt' || next.stat === 'eva') ? `+${Math.round(next.val * 100)}%` : `+${next.val}`;
+      return `<div class="dd-passive-hint">🔮 Lv.${next.lv}에 해금: <strong>${next.name}</strong> (${statLabel[next.stat]} ${valStr})</div>`;
+    })()}
     <div class="dd-equip">
       <div class="dd-equip-title">장비</div>
       ${['weapon', 'armor', 'accessory'].map(slot => {
@@ -815,6 +843,20 @@ function updateDeploySynergy() {
     enemyCpEl.style.display = '';
   }
 
+  const factionCounts = {};
+  units.forEach(u => { factionCounts[u.faction] = (factionCounts[u.faction] || 0) + 1; });
+  const factionKoShort = { center: '센터', kartein: '카르테인', neutral: '비소속' };
+  let factionHtml = '';
+  Object.entries(FACTION_SYNERGY).forEach(([faction, tiers]) => {
+    tiers.forEach(t => {
+      const cur = factionCounts[faction] || 0;
+      const active = cur >= t.count;
+      factionHtml += `<span class="synergy-pair ${active ? 'ss' : ''}" style="${active ? '' : 'opacity:0.4'}">${factionKoShort[faction]} ${cur}/${t.count}: ${t.label}</span>`;
+    });
+  });
+  const factionEl = document.getElementById('synergy-faction');
+  if (factionEl) factionEl.innerHTML = factionHtml;
+
   panel.style.display = '';
 }
 
@@ -905,6 +947,7 @@ function startBattle() {
   document.getElementById('battle-screen').style.display = '';
   document.getElementById('battle-log').innerHTML = '';
   battleLogHistory = [];
+  battleQuestCompleted = [];
   dangerZoneActive = false;
   undoMoveData = null;
   battleSpeed = gameSave.settings?.battleSpeed || 1;
@@ -1415,13 +1458,13 @@ function executeSkillOnTarget(attacker, target) {
     showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
     appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
     result.effects.forEach(e => appendLog(`  → ${e}`));
-    progressQuest(gameSave, 'skill');
+    trackQuest('skill');
 
     const enemiesAfter = battleState.units.filter(u => u.team !== attacker.team && u.hp > 0).length;
     const kills = enemiesBefore - enemiesAfter;
     if (kills > 0 && attacker.team === 'player') {
       gameSave.stats.totalKills += kills;
-      for (let i = 0; i < kills; i++) progressQuest(gameSave, 'kill');
+      for (let i = 0; i < kills; i++) trackQuest('kill');
     }
     saveGame(gameSave);
 
@@ -1662,7 +1705,7 @@ async function doSkillAttack(attacker, defender) {
   showSkillOverlay(attacker.senseSkill.name, SENSE_TYPES[attacker.senseSkill.baseType]?.category);
   appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
-  progressQuest(gameSave, 'skill');
+  trackQuest('skill');
   saveGame(gameSave);
 
   renderBattle();
@@ -1684,7 +1727,7 @@ async function doUltimate(unit, ultIndex) {
   showSkillOverlay(result.name, 'ult');
   appendLog(`🌟 ${unit.name}의 궁극기 「${result.name}」!`);
   result.effects.forEach(e => appendLog(`  → ${e}`));
-  progressQuest(gameSave, 'ultimate');
+  trackQuest('ultimate');
 
   const ultXPups = gainXP(unit, 15);
   unit._battleXP = (unit._battleXP || 0) + 15;
@@ -1701,7 +1744,7 @@ async function doUltimate(unit, ultIndex) {
   if (kills > 0 && unit.team === 'player') {
     gameSave.stats.totalKills += kills;
     unit._battleKills = (unit._battleKills || 0) + kills;
-    for (let i = 0; i < kills; i++) progressQuest(gameSave, 'kill');
+    for (let i = 0; i < kills; i++) trackQuest('kill');
   }
   saveGame(gameSave);
 
@@ -1777,7 +1820,7 @@ async function doAttack(attacker, defender) {
     appendLog(`  💀 ${defender.name} 전사!`);
     gameSave.stats.totalKills++;
     attacker._battleKills = (attacker._battleKills || 0) + 1;
-    progressQuest(gameSave, 'kill');
+    trackQuest('kill');
     saveGame(gameSave);
     if (defTile) showDeathEffect(defTile);
     sfxDeath();
@@ -2049,7 +2092,7 @@ function endTurn() {
           if (target) {
             target._battleKills = (target._battleKills || 0) + 1;
             gameSave.stats.totalKills++;
-            progressQuest(gameSave, 'kill');
+            trackQuest('kill');
             saveGame(gameSave);
           }
           const deadTile = unit ? document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`) : null;
@@ -2247,7 +2290,7 @@ function handleBattleEnd(result) {
   const text = document.getElementById('result-text');
 
   gameSave.stats.totalBattles++;
-  progressQuest(gameSave, 'battle');
+  trackQuest('battle');
 
   saveCharProgress(gameSave, battleState.units);
 
@@ -2301,7 +2344,7 @@ function handleBattleEnd(result) {
       <div class="result-units">${unitSummary}</div>
     `;
     gameSave.stats.wins++;
-    progressQuest(gameSave, 'win');
+    trackQuest('win');
     sfxWin();
 
     const rewardCards = [];
@@ -2332,7 +2375,19 @@ function handleBattleEnd(result) {
       text.innerHTML += `<div class="result-rewards"><div class="reward-title">📦 획득 아이템</div>${lootHtml}</div>`;
     }
 
-    if (battleState.stageId === 'stage-4') progressQuest(gameSave, 'clear_stage4');
+    if (battleQuestCompleted.length > 0) {
+      const qHtml = battleQuestCompleted.map(q =>
+        `<div class="result-quest-item">🎯 <strong>${q.name}</strong></div>`
+      ).join('');
+      text.innerHTML += `<div class="result-rewards"><div class="reward-title">📋 달성 퀘스트</div>${qHtml}</div>`;
+    }
+
+    if (battleState.factionSynergies && battleState.factionSynergies.length > 0) {
+      const fsHtml = battleState.factionSynergies.map(s => `<span class="reward-card reward-uncommon">${s}</span>`).join('');
+      text.innerHTML += `<div class="result-rewards"><div class="reward-title">🤝 팩션 시너지</div>${fsHtml}</div>`;
+    }
+
+    if (battleState.stageId === 'stage-4') trackQuest('clear_stage4');
   } else {
     title.textContent = towerMode ? `무한의 탑 — ${towerWave}층에서 패배` : '패배...';
     box.className = 'battle-result-box lose';
@@ -2447,7 +2502,29 @@ function appendLog(msg) {
   battleLogHistory.push(msg);
 }
 
-// ── Init ──
+// ── Quest Toast ──
+
+let battleQuestCompleted = [];
+
+function trackQuest(type, amount) {
+  const completed = progressQuest(gameSave, type, amount);
+  if (completed && completed.length > 0) {
+    completed.forEach(q => {
+      appendLog(`🎯 퀘스트 달성: ${q.name}`);
+      battleQuestCompleted.push(q);
+      showQuestToast(q.name);
+    });
+  }
+}
+
+function showQuestToast(name) {
+  const toast = document.createElement('div');
+  toast.className = 'quest-toast';
+  toast.innerHTML = `🎯 <strong>${name}</strong> 달성!`;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('active'));
+  setTimeout(() => { toast.classList.remove('active'); setTimeout(() => toast.remove(), 300); }, 2500 / battleSpeed);
+}
 
 // ── Stats & Quests Rendering ──
 
