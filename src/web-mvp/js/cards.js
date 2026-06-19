@@ -1026,3 +1026,21 @@ export function generateRandomRequest(requestNum, turn) {
     turnsLeft: Math.max(2, 4 - Math.floor(requestNum / 4)),
   };
 }
+
+export const CHAR_QUOTES = {
+  'park-harin':   { select: '균형을 유지해야 해.', attack: '피는 흘러야 한다.', skill: '모든 것을 내려다본다.', hit: '이 정도론…', death: '센터를… 부탁해…', win: '오늘도 균형은 유지됐어.' },
+  'kim-doyun':    { select: '네, 준비됐습니다!', attack: '앗, 맞았나요?!', skill: '선배, 저 해냈어요!', hit: '으악!', death: '저… 아직… 할 일이…', win: '살아남았다… 다행이에요.' },
+  'choi-minseo':  { select: '규칙대로 움직인다.', attack: '정확히 타격한다.', skill: '절차를 따르겠습니다.', hit: '예상 범위 내.', death: '보고서를… 남겨야…', win: '임무 완수.' },
+  'kartein-duke':  { select: '서두르지 마라.', attack: '약자의 피는 달콤하지.', skill: '이것이 혈족의 힘이다.', hit: '재미있군.', death: '이런 결말은… 인정할 수 없다.', win: '당연한 결과다.' },
+  'jung-woojin':  { select: '자, 한판 붙자!', attack: '이것 좀 아플걸?', skill: '진짜 실력을 보여주지!', hit: '윽, 제법인데?', death: '아직… 지고 싶지 않아…', win: '역시 나야 나!' },
+  'han-soyul':    { select: '다친 분 없으세요?', attack: '치료는 나중에!', skill: '모두 제 뒤로 오세요.', hit: '괜찮아요…', death: '환자가… 기다리고 있는데…', win: '모두 무사해서 다행이에요.' },
+  'lee-seoyeon':  { select: '데이터가 준비됐어.', attack: '분석 완료.', skill: '확률적으로 최선의 선택이야.', hit: '변수가 생겼군.', death: '이 데이터는… 반드시…', win: '예측대로야.' },
+  'viktor-hessen':{ select: '조용히 해치운다.', attack: '정확한 일격.', skill: '그림자 속에서.', hit: '…', death: '임무… 실패…', win: '깔끔하게 끝났군.' },
+  'yun-chaea':    { select: '우와~ 출동이다!', attack: '에이야~!', skill: '반짝반짝~ ✨', hit: '아야아야!', death: '이런 결말은 싫어…', win: '대단해 우리!' },
+  'shin-yujin':   { select: '느껴져… 그들의 기운이.', attack: '보이는 대로.', skill: '미래가 보여.', hit: '이것도 운명인가…', death: '별이… 떨어진다…', win: '별들이 축복하고 있어.' },
+  'isadora-kartein': { select: '혈족의 긍지로.', attack: '심판한다.', skill: '카르테인의 이름으로!', hit: '감히…!', death: '가문은… 영원하다…', win: '당연한 결과.' },
+  'nigel-crowe':  { select: '흥미로운 실험이군.', attack: '피험체를 확보한다.', skill: '가설을 증명하지.', hit: '데이터 수집 중…', death: '연구가… 미완성인데…', win: '훌륭한 결과다.' },
+  'kwon-jihye':   { select: '작전 개시.', attack: '경고했어.', skill: '보안 코드 실행.', hit: '보안 침해 감지.', death: '센터를… 지켜줘…', win: '위협 제거 완료.' },
+  'oh-taehyun':   { select: '어디 한번 해볼까?', attack: '이게 되네?', skill: '천재는 다르다니까~', hit: '아 이거 아픈데?', death: '마지막 발명이… 될 줄이야…', win: '역시 내 계산대로!' },
+  'yang-mira':    { select: '함께라면 할 수 있어요.', attack: '미안해요, 하지만!', skill: '모두의 힘을 모아!', hit: '으… 괜찮아요.', death: '여러분… 힘내세요…', win: '우리가 해냈어요!' },
+};

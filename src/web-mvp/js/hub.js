@@ -1,4 +1,4 @@
-import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from './cards.js';
+import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from './cards.js';
 import {
   createBattleState, moveUnit, attackUnit, getMovementRange, getAttackRange,
   getAttackTargets, activateSense, endPlayerPhase, endEnemyPhase,
@@ -14,7 +14,7 @@ import {
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
   getTowerRewards,
 } from './engine.js';
-import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit } from './save.js';
+import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
 
 let gameSave = loadGame();
@@ -1761,6 +1761,7 @@ function showActionMenu(unit) {
   }
   const menu = document.getElementById('action-menu');
   menu.style.display = 'flex';
+  showCharQuote(unit, 'select');
 
   const sense = unit.senseSkill;
   const hasSense = sense && sense.cooldown === 0 && unit.mp >= (sense.mpCost || 0);
@@ -1936,6 +1937,7 @@ function executeSkillOnTarget(attacker, target) {
   if (result.ok) {
     const cat = SENSE_TYPES[attacker.senseSkill.baseType]?.category;
     showSkillOverlay(attacker.senseSkill.name, cat);
+    showCharQuote(attacker, 'skill');
     const skillTile = document.querySelector(`.tile[data-x="${attacker.x}"][data-y="${attacker.y}"]`);
     if (skillTile) showSkillParticles(skillTile, cat || '촉');
     appendLog(`✦ ${attacker.name}의 「${result.skillName}」 발동!`);
@@ -2254,6 +2256,8 @@ async function doAttack(attacker, defender) {
   if (!result.ok) return;
   if (attacker.team === 'player' && result.damage > 0) playerTurnDmg += result.damage;
   if (attacker.team === 'player' && result.defenderDied) playerTurnKills++;
+  if (attacker.team === 'player') showCharQuote(attacker, 'attack');
+  if (!result.evaded && result.damage > 0 && defender.hp > 0) showCharQuote(defender, 'hit');
 
   renderBattle();
 
@@ -2318,6 +2322,7 @@ async function doAttack(attacker, defender) {
     appendLog(`  💎 유물 회복 +${result.relicHeal}`);
   }
   if (result.defenderDied) {
+    showCharQuote(defender, 'death');
     appendLog(`  💀 ${defender.name} 전사!`);
     gameSave.stats.totalKills++;
     attacker._battleKills = (attacker._battleKills || 0) + 1;
@@ -2374,6 +2379,18 @@ async function doAttack(attacker, defender) {
 }
 
 // ── Visual Effects ──
+
+function showCharQuote(unit, trigger) {
+  const quotes = CHAR_QUOTES[unit.charId || unit.id];
+  if (!quotes || !quotes[trigger]) return;
+  const tile = document.querySelector(`.tile[data-x="${unit.x}"][data-y="${unit.y}"]`);
+  if (!tile) return;
+  const bubble = document.createElement('div');
+  bubble.className = 'char-speech-bubble';
+  bubble.textContent = quotes[trigger];
+  tile.appendChild(bubble);
+  setTimeout(() => bubble.remove(), 1800 / battleSpeed);
+}
 
 function showFloatingText(tileEl, text, type) {
   const ft = document.createElement('div');
@@ -3004,6 +3021,19 @@ function handleBattleEnd(result) {
     trackQuest('win');
     sfxWin();
 
+    const teamCharIds = playerUnits.map(u => u.charId || u.id);
+    const bondUps = progressBonds(gameSave, teamCharIds);
+    if (bondUps.length > 0) {
+      const bondNames = bondUps.map(b => {
+        const na = CHARACTERS.find(c => c.id === b.a)?.name || b.a;
+        const nb = CHARACTERS.find(c => c.id === b.b)?.name || b.b;
+        return `${na}×${nb} Lv.${b.level}`;
+      }).join(', ');
+      text.innerHTML += `<div class="result-bonds">💕 유대 상승: ${bondNames}</div>`;
+    }
+
+    if (mvp && mvp.hp > 0) showCharQuote(mvp, 'win');
+
     const rewardCards = [];
     let ticketReward = 1;
     const randomChar = () => CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
@@ -3240,6 +3270,82 @@ function showQuestToast(name) {
 
 // ── Stats & Quests Rendering ──
 
+function renderHome() {
+  const el = document.getElementById('home-dashboard');
+  if (!el) return;
+  const s = gameSave.stats;
+  const quests = getQuestSummary(gameSave);
+  const centerBuff = getCenterBuff(gameSave);
+  const ownedCount = CHARACTERS.filter(c => gameSave.cards[c.id]?.count > 0).length;
+  const synthable = CHARACTERS.filter(c => {
+    const d = gameSave.cards[c.id];
+    return d && d.count >= getSynthesisCost(d.level);
+  }).length;
+  const dailyDone = (quests.daily || []).filter(q => q.completed).length;
+  const dailyTotal = (quests.daily || []).length;
+  const weeklyDone = (quests.weekly || []).filter(q => q.completed).length;
+  const weeklyTotal = (quests.weekly || []).length;
+  const totalStages = STAGES.length;
+  const clearedStages = STAGES.filter(st => gameSave.stageClears?.[st.id]).length;
+  const nextStage = STAGES.find(st => !gameSave.stageClears?.[st.id]);
+  const tickets = gameSave.recruitTickets || 0;
+
+  el.innerHTML = `
+    <div class="home-greeting">
+      <h2>🩸 혈연센터에 오신 걸 환영합니다</h2>
+      <div class="home-center">${centerBuff.label}</div>
+    </div>
+    <div class="home-grid">
+      <div class="home-card">
+        <div class="home-card-title">📋 오늘의 퀘스트</div>
+        <div class="home-card-body">
+          <div>일일: ${dailyDone}/${dailyTotal} ${dailyDone === dailyTotal && dailyTotal > 0 ? '✅' : ''}</div>
+          <div>주간: ${weeklyDone}/${weeklyTotal} ${weeklyDone === weeklyTotal && weeklyTotal > 0 ? '✅' : ''}</div>
+          <div>출석: ${quests.attendance}일째</div>
+        </div>
+      </div>
+      <div class="home-card">
+        <div class="home-card-title">⚔️ 전투 현황</div>
+        <div class="home-card-body">
+          <div>스테이지 ${clearedStages}/${totalStages}</div>
+          <div>승률 ${s.totalBattles ? Math.round(s.wins / s.totalBattles * 100) : 0}% (${s.wins}승)</div>
+          <div>🗼 탑 최고 ${gameSave.towerBest || 0}층</div>
+        </div>
+      </div>
+      <div class="home-card">
+        <div class="home-card-title">🃏 컬렉션</div>
+        <div class="home-card-body">
+          <div>보유 ${ownedCount}/${CHARACTERS.length}</div>
+          ${synthable > 0 ? `<div class="home-alert">⚗️ 합성 가능 ${synthable}장</div>` : ''}
+          ${tickets > 0 ? `<div class="home-alert">🎫 모집권 ${tickets}장</div>` : ''}
+        </div>
+      </div>
+      ${nextStage ? `<div class="home-card home-card-action" data-goto="play">
+        <div class="home-card-title">🎯 추천 스테이지</div>
+        <div class="home-card-body">
+          <div><strong>${nextStage.name}</strong></div>
+          <div>Lv.${nextStage.enemyLevel} · 적 ${nextStage.enemyUnits.length}명</div>
+        </div>
+      </div>` : `<div class="home-card">
+        <div class="home-card-title">🎉 축하합니다!</div>
+        <div class="home-card-body">모든 스테이지 클리어!</div>
+      </div>`}
+    </div>
+  `;
+
+  el.querySelectorAll('.home-card-action').forEach(card => {
+    card.addEventListener('click', () => {
+      const tab = card.dataset.goto;
+      if (tab) {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector(`.nav-btn[data-tab="${tab}"]`)?.classList.add('active');
+        document.getElementById(`tab-${tab}`)?.classList.add('active');
+      }
+    });
+  });
+}
+
 function renderStats() {
   const s = gameSave.stats;
   const centerBuff = getCenterBuff(gameSave);
@@ -3400,6 +3506,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (gameSave.settings.muted) toggleMute();
 
   initTabs();
+  renderHome();
   initGallery();
   renderStageSelect();
   renderStats();

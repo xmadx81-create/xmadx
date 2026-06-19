@@ -16,8 +16,8 @@ import {
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy,
 } from '../src/web-mvp/js/engine.js';
-import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost } from '../src/web-mvp/js/save.js';
-import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI } from '../src/web-mvp/js/cards.js';
+import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff } from '../src/web-mvp/js/save.js';
+import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
 
 describe('TILE_TYPES', () => {
   it('15가지 타일 타입이 정의되어 있다', () => {
@@ -2263,5 +2263,59 @@ describe('자동 최적 편성', () => {
     const cp = getTeamCP(units);
     expect(cp.total).toBeGreaterThan(0);
     expect(cp.individual).toBeGreaterThan(0);
+  });
+});
+
+describe('캐릭터 대사 시스템', () => {
+  it('CHAR_QUOTES에 캐릭터 대사가 정의되어 있다', () => {
+    expect(Object.keys(CHAR_QUOTES).length).toBeGreaterThan(10);
+  });
+
+  it('각 캐릭터의 대사에 필수 트리거가 있다', () => {
+    const triggers = ['select', 'attack', 'skill', 'hit', 'death', 'win'];
+    Object.entries(CHAR_QUOTES).forEach(([id, quotes]) => {
+      triggers.forEach(t => {
+        expect(quotes[t]).toBeDefined();
+        expect(typeof quotes[t]).toBe('string');
+      });
+    });
+  });
+
+  it('대사가 있는 캐릭터가 CHARACTERS에 존재한다', () => {
+    Object.keys(CHAR_QUOTES).forEach(id => {
+      expect(CHARACTERS.find(c => c.id === id)).toBeDefined();
+    });
+  });
+});
+
+describe('유대 시스템', () => {
+  it('전투 후 유대 XP가 증가한다', () => {
+    const save = { bonds: {} };
+    const upgraded = progressBonds(save, ['kim-doyun', 'choi-minseo', 'kwon-jihye']);
+    expect(save.bonds['choi-minseo:kim-doyun']).toBeDefined();
+    expect(save.bonds['choi-minseo:kim-doyun'].xp).toBeGreaterThanOrEqual(0);
+  });
+
+  it('3회 전투 후 유대 레벨이 1이 된다', () => {
+    const save = { bonds: {} };
+    progressBonds(save, ['kim-doyun', 'choi-minseo']);
+    progressBonds(save, ['kim-doyun', 'choi-minseo']);
+    progressBonds(save, ['kim-doyun', 'choi-minseo']);
+    expect(getBondLevel(save, 'kim-doyun', 'choi-minseo')).toBe(1);
+  });
+
+  it('유대 버프가 레벨에 비례한다', () => {
+    const save = { bonds: {} };
+    for (let i = 0; i < 9; i++) progressBonds(save, ['kim-doyun', 'choi-minseo']);
+    const buff = getBondBuff(save, ['kim-doyun', 'choi-minseo']);
+    expect(buff.atk).toBeGreaterThan(0);
+    expect(buff.def).toBeGreaterThan(0);
+  });
+
+  it('유대가 없으면 버프가 0이다', () => {
+    const save = { bonds: {} };
+    const buff = getBondBuff(save, ['kim-doyun', 'choi-minseo']);
+    expect(buff.atk).toBe(0);
+    expect(buff.def).toBe(0);
   });
 });

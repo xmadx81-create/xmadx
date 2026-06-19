@@ -13,6 +13,7 @@ const DEFAULT_SAVE = {
   achievements: {},
   onboarded: false,
   recruitTickets: 3,
+  bonds: {},
 };
 
 const STARTER_DECK = ['kim-doyun', 'choi-minseo', 'kwon-jihye'];
@@ -38,6 +39,7 @@ export function loadGame() {
     if (save.towerBest === undefined) save.towerBest = 0;
     if (!save.lastTeam) save.lastTeam = [];
     if (!save.achievements) save.achievements = {};
+    if (!save.bonds) save.bonds = {};
     ensureStarterDeck(save);
     return save;
   } catch { return { ...DEFAULT_SAVE }; }
@@ -273,4 +275,44 @@ export function recordStageClear(save, stageId, turnCount) {
     save.stageClears[stageId].clears++;
     if (turnCount < prev.bestTurns) save.stageClears[stageId].bestTurns = turnCount;
   }
+}
+
+// ── Bonds ──
+
+function bondKey(a, b) { return [a, b].sort().join(':'); }
+
+export function progressBonds(save, teamIds) {
+  if (!save.bonds) save.bonds = {};
+  const upgraded = [];
+  for (let i = 0; i < teamIds.length; i++) {
+    for (let j = i + 1; j < teamIds.length; j++) {
+      const key = bondKey(teamIds[i], teamIds[j]);
+      if (!save.bonds[key]) save.bonds[key] = { xp: 0, level: 0 };
+      save.bonds[key].xp += 1;
+      const next = (save.bonds[key].level + 1) * 3;
+      if (save.bonds[key].xp >= next) {
+        save.bonds[key].xp -= next;
+        save.bonds[key].level++;
+        upgraded.push({ a: teamIds[i], b: teamIds[j], level: save.bonds[key].level });
+      }
+    }
+  }
+  return upgraded;
+}
+
+export function getBondLevel(save, idA, idB) {
+  if (!save.bonds) return 0;
+  const key = bondKey(idA, idB);
+  return save.bonds[key]?.level || 0;
+}
+
+export function getBondBuff(save, teamIds) {
+  if (!save.bonds) return { atk: 0, def: 0 };
+  let totalBond = 0;
+  for (let i = 0; i < teamIds.length; i++) {
+    for (let j = i + 1; j < teamIds.length; j++) {
+      totalBond += getBondLevel(save, teamIds[i], teamIds[j]);
+    }
+  }
+  return { atk: Math.floor(totalBond * 0.5), def: Math.max(totalBond > 0 ? 1 : 0, Math.floor(totalBond * 0.3)) };
 }
