@@ -445,28 +445,46 @@ function renderEnemyIntel(stage) {
     return { ...unit, charData: c };
   }).filter(Boolean);
 
+  if (currentHardMode) {
+    enemies.forEach(e => {
+      const baseLv = e.level;
+      for (let lv = 0; lv < baseLv; lv++) {
+        e.level++;
+        e.maxHp += Math.floor(e.maxHp * 0.05);
+        e.atk += 2;
+        e.def += 1;
+      }
+      e.atk = Math.floor(e.atk * 1.3);
+      e.def = Math.floor(e.def * 1.3);
+      e.hp = e.maxHp;
+    });
+  }
+
   const roleLabel = { tank:'탱커', melee_dps:'근딜', ranged_dps:'원딜', support:'서포터', bruiser:'브루저', battle_support:'전술', evasive_dps:'암살', breaker:'브레이커' };
 
   const reinforceInfo = stage.reinforcements
     ? `<div class="intel-reinforce">⚠ 증원 경고: ${stage.reinforcements.map(r => `턴${r.turn} +${r.units.length}명`).join(', ')}</div>`
     : '';
 
+  const hardInfo = currentHardMode ? '<div class="intel-reinforce" style="color:#fc8181">🔥 하드 모드: 적 레벨 ×2 · ATK/DEF +30%</div>' : '';
+
   panel.innerHTML = `
     <div class="intel-header">
       <span class="intel-title">적 정보</span>
-      <span class="intel-count">${enemies.length}명 · Lv.${eLv}</span>
+      <span class="intel-count">${enemies.length}명 · Lv.${currentHardMode ? eLv * 2 : eLv}${currentHardMode ? ' 🔥' : ''}</span>
     </div>
-    ${reinforceInfo}
+    ${hardInfo}${reinforceInfo}
     <div class="intel-list">${enemies.map(e => {
       const threat = e.charData.rarity === 'legendary' ? '<span class="intel-threat boss">👑 보스</span>' :
                      e.charData.rarity === 'rare' ? '<span class="intel-threat elite">⚠ 강적</span>' : '';
       const skillInfo = e.charData.sense ? `<div class="intel-skill">${SENSE_TYPES[e.charData.sense.baseType]?.icon || '?'} ${e.charData.sense.name}</div>` : '';
+      const typeIcon = { physical: '⚔️', mental: '🧠', blood: '🩸' };
       return `
       <div class="intel-unit">
         <div class="intel-portrait"><img src="${portraitSrc(`assets/portraits/${e.id}`)}" onerror="this.style.display='none'" /></div>
         <div class="intel-info">
           <div class="intel-name">${e.name} ${threat}</div>
-          <div class="intel-role">${roleLabel[e.charData.role] || e.charData.role}</div>
+          <div class="intel-role">${roleLabel[e.charData.role] || e.charData.role} · ${typeIcon[e.attackType] || '⚔️'} MOV${e.mov} RNG${e.rng}</div>
           ${skillInfo}
         </div>
         <div class="intel-stats">
@@ -850,9 +868,14 @@ function updateDeploySynergy() {
       return c ? cardToUnit(c, 0, 0) : null;
     }).filter(Boolean);
     const enemyCP = enemyUnits.reduce((sum, u) => sum + getCombatPower(u), 0);
-    const ratio = teamData.total > 0 ? (teamData.total / enemyCP).toFixed(1) : '?';
+    const hardEnemyCP = currentHardMode ? Math.floor(enemyCP * 1.6) : enemyCP;
+    const ratio = teamData.total > 0 ? (teamData.total / hardEnemyCP).toFixed(1) : '?';
     const diffClass = ratio >= 1.2 ? 'cp-advantage' : ratio >= 0.8 ? 'cp-even' : 'cp-disadvantage';
-    enemyCpEl.innerHTML = `적 전투력 <strong>${enemyCP}</strong> · 비율 <strong class="${diffClass}">×${ratio}</strong>`;
+    const allyPct = Math.min(100, Math.round(teamData.total / (teamData.total + hardEnemyCP) * 100));
+    const hardTag = currentHardMode ? ' <span class="cp-hard-tag">🔥하드</span>' : '';
+    enemyCpEl.innerHTML = `
+      <div class="cp-compare-bar"><div class="cp-ally-fill" style="width:${allyPct}%"></div></div>
+      <div class="cp-compare-text">아군 <strong>${teamData.total}</strong> vs 적 <strong>${hardEnemyCP}</strong>${hardTag} · <strong class="${diffClass}">×${ratio}</strong></div>`;
     enemyCpEl.style.display = '';
   }
 
@@ -1257,6 +1280,7 @@ function showUnitDetail(unit) {
       }).join('')}</div>` : '';
   const shieldHtml = unit.shield > 0 ? `<div class="equip-list">🛡️ 실드: ${unit.shield}</div>` : '';
   const invulnHtml = unit.invuln ? `<div class="equip-list" style="color:#ffd700">⭐ 무적 상태</div>` : '';
+  const hardTag = (battleState?.hardMode && unit.team === 'enemy') ? `<div class="equip-list" style="color:#fc8181">🔥 하드 모드 강화</div>` : '';
   const buffListHtml = (unit.buffs && unit.buffs.length > 0)
     ? `<div class="buff-list">${unit.buffs.map(b => {
         const statLabel = { atk: '⚔ATK', def: '🛡DEF', eva: '💨EVA', crt: '🎯CRT', _invuln: '⭐무적' }[b.stat] || b.stat;
@@ -1281,7 +1305,7 @@ function showUnitDetail(unit) {
     ${equipNames.length ? `<div class="equip-list">장비: ${equipNames.join(' · ')}</div>` : ''}
     ${relicName ? `<div class="equip-list">유물: ${relicName}</div>` : ''}
     ${passiveHtml}
-    ${shieldHtml}${invulnHtml}
+    ${shieldHtml}${invulnHtml}${hardTag}
     ${buffListHtml}
     ${unit.dots && unit.dots.length > 0 ? `<div class="dot-list">${unit.dots.map(d => {
       const label = d.type === 'poison' ? '🟢독' : '🩸출혈';
@@ -1320,8 +1344,16 @@ function showActionMenu(unit) {
   const menu = document.getElementById('action-menu');
   menu.style.display = 'flex';
 
-  const hasSense = unit.senseSkill && unit.senseSkill.cooldown === 0 && unit.mp >= (unit.senseSkill.mpCost || 0);
-  document.getElementById('btn-skill').disabled = !hasSense;
+  const sense = unit.senseSkill;
+  const hasSense = sense && sense.cooldown === 0 && unit.mp >= (sense.mpCost || 0);
+  const skillBtn = document.getElementById('btn-skill');
+  skillBtn.disabled = !hasSense;
+  if (sense) {
+    const cdInfo = sense.cooldown > 0 ? ` CD${sense.cooldown}` : '';
+    skillBtn.textContent = `스킬 (MP${sense.mpCost || 0}${cdInfo})`;
+  } else {
+    skillBtn.textContent = '스킬';
+  }
 
   const targets = getAttackTargets(battleState, unit);
   document.getElementById('btn-attack').disabled = targets.length === 0;
@@ -2096,6 +2128,8 @@ function endTurn() {
   endPlayerPhase(battleState);
   showPhaseBanner('적 턴', 'enemy');
   document.getElementById('btn-end-turn').disabled = true;
+  const enemyCount = battleState.units.filter(u => u.team === 'enemy' && u.hp > 0).length;
+  appendLogSeparator(`── 턴 ${battleState.turnNumber} · 적 페이즈 (${enemyCount}기) ──`);
 
   setTimeout(async () => {
     const actions = runEnemyPhase(battleState);
@@ -2250,6 +2284,12 @@ function endTurn() {
       await delay(2000 / battleSpeed);
     }
 
+    const totalEnemyDmg = actions.filter(a => a.type === 'attack').reduce((sum, a) => sum + (a.damage || 0), 0);
+    const enemyKills = actions.filter(a => a.type === 'attack' && a.defenderDied).length;
+    if (totalEnemyDmg > 0) {
+      appendLog(`📊 적 턴 요약: 총 ${totalEnemyDmg} 데미지${enemyKills > 0 ? ` · ${enemyKills} 처치` : ''}`);
+    }
+    appendLogSeparator(`── 턴 ${battleState.turnNumber} · 아군 페이즈 ──`);
     showPhaseBanner('아군 턴', 'player');
     renderBattle();
     checkAutoEndTurn();
@@ -2371,12 +2411,22 @@ function handleBattleEnd(result) {
     ).join('');
 
     const hardLabel = battleState.hardMode ? ' · 🔥 하드' : '';
+    const mvpSection = (mvp && (mvp._battleKills || 0) > 0) ? `
+      <div class="result-mvp-showcase">
+        <div class="mvp-portrait"><img src="${portraitSrc(`assets/portraits/${mvp.id}`)}" onerror="this.parentElement.textContent='${mvp.name[0]}'" /></div>
+        <div class="mvp-info">
+          <div class="mvp-title">👑 MVP</div>
+          <div class="mvp-name">${mvp.name} Lv.${mvp.level}</div>
+          <div class="mvp-stats">${mvp._battleKills}킬 · ${mvp._battleXP || 0}XP · ${mvp.hp > 0 ? `HP ${Math.round(mvp.hp/mvp.maxHp*100)}%` : '전사'}</div>
+        </div>
+      </div>` : '';
     text.innerHTML = `
       <div class="result-story">${battleState.stage.storyOutro || '모든 적을 제압했습니다!'}</div>
       <div class="result-stars">${starsHtml}</div>
       <div class="result-summary">
         <span>${turns}턴</span> · <span>생존 ${survivors.length}/${playerUnits.length}</span> · <span>처치 ${enemiesDefeated}/${totalEnemies}</span>${weatherLabel}${hardLabel}
       </div>
+      ${mvpSection}
       <div class="result-units">${unitSummary}</div>
     `;
     gameSave.stats.wins++;
@@ -2523,6 +2573,15 @@ function handleBattleEnd(result) {
 }
 
 // ── Battle Log ──
+
+function appendLogSeparator(text) {
+  const log = document.getElementById('battle-log');
+  const sep = document.createElement('div');
+  sep.className = 'log-separator';
+  sep.textContent = text;
+  log.appendChild(sep);
+  log.scrollTop = log.scrollHeight;
+}
 
 function appendLog(msg) {
   const log = document.getElementById('battle-log');

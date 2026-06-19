@@ -5161,6 +5161,15 @@ body {
 .log-entry.log-skill { color: #c084fc; }
 .log-entry.log-levelup { color: #ffd700; font-weight: 600; }
 .log-entry.log-loot { color: #fb923c; }
+.log-separator {
+  text-align: center;
+  font-size: 0.6rem;
+  color: rgba(255,255,255,0.3);
+  padding: 3px 0;
+  margin: 2px 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  letter-spacing: 0.5px;
+}
 
 /* ── Battle Result Detail ── */
 .result-story {
@@ -5289,11 +5298,70 @@ body {
 .result-unit.result-mvp .result-unit-name { color: #ffd700; }
 .result-unit.result-mvp .result-unit-portrait { border-color: #ffd700; }
 .result-unit.result-mvp .result-hp-fill { background: #ffd700; }
+.result-mvp-showcase {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,215,0,0.05));
+  border: 1px solid rgba(255,215,0,0.3);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  animation: mvpGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes mvpGlow {
+  from { box-shadow: 0 0 4px rgba(255,215,0,0.2); }
+  to { box-shadow: 0 0 12px rgba(255,215,0,0.4); }
+}
+.mvp-portrait {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid #ffd700;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mvp-portrait img { width: 100%; height: 100%; object-fit: cover; }
+.mvp-title {
+  font-size: 0.7rem;
+  color: #ffd700;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.mvp-name {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #fff;
+}
+.mvp-stats {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.7);
+}
 
 .synergy-enemy-cp {
   font-size: 0.75rem;
   color: var(--text-secondary);
   padding: 4px 0;
+}
+.cp-compare-bar {
+  height: 6px;
+  background: #ef4444;
+  border-radius: 3px;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+.cp-ally-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.cp-compare-text {
+  font-size: 0.7rem;
+}
+.cp-hard-tag {
+  color: #fc8181;
+  font-weight: bold;
 }
 .cp-advantage { color: #22c55e; }
 .cp-even { color: #facc15; }
