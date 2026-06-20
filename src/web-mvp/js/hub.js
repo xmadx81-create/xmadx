@@ -15,6 +15,8 @@ import {
   getTowerRewards,
   STORY_ACTS, getScaledEnemyLevel, ROLE_MODIFIERS,
   createTycoonState, TYCOON_GRID, FACILITY_TYPES, BLOOD_TYPES, TYCOON_ROLES,
+  TYCOON_STORY, TYCOON_RESEARCH, getStoryChapter, getUnlockedFacilities,
+  checkStoryObjective, purchaseResearch, getResearchBonus, expandGrid,
   generateDonorWave, getDayPreview, generateOrders, generateNamedDonor,
   placeFacility, deployNurse, removeNurse, getNurseAt, countFacilities, getProcessingSpeed,
   tycoonTick, fulfillOrder, tycoonDayFame,
@@ -1614,14 +1616,22 @@ function startTycoonMode() {
   const prestige = gameSave.tycoonPrestige || 0;
   if (prestige > 0) {
     tycoonState.fame += prestige * 5;
-    showTycoonBanner(`🏅 프레스티지 ${prestige} — 시작 명성 +${prestige * 5}`, 'legendary');
   }
   document.getElementById('stage-select').style.display = 'none';
   document.getElementById('defense-screen').style.display = '';
   tycoonSelectedFacility = null;
   updateTycoonSpeedBtn();
-  renderTycoon();
-  tycoonStartPrep();
+
+  const ch = getStoryChapter(1);
+  if (ch.recruit) {
+    const charData = CHARACTERS.find(c => c.id === ch.recruit);
+    if (charData) deployNurse(tycoonState, charData);
+  }
+  showStoryDialogue(ch, () => {
+    if (prestige > 0) showTycoonBanner(`🏅 프레스티지 ${prestige} — 시작 명성 +${prestige * 5}`, 'legendary');
+    renderTycoon();
+    tycoonStartPrep();
+  });
 }
 
 function renderTycoon() {
@@ -1631,7 +1641,8 @@ function renderTycoon() {
   const waitingDonors = donors.filter(d => d.status === 'waiting').length;
   const collectingDonors = donors.filter(d => d.status === 'collecting').length;
 
-  document.getElementById('defense-wave').innerHTML = `${day}일차 <span class="tyc-donor-count">${waitingDonors > 0 ? `대기 ${waitingDonors}` : ''}${collectingDonors > 0 ? ` 채혈 ${collectingDonors}` : ''} 👩‍⚕️${nurses.length}</span>`;
+  const ch = getStoryChapter(day);
+  document.getElementById('defense-wave').innerHTML = `<span class="tyc-chapter-tag">${ch.title}</span> ${day}일차 <span class="tyc-donor-count">${waitingDonors > 0 ? `대기 ${waitingDonors}` : ''}${collectingDonors > 0 ? ` 채혈 ${collectingDonors}` : ''} 👩‍⚕️${nurses.length}</span>`;
   document.getElementById('defense-lives').textContent = `⭐ ${reputation}`;
   document.getElementById('defense-merges').textContent = `🩸 ${totalBlood}/${maxStorage}`;
   document.getElementById('defense-gold').textContent = `🏅 ${fame}`;
@@ -1829,6 +1840,82 @@ function showTycoonBanner(text, type) {
   setTimeout(() => banner.remove(), 2000);
 }
 
+function showStoryDialogue(chapter, onDone) {
+  if (!chapter || !chapter.dialogue || chapter.dialogue.length === 0) { if (onDone) onDone(); return; }
+  const screen = document.getElementById('defense-screen');
+  const overlay = document.createElement('div');
+  overlay.className = 'tyc-story-overlay';
+  let idx = 0;
+  function renderLine() {
+    const line = chapter.dialogue[idx];
+    overlay.innerHTML = `
+      <div class="tyc-story-box">
+        <div class="tyc-story-chapter">제${chapter.id}장: ${chapter.title}</div>
+        <div class="tyc-story-speaker">${line.speaker}</div>
+        <div class="tyc-story-text">${line.text}</div>
+        <div class="tyc-story-hint">${idx < chapter.dialogue.length - 1 ? '탭하여 계속...' : '탭하여 시작!'}</div>
+        ${chapter.objective ? `<div class="tyc-story-objective">목표: ${_objectiveText(chapter.objective)}</div>` : ''}
+      </div>`;
+  }
+  overlay.addEventListener('click', () => {
+    idx++;
+    if (idx >= chapter.dialogue.length) {
+      overlay.remove();
+      if (onDone) onDone();
+    } else {
+      renderLine();
+    }
+  });
+  renderLine();
+  screen.appendChild(overlay);
+}
+
+function _objectiveText(obj) {
+  if (obj.type === 'donors') return `헌혈자 ${obj.count}명 처리`;
+  if (obj.type === 'orders') return `주문 ${obj.count}건 완료`;
+  if (obj.type === 'fame') return `명성 ${obj.count} 달성`;
+  if (obj.type === 'blood') return `총 헌혈자 ${obj.count}명 누적`;
+  if (obj.type === 'lostRate') return `이탈률 ${Math.round(obj.maxRate * 100)}% 이하`;
+  return '';
+}
+
+function showResearchPanel() {
+  const existing = document.querySelector('.tyc-research-overlay');
+  if (existing) existing.remove();
+  const screen = document.getElementById('defense-screen');
+  const overlay = document.createElement('div');
+  overlay.className = 'def-reward-overlay tyc-research-overlay';
+  const items = Object.values(TYCOON_RESEARCH).map(r => {
+    const owned = tycoonState.research[r.id];
+    const reqMet = !r.req || tycoonState.research[r.req];
+    const canBuy = !owned && reqMet && tycoonState.researchPoints >= r.cost;
+    const cls = owned ? 'tyc-res-owned' : canBuy ? 'tyc-res-avail' : 'tyc-res-locked';
+    return `<button class="tyc-res-item ${cls}" data-rid="${r.id}" ${!canBuy || owned ? 'disabled' : ''}>
+      <div class="tyc-res-name">${r.name}</div>
+      <div class="tyc-res-desc">${r.desc}</div>
+      <div class="tyc-res-cost">${owned ? '완료' : `${r.cost} RP`}</div>
+    </button>`;
+  }).join('');
+  overlay.innerHTML = `<div class="def-reward-panel">
+    <div class="def-reward-title">연구소 (RP: ${tycoonState.researchPoints})</div>
+    <div class="tyc-res-grid">${items}</div>
+    <button class="btn-primary tyc-res-close" style="margin-top:8px">닫기</button>
+  </div>`;
+  screen.appendChild(overlay);
+  overlay.querySelector('.tyc-res-close').addEventListener('click', () => overlay.remove());
+  overlay.querySelectorAll('.tyc-res-item:not(:disabled)').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const result = purchaseResearch(tycoonState, btn.dataset.rid);
+      if (result.success) {
+        sfxLevelUp();
+        showTycoonBanner(`🔬 연구 완료!`, 'upgrade');
+        showResearchPanel();
+        renderTycoon();
+      }
+    });
+  });
+}
+
 function showDailyReport(state, dayFameEarned, milestones) {
   const totalBlood = Object.values(state.blood).reduce((s, v) => s + v, 0);
   showTycoonBanner(`${state.day}일차 종료! 명성 +${dayFameEarned} · 헌혈 ${state.totalDonors}명 · 재고 ${totalBlood}팩`, 'upgrade');
@@ -1839,6 +1926,30 @@ function tycoonStartPrep() {
   tycoonState.phase = 'prep';
   tycoonPrepRemain = 10000;
 
+  const prevChapter = tycoonState.chapter;
+  const newCh = getStoryChapter(tycoonState.day);
+  if (newCh.id !== prevChapter && !tycoonState.storyShown[newCh.id]) {
+    tycoonState.chapter = newCh.id;
+    tycoonState.storyShown[newCh.id] = true;
+    if (newCh.gridExpand) expandGrid(tycoonState);
+    if (newCh.recruit) {
+      const charData = CHARACTERS.find(c => c.id === newCh.recruit);
+      if (charData) {
+        deployNurse(tycoonState, charData);
+        showTycoonBanner(`${charData.name} 합류!`, 'legendary');
+      }
+    }
+    stopTycoonLoop();
+    showStoryDialogue(newCh, () => {
+      _continuePrep();
+      startTycoonLoop();
+    });
+    return;
+  }
+  _continuePrep();
+}
+
+function _continuePrep() {
   const preview = getDayPreview(tycoonState.day, countFacilities(tycoonState, 'booth'));
   let previewEl = document.getElementById('defense-wave-preview');
   if (!previewEl) {
@@ -1847,9 +1958,12 @@ function tycoonStartPrep() {
     previewEl.className = 'def-wave-preview';
     document.getElementById('defense-grid-wrap').parentElement.insertBefore(previewEl, document.getElementById('defense-grid-wrap'));
   }
-  previewEl.innerHTML = `<span class="def-preview-label">다음 날</span>
+  const ch = getStoryChapter(tycoonState.day);
+  const objText = ch.objective ? _objectiveText(ch.objective) : '';
+  previewEl.innerHTML = `<span class="def-preview-label">${tycoonState.day}일차</span>
     <span class="def-preview-count">🧑${preview.count}명</span>
-    ${preview.hasVIP ? '<span class="def-preview-boss">👑VIP</span>' : ''}`;
+    ${preview.hasVIP ? '<span class="def-preview-boss">👑VIP</span>' : ''}
+    ${objText ? `<span class="tyc-objective-tag">🎯 ${objText}</span>` : ''}`;
 
   const event = rollTycoonEvent(tycoonState.day);
   if (event) {
@@ -1857,7 +1971,8 @@ function tycoonStartPrep() {
     showTycoonBanner(`${event.icon} ${event.name} — ${event.desc}`, 'legendary');
   }
 
-  tycoonState.orders.push(...generateOrders(tycoonState.day));
+  const dlBonus = getResearchBonus(tycoonState, 'deadline');
+  tycoonState.orders.push(...generateOrders(tycoonState.day, dlBonus));
 
   updateFacilityBtns();
   const startBtn = document.getElementById('btn-defense-start');
@@ -1868,7 +1983,8 @@ function tycoonStartPrep() {
 function updateFacilityBtns() {
   const facPanel = document.getElementById('tyc-facility-panel');
   if (!facPanel || !tycoonState) return;
-  facPanel.innerHTML = Object.values(FACILITY_TYPES).map(f => {
+  const unlocked = getUnlockedFacilities(tycoonState.chapter);
+  facPanel.innerHTML = Object.values(FACILITY_TYPES).filter(f => unlocked.has(f.id)).map(f => {
     const canBuy = tycoonState.fame >= f.cost;
     const sel = tycoonSelectedFacility === f.id ? ' btn-primary' : ' btn-secondary';
     return `<button class="tyc-fac-btn${sel}" data-fid="${f.id}" ${!canBuy ? 'disabled' : ''}>${f.icon} ${f.name} ${f.cost}🏅</button>`;
@@ -1888,7 +2004,8 @@ function tycoonStartOperating() {
   tycoonPrepRemain = 0;
   tycoonState.tickCount = 0;
   tycoonState.boothCount = countFacilities(tycoonState, 'booth');
-  let donorWave = generateDonorWave(tycoonState.day, tycoonState.boothCount);
+  const patBonus = getResearchBonus(tycoonState, 'patience');
+  let donorWave = generateDonorWave(tycoonState.day, tycoonState.boothCount, patBonus);
 
   if (tycoonActiveEvent?.id === 'campaign') {
     donorWave = donorWave.concat(generateDonorWave(tycoonState.day, tycoonState.boothCount));
@@ -2034,11 +2151,25 @@ function tycoonGameTick() {
         showTycoonBanner(`🏆 ${ms.label} 달성! 명성 +${ms.reward}`, 'legendary');
       });
 
+      const rpEarned = 2 + Math.floor(tycoonState.day / 3);
+      tycoonState.researchPoints += rpEarned;
+      showTycoonBanner(`🔬 연구 포인트 +${rpEarned} (총 ${tycoonState.researchPoints})`, 'same');
+
+      const ch = getStoryChapter(tycoonState.day);
+      if (ch.objective && checkStoryObjective(tycoonState, ch)) {
+        showTycoonBanner(`🎯 챕터 "${ch.title}" 목표 달성!`, 'legendary');
+      }
+
       if (tycoonState.day > (gameSave.tycoonBest || 0)) {
         gameSave.tycoonBest = tycoonState.day;
       }
       saveGame(gameSave);
       showDailyReport(tycoonState, dayFameEarned, milestones);
+
+      if (tycoonState.researchPoints > 0) {
+        setTimeout(() => showResearchPanel(), 2500);
+      }
+
       tycoonState.day++;
       tycoonState.lostDonors = 0;
       tycoonStartPrep();
@@ -2139,6 +2270,10 @@ function initTycoonControls() {
     btn.textContent = tycoonState.autoFulfill ? '자동납품 ON' : '자동납품 OFF';
     btn.classList.toggle('btn-primary', tycoonState.autoFulfill);
     btn.classList.toggle('btn-secondary', !tycoonState.autoFulfill);
+  });
+  document.getElementById('btn-tyc-research')?.addEventListener('click', () => {
+    if (!tycoonState) return;
+    showResearchPanel();
   });
 }
 

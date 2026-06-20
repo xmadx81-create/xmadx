@@ -7441,6 +7441,56 @@ body {
 .tyc-fac-btn:hover:not(:disabled) { border-color: rgba(233,196,106,0.5); }
 .tyc-fac-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.tyc-story-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10,8,6,0.92); z-index: 10000;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.tyc-story-box {
+  max-width: 360px; padding: 24px; text-align: center;
+  background: rgba(30,25,20,0.95); border: 1px solid rgba(233,196,106,0.3);
+  border-radius: 16px;
+}
+.tyc-story-chapter {
+  font-size: 0.75rem; color: #E9C46A; letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+.tyc-story-speaker {
+  font-size: 1rem; font-weight: 700; color: #E9C46A; margin-bottom: 6px;
+}
+.tyc-story-text {
+  font-size: 0.9rem; line-height: 1.6; color: #D4C5B2; margin-bottom: 12px;
+}
+.tyc-story-hint {
+  font-size: 0.65rem; color: #8B7A6B; animation: record-pulse 1.5s infinite alternate;
+}
+.tyc-story-objective {
+  margin-top: 10px; padding: 6px 12px; border-radius: 8px;
+  background: rgba(233,196,106,0.1); border: 1px solid rgba(233,196,106,0.2);
+  font-size: 0.75rem; color: #E9C46A;
+}
+.tyc-chapter-tag {
+  font-size: 0.6rem; background: rgba(233,196,106,0.15); color: #E9C46A;
+  padding: 1px 6px; border-radius: 4px; margin-right: 4px;
+}
+.tyc-objective-tag {
+  font-size: 0.65rem; color: #E9C46A; margin-left: 6px;
+}
+.tyc-res-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 0;
+}
+.tyc-res-item {
+  text-align: left; padding: 8px; border-radius: 8px; border: 1px solid rgba(139,122,107,0.2);
+  background: rgba(30,25,20,0.8); cursor: pointer; transition: border-color 0.2s;
+}
+.tyc-res-item:hover:not(:disabled) { border-color: rgba(233,196,106,0.5); }
+.tyc-res-owned { border-color: rgba(74,222,128,0.3); opacity: 0.6; }
+.tyc-res-locked { opacity: 0.35; }
+.tyc-res-name { font-size: 0.75rem; font-weight: 700; color: #E9C46A; }
+.tyc-res-desc { font-size: 0.6rem; color: #9E8E7E; margin: 2px 0; }
+.tyc-res-cost { font-size: 0.65rem; color: #60a5fa; }
+
 .tyc-nurse-icon {
   position: absolute; bottom: 1px; right: 1px;
   font-size: 0.7rem; line-height: 1;

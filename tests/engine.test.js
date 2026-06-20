@@ -17,6 +17,8 @@ import {
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy, getDangerZone,
   STORY_ACTS, getScaledEnemyLevel,
   createTycoonState, TYCOON_GRID, FACILITY_TYPES, BLOOD_TYPES, TYCOON_ROLES,
+  TYCOON_STORY, TYCOON_RESEARCH, getStoryChapter, getUnlockedFacilities,
+  checkStoryObjective, purchaseResearch, getResearchBonus, expandGrid,
   generateDonorWave, getDayPreview, generateOrders, generateNamedDonor,
   placeFacility, assignStaff, deployNurse, removeNurse, getNurseAt,
   countFacilities, getProcessingSpeed,
@@ -2837,6 +2839,9 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(state.milestones).toEqual({});
     expect(state.autoFulfill).toBe(false);
     expect(state.nurses).toEqual([]);
+    expect(state.chapter).toBe(1);
+    expect(state.research).toEqual({});
+    expect(state.researchPoints).toBe(0);
   });
 
   it('generateDonorWave — 날짜별 헌혈자 수 증가', () => {
@@ -2998,6 +3003,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
 
   it('upgradeFacility — MAX 레벨 시 실패', () => {
     const state = createTycoonState(1);
+    state.chapter = 1;
     placeFacility(state, 0, 0, 'bed');
     state.grid[0][0].level = 3;
     state.fame = 9999;
@@ -3268,6 +3274,160 @@ describe('헌혈의집 타이쿤 시스템', () => {
     const fameBefore = state.fame;
     tycoonTick(state);
     expect(state.fame).toBe(fameBefore + 1);
+  });
+
+  it('TYCOON_STORY — 6개 챕터 정의', () => {
+    expect(TYCOON_STORY.length).toBe(6);
+    expect(TYCOON_STORY[0].title).toBe('개원 준비');
+    expect(TYCOON_STORY[4].title).toBe('대형사고');
+    TYCOON_STORY.forEach(ch => {
+      expect(ch.dialogue.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('getStoryChapter — 일차별 챕터 반환', () => {
+    expect(getStoryChapter(1).id).toBe(1);
+    expect(getStoryChapter(3).id).toBe(1);
+    expect(getStoryChapter(4).id).toBe(2);
+    expect(getStoryChapter(10).id).toBe(4);
+    expect(getStoryChapter(17).id).toBe(6);
+    expect(getStoryChapter(50).id).toBe(6);
+  });
+
+  it('getUnlockedFacilities — 챕터별 해금', () => {
+    const ch1 = getUnlockedFacilities(1);
+    expect(ch1.has('reception')).toBe(true);
+    expect(ch1.has('bed')).toBe(true);
+    expect(ch1.has('lab')).toBe(false);
+
+    const ch2 = getUnlockedFacilities(2);
+    expect(ch2.has('lab')).toBe(true);
+    expect(ch2.has('storage')).toBe(true);
+
+    const ch4 = getUnlockedFacilities(4);
+    expect(ch4.has('booth')).toBe(true);
+    expect(ch4.has('emergency')).toBe(true);
+  });
+
+  it('checkStoryObjective — 목표 달성 확인', () => {
+    const state = createTycoonState(1);
+    state.totalDonors = 4;
+    expect(checkStoryObjective(state, TYCOON_STORY[0])).toBe(false);
+    state.totalDonors = 5;
+    expect(checkStoryObjective(state, TYCOON_STORY[0])).toBe(true);
+  });
+
+  it('checkStoryObjective — 주문 목표', () => {
+    const state = createTycoonState(4);
+    state.completedOrders = 0;
+    expect(checkStoryObjective(state, TYCOON_STORY[1])).toBe(false);
+    state.completedOrders = 1;
+    expect(checkStoryObjective(state, TYCOON_STORY[1])).toBe(true);
+  });
+
+  it('checkStoryObjective — 이탈률 목표', () => {
+    const state = createTycoonState(7);
+    state.totalDonors = 10;
+    state.lostDonors = 1;
+    expect(checkStoryObjective(state, TYCOON_STORY[2])).toBe(true);
+    state.lostDonors = 5;
+    expect(checkStoryObjective(state, TYCOON_STORY[2])).toBe(false);
+  });
+
+  it('TYCOON_RESEARCH — 10개 연구 정의', () => {
+    expect(Object.keys(TYCOON_RESEARCH).length).toBe(10);
+    expect(TYCOON_RESEARCH.speed1.effect.type).toBe('bedSpeed');
+    expect(TYCOON_RESEARCH.patience1.effect.type).toBe('patience');
+  });
+
+  it('purchaseResearch — 연구 구매', () => {
+    const state = createTycoonState(1);
+    state.researchPoints = 20;
+    const result = purchaseResearch(state, 'speed1');
+    expect(result.success).toBe(true);
+    expect(state.research.speed1).toBe(true);
+    expect(state.researchPoints).toBe(15);
+  });
+
+  it('purchaseResearch — 중복 구매 불가', () => {
+    const state = createTycoonState(1);
+    state.researchPoints = 20;
+    purchaseResearch(state, 'speed1');
+    const result = purchaseResearch(state, 'speed1');
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('already');
+  });
+
+  it('purchaseResearch — 선행 연구 필요', () => {
+    const state = createTycoonState(1);
+    state.researchPoints = 20;
+    const result = purchaseResearch(state, 'speed2');
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('req');
+  });
+
+  it('purchaseResearch — 포인트 부족', () => {
+    const state = createTycoonState(1);
+    state.researchPoints = 1;
+    const result = purchaseResearch(state, 'speed1');
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('points');
+  });
+
+  it('getResearchBonus — 보너스 합산', () => {
+    const state = createTycoonState(1);
+    state.researchPoints = 50;
+    purchaseResearch(state, 'speed1');
+    purchaseResearch(state, 'speed2');
+    const bonus = getResearchBonus(state, 'bedSpeed');
+    expect(bonus).toBeCloseTo(0.4);
+  });
+
+  it('expandGrid — 그리드 확장', () => {
+    const state = createTycoonState(1);
+    expect(state.gridW).toBe(5);
+    expect(state.gridH).toBe(8);
+    const result = expandGrid(state);
+    expect(result).toBe(true);
+    expect(state.gridW).toBe(6);
+    expect(state.gridH).toBe(10);
+    expect(state.grid.length).toBe(10);
+    expect(state.grid[9].length).toBe(6);
+  });
+
+  it('expandGrid — 이미 확장된 경우 false', () => {
+    const state = createTycoonState(1);
+    expandGrid(state);
+    expect(expandGrid(state)).toBe(false);
+  });
+
+  it('upgradeFacility — 챕터5 이후 Lv.5까지 가능', () => {
+    const state = createTycoonState(1);
+    state.chapter = 5;
+    state.fame = 9999;
+    placeFacility(state, 0, 0, 'bed');
+    upgradeFacility(state, 0, 0);
+    upgradeFacility(state, 0, 0);
+    upgradeFacility(state, 0, 0);
+    upgradeFacility(state, 0, 0);
+    expect(state.grid[0][0].level).toBe(5);
+    const result = upgradeFacility(state, 0, 0);
+    expect(result.success).toBe(false);
+  });
+
+  it('getProcessingSpeed — 연구 보너스 적용', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    const speedBase = getProcessingSpeed(state.grid[0][0], null, 0);
+    const speedResearch = getProcessingSpeed(state.grid[0][0], null, 0.15);
+    expect(speedResearch).toBeGreaterThan(speedBase);
+  });
+
+  it('generateOrders — 데드라인 보너스 적용', () => {
+    const orders = generateOrders(1, 10);
+    orders.forEach(o => {
+      if (!o.urgent) expect(o.deadline).toBe(55);
+    });
   });
 });
 
