@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="헌혈의 집" />
-  <link rel="stylesheet" href="./css/hub.css?v=58" />
+  <link rel="stylesheet" href="./css/hub.css?v=60" />
 </head>
 <body>
   <div id="app">
@@ -246,7 +246,9 @@
             <span>주문 클릭 → 혈액 납품</span>
           </div>
           <div class="defense-main">
-            <div class="defense-grid-wrap" id="defense-grid-wrap"></div>
+            <div class="defense-grid-wrap" id="defense-grid-wrap">
+              <div id="tyc-canvas-wrap"></div>
+            </div>
           </div>
           <div id="tyc-facility-panel" class="tyc-facility-panel"></div>
           <div class="defense-controls">
@@ -592,6 +594,7 @@
     </footer>
   </div>
 
-  <script type="module" src="./js/hub.js?v=58"></script>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script type="module" src="./js/hub.js?v=60"></script>
 </body>
 </html>

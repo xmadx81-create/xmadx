@@ -25,6 +25,7 @@ import {
   tycoonTick, fulfillOrder, tycoonDayFame,
   upgradeFacility, TYCOON_EVENTS, rollTycoonEvent,
   getAdjacencyBonus, MILESTONES, checkMilestones,
+  TYCOON_FLOORS, INITIAL_LAYOUT, applyInitialLayout,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, getUnlockedLoreStage, LORE_MILESTONES } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -2805,9 +2806,9 @@ describe('서사 해금 시스템', () => {
 });
 
 describe('헌혈의집 타이쿤 시스템', () => {
-  it('TYCOON_GRID는 5×8이다', () => {
-    expect(TYCOON_GRID.w).toBe(5);
-    expect(TYCOON_GRID.h).toBe(8);
+  it('TYCOON_GRID는 10×10이다', () => {
+    expect(TYCOON_GRID.w).toBe(10);
+    expect(TYCOON_GRID.h).toBe(10);
   });
 
   it('FACILITY_TYPES에 5종 시설이 정의되어 있다', () => {
@@ -2830,8 +2831,11 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(state.day).toBe(1);
     expect(state.reputation).toBe(20);
     expect(state.fame).toBe(20);
-    expect(state.grid.length).toBe(8);
-    expect(state.grid[0].length).toBe(5);
+    expect(state.grid.length).toBe(10);
+    expect(state.grid[0].length).toBe(10);
+    expect(state.floors).toBeDefined();
+    expect(state.currentFloor).toBe('1F');
+    expect(state.unlockedFloors).toEqual(['1F']);
     expect(state.donors).toEqual([]);
     expect(state.blood).toEqual({ A: 0, B: 0, O: 0, AB: 0 });
     expect(state.phase).toBe('prep');
@@ -2930,8 +2934,8 @@ describe('헌혈의집 타이쿤 시스템', () => {
     const state = createTycoonState(1);
     state.fame = 500;
     placeFacility(state, 0, 0, 'bed');
-    placeFacility(state, 0, 1, 'bed');
-    placeFacility(state, 0, 2, 'lab');
+    placeFacility(state, 0, 2, 'bed');
+    placeFacility(state, 0, 4, 'lab');
     expect(countFacilities(state, 'bed')).toBe(2);
     expect(countFacilities(state, 'lab')).toBe(1);
     expect(countFacilities(state, 'storage')).toBe(0);
@@ -3076,7 +3080,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
   it('getAdjacencyBonus — 채혈대+휴게실 인접 보너스', () => {
     const state = createTycoonState(1);
     placeFacility(state, 0, 0, 'bed');
-    placeFacility(state, 0, 1, 'lounge');
+    placeFacility(state, 0, 2, 'lounge');
     const bonus = getAdjacencyBonus(state, 0, 0);
     expect(bonus).toBeCloseTo(0.2);
   });
@@ -3091,7 +3095,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
   it('getAdjacencyBonus — 접수대+채혈대 인접 보너스', () => {
     const state = createTycoonState(1);
     placeFacility(state, 1, 0, 'reception');
-    placeFacility(state, 1, 1, 'bed');
+    placeFacility(state, 1, 2, 'bed');
     const bonus = getAdjacencyBonus(state, 1, 0);
     expect(bonus).toBeCloseTo(0.15);
   });
@@ -3383,20 +3387,25 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(bonus).toBeCloseTo(0.4);
   });
 
-  it('expandGrid — 그리드 확장', () => {
+  it('expandGrid — 2F 층 해금', () => {
     const state = createTycoonState(1);
-    expect(state.gridW).toBe(5);
-    expect(state.gridH).toBe(8);
+    expect(state.unlockedFloors).toEqual(['1F']);
     const result = expandGrid(state);
     expect(result).toBe(true);
-    expect(state.gridW).toBe(6);
-    expect(state.gridH).toBe(10);
-    expect(state.grid.length).toBe(10);
-    expect(state.grid[9].length).toBe(6);
+    expect(state.unlockedFloors).toContain('2F');
   });
 
-  it('expandGrid — 이미 확장된 경우 false', () => {
+  it('expandGrid — B1 층 해금', () => {
     const state = createTycoonState(1);
+    expandGrid(state);
+    const result = expandGrid(state);
+    expect(result).toBe(true);
+    expect(state.unlockedFloors).toContain('B1');
+  });
+
+  it('expandGrid — 모든 층 해금 후 false', () => {
+    const state = createTycoonState(1);
+    expandGrid(state);
     expandGrid(state);
     expect(expandGrid(state)).toBe(false);
   });
@@ -3428,6 +3437,152 @@ describe('헌혈의집 타이쿤 시스템', () => {
     orders.forEach(o => {
       if (!o.urgent) expect(o.deadline).toBe(55);
     });
+  });
+});
+
+describe('R59 SimCity 빌딩 시스템', () => {
+  it('TYCOON_FLOORS — 3개 층 정의', () => {
+    expect(TYCOON_FLOORS).toEqual(['B1', '1F', '2F']);
+  });
+
+  it('FACILITY_TYPES — 15종 시설 정의', () => {
+    expect(Object.keys(FACILITY_TYPES).length).toBe(15);
+    expect(FACILITY_TYPES.corridor).toBeDefined();
+    expect(FACILITY_TYPES.stairs).toBeDefined();
+    expect(FACILITY_TYPES.elevator).toBeDefined();
+    expect(FACILITY_TYPES.waiting_room).toBeDefined();
+    expect(FACILITY_TYPES.office).toBeDefined();
+    expect(FACILITY_TYPES.parking).toBeDefined();
+    expect(FACILITY_TYPES.cold_storage).toBeDefined();
+    expect(FACILITY_TYPES.restroom).toBeDefined();
+  });
+
+  it('FACILITY_TYPES — 타일 크기 정의', () => {
+    expect(FACILITY_TYPES.bed.tw).toBe(2);
+    expect(FACILITY_TYPES.bed.th).toBe(1);
+    expect(FACILITY_TYPES.reception.tw).toBe(2);
+    expect(FACILITY_TYPES.reception.th).toBe(2);
+    expect(FACILITY_TYPES.parking.tw).toBe(3);
+    expect(FACILITY_TYPES.parking.th).toBe(3);
+    expect(FACILITY_TYPES.booth.tw).toBe(1);
+    expect(FACILITY_TYPES.booth.th).toBe(1);
+  });
+
+  it('createTycoonState — 3개 층 그리드 생성', () => {
+    const state = createTycoonState(1);
+    expect(state.floors['B1']).toBeDefined();
+    expect(state.floors['1F']).toBeDefined();
+    expect(state.floors['2F']).toBeDefined();
+    expect(state.floors['1F']).toBe(state.grid);
+    expect(state.floors['B1'].length).toBe(10);
+    expect(state.floors['2F'][0].length).toBe(10);
+  });
+
+  it('placeFacility — 멀티타일 배치', () => {
+    const state = createTycoonState(1);
+    state.fame = 500;
+    const result = placeFacility(state, 0, 0, 'reception');
+    expect(result.success).toBe(true);
+    expect(state.grid[0][0].id).toBe('reception');
+    expect(state.grid[0][0].tw).toBe(2);
+    expect(state.grid[0][0].th).toBe(2);
+    expect(state.grid[0][1]._ref).toBeDefined();
+    expect(state.grid[1][0]._ref).toBeDefined();
+    expect(state.grid[1][1]._ref).toBeDefined();
+  });
+
+  it('placeFacility — 멀티타일 겹침 방지', () => {
+    const state = createTycoonState(1);
+    state.fame = 500;
+    placeFacility(state, 0, 0, 'reception');
+    const result = placeFacility(state, 0, 1, 'bed');
+    expect(result.success).toBe(false);
+  });
+
+  it('placeFacility — 경계 초과 방지', () => {
+    const state = createTycoonState(1);
+    state.fame = 500;
+    const result = placeFacility(state, 9, 9, 'reception');
+    expect(result.success).toBe(false);
+  });
+
+  it('placeFacility — 층 제한 시설', () => {
+    const state = createTycoonState(1);
+    state.fame = 500;
+    state.unlockedFloors = ['1F', 'B1', '2F'];
+    const result1F = placeFacility(state, 0, 0, 'parking', '1F');
+    expect(result1F.success).toBe(false);
+    const resultB1 = placeFacility(state, 0, 0, 'parking', 'B1');
+    expect(resultB1.success).toBe(true);
+  });
+
+  it('placeFacility — 잠긴 층 배치 불가', () => {
+    const state = createTycoonState(1);
+    state.fame = 500;
+    const result = placeFacility(state, 0, 0, 'bed', '2F');
+    expect(result.success).toBe(false);
+  });
+
+  it('countFacilities — 전체 층 스캔', () => {
+    const state = createTycoonState(1);
+    state.fame = 500;
+    state.unlockedFloors = ['1F', '2F'];
+    placeFacility(state, 0, 0, 'bed', '1F');
+    placeFacility(state, 0, 0, 'bed', '2F');
+    expect(countFacilities(state, 'bed')).toBe(2);
+  });
+
+  it('INITIAL_LAYOUT — 7개 초기 시설', () => {
+    expect(INITIAL_LAYOUT.length).toBe(7);
+    expect(INITIAL_LAYOUT.filter(i => i.id === 'bed').length).toBe(2);
+  });
+
+  it('applyInitialLayout — 초기 배치 적용', () => {
+    const state = createTycoonState(1);
+    const fameBefore = state.fame;
+    applyInitialLayout(state);
+    expect(state.fame).toBe(fameBefore);
+    expect(state.grid[0][0].id).toBe('reception');
+    expect(state.grid[0][3].id).toBe('waiting_room');
+    expect(state.grid[3][0].id).toBe('bed');
+    expect(state.grid[3][3].id).toBe('bed');
+    expect(state.grid[5][0].id).toBe('lounge');
+    expect(state.grid[5][3].id).toBe('storage');
+    expect(state.grid[9][9].id).toBe('stairs');
+  });
+
+  it('applyInitialLayout — 멀티타일 참조 생성', () => {
+    const state = createTycoonState(1);
+    applyInitialLayout(state);
+    expect(state.grid[0][1]._ref).toBeDefined();
+    expect(state.grid[1][0]._ref).toBeDefined();
+    expect(state.grid[1][1]._ref).toBeDefined();
+  });
+
+  it('TYCOON_STORY — 새 시설 해금 포함', () => {
+    const ch1 = getUnlockedFacilities(1);
+    expect(ch1.has('corridor')).toBe(true);
+    expect(ch1.has('restroom')).toBe(true);
+    expect(ch1.has('waiting_room')).toBe(true);
+
+    const ch3 = getUnlockedFacilities(3);
+    expect(ch3.has('stairs')).toBe(true);
+
+    const ch4 = getUnlockedFacilities(4);
+    expect(ch4.has('office')).toBe(true);
+    expect(ch4.has('elevator')).toBe(true);
+
+    const ch5 = getUnlockedFacilities(5);
+    expect(ch5.has('cold_storage')).toBe(true);
+    expect(ch5.has('parking')).toBe(true);
+  });
+
+  it('expandGrid — floorId 직접 지정', () => {
+    const state = createTycoonState(1);
+    const result = expandGrid(state, 'B1');
+    expect(result).toBe(true);
+    expect(state.unlockedFloors).toContain('B1');
+    expect(expandGrid(state, 'B1')).toBe(false);
   });
 });
 
