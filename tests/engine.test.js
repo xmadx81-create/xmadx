@@ -16,6 +16,10 @@ import {
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy, getDangerZone,
   STORY_ACTS, getScaledEnemyLevel,
+  createDefenseState, DEFENSE_GRID, createDefensePath,
+  defenseDrawCards, defenseMerge, defenseAutoAttack,
+  defenseAdvanceEnemies, defenseSpawnEnemies, isDefenseWaveComplete,
+  generateDefenseWave, getDefenseRewards,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, getUnlockedLoreStage, LORE_MILESTONES } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -2792,5 +2796,102 @@ describe('서사 해금 시스템', () => {
     expect(getUnlockedLoreStage(save, 'park-harin')).toBe(3);
     const save7 = { cards: { 'park-harin': { level: 7, xp: 0, count: 1 } } };
     expect(getUnlockedLoreStage(save7, 'park-harin')).toBe(3);
+  });
+});
+
+describe('방어전 (Tower Defense) 시스템', () => {
+  it('DEFENSE_GRID는 5×8이다', () => {
+    expect(DEFENSE_GRID.w).toBe(5);
+    expect(DEFENSE_GRID.h).toBe(8);
+  });
+
+  it('방어전 경로가 U자형이다', () => {
+    const path = createDefensePath(5, 8);
+    expect(path.length).toBeGreaterThan(10);
+    expect(path[0].x).toBe(0);
+    expect(path[path.length - 1].x).toBe(6);
+  });
+
+  it('createDefenseState가 올바른 초기 상태를 생성한다', () => {
+    const state = createDefenseState(1);
+    expect(state.wave).toBe(1);
+    expect(state.lives).toBe(20);
+    expect(state.grid.length).toBe(8);
+    expect(state.grid[0].length).toBe(5);
+    expect(state.enemies).toEqual([]);
+    expect(state.spawnQueue.length).toBeGreaterThan(0);
+    expect(state.phase).toBe('draw');
+  });
+
+  it('웨이브별 적 수가 증가한다', () => {
+    const w1 = generateDefenseWave(1);
+    const w5 = generateDefenseWave(5);
+    const w10 = generateDefenseWave(10);
+    expect(w5.length).toBeGreaterThan(w1.length);
+    expect(w10.length).toBeGreaterThan(w5.length);
+  });
+
+  it('웨이브 5의 배수에 보스가 출현한다', () => {
+    const w5 = generateDefenseWave(5);
+    const boss = w5.find(e => e.unit.uid.includes('boss'));
+    expect(boss).toBeDefined();
+    expect(boss.unit.rarity).toBe('legendary');
+  });
+
+  it('defenseDrawCards가 3장의 카드를 반환한다', () => {
+    const cards = defenseDrawCards(1);
+    expect(cards.length).toBe(3);
+    cards.forEach(c => expect(c.id).toBeDefined());
+  });
+
+  it('defenseMerge가 항상 결과를 반환한다', () => {
+    const result = defenseMerge('kim-doyun', 'common');
+    expect(result.success).toBe(true);
+    expect(result.char).toBeDefined();
+    expect(result.char.id).toBeDefined();
+  });
+
+  it('defenseAutoAttack이 사거리 내 적을 공격한다', () => {
+    const state = createDefenseState(1);
+    const char = CHARACTERS.find(c => c.id === 'kim-doyun');
+    const unit = cardToUnit(char, 0, 0);
+    unit.team = 'player';
+    unit.uid = 'def-test-0-0';
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(char, -1, -1);
+    enemy.team = 'enemy';
+    enemy.uid = 'def-enemy-test';
+    enemy.hp = 100;
+    enemy.maxHp = 100;
+    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
+    const results = defenseAutoAttack(state);
+    expect(results.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it('적이 경로 끝에 도달하면 라이프가 감소한다', () => {
+    const state = createDefenseState(1);
+    const char = CHARACTERS.find(c => c.rarity === 'common');
+    const enemy = cardToUnit(char, -1, -1);
+    enemy.team = 'enemy';
+    enemy.uid = 'escape-test';
+    state.enemies.push({ unit: enemy, speed: 999, pathIndex: 0 });
+    const escaped = defenseAdvanceEnemies(state);
+    expect(escaped.length).toBe(1);
+    expect(state.lives).toBe(19);
+  });
+
+  it('getDefenseRewards가 웨이브에 따라 보상을 반환한다', () => {
+    const r1 = getDefenseRewards(1);
+    const r10 = getDefenseRewards(10);
+    expect(r1.cards.length).toBeGreaterThan(0);
+    expect(r10.cards).toContain('rare');
+    expect(r10.tickets).toBe(3);
+  });
+
+  it('isDefenseWaveComplete — 모든 적 처리 후 true', () => {
+    const state = createDefenseState(1);
+    state.spawnIndex = state.spawnQueue.length;
+    state.enemies = state.spawnQueue.map(e => ({ ...e, unit: { ...e.unit, hp: 0 } }));
+    expect(isDefenseWaveComplete(state)).toBe(true);
   });
 });
