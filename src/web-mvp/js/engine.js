@@ -1485,6 +1485,220 @@ export function getTowerRewards(wave) {
   return { cards, tickets, milestone };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 방어전 (Tower Defense) — "혈맹의 벽"
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function createDefensePath(gridW, gridH) {
+  const path = [];
+  const ox = 1, oy = 0;
+  for (let y = oy; y < gridH + 2; y++) path.push({ x: ox - 1, y });
+  for (let x = ox; x < gridW + 1; x++) path.push({ x, y: gridH + 1 });
+  for (let y = gridH; y >= 0; y--) path.push({ x: gridW + 1, y });
+  return path;
+}
+
+export const DEFENSE_GRID = { w: 5, h: 8 };
+
+export function createDefenseState(wave) {
+  const { w, h } = DEFENSE_GRID;
+  const path = createDefensePath(w, h);
+  const grid = [];
+  for (let r = 0; r < h; r++) {
+    grid[r] = [];
+    for (let c = 0; c < w; c++) grid[r][c] = null;
+  }
+  return {
+    wave,
+    grid,
+    path,
+    enemies: [],
+    lives: 20,
+    turnNumber: 0,
+    spawnQueue: generateDefenseWave(wave),
+    spawnIndex: 0,
+    phase: 'draw',
+    gridW: w,
+    gridH: h,
+    mergeCount: 0,
+  };
+}
+
+export function generateDefenseWave(wave) {
+  const pool = wave <= 3
+    ? CHARACTERS.filter(c => c.rarity === 'common')
+    : wave <= 6
+    ? CHARACTERS.filter(c => c.rarity === 'common' || c.rarity === 'uncommon')
+    : wave <= 9
+    ? CHARACTERS.filter(c => c.rarity === 'uncommon' || c.rarity === 'rare')
+    : CHARACTERS.filter(c => c.faction === 'kartein');
+
+  const count = Math.min(20, 4 + wave * 2);
+  const queue = [];
+  const hpMult = wave <= 3 ? 1.0 : wave <= 6 ? 1.3 : wave <= 9 ? 1.6 : 2.0 + (wave - 10) * 0.15;
+  const levelBase = Math.min(20, wave);
+
+  for (let i = 0; i < count; i++) {
+    const charData = pool[Math.floor(Math.random() * pool.length)];
+    const unit = cardToUnit(charData, -1, -1);
+    unit.team = 'enemy';
+    unit.uid = `def-enemy-${wave}-${i}`;
+    for (let lv = 1; lv < levelBase; lv++) {
+      unit.maxHp += Math.floor(unit.maxHp * 0.05);
+      unit.atk += 2;
+      unit.def += 1;
+      unit.level++;
+    }
+    unit.maxHp = Math.floor(unit.maxHp * hpMult);
+    unit.hp = unit.maxHp;
+    const speed = unit.role === 'evasive_dps' ? 3 : unit.role === 'melee_dps' ? 2 : 1;
+    queue.push({ unit, speed, pathIndex: 0, spawnDelay: i * 2 });
+  }
+
+  if (wave % 5 === 0 && wave > 0) {
+    const bosses = CHARACTERS.filter(c => c.rarity === 'legendary');
+    const bossChar = bosses[Math.floor(Math.random() * bosses.length)];
+    const boss = cardToUnit(bossChar, -1, -1);
+    boss.team = 'enemy';
+    boss.uid = `def-boss-${wave}`;
+    for (let lv = 1; lv < levelBase + 3; lv++) {
+      boss.maxHp += Math.floor(boss.maxHp * 0.07);
+      boss.atk += 3;
+      boss.def += 2;
+      boss.level++;
+    }
+    boss.maxHp = Math.floor(boss.maxHp * hpMult * 1.5);
+    boss.hp = boss.maxHp;
+    queue.push({ unit: boss, speed: 1, pathIndex: 0, spawnDelay: Math.floor(count / 2) * 2 });
+  }
+
+  return queue;
+}
+
+export function defenseDrawCards(wave) {
+  const pool = CHARACTERS.filter(c => c.rarity === 'common');
+  const uncommons = CHARACTERS.filter(c => c.rarity === 'uncommon');
+  const rares = CHARACTERS.filter(c => c.rarity === 'rare');
+  const choices = [];
+  for (let i = 0; i < 3; i++) {
+    const roll = Math.random();
+    if (wave >= 7 && roll < 0.08) {
+      choices.push(rares[Math.floor(Math.random() * rares.length)]);
+    } else if (wave >= 4 && roll < 0.2) {
+      choices.push(uncommons[Math.floor(Math.random() * uncommons.length)]);
+    } else {
+      choices.push(pool[Math.floor(Math.random() * pool.length)]);
+    }
+  }
+  return choices;
+}
+
+export function defenseMerge(charId, rarity) {
+  const roll = Math.random();
+  const LEGENDARY_CHANCE = 0.00001;
+  const rarityOrder = ['common', 'uncommon', 'rare', 'legendary'];
+  const curIdx = rarityOrder.indexOf(rarity);
+
+  if (roll < LEGENDARY_CHANCE && curIdx < 3) {
+    const legendaries = CHARACTERS.filter(c => c.rarity === 'legendary');
+    return { success: true, upgraded: true, legendary: true, char: legendaries[Math.floor(Math.random() * legendaries.length)] };
+  }
+
+  const upgradeChance = curIdx >= 3 ? 0 : 0.49 - curIdx * 0.005;
+  if (roll < LEGENDARY_CHANCE + upgradeChance) {
+    const nextRarity = rarityOrder[Math.min(curIdx + 1, 3)];
+    const candidates = CHARACTERS.filter(c => c.rarity === nextRarity);
+    return { success: true, upgraded: true, legendary: false, char: candidates[Math.floor(Math.random() * candidates.length)] };
+  }
+
+  const samePool = CHARACTERS.filter(c => c.rarity === rarity && c.id !== charId);
+  if (samePool.length === 0) return { success: true, upgraded: false, char: CHARACTERS.find(c => c.id === charId) };
+  return { success: true, upgraded: false, char: samePool[Math.floor(Math.random() * samePool.length)] };
+}
+
+export function defenseAutoAttack(state) {
+  const results = [];
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const unit = state.grid[r][c];
+      if (!unit) continue;
+      const rng = unit.rng || 1;
+      const atkPower = unit.atk;
+      let attacked = false;
+      for (const enemy of state.enemies) {
+        if (enemy.unit.hp <= 0) continue;
+        const ep = state.path[enemy.pathIndex];
+        if (!ep) continue;
+        const gx = c + 1, gy = r + 1;
+        const dist = Math.abs(gx - ep.x) + Math.abs(gy - ep.y);
+        if (dist <= rng) {
+          const effectiveDef = Math.max(0, enemy.unit.def - (unit.pen || 0));
+          let dmg = Math.max(1, atkPower - effectiveDef);
+          if (Math.random() < (unit.crt || 0)) dmg = Math.floor(dmg * 1.5);
+          if (unit.role === 'support') {
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                if (dr === 0 && dc === 0) continue;
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < state.gridH && nc >= 0 && nc < state.gridW && state.grid[nr][nc]) {
+                  state.grid[nr][nc]._supportBuff = true;
+                }
+              }
+            }
+          }
+          enemy.unit.hp -= dmg;
+          results.push({ attacker: unit, enemy: enemy.unit, damage: dmg, killed: enemy.unit.hp <= 0 });
+          attacked = true;
+          break;
+        }
+      }
+    }
+  }
+  return results;
+}
+
+export function defenseAdvanceEnemies(state) {
+  const escaped = [];
+  state.enemies.forEach(e => {
+    if (e.unit.hp <= 0) return;
+    e.pathIndex += e.speed;
+    if (e.pathIndex >= state.path.length) {
+      escaped.push(e);
+      e.unit.hp = 0;
+    }
+  });
+  state.lives -= escaped.length;
+  state.enemies = state.enemies.filter(e => e.unit.hp > 0);
+  return escaped;
+}
+
+export function defenseSpawnEnemies(state) {
+  const spawned = [];
+  while (state.spawnIndex < state.spawnQueue.length) {
+    const next = state.spawnQueue[state.spawnIndex];
+    if (next.spawnDelay > state.turnNumber) break;
+    state.enemies.push(next);
+    spawned.push(next);
+    state.spawnIndex++;
+  }
+  return spawned;
+}
+
+export function isDefenseWaveComplete(state) {
+  return state.spawnIndex >= state.spawnQueue.length && state.enemies.every(e => e.unit.hp <= 0);
+}
+
+export function getDefenseRewards(wave) {
+  const cards = [];
+  if (wave >= 15) cards.push('legendary', 'rare', 'rare');
+  else if (wave >= 10) cards.push('rare', 'rare', 'uncommon');
+  else if (wave >= 5) cards.push('rare', 'uncommon', 'uncommon');
+  else if (wave >= 3) cards.push('uncommon', 'common', 'common');
+  else cards.push('common', 'common');
+  const tickets = wave >= 10 ? 3 : wave >= 5 ? 2 : 1;
+  return { cards, tickets };
+}
+
 export function createBattleState(stageId, playerCharIds, centerBuff, teamSynergyMult) {
   const stage = STAGES.find(s => s.id === stageId);
   if (!stage) throw new Error(`Stage not found: ${stageId}`);

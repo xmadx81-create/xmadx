@@ -230,6 +230,26 @@
           </div>
           <div id="battle-log" class="battle-log"></div>
         </div>
+
+        <!-- 방어전 화면 -->
+        <div id="defense-screen" class="defense-screen" style="display:none">
+          <div class="defense-hud">
+            <span class="defense-wave" id="defense-wave">웨이브 1</span>
+            <span class="defense-lives" id="defense-lives">❤ 20</span>
+            <span class="defense-merges" id="defense-merges">합성 0</span>
+          </div>
+          <div class="defense-main">
+            <div class="defense-grid-wrap" id="defense-grid-wrap"></div>
+          </div>
+          <div class="defense-draw-panel" id="defense-draw-panel" style="display:none">
+            <div class="defense-draw-title">카드를 선택하세요</div>
+            <div class="defense-draw-choices" id="defense-draw-choices"></div>
+          </div>
+          <div class="defense-controls">
+            <button id="btn-defense-next" class="btn-primary" disabled>다음 턴 ▶</button>
+            <button id="btn-defense-quit" class="btn-secondary">포기</button>
+          </div>
+        </div>
       </section>
 
       <!-- 규칙서 -->

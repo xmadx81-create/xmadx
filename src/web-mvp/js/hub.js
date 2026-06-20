@@ -14,6 +14,9 @@ import {
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
   getTowerRewards,
   STORY_ACTS, getScaledEnemyLevel,
+  createDefenseState, DEFENSE_GRID, defenseDrawCards, defenseMerge,
+  defenseAutoAttack, defenseAdvanceEnemies, defenseSpawnEnemies,
+  isDefenseWaveComplete, getDefenseRewards, generateDefenseWave,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -714,6 +717,21 @@ function renderStageSelect() {
       ${towerInfo}
     </div>
   </div>`;
+  const defBest = gameSave.defenseBest || 0;
+  const defInfo = defBest > 0 ? `<span class="stage-clear-info">최고 ${defBest}웨이브</span>` : '';
+  list.innerHTML += `<div class="stage-card stage-defense" data-stage="defense">
+    <div class="stage-num">🏰</div>
+    <div class="stage-info">
+      <div class="stage-name">혈맹의 벽 <span class="stage-lv">TD</span></div>
+      <div class="stage-desc">랜덤 카드를 배치하고 합성하라! 밀려오는 적을 막아라!</div>
+      <div class="stage-meta">
+        <span class="stage-stars">★★★★★</span>
+        <span class="stage-enemy-count">무한 웨이브</span>
+        <span class="stage-deploy-count">랜덤 배치</span>
+      </div>
+      ${defInfo}
+    </div>
+  </div>`;
 
   list.querySelectorAll('.stage-card').forEach(el => {
     el.addEventListener('click', (e) => {
@@ -722,6 +740,8 @@ function renderStageSelect() {
       if (!sid) return;
       if (sid === 'tower') {
         openTowerDeploy();
+      } else if (sid === 'defense') {
+        startDefenseMode();
       } else {
         openDeploy(sid);
       }
@@ -1572,6 +1592,239 @@ function startTowerWave() {
     });
     towerSurvivorHP = null;
   }
+}
+
+// ── Defense Mode (혈맹의 벽) ──
+
+let defenseState = null;
+let defenseSelectedCard = null;
+
+function startDefenseMode() {
+  defenseState = createDefenseState(1);
+  defenseSelectedCard = null;
+  document.getElementById('stage-select').style.display = 'none';
+  document.getElementById('defense-screen').style.display = '';
+  renderDefense();
+  defenseStartDraw();
+}
+
+function renderDefense() {
+  if (!defenseState) return;
+  const { gridW, gridH, path, enemies, lives, wave, mergeCount } = defenseState;
+  document.getElementById('defense-wave').textContent = `웨이브 ${wave}`;
+  document.getElementById('defense-lives').textContent = `❤ ${lives}`;
+  document.getElementById('defense-merges').textContent = `합성 ${mergeCount}`;
+
+  const totalW = gridW + 2;
+  const totalH = gridH + 2;
+  let html = `<div class="defense-grid" style="grid-template-columns:repeat(${totalW},1fr);grid-template-rows:repeat(${totalH},1fr)">`;
+
+  for (let r = 0; r < totalH; r++) {
+    for (let c = 0; c < totalW; c++) {
+      const isPathTile = path.some(p => p.x === c && p.y === r);
+      const isGridTile = c >= 1 && c <= gridW && r >= 1 && r <= gridH;
+      const isEntrance = c === 0 && r === 0;
+      const isExit = c === gridW + 1 && r === 0;
+
+      if (isGridTile) {
+        const gx = c - 1, gy = r - 1;
+        const unit = defenseState.grid[gy][gx];
+        const unitHtml = unit ? `<div class="def-unit" data-gx="${gx}" data-gy="${gy}">
+          <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+          <div class="def-unit-initial" style="display:none">${unit.name[0]}</div>
+          <div class="def-unit-name">${unit.name.slice(0,3)}</div>
+          <div class="def-rarity-dot r-${unit.rarity}"></div>
+        </div>` : '';
+        html += `<div class="def-tile def-placement" data-gx="${gx}" data-gy="${gy}">${unitHtml}</div>`;
+      } else if (isPathTile) {
+        const enemyHere = enemies.filter(e => e.unit.hp > 0 && path[e.pathIndex]?.x === c && path[e.pathIndex]?.y === r);
+        let enemyHtml = '';
+        if (enemyHere.length > 0) {
+          const e = enemyHere[0];
+          const hpPct = Math.round(e.unit.hp / e.unit.maxHp * 100);
+          enemyHtml = `<div class="def-enemy ${e.unit.rarity === 'legendary' ? 'def-boss' : ''}">
+            <div class="def-enemy-hp"><div class="def-enemy-hp-fill" style="width:${hpPct}%"></div></div>
+            <span class="def-enemy-icon">${e.unit.rarity === 'legendary' ? '👑' : '💀'}</span>
+            ${enemyHere.length > 1 ? `<span class="def-enemy-count">×${enemyHere.length}</span>` : ''}
+          </div>`;
+        }
+        const pathCls = isEntrance ? ' def-entrance' : isExit ? ' def-exit' : '';
+        html += `<div class="def-tile def-path${pathCls}">${enemyHtml}${isEntrance ? '<span class="def-label">IN</span>' : ''}${isExit ? '<span class="def-label">OUT</span>' : ''}</div>`;
+      } else {
+        html += `<div class="def-tile def-empty"></div>`;
+      }
+    }
+  }
+  html += '</div>';
+  document.getElementById('defense-grid-wrap').innerHTML = html;
+
+  document.querySelectorAll('.def-placement').forEach(tile => {
+    tile.addEventListener('click', () => {
+      const gx = parseInt(tile.dataset.gx);
+      const gy = parseInt(tile.dataset.gy);
+      if (defenseSelectedCard && !defenseState.grid[gy][gx]) {
+        const unit = cardToUnit(defenseSelectedCard, gx, gy);
+        unit.team = 'player';
+        unit.uid = `def-player-${gx}-${gy}`;
+        defenseState.grid[gy][gx] = unit;
+        defenseSelectedCard = null;
+        document.getElementById('defense-draw-panel').style.display = 'none';
+        document.getElementById('btn-defense-next').disabled = false;
+        sfxCardPlay();
+        renderDefense();
+      } else if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
+        tryDefenseMerge(gx, gy);
+      }
+    });
+  });
+}
+
+function defenseStartDraw() {
+  defenseState.phase = 'draw';
+  const choices = defenseDrawCards(defenseState.wave);
+  const panel = document.getElementById('defense-draw-panel');
+  const container = document.getElementById('defense-draw-choices');
+  container.innerHTML = choices.map((c, i) => `
+    <div class="def-draw-card" data-idx="${i}" data-rarity="${c.rarity}">
+      <img src="${portraitSrc(c.portrait)}" alt="${c.name}"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+      <div class="def-draw-placeholder" style="display:none">${c.name[0]}</div>
+      <div class="def-draw-name">${c.name}</div>
+      <div class="def-draw-info">${c.rarity.toUpperCase()} · ${ROLE_ICON[c.role] || '?'}</div>
+    </div>
+  `).join('');
+  panel.style.display = '';
+
+  container.querySelectorAll('.def-draw-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const idx = parseInt(card.dataset.idx);
+      defenseSelectedCard = choices[idx];
+      container.querySelectorAll('.def-draw-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      const drawTitle = panel.querySelector('.defense-draw-title');
+      if (drawTitle) drawTitle.textContent = `${defenseSelectedCard.name} 선택 — 빈 타일을 터치하여 배치`;
+    });
+  });
+}
+
+function tryDefenseMerge(gx, gy) {
+  const unit = defenseState.grid[gy][gx];
+  if (!unit) return;
+  const sameUnits = [];
+  for (let r = 0; r < defenseState.gridH; r++) {
+    for (let c = 0; c < defenseState.gridW; c++) {
+      const u = defenseState.grid[r][c];
+      if (u && u.id === unit.id && !(c === gx && r === gy)) {
+        sameUnits.push({ x: c, y: r });
+      }
+    }
+  }
+  if (sameUnits.length < 2) return;
+
+  const toRemove = sameUnits.slice(0, 2);
+  toRemove.forEach(p => { defenseState.grid[p.y][p.x] = null; });
+
+  const mergeResult = defenseMerge(unit.id, unit.rarity);
+  const newUnit = cardToUnit(mergeResult.char, gx, gy);
+  newUnit.team = 'player';
+  newUnit.uid = `def-player-${gx}-${gy}-m${defenseState.mergeCount}`;
+  if (mergeResult.upgraded) {
+    newUnit.rarity = mergeResult.char.rarity;
+  }
+  defenseState.grid[gy][gx] = newUnit;
+  defenseState.mergeCount++;
+
+  if (mergeResult.legendary) {
+    showDefenseBanner('전설 합성 성공!!', 'legendary');
+  } else if (mergeResult.upgraded) {
+    showDefenseBanner(`합성 성공! → ${mergeResult.char.rarity.toUpperCase()}`, 'upgrade');
+  } else {
+    showDefenseBanner(`합성 → ${mergeResult.char.name}`, 'same');
+  }
+  sfxLevelUp();
+  renderDefense();
+}
+
+function showDefenseBanner(text, type) {
+  const banner = document.createElement('div');
+  banner.className = `defense-banner defense-banner-${type}`;
+  banner.textContent = text;
+  document.getElementById('defense-screen').appendChild(banner);
+  setTimeout(() => banner.remove(), 2000);
+}
+
+function runDefenseTurn() {
+  defenseState.turnNumber++;
+  defenseState.phase = 'combat';
+
+  defenseSpawnEnemies(defenseState);
+  const atkResults = defenseAutoAttack(defenseState);
+  const escaped = defenseAdvanceEnemies(defenseState);
+
+  renderDefense();
+
+  if (defenseState.lives <= 0) {
+    endDefenseMode(false);
+    return;
+  }
+
+  if (isDefenseWaveComplete(defenseState)) {
+    const rewards = getDefenseRewards(defenseState.wave);
+    rewards.cards.forEach(rarity => {
+      const pool = CHARACTERS.filter(c => c.rarity === rarity);
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (pick) addCard(gameSave, pick.id, rarity);
+    });
+    gameSave.recruitTickets += rewards.tickets;
+    if (defenseState.wave > (gameSave.defenseBest || 0)) {
+      gameSave.defenseBest = defenseState.wave;
+    }
+    saveGame(gameSave);
+
+    showDefenseBanner(`웨이브 ${defenseState.wave} 클리어!`, 'upgrade');
+    setTimeout(() => {
+      defenseState.wave++;
+      defenseState.spawnQueue = generateDefenseWave(defenseState.wave);
+      defenseState.spawnIndex = 0;
+      defenseState.turnNumber = 0;
+      defenseStartDraw();
+      renderDefense();
+    }, 1200);
+    return;
+  }
+
+  defenseStartDraw();
+}
+
+function endDefenseMode(won) {
+  const wave = defenseState.wave;
+  if (wave > (gameSave.defenseBest || 0)) {
+    gameSave.defenseBest = wave;
+  }
+  gameSave.stats.totalBattles++;
+  saveGame(gameSave);
+
+  const msg = `혈맹의 벽 — 웨이브 ${wave}에서 ${won ? '승리' : '패배'}\n최고 기록: ${gameSave.defenseBest}웨이브\n합성 횟수: ${defenseState.mergeCount}`;
+  showDefenseBanner(msg, won ? 'upgrade' : 'same');
+
+  setTimeout(() => {
+    defenseState = null;
+    document.getElementById('defense-screen').style.display = 'none';
+    document.getElementById('stage-select').style.display = '';
+    renderStageSelect();
+  }, 2500);
+}
+
+function initDefenseControls() {
+  document.getElementById('btn-defense-next')?.addEventListener('click', () => {
+    if (!defenseState) return;
+    runDefenseTurn();
+  });
+  document.getElementById('btn-defense-quit')?.addEventListener('click', () => {
+    if (!defenseState) return;
+    endDefenseMode(false);
+  });
 }
 
 // ── Battle Start ──
@@ -3913,6 +4166,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderStageSelect();
   renderStats();
   renderSettings();
+  initDefenseControls();
 
   document.querySelectorAll('.log-filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
