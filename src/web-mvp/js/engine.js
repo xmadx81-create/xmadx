@@ -1524,7 +1524,7 @@ export function createDefenseState(wave) {
   };
 }
 
-export function generateDefenseWave(wave) {
+function _defenseWaveInfo(wave) {
   const pool = wave <= 3
     ? CHARACTERS.filter(c => c.rarity === 'common')
     : wave <= 6
@@ -1532,11 +1532,30 @@ export function generateDefenseWave(wave) {
     : wave <= 9
     ? CHARACTERS.filter(c => c.rarity === 'uncommon' || c.rarity === 'rare')
     : CHARACTERS.filter(c => c.faction === 'kartein');
-
   const count = Math.min(20, 4 + wave * 2);
-  const queue = [];
   const hpMult = wave <= 3 ? 1.0 : wave <= 6 ? 1.3 : wave <= 9 ? 1.6 : 2.0 + (wave - 10) * 0.15;
+  const hasBoss = wave % 5 === 0 && wave > 0;
+  return { pool, count, hpMult, hasBoss };
+}
+
+export function getWavePreview(wave) {
+  const info = _defenseWaveInfo(wave);
+  const roleCounts = {};
+  info.pool.forEach(c => { roleCounts[c.role] = (roleCounts[c.role] || 0) + 1; });
+  const topRoles = Object.entries(roleCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]);
+  return {
+    count: info.count,
+    hasBoss: info.hasBoss,
+    hpMult: info.hpMult,
+    topRoles,
+    wave,
+  };
+}
+
+export function generateDefenseWave(wave) {
+  const { pool, count, hpMult, hasBoss } = _defenseWaveInfo(wave);
   const levelBase = Math.min(20, wave);
+  const queue = [];
 
   for (let i = 0; i < count; i++) {
     const charData = pool[Math.floor(Math.random() * pool.length)];
@@ -1555,7 +1574,7 @@ export function generateDefenseWave(wave) {
     queue.push({ unit, speed, pathIndex: 0, spawnDelay: i * 2 });
   }
 
-  if (wave % 5 === 0 && wave > 0) {
+  if (hasBoss) {
     const bosses = CHARACTERS.filter(c => c.rarity === 'legendary');
     const bossChar = bosses[Math.floor(Math.random() * bosses.length)];
     const boss = cardToUnit(bossChar, -1, -1);
