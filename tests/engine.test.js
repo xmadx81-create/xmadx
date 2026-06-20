@@ -20,6 +20,7 @@ import {
   defenseDrawCards, defenseMerge, defenseAutoAttack,
   defenseAdvanceEnemies, defenseSpawnEnemies, isDefenseWaveComplete,
   generateDefenseWave, getDefenseRewards, defenseTickSlow,
+  defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, getUnlockedLoreStage, LORE_MILESTONES } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -2957,5 +2958,264 @@ describe('방어전 (Tower Defense) 시스템', () => {
     }
     expect(upgradeCount).toBeGreaterThan(300);
     expect(upgradeCount).toBeLessThan(700);
+  });
+});
+
+describe('방어전 스킬 시스템', () => {
+  it('DEFENSE_SKILLS에 8개 역할별 스킬이 정의되어 있다', () => {
+    const roles = ['tank', 'melee_dps', 'ranged_dps', 'support', 'bruiser', 'breaker', 'evasive_dps', 'battle_support'];
+    roles.forEach(role => {
+      const skill = DEFENSE_SKILLS[role];
+      expect(skill).toBeDefined();
+      expect(skill.name).toBeDefined();
+      expect(skill.icon).toBeDefined();
+      expect(skill.cooldown).toBeGreaterThan(0);
+      expect(skill.desc).toBeDefined();
+    });
+  });
+
+  it('defenseActivateSkills — 쿨다운 0이면 스킬 발동 + 쿨다운 설정', () => {
+    const state = createDefenseState(1);
+    const melee = CHARACTERS.find(c => c.role === 'melee_dps');
+    const unit = cardToUnit(melee, 0, 0);
+    unit.team = 'player';
+    unit._defSkillCd = 0;
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy'; enemy.hp = 500; enemy.maxHp = 500;
+    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
+    const results = defenseActivateSkills(state);
+    expect(results.length).toBeGreaterThan(0);
+    expect(unit._defSkillCd).toBe(DEFENSE_SKILLS.melee_dps.cooldown);
+    expect(unit._skillDmgMult).toBe(3);
+  });
+
+  it('defenseActivateSkills — 쿨다운 > 0이면 스킬 미발동 + 쿨다운 감소', () => {
+    const state = createDefenseState(1);
+    const melee = CHARACTERS.find(c => c.role === 'melee_dps');
+    const unit = cardToUnit(melee, 0, 0);
+    unit.team = 'player';
+    unit._defSkillCd = 3;
+    state.grid[0][0] = unit;
+    const results = defenseActivateSkills(state);
+    expect(results.length).toBe(0);
+    expect(unit._defSkillCd).toBe(2);
+  });
+
+  it('탱크 스킬 — 경로 위 적 전체 감속', () => {
+    const state = createDefenseState(1);
+    const tank = CHARACTERS.find(c => c.role === 'tank');
+    const unit = cardToUnit(tank, 0, 0);
+    unit.team = 'player';
+    unit._defSkillCd = 0;
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy'; enemy.hp = 500; enemy.maxHp = 500;
+    const entry = { unit: enemy, speed: 2, pathIndex: 1 };
+    state.enemies.push(entry);
+    defenseActivateSkills(state);
+    expect(entry.speed).toBe(1);
+    expect(entry._slowed).toBeGreaterThanOrEqual(1);
+  });
+
+  it('원거리 스킬 — 사거리+2, 데미지×2 적용', () => {
+    const state = createDefenseState(1);
+    const ranged = CHARACTERS.find(c => c.role === 'ranged_dps');
+    const unit = cardToUnit(ranged, 0, 0);
+    unit.team = 'player';
+    unit._defSkillCd = 0;
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy'; enemy.hp = 500; enemy.maxHp = 500;
+    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
+    defenseActivateSkills(state);
+    expect(unit._skillRngBonus).toBe(2);
+    expect(unit._skillDmgMult).toBe(2);
+  });
+
+  it('서포트 스킬 — 인접 아군 ATK+5 버프', () => {
+    const state = createDefenseState(1);
+    const support = CHARACTERS.find(c => c.role === 'support');
+    const fighter = CHARACTERS.find(c => c.role === 'melee_dps');
+    const sUnit = cardToUnit(support, 0, 0);
+    sUnit.team = 'player';
+    sUnit._defSkillCd = 0;
+    state.grid[0][0] = sUnit;
+    const fUnit = cardToUnit(fighter, 1, 0);
+    fUnit.team = 'player';
+    state.grid[0][1] = fUnit;
+    defenseActivateSkills(state);
+    expect(fUnit._skillBuff).toBeDefined();
+    expect(fUnit._skillBuff.stat).toBe('atk');
+    expect(fUnit._skillBuff.val).toBe(5);
+    expect(fUnit._skillBuff.turns).toBe(2);
+  });
+
+  it('회피딜러 스킬 — 4체 연속 공격', () => {
+    const state = createDefenseState(1);
+    const evasive = CHARACTERS.find(c => c.role === 'evasive_dps');
+    const unit = cardToUnit(evasive, 0, 0);
+    unit.team = 'player';
+    unit._defSkillCd = 0;
+    state.grid[0][0] = unit;
+    state.enemies.push({ unit: { hp: 500, maxHp: 500, def: 0, team: 'enemy' }, speed: 1, pathIndex: 1 });
+    defenseActivateSkills(state);
+    expect(unit._skillHitCount).toBe(4);
+  });
+
+  it('전투서포트 스킬 — 적 DEF-3 디버프', () => {
+    const state = createDefenseState(1);
+    const bs = CHARACTERS.find(c => c.role === 'battle_support');
+    const unit = cardToUnit(bs, 0, 0);
+    unit.team = 'player';
+    unit._defSkillCd = 0;
+    unit.rng = 2;
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy'; enemy.hp = 500; enemy.maxHp = 500;
+    const entry = { unit: enemy, speed: 1, pathIndex: 1 };
+    state.enemies.push(entry);
+    defenseActivateSkills(state);
+    expect(enemy._defDebuff).toBeDefined();
+    expect(enemy._defDebuff.val).toBe(3);
+    expect(enemy._defDebuff.turns).toBe(2);
+  });
+
+  it('defenseTickSkillEffects — 1회성 플래그 제거', () => {
+    const state = createDefenseState(1);
+    const unit = cardToUnit(CHARACTERS.find(c => c.role === 'melee_dps'), 0, 0);
+    unit._skillDmgMult = 3;
+    unit._skillRngBonus = 2;
+    unit._skillHitCount = 4;
+    state.grid[0][0] = unit;
+    state.enemies = [];
+    defenseTickSkillEffects(state);
+    expect(unit._skillDmgMult).toBeUndefined();
+    expect(unit._skillRngBonus).toBeUndefined();
+    expect(unit._skillHitCount).toBeUndefined();
+  });
+
+  it('defenseTickSkillEffects — 버프 턴 감소 후 제거', () => {
+    const state = createDefenseState(1);
+    const unit = cardToUnit(CHARACTERS.find(c => c.role === 'melee_dps'), 0, 0);
+    unit._skillBuff = { stat: 'atk', val: 5, turns: 1 };
+    state.grid[0][0] = unit;
+    state.enemies = [];
+    defenseTickSkillEffects(state);
+    expect(unit._skillBuff).toBeUndefined();
+  });
+
+  it('defenseTickSkillEffects — 적 디버프 턴 감소 후 제거', () => {
+    const state = createDefenseState(1);
+    state.grid[0][0] = null;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy._defDebuff = { stat: 'def', val: 3, turns: 1 };
+    state.enemies = [{ unit: enemy, speed: 1, pathIndex: 0 }];
+    defenseTickSkillEffects(state);
+    expect(enemy._defDebuff).toBeUndefined();
+  });
+
+  it('defenseAutoAttack — _skillDmgMult가 데미지 배율에 반영', () => {
+    const state = createDefenseState(1);
+    const melee = CHARACTERS.find(c => c.role === 'melee_dps');
+    const unit = cardToUnit(melee, 0, 0);
+    unit.team = 'player';
+    unit.atk = 20;
+    unit.crt = 0;
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy'; enemy.hp = 5000; enemy.maxHp = 5000; enemy.def = 0;
+    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
+    const normalResults = defenseAutoAttack(state);
+    const normalDmg = normalResults[0]?.damage || 0;
+    enemy.hp = 5000;
+    unit._skillDmgMult = 3;
+    const skillResults = defenseAutoAttack(state);
+    const skillDmg = skillResults[0]?.damage || 0;
+    expect(skillDmg).toBeGreaterThan(normalDmg);
+  });
+
+  it('defenseAutoAttack — _defDebuff가 적 DEF 감소에 반영', () => {
+    const state = createDefenseState(1);
+    const breaker = CHARACTERS.find(c => c.role === 'melee_dps');
+    const unit = cardToUnit(breaker, 0, 0);
+    unit.team = 'player';
+    unit.atk = 20;
+    unit.crt = 0;
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy'; enemy.hp = 5000; enemy.maxHp = 5000; enemy.def = 10;
+    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
+    const normalResults = defenseAutoAttack(state);
+    const normalDmg = normalResults[0]?.damage || 0;
+    enemy.hp = 5000;
+    enemy._defDebuff = { stat: 'def', val: 5, turns: 2 };
+    const debuffResults = defenseAutoAttack(state);
+    const debuffDmg = debuffResults[0]?.damage || 0;
+    expect(debuffDmg).toBeGreaterThan(normalDmg);
+  });
+
+  it('defenseAutoAttack — _skillRngBonus가 사거리 확장에 반영', () => {
+    const state = createDefenseState(1);
+    const ranged = CHARACTERS.find(c => c.role === 'ranged_dps');
+    const unit = cardToUnit(ranged, 0, 0);
+    unit.team = 'player';
+    unit.atk = 20;
+    unit.rng = 1;
+    unit.crt = 0;
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy'; enemy.hp = 5000; enemy.maxHp = 5000; enemy.def = 0;
+    const farPath = state.path.findIndex(p => Math.abs((0 + 1) - p.x) + Math.abs((0 + 1) - p.y) === 3);
+    if (farPath >= 0) {
+      state.enemies.push({ unit: enemy, speed: 1, pathIndex: farPath });
+      const noSkill = defenseAutoAttack(state);
+      expect(noSkill.length).toBe(0);
+      unit._skillRngBonus = 2;
+      const withSkill = defenseAutoAttack(state);
+      expect(withSkill.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('defenseAutoAttack — _skillHitCount가 타격 횟수 오버라이드', () => {
+    const state = createDefenseState(1);
+    const evasive = CHARACTERS.find(c => c.role === 'evasive_dps');
+    const unit = cardToUnit(evasive, 0, 0);
+    unit.team = 'player';
+    unit.atk = 10;
+    unit.crt = 0;
+    state.grid[0][0] = unit;
+    for (let i = 0; i < 5; i++) {
+      const e = cardToUnit(CHARACTERS[0], -1, -1);
+      e.team = 'enemy'; e.hp = 5000; e.maxHp = 5000; e.def = 0;
+      state.enemies.push({ unit: e, speed: 1, pathIndex: 1 });
+    }
+    const normalResults = defenseAutoAttack(state);
+    const normalHits = normalResults.filter(r => r.attacker === unit).length;
+    state.enemies.forEach(e => e.unit.hp = 5000);
+    unit._skillHitCount = 4;
+    const skillResults = defenseAutoAttack(state);
+    const skillHits = skillResults.filter(r => r.attacker === unit).length;
+    expect(skillHits).toBeGreaterThanOrEqual(normalHits);
+  });
+
+  it('defenseAutoAttack — _skillBuff ATK 반영', () => {
+    const state = createDefenseState(1);
+    const fighter = CHARACTERS.find(c => c.role === 'melee_dps');
+    const unit = cardToUnit(fighter, 0, 0);
+    unit.team = 'player';
+    unit.atk = 20;
+    unit.crt = 0;
+    state.grid[0][0] = unit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy'; enemy.hp = 5000; enemy.maxHp = 5000; enemy.def = 0;
+    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
+    const normalResults = defenseAutoAttack(state);
+    const normalDmg = normalResults[0]?.damage || 0;
+    enemy.hp = 5000;
+    unit._skillBuff = { stat: 'atk', val: 10, turns: 2 };
+    const buffResults = defenseAutoAttack(state);
+    const buffDmg = buffResults[0]?.damage || 0;
+    expect(buffDmg).toBeGreaterThan(normalDmg);
   });
 });
