@@ -1597,6 +1597,8 @@ export function generateDefenseWave(wave) {
     }
     boss.maxHp = Math.floor(boss.maxHp * hpMult * 1.5);
     boss.hp = boss.maxHp;
+    const bossSkills = ['shield', 'summon', 'rage'];
+    boss._bossSkill = bossSkills[Math.floor(Math.random() * bossSkills.length)];
     queue.push({ unit: boss, speed: 1, pathIndex: 0, spawnDelay: Math.floor(count / 2) * 2 });
   }
 
@@ -1653,8 +1655,51 @@ export function defenseRewardChoices(wave) {
   return choices;
 }
 
-export function defenseWaveIncome(wave) {
-  return 20 + wave * 5;
+export function defenseWaveIncome(wave, currentGold) {
+  const base = 20 + wave * 5;
+  const interest = Math.floor(currentGold * 0.1);
+  return base + interest;
+}
+
+export const DEF_ROLE_SYNERGY = {
+  tank:           { 2: { stat: 'def', val: 3, label: '🛡철벽 진형 DEF+3' },    4: { stat: 'def', val: 8, label: '🛡불멸의 방벽 DEF+8' } },
+  melee_dps:      { 2: { stat: 'atk', val: 4, label: '⚔쌍검 ATK+4' },         4: { stat: 'atk', val: 10, label: '⚔검의 폭풍 ATK+10' } },
+  ranged_dps:     { 2: { stat: 'atk', val: 3, label: '🏹교차 사격 ATK+3' },    4: { stat: 'crt', val: 0.15, label: '🏹명사수 CRT+15%' } },
+  support:        { 2: { stat: 'maxHp', val: 15, label: '💚생명의 결속 HP+15' },4: { stat: 'maxHp', val: 40, label: '💚치유의 성역 HP+40' } },
+  bruiser:        { 2: { stat: 'atk', val: 3, label: '🔨진동 ATK+3' },          4: { stat: 'atk', val: 8, label: '🔨대지 파쇄 ATK+8' } },
+  breaker:        { 2: { stat: 'pen', val: 2, label: '💥관통력 PEN+2' },        4: { stat: 'pen', val: 5, label: '💥절대 관통 PEN+5' } },
+  evasive_dps:    { 2: { stat: 'crt', val: 0.08, label: '🌀이중 타격 CRT+8%' },4: { stat: 'crt', val: 0.2, label: '🌀잔상 CRT+20%' } },
+  battle_support: { 2: { stat: 'atk', val: 2, label: '⚡전술 지원 ATK+2' },    4: { stat: 'def', val: 5, label: '⚡전선 강화 DEF+5' } },
+};
+
+export function applyDefenseSynergy(state) {
+  const roleCounts = {};
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const u = state.grid[r][c];
+      if (u) roleCounts[u.role] = (roleCounts[u.role] || 0) + 1;
+    }
+  }
+  const active = [];
+  for (const [role, count] of Object.entries(roleCounts)) {
+    const syn = DEF_ROLE_SYNERGY[role];
+    if (!syn) continue;
+    if (count >= 4 && syn[4]) active.push({ role, tier: 4, ...syn[4] });
+    else if (count >= 2 && syn[2]) active.push({ role, tier: 2, ...syn[2] });
+  }
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const u = state.grid[r][c];
+      if (!u) continue;
+      active.forEach(s => {
+        if (u.role === s.role) {
+          if (s.stat === 'maxHp') { u._synBuff_hp = s.val; }
+          else { u['_synBuff_' + s.stat] = s.val; }
+        }
+      });
+    }
+  }
+  return active;
 }
 
 export const ENEMY_TRAITS = {
@@ -1662,6 +1707,36 @@ export const ENEMY_TRAITS = {
   tank:   { icon: '🪨', label: '중장갑', desc: 'DEF 2배' },
   healer: { icon: '💊', label: '치유자', desc: '매 턴 주변 적 HP 5% 회복' },
 };
+
+export function defenseBossTick(state) {
+  const results = [];
+  for (const enemy of state.enemies) {
+    if (enemy.unit.hp <= 0 || enemy.unit.rarity !== 'legendary') continue;
+    if (!enemy.unit._bossSkill) continue;
+    if (!enemy.unit._bossCd) enemy.unit._bossCd = 0;
+    if (enemy.unit._bossCd > 0) { enemy.unit._bossCd--; continue; }
+    enemy.unit._bossCd = 8;
+    const skill = enemy.unit._bossSkill;
+    if (skill === 'shield') {
+      enemy.unit._shield = Math.floor(enemy.unit.maxHp * 0.3);
+      results.push({ type: 'shield', boss: enemy.unit });
+    } else if (skill === 'summon') {
+      const pool = CHARACTERS.filter(c => c.rarity === 'common');
+      for (let i = 0; i < 2; i++) {
+        const minion = cardToUnit(pool[Math.floor(Math.random() * pool.length)], -1, -1);
+        minion.team = 'enemy';
+        minion.uid = `def-minion-${Date.now()}-${i}`;
+        state.enemies.push({ unit: minion, speed: 2, pathIndex: Math.max(0, enemy.pathIndex - 2) });
+      }
+      results.push({ type: 'summon', boss: enemy.unit });
+    } else if (skill === 'rage') {
+      enemy.unit.atk = Math.floor(enemy.unit.atk * 1.5);
+      enemy.speed = Math.min(4, enemy.speed + 1);
+      results.push({ type: 'rage', boss: enemy.unit });
+    }
+  }
+  return results;
+}
 
 export function defenseHealerTick(state) {
   const healed = [];
@@ -1836,7 +1911,7 @@ export function defenseAutoAttack(state) {
       if (!unit) continue;
       const baseRng = unit.rng || 1;
       const rng = baseRng + (unit._skillRngBonus || 0);
-      let atkPower = unit.atk + (unit._supportBuff || 0);
+      let atkPower = unit.atk + (unit._supportBuff || 0) + (unit._synBuff_atk || 0);
       if (unit._skillBuff && unit._skillBuff.stat === 'atk') {
         atkPower += unit._skillBuff.val;
       }
@@ -1856,12 +1931,20 @@ export function defenseAutoAttack(state) {
       const aoeCount = unit.role === 'bruiser' ? Math.min(3, targets.length) : 1;
       const mainTargets = targets.slice(0, Math.max(hitCount, aoeCount));
       for (const t of mainTargets) {
-        const pen = unit.role === 'breaker' ? (unit.pen || 0) + 3 : (unit.pen || 0);
+        const synPen = unit._synBuff_pen || 0;
+        const pen = unit.role === 'breaker' ? (unit.pen || 0) + 3 + synPen : (unit.pen || 0) + synPen;
+        const synDef = unit._synBuff_def || 0;
         const debuffVal = t.enemy.unit._defDebuff ? t.enemy.unit._defDebuff.val : 0;
         const effectiveDef = Math.max(0, t.enemy.unit.def - pen - debuffVal);
         let dmg = Math.max(1, Math.floor((atkPower - effectiveDef) * dmgMult));
-        const isCrit = Math.random() < (unit.crt || 0);
+        const synCrt = unit._synBuff_crt || 0;
+        const isCrit = Math.random() < ((unit.crt || 0) + synCrt);
         if (isCrit) dmg = Math.floor(dmg * 1.5);
+        if (t.enemy.unit._shield && t.enemy.unit._shield > 0) {
+          const absorbed = Math.min(dmg, t.enemy.unit._shield);
+          t.enemy.unit._shield -= absorbed;
+          dmg -= absorbed;
+        }
         t.enemy.unit.hp -= dmg;
         const killed = t.enemy.unit.hp <= 0;
         if (unit.role === 'tank' && !killed) {
