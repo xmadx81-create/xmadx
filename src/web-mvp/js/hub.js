@@ -1641,6 +1641,16 @@ function _renderBattleImpl() {
         }
       }
 
+      let dmgPreviewHtml = '';
+      if (uiMode === 'attack' && highlight?.cls === 'attack-range' && unit && unit.team === 'enemy' && selectedUid) {
+        const attacker = getUnitByUid(battleState, selectedUid);
+        if (attacker) {
+          const preview = previewDamage(battleState, attacker, unit);
+          const killChance = unit.hp <= preview.maxDmg ? (unit.hp <= preview.minDmg ? '💀확살' : '⚠처치가능') : '';
+          dmgPreviewHtml = `<div class="dmg-preview"><span class="dmg-preview-val">${preview.minDmg}~${preview.maxDmg}</span>${preview.crt > 0 ? `<span class="dmg-preview-crt">CRT ${preview.crt}%</span>` : ''}${killChance ? `<span class="dmg-preview-kill">${killChance}</span>` : ''}</div>`;
+        }
+      }
+
       let unitHtml = '';
       if (unit) {
         const hpPct = Math.round((unit.hp / unit.maxHp) * 100);
@@ -1698,7 +1708,7 @@ function _renderBattleImpl() {
           </div>`;
       }
 
-      html += `<div class="tile ${tileType}${highlightClass}${dangerClass}${selectedClass}" data-x="${c}" data-y="${r}">${unitHtml}${moveCostHtml}</div>`;
+      html += `<div class="tile ${tileType}${highlightClass}${dangerClass}${selectedClass}" data-x="${c}" data-y="${r}">${unitHtml}${dmgPreviewHtml}${moveCostHtml}</div>`;
     }
   }
   grid.innerHTML = html;
@@ -2773,6 +2783,11 @@ function endTurn() {
   endPlayerPhase(battleState);
   showPhaseBanner('적 턴', 'enemy');
   document.getElementById('btn-end-turn').disabled = true;
+  if (!dangerZoneActive) {
+    dangerZoneActive = true;
+    document.getElementById('btn-danger-zone').classList.add('active');
+    renderBattle();
+  }
   const enemyCount = battleState.units.filter(u => u.team === 'enemy' && u.hp > 0).length;
   appendLogSeparator(`── 턴 ${battleState.turnNumber} · 적 페이즈 (${enemyCount}기) ──`);
 
@@ -2943,6 +2958,10 @@ function endTurn() {
     appendLogSeparator(`── 턴 ${battleState.turnNumber} · 아군 페이즈 ──`);
     playerTurnDmg = 0;
     playerTurnKills = 0;
+    if (dangerZoneActive) {
+      dangerZoneActive = false;
+      document.getElementById('btn-danger-zone').classList.remove('active');
+    }
     showPhaseBanner('아군 턴', 'player');
     renderBattle();
     if (autoBattle) {
@@ -3197,16 +3216,26 @@ function handleBattleEnd(result) {
       rewardCards.push({ char: randomChar(), rarity: 'rare' });
       rewardCards.push({ char: randomChar(), rarity: 'rare' });
       ticketReward = 3;
-    } else if (stars === 3) {
-      rewardCards.push({ char: randomChar(), rarity: 'rare' });
-      rewardCards.push({ char: randomChar(), rarity: 'uncommon' });
-      rewardCards.push({ char: randomChar(), rarity: 'common' });
-      ticketReward = 2;
-    } else if (stars === 2) {
-      rewardCards.push({ char: randomChar(), rarity: 'uncommon' });
-      rewardCards.push({ char: randomChar(), rarity: 'common' });
     } else {
-      rewardCards.push({ char: randomChar(), rarity: 'common' });
+      const act = STORY_ACTS.find(a => a.stages.includes(battleState.stageId));
+      const actNum = act ? act.act : 1;
+      if (stars === 3) {
+        rewardCards.push({ char: randomChar(), rarity: actNum >= 3 ? 'legendary' : 'rare' });
+        rewardCards.push({ char: randomChar(), rarity: 'rare' });
+        rewardCards.push({ char: randomChar(), rarity: 'uncommon' });
+        ticketReward = actNum + 1;
+        if (!gameSave.inventory) gameSave.inventory = [];
+        const bonusItems = actNum >= 3 ? ['crtBuff', 'atkBuff'] : actNum >= 2 ? ['atkBuff'] : [];
+        bonusItems.forEach(type => {
+          gameSave.inventory.push({ type, name: { atkBuff: '공격버프', defBuff: '방어버프', crtBuff: '치명버프' }[type] });
+        });
+      } else if (stars === 2) {
+        rewardCards.push({ char: randomChar(), rarity: actNum >= 2 ? 'rare' : 'uncommon' });
+        rewardCards.push({ char: randomChar(), rarity: 'common' });
+        ticketReward = actNum;
+      } else {
+        rewardCards.push({ char: randomChar(), rarity: 'common' });
+      }
     }
     const rewardHtml = rewardCards.map(r => {
       addCard(gameSave, r.char.id, r.rarity);
