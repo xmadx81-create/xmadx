@@ -17,7 +17,7 @@ import {
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy, getDangerZone,
   STORY_ACTS, getScaledEnemyLevel,
 } from '../src/web-mvp/js/engine.js';
-import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff } from '../src/web-mvp/js/save.js';
+import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, getUnlockedLoreStage, LORE_MILESTONES } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
 
 describe('TILE_TYPES', () => {
@@ -2711,5 +2711,86 @@ describe('적 전술 밸런스', () => {
     endEnemyPhase(state);
     expect(enemy._flankBuff).toBe(0);
     expect(enemy._flankApplied).toBe(false);
+  });
+});
+
+describe('카드 강화 시스템', () => {
+  it('강화 비용 테이블이 정의되어 있다', () => {
+    expect(ENHANCE_COSTS.atk).toBe(2);
+    expect(ENHANCE_COSTS.def).toBe(2);
+    expect(ENHANCE_COSTS.hp).toBe(3);
+    expect(ENHANCE_COSTS.crt).toBe(3);
+    expect(ENHANCE_COSTS.eva).toBe(3);
+  });
+
+  it('강화 최대치가 10이다', () => {
+    expect(ENHANCE_MAX).toBe(10);
+  });
+
+  it('카드 미보유 시 강화 불가', () => {
+    const save = { cards: {} };
+    const result = enhanceCard(save, 'park-harin', 'atk');
+    expect(result.ok).toBe(false);
+  });
+
+  it('ATK 강화 성공 시 카드 수 차감', () => {
+    const save = { cards: { 'park-harin': { level: 1, xp: 0, count: 5 } } };
+    const result = enhanceCard(save, 'park-harin', 'atk');
+    expect(result.ok).toBe(true);
+    expect(result.stat).toBe('atk');
+    expect(result.newVal).toBe(1);
+    expect(save.cards['park-harin'].count).toBe(3);
+    expect(save.cards['park-harin'].enhance.atk).toBe(1);
+  });
+
+  it('카드 부족 시 강화 불가', () => {
+    const save = { cards: { 'park-harin': { level: 1, xp: 0, count: 1 } } };
+    const result = enhanceCard(save, 'park-harin', 'atk');
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('카드');
+  });
+
+  it('최대 강화 도달 시 추가 강화 불가', () => {
+    const save = { cards: { 'park-harin': { level: 1, xp: 0, count: 100, enhance: { atk: 10, def: 0, hp: 0, crt: 0, eva: 0 } } } };
+    const result = enhanceCard(save, 'park-harin', 'atk');
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('최대');
+  });
+
+  it('잘못된 스탯 강화 불가', () => {
+    const save = { cards: { 'park-harin': { level: 1, xp: 0, count: 10 } } };
+    const result = enhanceCard(save, 'park-harin', 'mov');
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('서사 해금 시스템', () => {
+  it('마일스톤이 3단계이다', () => {
+    expect(LORE_MILESTONES.length).toBe(3);
+    expect(LORE_MILESTONES[0].level).toBe(1);
+    expect(LORE_MILESTONES[1].level).toBe(3);
+    expect(LORE_MILESTONES[2].level).toBe(5);
+  });
+
+  it('미보유 시 0단계', () => {
+    const save = { cards: {} };
+    expect(getUnlockedLoreStage(save, 'park-harin')).toBe(0);
+  });
+
+  it('Lv.1 보유 시 1단계', () => {
+    const save = { cards: { 'park-harin': { level: 1, xp: 0, count: 1 } } };
+    expect(getUnlockedLoreStage(save, 'park-harin')).toBe(1);
+  });
+
+  it('Lv.3 시 2단계', () => {
+    const save = { cards: { 'park-harin': { level: 3, xp: 0, count: 1 } } };
+    expect(getUnlockedLoreStage(save, 'park-harin')).toBe(2);
+  });
+
+  it('Lv.5 이상 시 3단계', () => {
+    const save = { cards: { 'park-harin': { level: 5, xp: 0, count: 1 } } };
+    expect(getUnlockedLoreStage(save, 'park-harin')).toBe(3);
+    const save7 = { cards: { 'park-harin': { level: 7, xp: 0, count: 1 } } };
+    expect(getUnlockedLoreStage(save7, 'park-harin')).toBe(3);
   });
 });

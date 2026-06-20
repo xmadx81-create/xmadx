@@ -15,7 +15,7 @@ import {
   getTowerRewards,
   STORY_ACTS, getScaledEnemyLevel,
 } from './engine.js';
-import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel } from './save.js';
+import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
 
 let gameSave = loadGame();
@@ -327,7 +327,7 @@ function factionLabel(f) {
 
 // ── Card Popup ──
 
-function showCardPopup(cardId) {
+function showCardPopup(cardId, initialTab) {
   const card = CHARACTERS.find(c => c.id === cardId);
   if (!card) return;
   const overlay = document.getElementById('card-popup');
@@ -336,6 +336,25 @@ function showCardPopup(cardId) {
          onerror="if(this.src.endsWith('.png')){this.src=this.src.replace('.png','.svg')}else{this.style.display='none'}" />
   `;
   const rarityKo = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
+  const roleLabel = { tank:'탱커', melee_dps:'근접 딜러', ranged_dps:'원거리 딜러', support:'서포터', bruiser:'브루저', battle_support:'전투 지원', evasive_dps:'암살자', breaker:'브레이커' };
+  const mbti = CHARACTER_MBTI[card.id] || '????';
+  const cardData = gameSave.cards[card.id];
+  const owned = cardData && cardData.count > 0;
+  const unitLv = cardData?.level || 1;
+  const unit = cardToUnit(card, 0, 0);
+  const enhance = cardData?.enhance || { atk: 0, def: 0, hp: 0, crt: 0, eva: 0 };
+
+  const statBar = (label, val, max, color, enhVal, suffix = '') => {
+    const pct = Math.min(100, Math.round(val / max * 100));
+    const highlight = pct >= 70 ? ' stat-high' : '';
+    const enhBadge = enhVal > 0 ? `<span class="enh-badge">+${enhVal}</span>` : '';
+    return `<div class="stat-bar-row${highlight}">
+      <span class="stat-bar-label">${label}</span>
+      <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <span class="stat-bar-val">${val}${suffix}${enhBadge}</span>
+    </div>`;
+  };
+
   const senseHtml = card.sense ? (() => {
     const info = SENSE_TYPES[card.sense.baseType];
     const cat = info?.category === '촉' ? 'human' : 'blood';
@@ -345,60 +364,50 @@ function showCardPopup(cardId) {
       <p>${card.sense.flavor}</p>
     </div>`;
   })() : '';
-  const loreHtml = card.lore ? `<div class="sheet-lore"><p>${card.lore}</p></div>` : '';
-  const roleLabel = { tank:'탱커', melee_dps:'근접 딜러', ranged_dps:'원거리 딜러', support:'서포터', bruiser:'브루저', battle_support:'전투 지원', evasive_dps:'암살자', breaker:'브레이커' };
-  const mbti = CHARACTER_MBTI[card.id] || '????';
-  const unit = cardToUnit(card, 0, 0);
 
-  const statBar = (label, val, max, color, suffix = '') => {
-    const pct = Math.min(100, Math.round(val / max * 100));
-    const highlight = pct >= 70 ? ' stat-high' : '';
-    return `<div class="stat-bar-row${highlight}">
-      <span class="stat-bar-label">${label}</span>
-      <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${color}"></div></div>
-      <span class="stat-bar-val">${val}${suffix}</span>
+  const quotesHtml = (() => {
+    const q = CHAR_QUOTES[card.id];
+    if (!q) return '';
+    const labels = { select: '선택', attack: '공격', skill: '스킬', hit: '피격', death: '퇴장', win: '승리' };
+    return `<div class="sheet-quotes">
+      <div class="quotes-title">대사</div>
+      <div class="quotes-grid">${Object.entries(q).map(([k, v]) =>
+        `<div class="quote-item"><span class="quote-label">${labels[k] || k}</span><span class="quote-text">"${v}"</span></div>`
+      ).join('')}</div>
     </div>`;
-  };
+  })();
 
-  document.getElementById('popup-details').innerHTML = `
-    <div class="sheet-handle"></div>
-    <div class="sheet-header">
-      <div class="sheet-badges">
-        <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
-        <span class="rarity-badge ${card.rarity}">${(rarityKo[card.rarity] || card.rarity).toUpperCase()}</span>
-        <span class="role-badge">${roleLabel[card.role] || card.role}</span>
-        <span class="mbti-badge">${mbti}</span>
-      </div>
-      <h2>${card.name}</h2>
-      <p class="sheet-title">${card.title}</p>
-    </div>
+  const bondsHtml = (() => {
+    if (!owned) return '';
+    const bondPartners = CHARACTERS.filter(c => c.id !== card.id).map(c => {
+      const lv = getBondLevel(gameSave, card.id, c.id);
+      return lv > 0 ? { name: c.name, id: c.id, level: lv } : null;
+    }).filter(Boolean).sort((a, b) => b.level - a.level);
+    if (bondPartners.length === 0) return '';
+    return `<div class="sheet-bonds">
+      <div class="bonds-title">유대 관계</div>
+      <div class="bonds-grid">${bondPartners.slice(0, 6).map(b =>
+        `<div class="bond-item"><span class="bond-name">${b.name}</span><span class="bond-lv">Lv.${b.level} ${'❤'.repeat(Math.min(b.level, 5))}</span></div>`
+      ).join('')}</div>
+    </div>`;
+  })();
+
+  // ── 탭 1: 정보 ──
+  const tabInfo = `
     <div class="sheet-stats-v2">
-      ${statBar('HP', unit.maxHp, 150, '#e94560')}
-      ${statBar('ATK', unit.atk, 40, '#ff6b35')}
-      ${statBar('DEF', unit.def, 15, '#457b9d')}
-      ${statBar('PEN', unit.pen || 0, 10, '#f97316')}
-      ${statBar('CRT', Math.round(unit.crt * 100), 30, '#e9c46a', '%')}
-      ${statBar('EVA', Math.round(unit.eva * 100), 30, '#7ec8e3', '%')}
-      ${statBar('MOV', unit.mov, 4, '#4b9b6e')}
-      ${statBar('RNG', unit.rng, 3, '#c77dff')}
+      ${statBar('HP', unit.maxHp + enhance.hp * 5, 150, '#e94560', enhance.hp * 5)}
+      ${statBar('ATK', unit.atk + enhance.atk, 40, '#ff6b35', enhance.atk)}
+      ${statBar('DEF', unit.def + enhance.def, 15, '#457b9d', enhance.def)}
+      ${statBar('PEN', unit.pen || 0, 10, '#f97316', 0)}
+      ${statBar('CRT', Math.round((unit.crt + enhance.crt * 0.02) * 100), 30, '#e9c46a', enhance.crt > 0 ? enhance.crt * 2 : 0, '%')}
+      ${statBar('EVA', Math.round((unit.eva + enhance.eva * 0.02) * 100), 30, '#7ec8e3', enhance.eva > 0 ? enhance.eva * 2 : 0, '%')}
+      ${statBar('MOV', unit.mov, 4, '#4b9b6e', 0)}
+      ${statBar('RNG', unit.rng, 3, '#c77dff', 0)}
     </div>
-    ${(() => {
-      const eqSlots = { weapon: '🗡', armor: '🛡', accessory: '💍' };
-      const eqList = Object.entries(unit.equipment || {}).filter(([,v]) => v);
-      const relicInfo = unit.relic ? `<div class="sheet-equip-item relic">💎 ${unit.relic.name} <span class="equip-desc">${unit.relic.desc}</span></div>` : '';
-      if (eqList.length === 0 && !unit.relic) return '';
-      return `<div class="sheet-equip">
-        <div class="equip-title">장비</div>
-        ${eqList.map(([slot, item]) => `<div class="sheet-equip-item">${eqSlots[slot] || '📦'} ${item.name} <span class="equip-stats">${Object.entries(item.stats).map(([k,v]) => `${k.toUpperCase()}+${typeof v === 'number' && v < 1 ? Math.round(v*100)+'%' : v}`).join(' ')}</span></div>`).join('')}
-        ${relicInfo}
-      </div>`;
-    })()}
     ${senseHtml}
     ${(() => {
       const tree = PASSIVE_TREE[card.role];
       if (!tree) return '';
-      const cardData = gameSave.cards[card.id];
-      const unitLv = cardData?.level || 1;
       return `<div class="sheet-passives">
         <div class="passive-title">패시브 트리</div>
         ${tree.map(p => {
@@ -413,24 +422,140 @@ function showCardPopup(cardId) {
         }).join('')}
       </div>`;
     })()}
-    ${loreHtml}
-    <p class="sheet-flavor">${card.flavor}</p>
-    ${(() => {
-      const cardData = gameSave.cards[card.id];
-      if (!cardData || cardData.count <= 0) return '';
-      const cost = getSynthesisCost(cardData.level);
-      const canSynth = cardData.count >= cost;
-      return `<div class="sheet-synth">
-        <div class="synth-info">
-          <span class="synth-level">Lv.${cardData.level}</span>
-          <span class="synth-count">보유 ${cardData.count}장</span>
-        </div>
-        <button class="synth-btn ${canSynth ? '' : 'synth-disabled'}" data-synth-id="${card.id}" ${canSynth ? '' : 'disabled'}>
-          ⬆ 합성 강화 (${cost}장 필요)
-        </button>
-      </div>`;
-    })()}
+    ${quotesHtml}
   `;
+
+  // ── 탭 2: 육성 ──
+  const tabGrowth = (() => {
+    if (!owned) return '<div class="growth-locked">카드를 보유하고 있지 않습니다.</div>';
+    const synthCost = getSynthesisCost(cardData.level);
+    const canSynth = cardData.count >= synthCost;
+
+    const enhSection = `<div class="enhance-section">
+      <div class="enhance-title">스탯 강화</div>
+      <div class="enhance-desc">카드를 소비하여 개별 스탯을 영구 강화합니다</div>
+      <div class="enhance-grid">
+        ${[
+          { stat: 'atk', label: 'ATK', icon: '⚔', desc: `+1 공격력 (${enhance.atk}/${ENHANCE_MAX})` },
+          { stat: 'def', label: 'DEF', icon: '🛡', desc: `+1 방어력 (${enhance.def}/${ENHANCE_MAX})` },
+          { stat: 'hp',  label: 'HP',  icon: '❤', desc: `+5 체력 (${enhance.hp}/${ENHANCE_MAX})` },
+          { stat: 'crt', label: 'CRT', icon: '🎯', desc: `+2% 치명률 (${enhance.crt}/${ENHANCE_MAX})` },
+          { stat: 'eva', label: 'EVA', icon: '💨', desc: `+2% 회피율 (${enhance.eva}/${ENHANCE_MAX})` },
+        ].map(e => {
+          const cost = ENHANCE_COSTS[e.stat];
+          const maxed = enhance[e.stat] >= ENHANCE_MAX;
+          const canEnh = !maxed && cardData.count >= cost;
+          const pct = Math.round(enhance[e.stat] / ENHANCE_MAX * 100);
+          return `<div class="enhance-row">
+            <div class="enhance-stat-info">
+              <span class="enhance-icon">${e.icon}</span>
+              <span class="enhance-label">${e.label}</span>
+              <span class="enhance-desc-text">${e.desc}</span>
+            </div>
+            <div class="enhance-bar-track"><div class="enhance-bar-fill" style="width:${pct}%"></div></div>
+            <button class="enhance-btn ${canEnh ? '' : 'enhance-disabled'}" data-enh-id="${card.id}" data-enh-stat="${e.stat}" ${canEnh ? '' : 'disabled'}>
+              ${maxed ? 'MAX' : `강화 (${cost}장)`}
+            </button>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="enhance-stock">보유: ${cardData.count}장</div>
+    </div>`;
+
+    const synthSection = `<div class="sheet-synth">
+      <div class="synth-info">
+        <span class="synth-level">Lv.${cardData.level}</span>
+        <span class="synth-count">보유 ${cardData.count}장</span>
+      </div>
+      <button class="synth-btn ${canSynth ? '' : 'synth-disabled'}" data-synth-id="${card.id}" ${canSynth ? '' : 'disabled'}>
+        ⬆ 합성 레벨업 (${synthCost}장 필요)
+      </button>
+    </div>`;
+
+    const equipSection = `<div class="equip-section">
+      <div class="equip-section-title">장비 장착</div>
+      ${['weapon', 'armor', 'accessory'].map(slot => {
+        const slotIcon = { weapon: '🗡', armor: '🛡', accessory: '💍' }[slot];
+        const slotName = { weapon: '무기', armor: '갑옷', accessory: '장신구' }[slot];
+        const equipped = cardData.equipment?.[slot];
+        const equippedItem = equipped ? EQUIPMENT.find(e => e.id === equipped) : null;
+        const available = EQUIPMENT.filter(e => e.slot === slot);
+        return `<div class="equip-slot-row">
+          <span class="equip-slot-label">${slotIcon} ${slotName}</span>
+          <select class="equip-select" data-equip-char="${card.id}" data-equip-slot="${slot}">
+            <option value="">없음</option>
+            ${available.map(e => `<option value="${e.id}" ${equipped === e.id ? 'selected' : ''}>${e.name} (${Object.entries(e.stats).map(([k,v]) => `${k.toUpperCase()}+${typeof v === 'number' && v < 1 ? Math.round(v*100)+'%' : v}`).join(' ')})</option>`).join('')}
+          </select>
+        </div>`;
+      }).join('')}
+      <div class="equip-slot-row">
+        <span class="equip-slot-label">💎 유물</span>
+        <select class="equip-select" data-equip-char="${card.id}" data-equip-slot="relic">
+          <option value="">없음</option>
+          ${RELICS.map(r => `<option value="${r.id}" ${cardData.relic === r.id ? 'selected' : ''}>${r.name} — ${r.desc}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+
+    return `${synthSection}${enhSection}${equipSection}`;
+  })();
+
+  // ── 탭 3: 서사 ──
+  const tabStory = (() => {
+    const loreStage = getUnlockedLoreStage(gameSave, card.id);
+    const loreParts = card.lore ? splitLore(card.lore) : ['???', '???', '???'];
+
+    return `<div class="lore-section">
+      <div class="lore-title">개인 서사</div>
+      ${LORE_MILESTONES.map((m, i) => {
+        const unlocked = loreStage > i;
+        return `<div class="lore-stage ${unlocked ? 'lore-unlocked' : 'lore-locked'}">
+          <div class="lore-stage-header">
+            <span class="lore-stage-icon">${unlocked ? '📖' : '🔒'}</span>
+            <span class="lore-stage-label">${m.label}</span>
+            <span class="lore-stage-req">${unlocked ? '해금됨' : `Lv.${m.level} 필요`}</span>
+          </div>
+          <div class="lore-stage-text">${unlocked ? loreParts[i] : '???'}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${bondsHtml}
+    <p class="sheet-flavor">"${card.flavor}"</p>
+  `;
+  })();
+
+  const activeTab = initialTab || 'info';
+  document.getElementById('popup-details').innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-badges">
+        <span class="faction-badge ${card.faction}">${factionLabel(card.faction)}</span>
+        <span class="rarity-badge ${card.rarity}">${(rarityKo[card.rarity] || card.rarity).toUpperCase()}</span>
+        <span class="role-badge">${roleLabel[card.role] || card.role}</span>
+        <span class="mbti-badge">${mbti}</span>
+      </div>
+      <h2>${card.name}</h2>
+      <p class="sheet-title">${card.title}</p>
+      ${owned ? `<div class="sheet-level-bar">Lv.${unitLv} · ${cardData.count}장</div>` : ''}
+    </div>
+    <div class="popup-tabs">
+      <button class="popup-tab ${activeTab === 'info' ? 'active' : ''}" data-ptab="info">정보</button>
+      <button class="popup-tab ${activeTab === 'growth' ? 'active' : ''}" data-ptab="growth">육성</button>
+      <button class="popup-tab ${activeTab === 'story' ? 'active' : ''}" data-ptab="story">서사</button>
+    </div>
+    <div class="popup-tab-content" id="ptab-info" style="${activeTab === 'info' ? '' : 'display:none'}">${tabInfo}</div>
+    <div class="popup-tab-content" id="ptab-growth" style="${activeTab === 'growth' ? '' : 'display:none'}">${tabGrowth}</div>
+    <div class="popup-tab-content" id="ptab-story" style="${activeTab === 'story' ? '' : 'display:none'}">${tabStory}</div>
+  `;
+
+  document.querySelectorAll('.popup-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.popup-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.popup-tab-content').forEach(c => c.style.display = 'none');
+      document.getElementById(`ptab-${tab.dataset.ptab}`).style.display = '';
+    });
+  });
 
   document.querySelectorAll('.synth-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -440,13 +565,59 @@ function showCardPopup(cardId) {
         saveGame(gameSave);
         const charName = CHARACTERS.find(c => c.id === charId)?.name || charId;
         showLevelUp(charName, result.newLevel);
-        showCardPopup(charId);
+        showCardPopup(charId, 'growth');
         refreshGallery();
       }
     });
   });
 
+  document.querySelectorAll('.enhance-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const charId = btn.dataset.enhId;
+      const stat = btn.dataset.enhStat;
+      const result = enhanceCard(gameSave, charId, stat);
+      if (result.ok) {
+        saveGame(gameSave);
+        sfxEquip();
+        showCardPopup(charId, 'growth');
+        refreshGallery();
+      }
+    });
+  });
+
+  document.querySelectorAll('.equip-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const charId = sel.dataset.equipChar;
+      const slot = sel.dataset.equipSlot;
+      const val = sel.value || null;
+      if (!gameSave.cards[charId]) return;
+      if (!gameSave.cards[charId].equipment) gameSave.cards[charId].equipment = { weapon: null, armor: null, accessory: null };
+      if (slot === 'relic') {
+        gameSave.cards[charId].relic = val;
+      } else {
+        gameSave.cards[charId].equipment[slot] = val;
+      }
+      saveGame(gameSave);
+      sfxEquip();
+      showCardPopup(charId, 'growth');
+      refreshGallery();
+    });
+  });
+
   overlay.style.display = 'flex';
+}
+
+function splitLore(lore) {
+  const sentences = lore.split(/(?<=[.?!。])\s*/);
+  const total = sentences.length;
+  if (total <= 2) return [sentences[0] || '???', sentences.slice(1).join(' ') || '???', lore];
+  const t1 = Math.ceil(total / 3);
+  const t2 = Math.ceil(total * 2 / 3);
+  return [
+    sentences.slice(0, t1).join(' '),
+    sentences.slice(t1, t2).join(' '),
+    sentences.slice(t2).join(' '),
+  ];
 }
 
 // ── Tab Navigation ──
@@ -1456,6 +1627,15 @@ function startBattle() {
       });
     }
     if (cardData?.relic) equipRelic(u, cardData.relic);
+    if (cardData?.enhance) {
+      const e = cardData.enhance;
+      u.atk += e.atk || 0;
+      u.def += e.def || 0;
+      u.maxHp += (e.hp || 0) * 5;
+      u.hp = u.maxHp;
+      u.crt += (e.crt || 0) * 0.02;
+      u.eva += (e.eva || 0) * 0.02;
+    }
   });
 
   document.getElementById('deploy-screen').style.display = 'none';

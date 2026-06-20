@@ -79,6 +79,36 @@ export function getSynthesisCost(level) {
   return level < 3 ? 3 : level < 5 ? 4 : 5;
 }
 
+export const ENHANCE_COSTS = { atk: 2, def: 2, hp: 3, crt: 3, eva: 3 };
+export const ENHANCE_MAX = 10;
+
+export function enhanceCard(save, charId, stat) {
+  const card = save.cards[charId];
+  if (!card) return { ok: false, reason: '카드 없음' };
+  if (!card.enhance) card.enhance = { atk: 0, def: 0, hp: 0, crt: 0, eva: 0 };
+  const cost = ENHANCE_COSTS[stat];
+  if (!cost) return { ok: false, reason: '잘못된 스탯' };
+  if (card.enhance[stat] >= ENHANCE_MAX) return { ok: false, reason: '최대 강화 도달' };
+  if (card.count < cost) return { ok: false, reason: `카드 ${cost}장 필요 (현재 ${card.count}장)` };
+  card.count -= cost;
+  card.enhance[stat]++;
+  return { ok: true, stat, newVal: card.enhance[stat], remaining: card.count };
+}
+
+export const LORE_MILESTONES = [
+  { level: 1, label: '1단계 — 첫 만남' },
+  { level: 3, label: '2단계 — 신뢰' },
+  { level: 5, label: '3단계 — 진실' },
+];
+
+export function getUnlockedLoreStage(save, charId) {
+  const card = save.cards[charId];
+  if (!card || card.count <= 0) return 0;
+  if (card.level >= 5) return 3;
+  if (card.level >= 3) return 2;
+  return 1;
+}
+
 function updateCenterLevel(save) {
   const totalCardLevels = Object.values(save.cards).reduce((s, c) => s + c.level * c.count, 0);
   save.centerXP = Math.max(save.centerXP, totalCardLevels);
