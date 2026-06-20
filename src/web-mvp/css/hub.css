@@ -7400,6 +7400,10 @@ body {
   position: absolute; top: 1px; right: 1px;
   font-size: 0.5rem; color: #fbbf24; font-weight: 700;
 }
+.def-trait-fast { border: 1px solid #60a5fa; }
+.def-trait-tank { border: 1px solid #a78bfa; }
+.def-trait-healer { border: 1px solid #34d399; }
+.def-info-dps { color: var(--accent-red, #D94F4F); font-weight: 700; font-size: 0.85rem; margin-top: 2px; }
 
 .defense-draw-panel {
   padding: 10px; background: rgba(251,246,239,0.97);
