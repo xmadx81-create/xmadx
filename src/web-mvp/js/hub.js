@@ -1623,6 +1623,9 @@ function startTycoonMode() {
   }
   document.getElementById('stage-select').style.display = 'none';
   document.getElementById('defense-screen').style.display = '';
+  document.querySelector('.hub-header').style.display = 'none';
+  document.querySelector('.hub-nav').style.display = 'none';
+  document.body.classList.add('tycoon-fullscreen');
   tycoonSelectedFacility = null;
   updateTycoonSpeedBtn();
 
@@ -2206,6 +2209,9 @@ function endTycoonMode(won) {
     tycoonState = null;
     screen.style.display = 'none';
     document.getElementById('stage-select').style.display = '';
+    document.querySelector('.hub-header').style.display = '';
+    document.querySelector('.hub-nav').style.display = '';
+    document.body.classList.remove('tycoon-fullscreen');
     renderStageSelect();
   });
 }
