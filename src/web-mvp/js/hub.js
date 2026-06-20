@@ -13,6 +13,7 @@ import {
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
   getTowerRewards,
+  STORY_ACTS, getScaledEnemyLevel,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -470,43 +471,61 @@ function renderStageSelect() {
   const clearedCount = STAGES.filter(s => gameSave.stageClears?.[s.id]).length;
   const threeStarCount = STAGES.filter(s => gameSave.stageClears?.[s.id]?.stars === 3).length;
   const pct = Math.round(clearedCount / totalStages * 100);
-  list.innerHTML = `<div class="stage-progress">
+
+  const playerMaxLv = Math.max(1, ...CHARACTERS.filter(c => gameSave.cards[c.id]?.count > 0).map(c => gameSave.cards[c.id].level));
+
+  let html = `<div class="stage-progress">
     <div class="stage-progress-bar"><div class="stage-progress-fill" style="width:${pct}%"></div></div>
     <div class="stage-progress-text">
       <span>진행 ${clearedCount}/${totalStages} (${pct}%)</span>
       <span>⭐×3: ${threeStarCount}</span>
     </div>
-  </div>` + STAGES.map((s, i) => {
-    const enemyCount = s.enemyUnits.length;
-    const maxDeploy = s.playerSpawns.length;
-    const difficulty = Math.min(5, Math.ceil((s.enemyLevel || 1) / 2));
-    const stars = '★'.repeat(difficulty) + '☆'.repeat(5 - difficulty);
-    const hasReinforce = s.reinforcements ? `<span class="stage-reinforce">⚠증원</span>` : '';
-    const weatherInfo = s.weather && s.weather !== 'clear' && WEATHER_TYPES[s.weather]
-      ? `<span class="stage-weather" title="${WEATHER_TYPES[s.weather].desc}">${WEATHER_TYPES[s.weather].icon}${WEATHER_TYPES[s.weather].name}</span>` : '';
-    const clearData = gameSave.stageClears?.[s.id];
-    const clearStars = clearData ? '⭐'.repeat(clearData.stars) + '☆'.repeat(3 - clearData.stars) : '';
-    const clearInfo = clearData ? `<span class="stage-clear-info">${clearStars} ${clearData.bestTurns}턴 (${clearData.clears}회)</span>` : '';
-    const prevStage = i > 0 ? STAGES[i - 1] : null;
-    const locked = prevStage && !gameSave.stageClears?.[prevStage.id];
-    return `<div class="stage-card ${clearData ? 'stage-cleared' : ''} ${locked ? 'stage-locked' : ''}" data-stage="${locked ? '' : s.id}">
-      <div class="stage-num">${locked ? '🔒' : i + 1}</div>
-      <div class="stage-info">
-        <div class="stage-name">${s.name} <span class="stage-lv">Lv.${s.enemyLevel || 1}</span></div>
-        <div class="stage-desc">${s.description}</div>
-        <div class="stage-meta">
-          <span class="stage-stars">${stars}</span>
-          <span class="stage-enemy-count">적 ${enemyCount}명</span>
-          <span class="stage-deploy-count">출전 ${maxDeploy}명</span>
-          ${hasReinforce}
-          ${weatherInfo}
-        </div>
-        ${clearInfo}
-        ${clearData && clearData.stars === 3 ? `<button class="stage-sweep-btn" data-sweep="${s.id}">⚡ 소탕</button>` : ''}
-        ${clearData ? `<button class="stage-hard-btn ${gameSave.hardClears?.[s.id] ? 'hard-cleared' : ''}" data-hard="${s.id}">🔥 하드${gameSave.hardClears?.[s.id] ? ' ✓' : ''}</button>` : ''}
-      </div>
+  </div>`;
+
+  STORY_ACTS.forEach(act => {
+    const actUnlocked = !act.unlock || gameSave.stageClears?.[act.unlock];
+    const actCleared = act.stages.every(sid => gameSave.stageClears?.[sid]);
+    html += `<div class="act-header ${actUnlocked ? (actCleared ? 'act-done' : '') : 'act-lock'}">
+      <span class="act-header-name">${act.name}</span>
+      <span class="act-header-status">${actUnlocked ? (actCleared ? '✅ 클리어' : '') : '🔒 ${act.unlock} 클리어 필요'}</span>
     </div>`;
-  }).join('');
+    act.stages.forEach(sid => {
+      const i = STAGES.findIndex(st => st.id === sid);
+      const s = STAGES[i];
+      if (!s) return;
+      const enemyCount = s.enemyUnits.length;
+      const maxDeploy = s.playerSpawns.length;
+      const scaledLv = getScaledEnemyLevel(s, playerMaxLv);
+      const difficulty = Math.min(5, Math.ceil(scaledLv / 3));
+      const stars = '★'.repeat(difficulty) + '☆'.repeat(5 - difficulty);
+      const hasReinforce = s.reinforcements ? `<span class="stage-reinforce">⚠증원</span>` : '';
+      const weatherInfo = s.weather && s.weather !== 'clear' && WEATHER_TYPES[s.weather]
+        ? `<span class="stage-weather" title="${WEATHER_TYPES[s.weather].desc}">${WEATHER_TYPES[s.weather].icon}${WEATHER_TYPES[s.weather].name}</span>` : '';
+      const clearData = gameSave.stageClears?.[s.id];
+      const clearStars = clearData ? '⭐'.repeat(clearData.stars) + '☆'.repeat(3 - clearData.stars) : '';
+      const clearInfo = clearData ? `<span class="stage-clear-info">${clearStars} ${clearData.bestTurns}턴 (${clearData.clears}회)</span>` : '';
+      const prevStage = i > 0 ? STAGES[i - 1] : null;
+      const locked = !actUnlocked || (prevStage && !gameSave.stageClears?.[prevStage.id]);
+      const lvLabel = scaledLv > s.enemyLevel ? `Lv.${scaledLv} <span class="lv-scaled">↑${scaledLv - s.enemyLevel}</span>` : `Lv.${s.enemyLevel}`;
+      html += `<div class="stage-card ${clearData ? 'stage-cleared' : ''} ${locked ? 'stage-locked' : ''}" data-stage="${locked ? '' : s.id}">
+        <div class="stage-num">${locked ? '🔒' : i + 1}</div>
+        <div class="stage-info">
+          <div class="stage-name">${s.name} <span class="stage-lv">${lvLabel}</span></div>
+          <div class="stage-desc">${s.description}</div>
+          <div class="stage-meta">
+            <span class="stage-stars">${stars}</span>
+            <span class="stage-enemy-count">적 ${enemyCount}명</span>
+            <span class="stage-deploy-count">출전 ${maxDeploy}명</span>
+            ${hasReinforce}
+            ${weatherInfo}
+          </div>
+          ${clearInfo}
+          ${clearData && clearData.stars === 3 ? `<button class="stage-sweep-btn" data-sweep="${s.id}">⚡ 소탕</button>` : ''}
+          ${clearData ? `<button class="stage-hard-btn ${gameSave.hardClears?.[s.id] ? 'hard-cleared' : ''}" data-hard="${s.id}">🔥 하드${gameSave.hardClears?.[s.id] ? ' ✓' : ''}</button>` : ''}
+        </div>
+      </div>`;
+    });
+  });
   const towerBest = gameSave.towerBest || 0;
   const towerInfo = towerBest > 0 ? `<span class="stage-clear-info">최고 ${towerBest}층</span>` : '';
   list.innerHTML += `<div class="stage-card stage-tower" data-stage="tower">
@@ -3364,6 +3383,7 @@ function renderHome() {
   const quests = getQuestSummary(gameSave);
   const centerBuff = getCenterBuff(gameSave);
   const ownedCount = CHARACTERS.filter(c => gameSave.cards[c.id]?.count > 0).length;
+  const ownedChars = CHARACTERS.filter(c => gameSave.cards[c.id]?.count > 0);
   const synthable = CHARACTERS.filter(c => {
     const d = gameSave.cards[c.id];
     return d && d.count >= getSynthesisCost(d.level);
@@ -3377,29 +3397,83 @@ function renderHome() {
   const nextStage = STAGES.find(st => !gameSave.stageClears?.[st.id]);
   const tickets = gameSave.recruitTickets || 0;
 
+  const greeter = ownedChars.length > 0
+    ? ownedChars[Math.floor(Math.random() * ownedChars.length)]
+    : null;
+  const greeterQuote = greeter && CHAR_QUOTES[greeter.id]
+    ? CHAR_QUOTES[greeter.id].select : null;
+
+  const currentAct = STORY_ACTS.find(a =>
+    a.stages.some(sid => !gameSave.stageClears?.[sid])
+  ) || STORY_ACTS[STORY_ACTS.length - 1];
+  const actProgress = currentAct.stages.filter(sid => gameSave.stageClears?.[sid]).length;
+
+  const storyMapHtml = STORY_ACTS.map(act => {
+    const unlocked = !act.unlock || gameSave.stageClears?.[act.unlock];
+    const cleared = act.stages.every(sid => gameSave.stageClears?.[sid]);
+    const isCurrent = act === currentAct;
+    const prog = act.stages.filter(sid => gameSave.stageClears?.[sid]).length;
+    return `<div class="story-act-node ${unlocked ? (cleared ? 'act-cleared' : (isCurrent ? 'act-current' : 'act-unlocked')) : 'act-locked'}">
+      <div class="act-marker">${unlocked ? (cleared ? '✦' : (isCurrent ? '◉' : '○')) : '🔒'}</div>
+      <div class="act-label">${act.name}</div>
+      <div class="act-prog">${unlocked ? `${prog}/${act.stages.length}` : '미해금'}</div>
+    </div>`;
+  }).join('<div class="act-connector"></div>');
+
   el.innerHTML = `
-    <div class="home-greeting">
-      <h2>🩸 혈연센터에 오신 걸 환영합니다</h2>
-      <div class="home-center">${centerBuff.label}</div>
+    <div class="home-atmosphere">
+      <div class="blood-drip drip-1"></div>
+      <div class="blood-drip drip-2"></div>
+      <div class="blood-drip drip-3"></div>
     </div>
+    <div class="home-hero">
+      <div class="home-hero-glow"></div>
+      <div class="home-hero-text">
+        <h2>🩸 헌혈의 집</h2>
+        <p class="home-subtitle">백십자재단 혈연센터 · 혈액관리국</p>
+        <div class="home-center-badge">${centerBuff.label}</div>
+      </div>
+      ${greeter ? `<div class="home-greeter">
+        <div class="greeter-portrait">
+          <img src="${portraitSrc(greeter.portrait)}" alt="${greeter.name}"
+               onerror="this.style.display='none'" />
+        </div>
+        <div class="greeter-bubble">
+          <div class="greeter-name">${greeter.name}</div>
+          <div class="greeter-quote">"${greeterQuote || '어서 오세요.'}"</div>
+        </div>
+      </div>` : ''}
+    </div>
+
+    <div class="story-map">
+      <div class="story-map-title">📖 스토리 진행</div>
+      <div class="story-act-track">${storyMapHtml}</div>
+      ${nextStage ? `<div class="story-next">
+        <span class="story-next-label">다음 임무:</span>
+        <strong>${nextStage.name}</strong>
+        <span class="story-next-lv">Lv.${nextStage.enemyLevel} · 적 ${nextStage.enemyUnits.length}명</span>
+      </div>` : `<div class="story-next story-complete">🎉 모든 스토리 클리어!</div>`}
+    </div>
+
     <div class="home-grid">
+      <div class="home-card home-card-action" data-goto="play">
+        <div class="home-card-title">⚔️ 전투</div>
+        <div class="home-card-body">
+          <div>스테이지 ${clearedStages}/${totalStages}</div>
+          <div>승률 ${s.totalBattles ? Math.round(s.wins / s.totalBattles * 100) : 0}% (${s.wins}승)</div>
+          <div>🗼 탑 최고 ${gameSave.towerBest || 0}층</div>
+          ${nextStage ? `<div class="home-alert">▶ ${nextStage.name} 도전하기</div>` : ''}
+        </div>
+      </div>
       <div class="home-card">
-        <div class="home-card-title">📋 오늘의 퀘스트</div>
+        <div class="home-card-title">📋 퀘스트</div>
         <div class="home-card-body">
           <div>일일: ${dailyDone}/${dailyTotal} ${dailyDone === dailyTotal && dailyTotal > 0 ? '✅' : ''}</div>
           <div>주간: ${weeklyDone}/${weeklyTotal} ${weeklyDone === weeklyTotal && weeklyTotal > 0 ? '✅' : ''}</div>
           <div>출석: ${quests.attendance}일째</div>
         </div>
       </div>
-      <div class="home-card">
-        <div class="home-card-title">⚔️ 전투 현황</div>
-        <div class="home-card-body">
-          <div>스테이지 ${clearedStages}/${totalStages}</div>
-          <div>승률 ${s.totalBattles ? Math.round(s.wins / s.totalBattles * 100) : 0}% (${s.wins}승)</div>
-          <div>🗼 탑 최고 ${gameSave.towerBest || 0}층</div>
-        </div>
-      </div>
-      <div class="home-card">
+      <div class="home-card home-card-action" data-goto="gallery">
         <div class="home-card-title">🃏 컬렉션</div>
         <div class="home-card-body">
           <div>보유 ${ownedCount}/${CHARACTERS.length}</div>
@@ -3407,16 +3481,6 @@ function renderHome() {
           ${tickets > 0 ? `<div class="home-alert">🎫 모집권 ${tickets}장</div>` : ''}
         </div>
       </div>
-      ${nextStage ? `<div class="home-card home-card-action" data-goto="play">
-        <div class="home-card-title">🎯 추천 스테이지</div>
-        <div class="home-card-body">
-          <div><strong>${nextStage.name}</strong></div>
-          <div>Lv.${nextStage.enemyLevel} · 적 ${nextStage.enemyUnits.length}명</div>
-        </div>
-      </div>` : `<div class="home-card">
-        <div class="home-card-title">🎉 축하합니다!</div>
-        <div class="home-card-body">모든 스테이지 클리어!</div>
-      </div>`}
     </div>
   `;
 
