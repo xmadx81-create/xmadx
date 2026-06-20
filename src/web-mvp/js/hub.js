@@ -610,6 +610,7 @@ function showCardPopup(cardId, initialTab) {
   });
 
   overlay.style.display = 'flex';
+  requestAnimationFrame(() => overlay.classList.add('open'));
 }
 
 function splitLore(lore) {
@@ -4393,11 +4394,14 @@ document.addEventListener('DOMContentLoaded', () => {
     showAttendancePopup(gameSave.quests.attendance, rewardedCards, attend);
   }
 
-  document.getElementById('popup-close').addEventListener('click', () => {
-    document.getElementById('card-popup').style.display = 'none';
-  });
+  function closeCardPopup() {
+    const popup = document.getElementById('card-popup');
+    popup.classList.remove('open');
+    setTimeout(() => { popup.style.display = 'none'; }, 400);
+  }
+  document.getElementById('popup-close').addEventListener('click', closeCardPopup);
   document.getElementById('card-popup').addEventListener('click', (e) => {
-    if (e.target.id === 'card-popup') document.getElementById('card-popup').style.display = 'none';
+    if (e.target.id === 'card-popup') closeCardPopup();
   });
 
   document.getElementById('btn-move').addEventListener('click', onMoveBtn);
