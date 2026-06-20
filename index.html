@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="헌혈의 집" />
-  <script type="module" crossorigin src="/xmadx/assets/hub-EF38xkw6.js"></script>
-  <link rel="stylesheet" crossorigin href="/xmadx/assets/hub-BIwDuPLd.css">
+  <script type="module" crossorigin src="/xmadx/assets/hub-D5AM13Rt.js"></script>
+  <link rel="stylesheet" crossorigin href="/xmadx/assets/hub-CFNU9QRo.css">
 </head>
 <body>
   <div id="app">
@@ -232,35 +232,28 @@
           <div id="battle-log" class="battle-log"></div>
         </div>
 
-        <!-- 방어전 화면 -->
+        <!-- 헌혈의집 타이쿤 화면 -->
         <div id="defense-screen" class="defense-screen" style="display:none">
           <div class="defense-hud">
-            <span class="defense-wave" id="defense-wave">웨이브 1</span>
+            <span class="defense-wave" id="defense-wave">1일차</span>
             <span class="defense-gold" id="defense-gold">💰 100</span>
-            <span class="defense-lives" id="defense-lives">❤ 20</span>
-            <span class="defense-merges" id="defense-merges">합성 0</span>
+            <span class="defense-lives" id="defense-lives">⭐ 20</span>
+            <span class="defense-merges" id="defense-merges">🩸 0/10</span>
             <span class="defense-timer" id="defense-timer"></span>
           </div>
           <div class="defense-synergy" id="defense-synergy"></div>
           <div class="defense-tips">
-            <span>같은 카드 3장 → 합성 버튼</span>
-            <span>유닛 탭 → 정보 · 우클릭 → 판매</span>
+            <span>시설 선택 → 빈 칸 클릭으로 배치</span>
+            <span>주문 클릭 → 혈액 납품</span>
           </div>
           <div class="defense-main">
             <div class="defense-grid-wrap" id="defense-grid-wrap"></div>
           </div>
-          <div class="defense-draw-panel" id="defense-draw-panel" style="display:none">
-            <div class="defense-draw-choices" id="defense-draw-choices"></div>
-          </div>
+          <div id="tyc-facility-panel" class="tyc-facility-panel"></div>
           <div class="defense-controls">
-            <button id="btn-defense-summon" class="btn-primary">소환 🎲</button>
-            <button id="btn-defense-multi" class="btn-secondary">10연 🎲</button>
-            <button id="btn-defense-merge" class="btn-secondary" disabled>합성 ⬆</button>
-            <button id="btn-defense-start" class="btn-primary">전투 시작 ▶</button>
-            <button id="btn-defense-auto-summon" class="btn-secondary">자동소환 OFF</button>
-            <button id="btn-defense-auto-merge" class="btn-secondary">자동합성 OFF</button>
-            <button id="btn-defense-speed" class="btn-secondary">수동</button>
-            <button id="btn-defense-quit" class="btn-secondary">포기</button>
+            <button id="btn-defense-start" class="btn-primary">개원 ▶</button>
+            <button id="btn-defense-speed" class="btn-secondary">×1</button>
+            <button id="btn-defense-quit" class="btn-secondary">폐원</button>
           </div>
         </div>
       </section>
