@@ -7117,3 +7117,166 @@ body {
     animation: none;
   }
 }
+
+/* ═══════════════════════════════════════════
+   R41 — 카드 상세 탭 UI / 강화 / 서사 해금
+   ═══════════════════════════════════════════ */
+
+.sheet-level-bar {
+  font-size: 0.8rem; color: #ffd700; font-weight: 700;
+  margin-top: 4px;
+}
+
+.popup-tabs {
+  display: flex; gap: 0; margin: 10px 0 6px;
+  border-bottom: 2px solid rgba(255,255,255,0.08);
+}
+.popup-tab {
+  flex: 1; padding: 8px 0; text-align: center;
+  font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  background: none; border: none; color: #888;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+.popup-tab.active {
+  color: var(--accent-gold, #e9c46a);
+  border-bottom-color: var(--accent-gold, #e9c46a);
+}
+.popup-tab-content { min-height: 120px; }
+
+.enh-badge {
+  font-size: 0.6rem; color: #4ade80; font-weight: 700; margin-left: 3px;
+}
+
+/* ── 강화 섹션 ── */
+.enhance-section {
+  margin-top: 12px; padding: 10px; border-radius: 8px;
+  background: rgba(74,222,128,0.06); border: 1px solid rgba(74,222,128,0.15);
+}
+.enhance-title {
+  font-size: 0.8rem; font-weight: 700; color: #4ade80; margin-bottom: 4px;
+}
+.enhance-desc {
+  font-size: 0.68rem; color: #888; margin-bottom: 8px;
+}
+.enhance-grid { display: flex; flex-direction: column; gap: 6px; }
+.enhance-row {
+  display: flex; align-items: center; gap: 6px;
+}
+.enhance-stat-info {
+  display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1;
+}
+.enhance-icon { font-size: 0.9rem; flex-shrink: 0; }
+.enhance-label { font-size: 0.75rem; font-weight: 700; color: #ccc; min-width: 28px; }
+.enhance-desc-text { font-size: 0.65rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.enhance-bar-track {
+  width: 50px; height: 6px; background: rgba(255,255,255,0.08);
+  border-radius: 3px; overflow: hidden; flex-shrink: 0;
+}
+.enhance-bar-fill {
+  height: 100%; background: linear-gradient(90deg, #4ade80, #22c55e);
+  border-radius: 3px; transition: width 0.3s;
+}
+.enhance-btn {
+  padding: 3px 8px; font-size: 0.68rem; font-weight: 600;
+  background: rgba(74,222,128,0.2); color: #4ade80;
+  border: 1px solid rgba(74,222,128,0.3); border-radius: 4px;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.enhance-btn:active { transform: scale(0.95); }
+.enhance-disabled {
+  opacity: 0.4; cursor: not-allowed; background: rgba(255,255,255,0.03);
+  color: #666; border-color: rgba(255,255,255,0.08);
+}
+.enhance-stock {
+  font-size: 0.72rem; color: #888; margin-top: 6px; text-align: right;
+}
+.growth-locked {
+  text-align: center; padding: 24px; color: #666; font-size: 0.85rem;
+}
+
+/* ── 장비 장착 UI ── */
+.equip-section {
+  margin-top: 12px; padding: 10px; border-radius: 8px;
+  background: rgba(100,181,246,0.06); border: 1px solid rgba(100,181,246,0.15);
+}
+.equip-section-title {
+  font-size: 0.8rem; font-weight: 700; color: #64b5f6; margin-bottom: 8px;
+}
+.equip-slot-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.equip-slot-label {
+  font-size: 0.75rem; color: #ccc; min-width: 60px; flex-shrink: 0;
+}
+.equip-select {
+  flex: 1; padding: 4px 6px; font-size: 0.72rem;
+  background: rgba(0,0,0,0.3); color: #ddd;
+  border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
+  max-width: 200px;
+}
+
+/* ── 대사 ── */
+.sheet-quotes {
+  margin-top: 10px; padding: 8px; border-radius: 8px;
+  background: rgba(233,196,106,0.06); border: 1px solid rgba(233,196,106,0.12);
+}
+.quotes-title { font-size: 0.75rem; color: #e9c46a; font-weight: 700; margin-bottom: 6px; }
+.quotes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.quote-item { font-size: 0.72rem; padding: 3px 5px; border-radius: 3px; background: rgba(0,0,0,0.15); }
+.quote-label { font-weight: 600; color: #e9c46a; margin-right: 4px; }
+.quote-text { color: #bbb; font-style: italic; }
+
+/* ── 유대 관계 ── */
+.sheet-bonds {
+  margin-top: 10px; padding: 8px; border-radius: 8px;
+  background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.12);
+}
+.bonds-title { font-size: 0.75rem; color: #f87171; font-weight: 700; margin-bottom: 6px; }
+.bonds-grid { display: flex; flex-direction: column; gap: 3px; }
+.bond-item {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.75rem; padding: 3px 6px; border-radius: 3px;
+  background: rgba(248,113,113,0.05);
+}
+.bond-name { color: #ddd; }
+.bond-lv { color: #f87171; font-size: 0.68rem; }
+
+/* ── 서사 해금 ── */
+.lore-section {
+  margin-top: 8px;
+}
+.lore-title {
+  font-size: 0.8rem; font-weight: 700; color: #a78bfa; margin-bottom: 8px;
+}
+.lore-stage {
+  padding: 8px 10px; margin-bottom: 6px; border-radius: 8px;
+  border-left: 3px solid rgba(167,139,250,0.3);
+  transition: all 0.3s;
+}
+.lore-unlocked {
+  background: rgba(167,139,250,0.08);
+  border-left-color: #a78bfa;
+}
+.lore-locked {
+  background: rgba(255,255,255,0.02);
+  border-left-color: #333;
+}
+.lore-stage-header {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+}
+.lore-stage-icon { font-size: 0.9rem; }
+.lore-stage-label { font-size: 0.78rem; font-weight: 600; color: #ccc; flex: 1; }
+.lore-stage-req { font-size: 0.65rem; color: #888; }
+.lore-unlocked .lore-stage-label { color: #a78bfa; }
+.lore-unlocked .lore-stage-req { color: #4ade80; }
+.lore-stage-text {
+  font-size: 0.78rem; line-height: 1.5; color: #aaa;
+}
+.lore-locked .lore-stage-text {
+  color: #555; font-style: italic;
+}
+.sheet-flavor {
+  font-size: 0.78rem; color: #888; font-style: italic;
+  text-align: center; margin-top: 10px;
+}
