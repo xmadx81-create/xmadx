@@ -1602,8 +1602,9 @@ function startTowerWave() {
 
 let defenseState = null;
 let defenseHeldUnit = null;
-let defenseSpeed = 0;
-let defenseAutoTimer = null;
+let defenseSpeed = 1;
+let defenseLoopTimer = null;
+let defensePrepRemain = 0;
 let defenseKills = 0;
 let defenseDmgTotal = 0;
 
@@ -1612,13 +1613,14 @@ const DEF_ROLE_DESC = { tank: '🛡감속', melee_dps: '⚔근접', ranged_dps: 
 function startDefenseMode() {
   defenseState = createDefenseState(1);
   defenseHeldUnit = null;
-  defenseSpeed = 0;
+  defenseSpeed = 1;
   defenseKills = 0;
   defenseDmgTotal = 0;
   document.getElementById('stage-select').style.display = 'none';
   document.getElementById('defense-screen').style.display = '';
+  updateSpeedBtn();
   renderDefense();
-  defenseStartDraw();
+  defenseStartPrep();
 }
 
 function renderDefense() {
@@ -1630,6 +1632,15 @@ function renderDefense() {
   document.getElementById('defense-lives').textContent = `❤ ${lives}`;
   document.getElementById('defense-merges').textContent = `합성 ${mergeCount} · 처치 ${defenseKills}`;
   document.getElementById('defense-gold').textContent = `💰 ${defenseState.gold}`;
+  const timerEl = document.getElementById('defense-timer');
+  if (timerEl) {
+    if (defenseState.phase === 'prep') {
+      const secs = Math.ceil(defensePrepRemain / 1000);
+      timerEl.textContent = `⏱ ${secs}초`;
+    } else {
+      timerEl.textContent = '⚔ 전투중';
+    }
+  }
 
   const totalW = gridW + 2;
   const totalH = gridH + 2;
@@ -1710,7 +1721,7 @@ function renderDefense() {
     tile.addEventListener('click', () => {
       const gx = parseInt(tile.dataset.gx);
       const gy = parseInt(tile.dataset.gy);
-      if (defenseHeldUnit && !defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
+      if (defenseHeldUnit && !defenseState.grid[gy][gx]) {
         const unit = cardToUnit(defenseHeldUnit, gx, gy);
         unit.team = 'player';
         unit.uid = `def-player-${gx}-${gy}-${Date.now()}`;
@@ -1721,17 +1732,16 @@ function renderDefense() {
         sfxCardPlay();
         updateSummonBtn();
         renderDefense();
-      } else if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
-        tryDefenseMerge(gx, gy);
       } else if (defenseState.grid[gy][gx]) {
-        showDefenseUnitInfo(defenseState.grid[gy][gx]);
+        if (defenseState.phase === 'prep') tryDefenseMerge(gx, gy);
+        else showDefenseUnitInfo(defenseState.grid[gy][gx]);
       }
     });
     tile.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const gx = parseInt(tile.dataset.gx);
       const gy = parseInt(tile.dataset.gy);
-      if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
+      if (defenseState.grid[gy][gx]) {
         const sellGold = Math.floor(defenseState.summonCost * 0.6);
         defenseState.gold += sellGold;
         defenseState.grid[gy][gx] = null;
@@ -1745,7 +1755,7 @@ function renderDefense() {
     tile.addEventListener('touchstart', () => {
       const gx = parseInt(tile.dataset.gx);
       const gy = parseInt(tile.dataset.gy);
-      if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
+      if (defenseState.grid[gy][gx]) {
         holdTimer = setTimeout(() => {
           const sellGold = Math.floor(defenseState.summonCost * 0.6);
           defenseState.gold += sellGold;
@@ -1792,8 +1802,9 @@ function showDefenseUnitInfo(unit) {
   popup.addEventListener('click', () => popup.remove());
 }
 
-function defenseStartDraw() {
-  defenseState.phase = 'draw';
+function defenseStartPrep() {
+  defenseState.phase = 'prep';
+  defensePrepRemain = 10000;
 
   const preview = getWavePreview(defenseState.wave);
   const roleIcons = { tank: '🛡', melee_dps: '⚔', ranged_dps: '🏹', support: '💚', bruiser: '🔨', breaker: '💥', evasive_dps: '🌀', battle_support: '⚡' };
@@ -1804,16 +1815,16 @@ function defenseStartDraw() {
     previewEl.className = 'def-wave-preview';
     document.getElementById('defense-grid-wrap').parentElement.insertBefore(previewEl, document.getElementById('defense-grid-wrap'));
   }
-  previewEl.innerHTML = `<span class="def-preview-label">다음 적</span>
+  previewEl.innerHTML = `<span class="def-preview-label">다음 웨이브</span>
     <span class="def-preview-count">💀${preview.count}</span>
     <span class="def-preview-roles">${preview.topRoles.map(r => roleIcons[r] || '?').join('')}</span>
     <span class="def-preview-hp">HP ×${preview.hpMult.toFixed(1)}</span>
     ${preview.hasBoss ? '<span class="def-preview-boss">👑보스</span>' : ''}`;
 
   updateSummonBtn();
-  document.getElementById('btn-defense-next').disabled = false;
-
-  if (defenseSpeed > 0) startDefenseAuto();
+  const startBtn = document.getElementById('btn-defense-start');
+  if (startBtn) { startBtn.disabled = false; startBtn.textContent = '전투 시작 ▶'; }
+  startDefenseLoop();
 }
 
 function updateSummonBtn() {
@@ -1826,7 +1837,7 @@ function updateSummonBtn() {
 }
 
 function defenseSummon() {
-  if (!defenseState || defenseState.phase !== 'draw') return;
+  if (!defenseState) return;
   if (defenseHeldUnit) return;
   if (defenseState.gold < defenseState.summonCost) return;
   const emptyTiles = [];
@@ -1838,24 +1849,13 @@ function defenseSummon() {
   if (emptyTiles.length === 0) return;
 
   defenseState.gold -= defenseState.summonCost;
-  defenseState.summonCost += 5;
+  defenseState.summonCost += 3;
   const card = defenseDrawCards(defenseState.wave)[0];
 
-  if (defenseSpeed === 0) {
-    defenseHeldUnit = card;
-    sfxCardPlay();
-    const roleDesc = DEF_ROLE_DESC[card.role] || '?';
-    showDefenseBanner(`${card.name} ${roleDesc} — 타일을 선택하세요`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
-  } else {
-    const tile = emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
-    const unit = cardToUnit(card, tile.x, tile.y);
-    unit.team = 'player';
-    unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}`;
-    defenseState.grid[tile.y][tile.x] = unit;
-    sfxCardPlay();
-    const roleDesc = DEF_ROLE_DESC[card.role] || '?';
-    showDefenseBanner(`${card.name} ${roleDesc} 소환!`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
-  }
+  defenseHeldUnit = card;
+  sfxCardPlay();
+  const roleDesc = DEF_ROLE_DESC[card.role] || '?';
+  showDefenseBanner(`${card.name} ${roleDesc} — 타일 선택`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
   updateSummonBtn();
   renderDefense();
 }
@@ -1934,7 +1934,7 @@ function showDefenseRewardPanel(wave) {
       defenseState.spawnQueue = generateDefenseWave(defenseState.wave);
       defenseState.spawnIndex = 0;
       defenseState.turnNumber = 0;
-      defenseStartDraw();
+      defenseStartPrep();
       renderDefense();
     });
   });
@@ -1993,10 +1993,28 @@ function showDefenseDmgPopup(x, y, dmg, crit, killed) {
   setTimeout(() => popup.remove(), 800);
 }
 
-function runDefenseTurn() {
-  defenseState.turnNumber++;
+function defenseStartCombat() {
   defenseState.phase = 'combat';
+  defensePrepRemain = 0;
+  const startBtn = document.getElementById('btn-defense-start');
+  if (startBtn) { startBtn.disabled = true; startBtn.textContent = '전투 중...'; }
+  const previewEl = document.getElementById('defense-wave-preview');
+  if (previewEl) previewEl.innerHTML = '';
+  renderDefense();
+}
 
+function defenseGameTick() {
+  if (!defenseState) { stopDefenseLoop(); return; }
+
+  if (defenseState.phase === 'prep') {
+    const interval = defenseSpeed === 2 ? 250 : 500;
+    defensePrepRemain -= interval;
+    renderDefense();
+    if (defensePrepRemain <= 0) defenseStartCombat();
+    return;
+  }
+
+  defenseState.turnNumber++;
   defenseSpawnEnemies(defenseState);
 
   const skillResults = defenseActivateSkills(defenseState);
@@ -2016,7 +2034,6 @@ function runDefenseTurn() {
   }
 
   const atkResults = defenseAutoAttack(defenseState);
-
   atkResults.forEach(r => {
     defenseDmgTotal += r.damage;
     if (r.attacker) r.attacker._totalDmg = (r.attacker._totalDmg || 0) + r.damage;
@@ -2051,7 +2068,7 @@ function runDefenseTurn() {
 
   if (isDefenseWaveComplete(defenseState)) {
     sfxWin();
-    stopDefenseAuto();
+    stopDefenseLoop();
     const rewards = getDefenseRewards(defenseState.wave);
     rewards.cards.forEach(rarity => {
       const pool = CHARACTERS.filter(c => c.rarity === rarity);
@@ -2070,12 +2087,10 @@ function runDefenseTurn() {
     showDefenseRewardPanel(defenseState.wave);
     return;
   }
-
-  defenseStartDraw();
 }
 
 function endDefenseMode(won) {
-  stopDefenseAuto();
+  stopDefenseLoop();
   const wave = defenseState.wave;
   const prevBest = gameSave.defenseBest || 0;
   const isNewRecord = wave > prevBest;
@@ -2111,28 +2126,22 @@ function endDefenseMode(won) {
   });
 }
 
-function stopDefenseAuto() {
-  if (defenseAutoTimer) { clearInterval(defenseAutoTimer); defenseAutoTimer = null; }
+function stopDefenseLoop() {
+  if (defenseLoopTimer) { clearInterval(defenseLoopTimer); defenseLoopTimer = null; }
 }
 
-function startDefenseAuto() {
-  stopDefenseAuto();
-  const interval = defenseSpeed === 2 ? 400 : 800;
-  defenseAutoTimer = setInterval(() => {
-    if (!defenseState) { stopDefenseAuto(); return; }
-    if (defenseState.phase !== 'draw') return;
-    const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
-    const canAfford = defenseState.gold >= defenseState.summonCost;
-    if (hasEmpty && canAfford) { defenseSummon(); return; }
-    runDefenseTurn();
-  }, interval);
+function startDefenseLoop() {
+  stopDefenseLoop();
+  if (defenseSpeed === 0) return;
+  const interval = defenseSpeed === 2 ? 250 : 500;
+  defenseLoopTimer = setInterval(defenseGameTick, interval);
 }
 
 function updateSpeedBtn() {
   const btn = document.getElementById('btn-defense-speed');
   if (!btn) return;
-  const labels = ['수동', '×1', '×2'];
-  btn.textContent = labels[defenseSpeed] || '수동';
+  const labels = ['⏸', '×1', '×2'];
+  btn.textContent = labels[defenseSpeed] || '⏸';
   btn.classList.toggle('btn-primary', defenseSpeed > 0);
   btn.classList.toggle('btn-secondary', defenseSpeed === 0);
 }
@@ -2142,20 +2151,20 @@ function initDefenseControls() {
     if (!defenseState) return;
     defenseSummon();
   });
-  document.getElementById('btn-defense-next')?.addEventListener('click', () => {
-    if (!defenseState) return;
-    runDefenseTurn();
+  document.getElementById('btn-defense-start')?.addEventListener('click', () => {
+    if (!defenseState || defenseState.phase !== 'prep') return;
+    defenseStartCombat();
   });
   document.getElementById('btn-defense-quit')?.addEventListener('click', () => {
     if (!defenseState) return;
-    stopDefenseAuto();
+    stopDefenseLoop();
     endDefenseMode(false);
   });
   document.getElementById('btn-defense-speed')?.addEventListener('click', () => {
     defenseSpeed = (defenseSpeed + 1) % 3;
     updateSpeedBtn();
-    if (defenseSpeed > 0 && defenseState?.phase === 'draw') startDefenseAuto();
-    else stopDefenseAuto();
+    if (defenseSpeed > 0) startDefenseLoop();
+    else stopDefenseLoop();
   });
 }
 
