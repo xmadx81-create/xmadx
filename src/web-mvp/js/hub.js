@@ -516,6 +516,7 @@ function renderStageSelect() {
             <span class="stage-stars">${stars}</span>
             <span class="stage-enemy-count">적 ${enemyCount}명</span>
             <span class="stage-deploy-count">출전 ${maxDeploy}명</span>
+            <span class="stage-victory-badge vc-${s.victoryCondition}">${VICTORY_LABEL[s.victoryCondition] || VICTORY_LABEL.defeat_all}</span>
             ${hasReinforce}
             ${weatherInfo}
           </div>
@@ -1474,9 +1475,9 @@ function startBattle() {
   if (!gameSave.onboarded) {
     gameSave.onboarded = true;
     saveGame(gameSave);
-    showOnboarding(() => showStory(battleState.stage.storyIntro, afterIntro));
+    showOnboarding(() => showStory(battleState.stage.storyIntro, afterIntro, battleState.stage));
   } else {
-    showStory(battleState.stage.storyIntro, afterIntro);
+    showStory(battleState.stage.storyIntro, afterIntro, battleState.stage);
   }
 }
 
@@ -1506,9 +1507,11 @@ function showOnboarding(callback) {
   });
 }
 
-function showAttendancePopup(day, cards) {
+function showAttendancePopup(day, cards, attend) {
   const rarityKo = { common: '커먼', uncommon: '언커먼', rare: '레어', legendary: '전설' };
   const rarityIcon = { common: '🃏', uncommon: '🎴', rare: '💎', legendary: '👑' };
+  const ticketHtml = attend?.tickets ? `<div class="attend-bonus">🎫 모집권 ×${attend.tickets}</div>` : '';
+  const itemHtml = attend?.items ? `<div class="attend-bonus">📦 소모품 ×${attend.items.length}</div>` : '';
   const overlay = document.createElement('div');
   overlay.className = 'onboarding-overlay';
   overlay.innerHTML = `
@@ -1521,6 +1524,7 @@ function showAttendancePopup(day, cards) {
           <span class="attend-rarity">${rarityKo[c.rarity]}</span>
         </div>`).join('')}
       </div>
+      ${ticketHtml}${itemHtml}
       <button class="ob-start-btn">받기</button>
     </div>
   `;
@@ -1534,10 +1538,40 @@ function showAttendancePopup(day, cards) {
 
 // ── Story Panel ──
 
-function showStory(text, callback) {
+const VICTORY_LABEL = {
+  defeat_all: '🗡️ 모든 적 제압',
+  survive: '🛡️ 생존',
+  boss_kill: '💀 보스 처치',
+  capture_point: '📍 거점 점령',
+  protect_target: '🛡️ 대상 보호',
+};
+
+function showStory(text, callback, stageInfo) {
   if (!text) { if (callback) callback(); return; }
   const panel = document.getElementById('story-panel');
-  document.getElementById('story-text').textContent = text;
+  const storyText = document.getElementById('story-text');
+  const portrait = document.getElementById('story-portrait');
+
+  let headerHtml = '';
+  if (stageInfo) {
+    const act = STORY_ACTS.find(a => a.stages.includes(stageInfo.id));
+    const actLabel = act ? act.name : '';
+    const vcLabel = VICTORY_LABEL[stageInfo.victoryCondition] || VICTORY_LABEL.defeat_all;
+    const weatherInfo = stageInfo.weather && WEATHER_TYPES[stageInfo.weather]
+      ? `${WEATHER_TYPES[stageInfo.weather].icon} ${WEATHER_TYPES[stageInfo.weather].name}` : '';
+    headerHtml = `<div class="story-stage-header">
+      <div class="story-act-label">${actLabel}</div>
+      <div class="story-stage-name">${stageInfo.name}</div>
+      <div class="story-mission-info">
+        <span class="story-victory">${vcLabel}</span>
+        <span class="story-lv">Lv.${stageInfo.enemyLevel} · 적 ${stageInfo.enemyUnits.length}명</span>
+        ${weatherInfo ? `<span class="story-weather">${weatherInfo}</span>` : ''}
+      </div>
+    </div>`;
+  }
+
+  portrait.innerHTML = headerHtml;
+  storyText.textContent = text;
   panel.style.display = 'flex';
   document.getElementById('story-next').onclick = () => {
     panel.style.display = 'none';
@@ -3680,8 +3714,17 @@ document.addEventListener('DOMContentLoaded', () => {
       addCard(gameSave, randomChar.id, rarity);
       rewardedCards.push({ name: randomChar.name, rarity });
     });
+    if (attend.tickets) {
+      gameSave.recruitTickets = (gameSave.recruitTickets || 0) + attend.tickets;
+    }
+    if (attend.items) {
+      if (!gameSave.inventory) gameSave.inventory = [];
+      attend.items.forEach(type => {
+        gameSave.inventory.push({ type, name: { heal: '회복약', mp: 'MP포션', atkBuff: '공격버프', defBuff: '방어버프', crtBuff: '치명버프', xp: '경험치서' }[type] || type });
+      });
+    }
     saveGame(gameSave);
-    showAttendancePopup(gameSave.quests.attendance, rewardedCards);
+    showAttendancePopup(gameSave.quests.attendance, rewardedCards, attend);
   }
 
   document.getElementById('popup-close').addEventListener('click', () => {

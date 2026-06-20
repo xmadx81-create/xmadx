@@ -199,6 +199,11 @@ body {
 .attend-name { font-weight: bold; flex: 1; }
 .attend-rarity { font-size: 0.7rem; opacity: 0.7; }
 .attendance-box { text-align: center; }
+.attend-bonus {
+  margin-top: 8px; padding: 6px 12px; border-radius: 6px;
+  background: rgba(212,168,67,0.1); border: 1px solid rgba(212,168,67,0.3);
+  color: var(--accent-gold); font-size: 0.85rem; font-weight: 700;
+}
 
 .card-grid {
   display: grid;
@@ -2973,6 +2978,51 @@ body {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
 }
+
+/* ── Story Stage Header (cinematic) ── */
+.story-stage-header {
+  text-align: center; padding: 1rem 0.5rem;
+  animation: stageHeaderFade 0.8s ease-out;
+}
+@keyframes stageHeaderFade {
+  0% { opacity: 0; transform: translateY(-10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.story-act-label {
+  font-size: 0.65rem; color: var(--accent-gold);
+  letter-spacing: 0.2em; text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+.story-stage-name {
+  font-size: 1.4rem; font-weight: 900; color: var(--accent-red);
+  text-shadow: 0 0 20px rgba(196,55,75,0.5);
+  letter-spacing: 0.05em; margin-bottom: 0.5rem;
+}
+.story-mission-info {
+  display: flex; gap: 0.5rem; justify-content: center; align-items: center; flex-wrap: wrap;
+}
+.story-victory {
+  font-size: 0.7rem; color: #fff; background: rgba(196,55,75,0.4);
+  border: 1px solid var(--accent-red); border-radius: 4px;
+  padding: 0.15rem 0.5rem; font-weight: 700;
+}
+.story-lv {
+  font-size: 0.7rem; color: var(--text-secondary);
+}
+.story-weather {
+  font-size: 0.7rem; color: var(--accent-blue);
+}
+
+/* Victory condition badge in stage select */
+.stage-victory-badge {
+  font-size: 0.6rem; padding: 0.1rem 0.4rem; border-radius: 3px;
+  font-weight: 700;
+}
+.vc-defeat_all { background: rgba(196,55,75,0.2); color: var(--accent-red); }
+.vc-boss_kill { background: rgba(255,0,0,0.2); color: #ff6b6b; }
+.vc-capture_point { background: rgba(74,127,181,0.2); color: var(--accent-blue); }
+.vc-survive { background: rgba(75,155,110,0.2); color: var(--accent-green); }
+.vc-protect_target { background: rgba(212,168,67,0.2); color: var(--accent-gold); }
 
 /* ── Unit Detail Panel (Bottom Sheet) ── */
 .unit-detail {

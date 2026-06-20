@@ -1099,7 +1099,7 @@ export const STAGES = [
     id: 'stage-9',
     name: '혈액 연구소',
     act: 2,
-    description: '프로젝트 레드문의 비밀을 파헤쳐라.',
+    description: '프로젝트 레드문의 비밀을 파헤쳐라. 핵심 장비를 점령하라!',
     storyIntro: '항구 문서가 가리킨 곳 — 도시 외곽의 폐공장으로 위장된 비밀 연구소. "레드문"의 정체가 이곳에 있다.',
     storyOutro: '"프로젝트 레드문" — 고대 혈액으로 초인을 만드는 실험. 이미 실험체가 완성되었다는 기록이 남아있다.',
     enemyLevel: 10,
@@ -1128,14 +1128,16 @@ export const STAGES = [
     reinforcements: [
       { turn: 4, units: [{ charId: 'cecilia-kartein', x: 3, y: 0 }, { charId: 'kaspar-wren', x: 6, y: 0 }], message: '🔴 연구소 내부에서 카르테인 정예병 출현!' },
     ],
-    victoryCondition: 'defeat_all',
+    victoryCondition: 'capture_point',
+    capturePoints: [{ x: 2, y: 2 }, { x: 7, y: 2 }],
+    holdTurns: 2,
   },
   {
     id: 'stage-10',
     name: '폭풍의 절벽',
     act: 2,
     weather: 'storm',
-    description: '절벽 위 카르테인 감시탑을 점령하라.',
+    description: '절벽 위 카르테인 감시탑을 점령하라. 듀크를 처치하면 승리!',
     storyIntro: '연구소에서 탈출한 실험체를 쫓아 해안 절벽까지 왔다. 폭풍 속에서 카르테인 감시탑이 보인다.',
     storyOutro: '감시탑을 점령했다. 탑 꼭대기에서 카르테인 본거지의 위치를 확인했다. 듀크가 최종 의식을 준비하고 있다.',
     enemyLevel: 11,
@@ -1167,7 +1169,8 @@ export const STAGES = [
       { turn: 2, units: [{ charId: 'kaspar-wren', x: 0, y: 5 }], message: '🔴 절벽 옆에서 암살자 출현!' },
       { turn: 4, units: [{ charId: 'dimitri-rad', x: 11, y: 5 }, { charId: 'lucien-deveraux', x: 10, y: 6 }], message: '🔴 카르테인 증원 부대!' },
     ],
-    victoryCondition: 'defeat_all',
+    victoryCondition: 'boss_kill',
+    bossCharId: 'kartein-duke',
   },
   {
     id: 'stage-11',
@@ -1368,7 +1371,8 @@ export const STAGES = [
       { turn: 4, units: [{ charId: 'kaspar-wren', x: 4, y: 0 }, { charId: 'nadia-petrova', x: 7, y: 0 }, { charId: 'elena-morgan', x: 5, y: 0 }], message: '🔴 듀크: "일어나라, 나의 종복들이여!"' },
       { turn: 6, units: [{ charId: 'lucien-deveraux', x: 4, y: 10 }, { charId: 'nigel-crowe', x: 7, y: 10 }, { charId: 'dimitri-rad', x: 5, y: 10 }], message: '🔴 최후의 의식! 퇴로까지 차단!' },
     ],
-    victoryCondition: 'defeat_all',
+    victoryCondition: 'boss_kill',
+    bossCharId: 'kartein-duke',
   },
 ];
 
@@ -2320,6 +2324,50 @@ export function checkVictory(state) {
     if (state.turnNumber > surviveTurns && playerAlive.length > 0) {
       state.result = 'win';
       state.log.push(`승리! ${surviveTurns}턴 생존 성공!`);
+      return 'win';
+    }
+  } else if (state.victoryCondition === 'boss_kill') {
+    const bossId = state.stage.bossCharId;
+    if (bossId) {
+      const bossAlive = state.units.some(u => u.team === 'enemy' && u.charId === bossId && u.hp > 0);
+      if (!bossAlive) {
+        state.result = 'win';
+        state.log.push('승리! 보스를 처치했습니다!');
+        return 'win';
+      }
+    }
+  } else if (state.victoryCondition === 'capture_point') {
+    const points = state.stage.capturePoints || [];
+    const holdTurns = state.stage.holdTurns || 2;
+    if (!state._captureCount) state._captureCount = 0;
+    const allOccupied = points.every(p =>
+      playerAlive.some(u => u.x === p.x && u.y === p.y)
+    );
+    if (allOccupied) {
+      state._captureCount++;
+      if (state._captureCount >= holdTurns) {
+        state.result = 'win';
+        state.log.push(`승리! 거점을 ${holdTurns}턴 점령 완료!`);
+        return 'win';
+      } else {
+        state.log.push(`📍 거점 점령 중... (${state._captureCount}/${holdTurns})`);
+      }
+    } else {
+      state._captureCount = 0;
+    }
+  } else if (state.victoryCondition === 'protect_target') {
+    const targetUid = state.stage.protectUid;
+    if (targetUid) {
+      const target = state.units.find(u => u.uid === targetUid);
+      if (target && target.hp <= 0) {
+        state.result = 'lose';
+        state.log.push('패배... 보호 대상이 쓰러졌습니다!');
+        return 'lose';
+      }
+    }
+    if (enemyAlive.length === 0) {
+      state.result = 'win';
+      state.log.push('승리! 보호 대상을 지켜내고 적을 제압했습니다!');
       return 'win';
     }
   }
