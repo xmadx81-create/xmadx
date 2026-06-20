@@ -1491,13 +1491,14 @@ export function getTowerRewards(wave) {
 // 헌혈의집 타이쿤 (Blood Donation Tycoon) — "헌혈센터 경영"
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const TYCOON_GRID_DEFAULT = { w: 5, h: 8 };
-export const TYCOON_GRID_EXPANDED = { w: 6, h: 10 };
+export const TYCOON_GRID_DEFAULT = { w: 10, h: 10 };
+export const TYCOON_GRID_EXPANDED = { w: 10, h: 10 };
+export const TYCOON_FLOORS = ['B1', '1F', '2F'];
 
 export const TYCOON_STORY = [
   {
     id: 1, title: '개원 준비', days: [1, 3],
-    unlock: ['reception', 'bed'],
+    unlock: ['reception', 'bed', 'corridor', 'restroom', 'waiting_room'],
     recruit: 'kim-doyun',
     objective: { type: 'donors', count: 5 },
     dialogue: [
@@ -1519,7 +1520,8 @@ export const TYCOON_STORY = [
   },
   {
     id: 3, title: '긴장의 연속', days: [7, 9],
-    unlock: ['lounge', 'emergency'],
+    unlock: ['lounge', 'emergency', 'stairs'],
+    floorUnlock: '2F',
     recruit: 'park-harin',
     objective: { type: 'lostRate', maxRate: 0.2 },
     dialogue: [
@@ -1530,7 +1532,7 @@ export const TYCOON_STORY = [
   },
   {
     id: 4, title: '언론의 관심', days: [10, 12],
-    unlock: ['booth'],
+    unlock: ['booth', 'office', 'elevator'],
     recruit: 'dimitri-rad',
     objective: { type: 'fame', count: 50 },
     dialogue: [
@@ -1541,10 +1543,10 @@ export const TYCOON_STORY = [
   },
   {
     id: 5, title: '대형사고', days: [13, 16],
-    unlock: [],
+    unlock: ['cold_storage', 'parking'],
+    floorUnlock: 'B1',
     recruit: 'kartein-duke',
     objective: { type: 'blood', count: 20 },
-    gridExpand: true,
     dialogue: [
       { speaker: '뉴스', text: '[긴급] 고속도로 연쇄 추돌 — 대규모 수혈 필요!' },
       { speaker: '카르테인', text: '내가 돕겠다. 센터를 확장하고 최대 역량으로 가동해라.' },
@@ -1637,13 +1639,21 @@ export function getResearchBonus(state, type) {
 export const TYCOON_GRID = TYCOON_GRID_DEFAULT;
 
 export const FACILITY_TYPES = {
-  reception:  { id: 'reception',  icon: '📋', name: '접수대',  cost: 5,  desc: '헌혈자 접수 속도 ↑', capacity: 0, processTime: 0 },
-  bed:        { id: 'bed',        icon: '🛏️', name: '채혈대',  cost: 8,  desc: '채혈 수행 (핵심)', capacity: 1, processTime: 6 },
-  lab:        { id: 'lab',        icon: '🔬', name: '검사실',  cost: 12, desc: '혈액 품질검사 → 납품보상 ↑', capacity: 2, processTime: 5 },
-  storage:    { id: 'storage',    icon: '❄️', name: '저장고',  cost: 15, desc: '혈액 보관 +10팩',   capacity: 10, processTime: 0 },
-  lounge:     { id: 'lounge',     icon: '☕', name: '휴게실',  cost: 6,  desc: '만족도 ↑ 이탈 방지', capacity: 2, processTime: 3 },
-  emergency:  { id: 'emergency',  icon: '🚑', name: '응급실',  cost: 20, desc: '부작용 처리 · 긴장형 안정화', capacity: 1, processTime: 0 },
-  booth:      { id: 'booth',      icon: '🎪', name: '홍보부스', cost: 12, desc: '다음 날 헌혈자 +3 · 명성 자연회복', capacity: 0, processTime: 0 },
+  reception:    { id: 'reception',    icon: '📋', name: '접수대',      cost: 5,  tw: 2, th: 2, desc: '헌혈자 접수 속도 ↑',                capacity: 0,  processTime: 0 },
+  bed:          { id: 'bed',          icon: '🛏️', name: '채혈대',      cost: 8,  tw: 2, th: 1, desc: '채혈 수행 (핵심)',                   capacity: 1,  processTime: 6 },
+  lab:          { id: 'lab',          icon: '🔬', name: '검사실',      cost: 12, tw: 2, th: 2, desc: '혈액 품질검사 → 납품보상 ↑',        capacity: 2,  processTime: 5 },
+  storage:      { id: 'storage',      icon: '❄️', name: '저장고',      cost: 15, tw: 2, th: 1, desc: '혈액 보관 +10팩',                   capacity: 10, processTime: 0 },
+  lounge:       { id: 'lounge',       icon: '☕', name: '휴게실',      cost: 6,  tw: 2, th: 2, desc: '만족도 ↑ 이탈 방지',                capacity: 2,  processTime: 3 },
+  emergency:    { id: 'emergency',    icon: '🚑', name: '응급실',      cost: 20, tw: 2, th: 1, desc: '부작용 처리 · 긴장형 안정화',       capacity: 1,  processTime: 0 },
+  booth:        { id: 'booth',        icon: '🎪', name: '홍보부스',    cost: 12, tw: 1, th: 1, desc: '다음 날 헌혈자 +3 · 명성 자연회복', capacity: 0,  processTime: 0 },
+  corridor:     { id: 'corridor',     icon: '🚶', name: '복도',        cost: 1,  tw: 1, th: 1, desc: '간호사 이동 경로 · 인접 이동속도 ↑', capacity: 0, processTime: 0 },
+  stairs:       { id: 'stairs',       icon: '🪜', name: '계단',        cost: 3,  tw: 1, th: 1, desc: '층간 이동 통로',                    capacity: 0,  processTime: 0 },
+  elevator:     { id: 'elevator',     icon: '🛗', name: '엘리베이터',  cost: 10, tw: 1, th: 1, desc: '모든 층 즉시 이동',                 capacity: 0,  processTime: 0 },
+  waiting_room: { id: 'waiting_room', icon: '💺', name: '대기실',      cost: 4,  tw: 2, th: 2, desc: '인내심 +5 전체 헌혈자',             capacity: 0,  processTime: 0 },
+  office:       { id: 'office',       icon: '🏢', name: '사무실',      cost: 8,  tw: 2, th: 1, desc: '명성 획득 +20%',                    capacity: 0,  processTime: 0 },
+  parking:      { id: 'parking',      icon: '🅿️', name: '주차장',      cost: 15, tw: 3, th: 3, desc: '일일 헌혈자 +5', floors: ['B1'],    capacity: 0,  processTime: 0 },
+  cold_storage: { id: 'cold_storage', icon: '🧊', name: '초저온저장고', cost: 20, tw: 3, th: 2, desc: '혈액 보관 +30팩', floors: ['B1'],   capacity: 30, processTime: 0 },
+  restroom:     { id: 'restroom',     icon: '🚻', name: '화장실',      cost: 2,  tw: 1, th: 1, desc: '만족도 +10% · 인내심 감소 -10%',   capacity: 0,  processTime: 0 },
 };
 
 export const TYCOON_ROLES = {
@@ -1659,18 +1669,27 @@ export const TYCOON_ROLES = {
 
 export const BLOOD_TYPES = ['A', 'B', 'O', 'AB'];
 
-export function createTycoonState(day) {
-  const { w, h } = TYCOON_GRID_DEFAULT;
+function _makeGrid(w, h) {
   const grid = [];
   for (let r = 0; r < h; r++) {
     grid[r] = [];
     for (let c = 0; c < w; c++) grid[r][c] = null;
   }
+  return grid;
+}
+
+export function createTycoonState(day) {
+  const { w, h } = TYCOON_GRID_DEFAULT;
+  const floors = {};
+  for (const f of TYCOON_FLOORS) floors[f] = _makeGrid(w, h);
   return {
     day,
-    grid,
+    grid: floors['1F'],
     gridW: w,
     gridH: h,
+    floors,
+    currentFloor: '1F',
+    unlockedFloors: ['1F'],
     fame: 20,
     reputation: 20,
     phase: 'prep',
@@ -1696,24 +1715,74 @@ export function createTycoonState(day) {
   };
 }
 
-export function expandGrid(state) {
-  const { w, h } = TYCOON_GRID_EXPANDED;
-  if (state.gridW >= w && state.gridH >= h) return false;
-  for (let r = 0; r < h; r++) {
-    if (!state.grid[r]) state.grid[r] = [];
-    for (let c = 0; c < w; c++) {
-      if (state.grid[r][c] === undefined) state.grid[r][c] = null;
+export const INITIAL_LAYOUT = [
+  { row: 0, col: 0, id: 'reception', floor: '1F' },
+  { row: 0, col: 3, id: 'waiting_room', floor: '1F' },
+  { row: 3, col: 0, id: 'bed', floor: '1F' },
+  { row: 3, col: 3, id: 'bed', floor: '1F' },
+  { row: 5, col: 0, id: 'lounge', floor: '1F' },
+  { row: 5, col: 3, id: 'storage', floor: '1F' },
+  { row: 9, col: 9, id: 'stairs', floor: '1F' },
+];
+
+export function applyInitialLayout(state) {
+  for (const item of INITIAL_LAYOUT) {
+    const fType = FACILITY_TYPES[item.id];
+    if (!fType) continue;
+    const grid = state.floors[item.floor];
+    const tw = fType.tw || 1;
+    const th = fType.th || 1;
+    state.facilityCount++;
+    const facility = {
+      id: item.id,
+      uid: `fac-${state.facilityCount}`,
+      icon: fType.icon,
+      name: fType.name,
+      level: 1,
+      staff: null,
+      busy: false,
+      progress: 0,
+      processTime: fType.processTime,
+      donor: null,
+      tw, th,
+      anchorRow: item.row,
+      anchorCol: item.col,
+      floor: item.floor,
+    };
+    grid[item.row][item.col] = facility;
+    for (let r = item.row; r < item.row + th; r++) {
+      for (let c = item.col; c < item.col + tw; c++) {
+        if (r === item.row && c === item.col) continue;
+        grid[r][c] = { _ref: facility.uid, _anchorRow: item.row, _anchorCol: item.col };
+      }
     }
+    if (item.id === 'storage') state.maxStorage += fType.capacity;
   }
-  state.gridW = w;
-  state.gridH = h;
-  return true;
 }
 
-export function generateDonorWave(day, boothCount, patienceBonus) {
+export function expandGrid(state, floorId) {
+  if (!state.unlockedFloors) return false;
+  if (floorId) {
+    if (state.unlockedFloors.includes(floorId)) return false;
+    state.unlockedFloors.push(floorId);
+    return true;
+  }
+  if (!state.unlockedFloors.includes('2F')) {
+    state.unlockedFloors.push('2F');
+    return true;
+  }
+  if (!state.unlockedFloors.includes('B1')) {
+    state.unlockedFloors.push('B1');
+    return true;
+  }
+  return false;
+}
+
+export function generateDonorWave(day, boothCount, patienceBonus, parkingCount) {
   const boothBonus = (boothCount || 0) * 3;
+  const parkingBonus = (parkingCount || 0) * 5;
   const earlyPhase = day <= 5;
-  const count = Math.min(30, (earlyPhase ? 2 + day : 3 + day * 2) + boothBonus);
+  const count = Math.min(30, (earlyPhase ? 2 + day : 3 + day * 2) + boothBonus + parkingBonus);
   const donors = [];
   const patMult = 1 + (patienceBonus || 0);
   for (let i = 0; i < count; i++) {
@@ -1744,10 +1813,11 @@ export function generateDonorWave(day, boothCount, patienceBonus) {
   return donors;
 }
 
-export function getDayPreview(day, boothCount) {
+export function getDayPreview(day, boothCount, parkingCount) {
   const boothBonus = (boothCount || 0) * 3;
+  const parkingBonus = (parkingCount || 0) * 5;
   const earlyPhase = day <= 5;
-  const count = Math.min(30, (earlyPhase ? 2 + day : 3 + day * 2) + boothBonus);
+  const count = Math.min(30, (earlyPhase ? 2 + day : 3 + day * 2) + boothBonus + parkingBonus);
   const hasVIP = day >= 5;
   return { count, hasVIP, day };
 }
@@ -1780,11 +1850,22 @@ export function generateOrders(day, deadlineBonus) {
   return orders;
 }
 
-export function placeFacility(state, row, col, facilityId) {
-  if (row < 0 || row >= state.gridH || col < 0 || col >= state.gridW) return { success: false };
-  if (state.grid[row][col]) return { success: false };
+export function placeFacility(state, row, col, facilityId, floor) {
+  const floorId = floor || state.currentFloor;
+  const grid = state.floors ? state.floors[floorId] : state.grid;
+  if (!grid) return { success: false };
   const fType = FACILITY_TYPES[facilityId];
   if (!fType) return { success: false };
+  if (fType.floors && !fType.floors.includes(floorId)) return { success: false };
+  if (state.unlockedFloors && !state.unlockedFloors.includes(floorId)) return { success: false };
+  const tw = fType.tw || 1;
+  const th = fType.th || 1;
+  if (row < 0 || row + th > state.gridH || col < 0 || col + tw > state.gridW) return { success: false };
+  for (let r = row; r < row + th; r++) {
+    for (let c = col; c < col + tw; c++) {
+      if (grid[r][c]) return { success: false };
+    }
+  }
   if (state.fame < fType.cost) return { success: false };
   state.fame -= fType.cost;
   state.facilityCount++;
@@ -1799,11 +1880,20 @@ export function placeFacility(state, row, col, facilityId) {
     progress: 0,
     processTime: fType.processTime,
     donor: null,
+    tw, th,
+    anchorRow: row,
+    anchorCol: col,
+    floor: floorId,
   };
-  if (facilityId === 'storage') {
-    state.maxStorage += fType.capacity;
+  if (facilityId === 'storage') state.maxStorage += fType.capacity;
+  if (facilityId === 'cold_storage') state.maxStorage += fType.capacity;
+  grid[row][col] = facility;
+  for (let r = row; r < row + th; r++) {
+    for (let c = col; c < col + tw; c++) {
+      if (r === row && c === col) continue;
+      grid[r][c] = { _ref: facility.uid, _anchorRow: row, _anchorCol: col };
+    }
   }
-  state.grid[row][col] = facility;
   return { success: true, facility };
 }
 
@@ -1827,6 +1917,7 @@ export function deployNurse(state, charData) {
     task: 'idle',
     workTicks: 0,
     tycoonRole: role,
+    floor: '1F',
   };
   state.nurses.push(nurse);
   return { success: true, nurse };
@@ -1839,8 +1930,9 @@ export function removeNurse(state, charId) {
   return true;
 }
 
-export function getNurseAt(state, row, col) {
-  return state.nurses.find(n => n.row === row && n.col === col) || null;
+export function getNurseAt(state, row, col, floor) {
+  const f = floor || state.currentFloor;
+  return state.nurses.find(n => n.row === row && n.col === col && (n.floor || '1F') === f) || null;
 }
 
 function _moveNurses(state) {
@@ -1861,8 +1953,9 @@ function _moveNurses(state) {
         nurse.col += nurse.col < nurse.targetCol ? 1 : -1;
       }
       if (nurse.row === nurse.targetRow && nurse.col === nurse.targetCol) {
-        const fac = state.grid[nurse.row]?.[nurse.col];
-        if (fac) {
+        const nurseGrid = state.floors ? state.floors[nurse.floor || '1F'] : state.grid;
+        const fac = nurseGrid[nurse.row]?.[nurse.col];
+        if (fac && !fac._ref) {
           nurse.task = 'working';
           nurse.workTicks = 3;
           events.push({ type: 'nurse_working', nurse, facility: fac });
@@ -1888,13 +1981,15 @@ function _findNurseTarget(state, nurse) {
   let bestDist = Infinity;
   let best = null;
   const preferred = nurse.tycoonRole.bestAt;
+  const floorId = nurse.floor || '1F';
+  const grid = state.floors ? state.floors[floorId] : state.grid;
 
   for (let r = 0; r < state.gridH; r++) {
     for (let c = 0; c < state.gridW; c++) {
-      const fac = state.grid[r][c];
-      if (!fac) continue;
+      const fac = grid[r][c];
+      if (!fac || fac._ref) continue;
       if (r === nurse.row && c === nurse.col) continue;
-      const otherNurse = state.nurses.find(n => n !== nurse && n.targetRow === r && n.targetCol === c);
+      const otherNurse = state.nurses.find(n => n !== nurse && n.targetRow === r && n.targetCol === c && (n.floor || '1F') === floorId);
       if (otherNurse) continue;
 
       let priority = 0;
@@ -1915,13 +2010,31 @@ function _findNurseTarget(state, nurse) {
   return best;
 }
 
-export function countFacilities(state, facilityId) {
-  let count = 0;
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      if (state.grid[r][c] && state.grid[r][c].id === facilityId) count++;
+function _forEachFacility(state, callback) {
+  const floorIds = state.floors ? Object.keys(state.floors) : ['_default'];
+  for (const floorId of floorIds) {
+    const grid = state.floors ? state.floors[floorId] : state.grid;
+    for (let r = 0; r < state.gridH; r++) {
+      for (let c = 0; c < state.gridW; c++) {
+        const cell = grid[r][c];
+        if (cell && !cell._ref) callback(cell, r, c, floorId, grid);
+      }
     }
   }
+}
+
+function _getFacilityAt(grid, r, c) {
+  const cell = grid[r]?.[c];
+  if (!cell) return null;
+  if (cell._ref) return grid[cell._anchorRow]?.[cell._anchorCol] || null;
+  return cell;
+}
+
+export function countFacilities(state, facilityId) {
+  let count = 0;
+  _forEachFacility(state, (fac) => {
+    if (fac.id === facilityId) count++;
+  });
   return count;
 }
 
@@ -1941,16 +2054,30 @@ export function getProcessingSpeed(facility, nurse, researchBonus) {
   return speed;
 }
 
-export function getAdjacencyBonus(state, row, col) {
-  const fac = state.grid[row]?.[col];
+export function getAdjacencyBonus(state, row, col, floor) {
+  const floorId = floor || state.currentFloor;
+  const grid = state.floors ? state.floors[floorId] : state.grid;
+  const fac = _getFacilityAt(grid, row, col);
   if (!fac) return 0;
-  const neighbors = [
-    [row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1],
-  ];
+  const tw = fac.tw || 1;
+  const th = fac.th || 1;
+  const ar = fac.anchorRow != null ? fac.anchorRow : row;
+  const ac = fac.anchorCol != null ? fac.anchorCol : col;
+  const edgeCells = [];
+  for (let r = ar; r < ar + th; r++) {
+    edgeCells.push([r, ac - 1]);
+    edgeCells.push([r, ac + tw]);
+  }
+  for (let c = ac; c < ac + tw; c++) {
+    edgeCells.push([ar - 1, c]);
+    edgeCells.push([ar + th, c]);
+  }
   let bonus = 0;
-  for (const [r, c] of neighbors) {
-    const n = state.grid[r]?.[c];
-    if (!n) continue;
+  const seen = new Set();
+  for (const [r, c] of edgeCells) {
+    const n = _getFacilityAt(grid, r, c);
+    if (!n || n === fac || seen.has(n.uid)) continue;
+    seen.add(n.uid);
     if (fac.id === 'bed' && n.id === 'lounge') bonus += 0.2;
     if (fac.id === 'reception' && n.id === 'bed') bonus += 0.15;
     if (fac.id === 'lab' && n.id === 'storage') bonus += 0.25;
@@ -1997,14 +2124,19 @@ export function tycoonTick(state) {
   const receptions = countFacilities(state, 'reception');
   const lounges = countFacilities(state, 'lounge');
   const emergencies = countFacilities(state, 'emergency');
-  const patienceBonus = lounges * 2;
+  const waitingRooms = countFacilities(state, 'waiting_room');
+  const restrooms = countFacilities(state, 'restroom');
+  const offices = countFacilities(state, 'office');
+  const patienceBonus = lounges * 2 + waitingRooms * 5;
+  const drainReduction = Math.max(0.3, 1 - restrooms * 0.1);
+  const officeFameBonus = offices * 0.2;
 
   for (const donor of state.donors) {
     if (donor.status === 'done' || donor.status === 'left') continue;
 
     if (donor.status === 'waiting') {
       const receptionSpeed = 1 + receptions * 0.5;
-      donor.patience -= (1 / receptionSpeed);
+      donor.patience -= (1 / receptionSpeed) * drainReduction;
       donor.patience += patienceBonus * 0.05;
       if (donor.isNervous && emergencies > 0) {
         donor.patience += emergencies * 0.15;
@@ -2049,7 +2181,7 @@ export function tycoonTick(state) {
             events.push({ type: 'storage_full', donor });
           }
           state.totalDonors++;
-          const fameGain = Math.ceil(1 * (1 + getResearchBonus(state, 'fameBonus')));
+          const fameGain = Math.ceil(1 * (1 + getResearchBonus(state, 'fameBonus') + officeFameBonus));
           state.fame += fameGain;
           if (donor.isNamed && donor.fameBonusOnComplete) {
             state.fame += donor.fameBonusOnComplete;
@@ -2111,43 +2243,37 @@ export function tycoonTick(state) {
 }
 
 function _findNurseOnFacility(state, facility) {
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      if (state.grid[r][c] === facility) {
-        return state.nurses.find(n => n.row === r && n.col === c && n.task === 'working') || null;
-      }
-    }
-  }
-  return null;
+  const floorId = facility.floor || '1F';
+  const ar = facility.anchorRow != null ? facility.anchorRow : 0;
+  const ac = facility.anchorCol != null ? facility.anchorCol : 0;
+  return state.nurses.find(n =>
+    (n.floor || '1F') === floorId &&
+    n.row === ar && n.col === ac &&
+    n.task === 'working'
+  ) || null;
 }
 
 function _getAdjBonusForFacility(state, facility) {
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      if (state.grid[r][c] === facility) return getAdjacencyBonus(state, r, c);
-    }
-  }
-  return 0;
+  const floorId = facility.floor || state.currentFloor;
+  const ar = facility.anchorRow != null ? facility.anchorRow : 0;
+  const ac = facility.anchorCol != null ? facility.anchorCol : 0;
+  return getAdjacencyBonus(state, ar, ac, floorId);
 }
 
 function _findFreeFacility(state, facilityId) {
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      const f = state.grid[r][c];
-      if (f && f.id === facilityId && !f.busy) return f;
-    }
-  }
-  return null;
+  let found = null;
+  _forEachFacility(state, (fac) => {
+    if (!found && fac.id === facilityId && !fac.busy) found = fac;
+  });
+  return found;
 }
 
 function _findFacilityByUid(state, uid) {
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      const f = state.grid[r][c];
-      if (f && f.uid === uid) return f;
-    }
-  }
-  return null;
+  let found = null;
+  _forEachFacility(state, (fac) => {
+    if (!found && fac.uid === uid) found = fac;
+  });
+  return found;
 }
 
 export function fulfillOrder(state, orderId) {
@@ -2174,8 +2300,10 @@ export function tycoonDayFame(day) {
   return 3 + day;
 }
 
-export function upgradeFacility(state, row, col) {
-  const fac = state.grid[row]?.[col];
+export function upgradeFacility(state, row, col, floor) {
+  const floorId = floor || state.currentFloor;
+  const grid = state.floors ? state.floors[floorId] : state.grid;
+  const fac = grid[row]?.[col];
   if (!fac) return { success: false };
   const maxLv = state.chapter >= 5 ? 5 : 3;
   if (fac.level >= maxLv) return { success: false };
