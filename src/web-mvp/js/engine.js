@@ -1561,6 +1561,7 @@ export function generateDefenseWave(wave) {
   const levelBase = Math.min(20, wave);
   const queue = [];
 
+  const traitPool = wave >= 4 ? ['fast', 'tank', 'healer', null, null, null] : [null];
   for (let i = 0; i < count; i++) {
     const charData = pool[Math.floor(Math.random() * pool.length)];
     const unit = cardToUnit(charData, -1, -1);
@@ -1574,7 +1575,11 @@ export function generateDefenseWave(wave) {
     }
     unit.maxHp = Math.floor(unit.maxHp * hpMult);
     unit.hp = unit.maxHp;
-    const speed = unit.role === 'evasive_dps' ? 3 : unit.role === 'melee_dps' ? 2 : 1;
+    const trait = traitPool[Math.floor(Math.random() * traitPool.length)];
+    let speed = unit.role === 'evasive_dps' ? 3 : unit.role === 'melee_dps' ? 2 : 1;
+    if (trait === 'fast') speed *= 2;
+    if (trait === 'tank') unit.def = Math.floor(unit.def * 2);
+    if (trait) unit._trait = trait;
     queue.push({ unit, speed, pathIndex: 0, spawnDelay: i * 2 });
   }
 
@@ -1654,6 +1659,37 @@ export function defenseRewardChoices(wave) {
     choices.push({ type: 'costDown', label: '🔻 소환 비용 -10', desc: '소환 비용 10 감소', value: 10 });
   }
   return choices;
+}
+
+export function defenseWaveIncome(wave) {
+  return 20 + wave * 5;
+}
+
+export const ENEMY_TRAITS = {
+  fast:   { icon: '⚡', label: '쾌속', desc: '이동속도 2배' },
+  tank:   { icon: '🪨', label: '중장갑', desc: 'DEF 2배' },
+  healer: { icon: '💊', label: '치유자', desc: '매 턴 주변 적 HP 5% 회복' },
+};
+
+export function defenseHealerTick(state) {
+  const healed = [];
+  for (const enemy of state.enemies) {
+    if (enemy.unit.hp <= 0 || enemy.unit._trait !== 'healer') continue;
+    const ep = state.path[enemy.pathIndex];
+    if (!ep) continue;
+    for (const other of state.enemies) {
+      if (other === enemy || other.unit.hp <= 0) continue;
+      if (other.unit.hp >= other.unit.maxHp) continue;
+      const op = state.path[other.pathIndex];
+      if (!op) continue;
+      if (Math.abs(ep.x - op.x) + Math.abs(ep.y - op.y) <= 2) {
+        const amt = Math.max(1, Math.floor(other.unit.maxHp * 0.05));
+        other.unit.hp = Math.min(other.unit.maxHp, other.unit.hp + amt);
+        healed.push({ healer: enemy.unit, target: other.unit, amount: amt });
+      }
+    }
+  }
+  return healed;
 }
 
 export const DEFENSE_SKILLS = {

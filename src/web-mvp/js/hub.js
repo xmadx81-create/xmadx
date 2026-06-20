@@ -18,7 +18,8 @@ import {
   defenseAutoAttack, defenseAdvanceEnemies, defenseSpawnEnemies,
   isDefenseWaveComplete, getDefenseRewards, generateDefenseWave, defenseTickSlow,
   defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
-  getWavePreview, defenseRewardChoices,
+  getWavePreview, defenseRewardChoices, defenseWaveIncome,
+  defenseHealerTick, ENEMY_TRAITS,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -1687,9 +1688,10 @@ function renderDefense() {
           const hpPct = Math.round(e.unit.hp / e.unit.maxHp * 100);
           const speedIcon = e.speed >= 3 ? '⚡' : e.speed >= 2 ? '💨' : '';
           const slowIcon = e._slowed ? '🐌' : '';
-          enemyHtml = `<div class="def-enemy ${e.unit.rarity === 'legendary' ? 'def-boss' : ''}">
+          const traitIcon = e.unit._trait && ENEMY_TRAITS[e.unit._trait] ? ENEMY_TRAITS[e.unit._trait].icon : '';
+          enemyHtml = `<div class="def-enemy ${e.unit.rarity === 'legendary' ? 'def-boss' : ''} ${e.unit._trait ? 'def-trait-' + e.unit._trait : ''}">
             <div class="def-enemy-hp"><div class="def-enemy-hp-fill" style="width:${hpPct}%"></div></div>
-            <span class="def-enemy-icon">${e.unit.rarity === 'legendary' ? '👑' : '💀'}${speedIcon}${slowIcon}</span>
+            <span class="def-enemy-icon">${e.unit.rarity === 'legendary' ? '👑' : '💀'}${traitIcon}${speedIcon}${slowIcon}</span>
             ${enemyHere.length > 1 ? `<span class="def-enemy-count">×${enemyHere.length}</span>` : ''}
           </div>`;
         }
@@ -1730,8 +1732,12 @@ function renderDefense() {
       const gx = parseInt(tile.dataset.gx);
       const gy = parseInt(tile.dataset.gy);
       if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
+        const sellGold = Math.floor(defenseState.summonCost * 0.6);
+        defenseState.gold += sellGold;
         defenseState.grid[gy][gx] = null;
         sfxDebuff();
+        showDefenseBanner(`판매 +${sellGold}G`, 'same');
+        updateSummonBtn();
         renderDefense();
       }
     });
@@ -1741,9 +1747,12 @@ function renderDefense() {
       const gy = parseInt(tile.dataset.gy);
       if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
         holdTimer = setTimeout(() => {
+          const sellGold = Math.floor(defenseState.summonCost * 0.6);
+          defenseState.gold += sellGold;
           defenseState.grid[gy][gx] = null;
           sfxDebuff();
-          showDefenseBanner('유닛 제거', 'same');
+          showDefenseBanner(`판매 +${sellGold}G`, 'same');
+          updateSummonBtn();
           renderDefense();
         }, 600);
       }
@@ -1771,10 +1780,12 @@ function showDefenseUnitInfo(unit) {
   const roleDesc = DEF_ROLE_DESC[unit.role] || '?';
   const popup = document.createElement('div');
   popup.className = 'def-unit-info';
+  const totalDmg = unit._totalDmg || 0;
   popup.innerHTML = `
     <div class="def-info-header">${unit.name} <span class="def-info-rarity r-${unit.rarity}">${unit.rarity}</span></div>
     <div class="def-info-role">${roleDesc}</div>
     <div class="def-info-stats">ATK ${unit.atk} · DEF ${unit.def} · HP ${unit.hp}/${unit.maxHp} · RNG ${unit.rng || 1}</div>
+    <div class="def-info-dps">⚔ 총 데미지: ${totalDmg.toLocaleString()}</div>
     ${skill.name ? `<div class="def-info-skill">${skill.icon} ${skill.name} — ${skill.desc}<br>쿨다운: ${cd > 0 ? `${cd}턴 남음` : '준비 완료'}</div>` : ''}`;
   document.getElementById('defense-screen').appendChild(popup);
   setTimeout(() => popup.remove(), 3000);
@@ -1994,9 +2005,12 @@ function runDefenseTurn() {
     showDefenseBanner(skillNames.join(' '), 'skill');
     sfxSkill();
     skillResults.forEach(s => {
-      if (s.type === 'skill_dmg' && s.killed) {
-        defenseKills++;
-        defenseState.gold += 10;
+      if (s.type === 'skill_dmg') {
+        if (s.unit) s.unit._totalDmg = (s.unit._totalDmg || 0) + (s.damage || 0);
+        if (s.killed) {
+          defenseKills++;
+          defenseState.gold += 10;
+        }
       }
     });
   }
@@ -2005,6 +2019,7 @@ function runDefenseTurn() {
 
   atkResults.forEach(r => {
     defenseDmgTotal += r.damage;
+    if (r.attacker) r.attacker._totalDmg = (r.attacker._totalDmg || 0) + r.damage;
     if (r.killed) {
       defenseKills++;
       const isBoss = r.enemy && r.enemy.rarity === 'legendary';
@@ -2020,6 +2035,7 @@ function runDefenseTurn() {
     if (ep) showDefenseDmgPopup(ep.x, ep.y, r.damage, r.crit, r.killed);
   });
 
+  defenseHealerTick(defenseState);
   const escaped = defenseAdvanceEnemies(defenseState);
   if (escaped.length > 0) sfxDebuff();
   defenseTickSlow(defenseState);
@@ -2048,7 +2064,9 @@ function runDefenseTurn() {
     }
     saveGame(gameSave);
 
-    showDefenseBanner(`웨이브 ${defenseState.wave} 클리어!`, 'upgrade');
+    const waveGold = defenseWaveIncome(defenseState.wave);
+    defenseState.gold += waveGold;
+    showDefenseBanner(`웨이브 ${defenseState.wave} 클리어! +${waveGold}G`, 'upgrade');
     showDefenseRewardPanel(defenseState.wave);
     return;
   }
