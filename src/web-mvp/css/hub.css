@@ -7303,6 +7303,9 @@ body {
 .defense-lives { color: #f87171; font-weight: 700; font-size: 0.9rem; }
 .defense-merges { color: #4ade80; font-size: 0.8rem; }
 .defense-gold { color: #C9A54E; font-weight: 700; font-size: 0.9rem; }
+.defense-timer { color: #5A8FBF; font-weight: 700; font-size: 0.9rem; }
+.defense-timer[data-phase="prep"] { animation: timer-pulse 1s ease-in-out infinite; }
+@keyframes timer-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 
 .def-reward-overlay {
   position: absolute; inset: 0; background: rgba(0,0,0,0.6);
