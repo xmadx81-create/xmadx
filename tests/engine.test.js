@@ -21,6 +21,7 @@ import {
   placeFacility, assignStaff, countFacilities, getProcessingSpeed,
   tycoonTick, fulfillOrder, tycoonDayIncome,
   upgradeFacility, TYCOON_EVENTS, rollTycoonEvent,
+  getAdjacencyBonus, MILESTONES, checkMilestones,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, getUnlockedLoreStage, LORE_MILESTONES } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -2825,13 +2826,15 @@ describe('헌혈의집 타이쿤 시스템', () => {
     const state = createTycoonState(1);
     expect(state.day).toBe(1);
     expect(state.reputation).toBe(20);
-    expect(state.gold).toBe(100);
+    expect(state.gold).toBe(200);
     expect(state.grid.length).toBe(8);
     expect(state.grid[0].length).toBe(5);
     expect(state.donors).toEqual([]);
     expect(state.blood).toEqual({ A: 0, B: 0, O: 0, AB: 0 });
     expect(state.phase).toBe('prep');
-    expect(state.maxStorage).toBe(10);
+    expect(state.maxStorage).toBe(15);
+    expect(state.milestones).toEqual({});
+    expect(state.autoFulfill).toBe(false);
   });
 
   it('generateDonorWave — 날짜별 헌혈자 수 증가', () => {
@@ -2853,7 +2856,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
 
   it('getDayPreview가 올바른 구조를 반환한다', () => {
     const p = getDayPreview(1);
-    expect(p.count).toBe(5);
+    expect(p.count).toBe(3);
     expect(p.day).toBe(1);
     expect(p.hasVIP).toBe(false);
     const p5 = getDayPreview(5);
@@ -2877,7 +2880,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(result.success).toBe(true);
     expect(state.grid[0][0]).toBeDefined();
     expect(state.grid[0][0].id).toBe('bed');
-    expect(state.gold).toBe(50);
+    expect(state.gold).toBe(160);
   });
 
   it('placeFacility — 골드 부족 시 실패', () => {
@@ -2952,7 +2955,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(result.done).toBe(true);
     expect(result.reward).toBe(100);
     expect(state.blood.A).toBe(2);
-    expect(state.gold).toBe(200);
+    expect(state.gold).toBe(300);
   });
 
   it('fulfillOrder — 혈액 부족 시 실패', () => {
@@ -3060,6 +3063,109 @@ describe('헌혈의집 타이쿤 시스템', () => {
     state.orders = [{ id: 'o1', bloodType: 'A', quantity: 3, reward: 100, deadline: 1, maxDeadline: 10, urgent: false, fulfilled: 0 }];
     tycoonTick(state);
     expect(state.reputation).toBe(19);
+  });
+
+  it('getAdjacencyBonus — 채혈대+휴게실 인접 보너스', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    placeFacility(state, 0, 1, 'lounge');
+    const bonus = getAdjacencyBonus(state, 0, 0);
+    expect(bonus).toBeCloseTo(0.2);
+  });
+
+  it('getAdjacencyBonus — 인접 시설 없으면 0', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    const bonus = getAdjacencyBonus(state, 0, 0);
+    expect(bonus).toBe(0);
+  });
+
+  it('getAdjacencyBonus — 접수대+채혈대 인접 보너스', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 1, 0, 'reception');
+    placeFacility(state, 1, 1, 'bed');
+    const bonus = getAdjacencyBonus(state, 1, 0);
+    expect(bonus).toBeCloseTo(0.15);
+  });
+
+  it('MILESTONES 정의 확인', () => {
+    expect(Object.keys(MILESTONES).length).toBe(6);
+    expect(MILESTONES.donors10.reward).toBe(50);
+    expect(MILESTONES.days5.reward).toBe(80);
+  });
+
+  it('checkMilestones — 마일스톤 달성 시 보상', () => {
+    const state = createTycoonState(5);
+    state.totalDonors = 10;
+    const earned = checkMilestones(state);
+    expect(earned.length).toBeGreaterThanOrEqual(2);
+    expect(state.milestones.donors10).toBe(true);
+    expect(state.milestones.days5).toBe(true);
+  });
+
+  it('checkMilestones — 중복 달성 방지', () => {
+    const state = createTycoonState(5);
+    state.totalDonors = 10;
+    checkMilestones(state);
+    const goldAfterFirst = state.gold;
+    const earned2 = checkMilestones(state);
+    expect(earned2.length).toBe(0);
+    expect(state.gold).toBe(goldAfterFirst);
+  });
+
+  it('generateDonorWave — 초기 페이즈 인내심 더 높음', () => {
+    const d1 = generateDonorWave(1);
+    const normalDonor = d1.find(d => !d.isNervous);
+    expect(normalDonor.patience).toBe(30);
+  });
+
+  it('generateDonorWave — 부스 보너스로 헌혈자 증가', () => {
+    const d1 = generateDonorWave(1, 0);
+    const d1b = generateDonorWave(1, 2);
+    expect(d1b.length).toBeGreaterThan(d1.length);
+  });
+
+  it('tycoonTick — 자동 납품 기능', () => {
+    const state = createTycoonState(1);
+    state.phase = 'operating';
+    state.autoFulfill = true;
+    state.blood.A = 5;
+    state.orders = [{ id: 'auto-o', bloodType: 'A', quantity: 3, reward: 100, deadline: 30, maxDeadline: 30, urgent: false, fulfilled: 0 }];
+    const events = tycoonTick(state);
+    const autoFul = events.find(e => e.type === 'auto_fulfilled');
+    expect(autoFul).toBeDefined();
+    expect(state.blood.A).toBe(2);
+  });
+
+  it('tycoonTick — 응급실이 긴장형 인내심 보강', () => {
+    const state = createTycoonState(1);
+    state.phase = 'operating';
+    placeFacility(state, 0, 0, 'emergency');
+    const nervousDonor = { id: 'd1', bloodType: 'A', patience: 5, maxPatience: 18, status: 'waiting', isVIP: false, isNervous: true, amount: 1, spawnDelay: 0, assignedFacility: null };
+    state.donors = [nervousDonor];
+    tycoonTick(state);
+    expect(nervousDonor.patience).toBeGreaterThan(4);
+  });
+
+  it('generateOrders — 초기 주문 데드라인 45', () => {
+    const orders = generateOrders(1);
+    orders.forEach(o => {
+      if (!o.urgent) expect(o.deadline).toBe(45);
+    });
+  });
+
+  it('placeFacility — 응급실 배치', () => {
+    const state = createTycoonState(1);
+    const result = placeFacility(state, 0, 0, 'emergency');
+    expect(result.success).toBe(true);
+    expect(state.grid[0][0].id).toBe('emergency');
+  });
+
+  it('placeFacility — 홍보부스 배치', () => {
+    const state = createTycoonState(1);
+    const result = placeFacility(state, 0, 0, 'booth');
+    expect(result.success).toBe(true);
+    expect(state.grid[0][0].id).toBe('booth');
   });
 });
 

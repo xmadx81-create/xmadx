@@ -1494,11 +1494,13 @@ export function getTowerRewards(wave) {
 export const TYCOON_GRID = { w: 5, h: 8 };
 
 export const FACILITY_TYPES = {
-  reception:  { id: 'reception',  icon: '📋', name: '접수대',  cost: 30,  desc: '헌혈자 접수 속도 ↑', capacity: 0, processTime: 0 },
-  bed:        { id: 'bed',        icon: '🛏️', name: '채혈대',  cost: 50,  desc: '채혈 수행 (핵심)', capacity: 1, processTime: 8 },
-  lab:        { id: 'lab',        icon: '🔬', name: '검사실',  cost: 60,  desc: '혈액 품질검사',     capacity: 2, processTime: 5 },
-  storage:    { id: 'storage',    icon: '❄️', name: '저장고',  cost: 80,  desc: '혈액 보관 +10팩',   capacity: 10, processTime: 0 },
-  lounge:     { id: 'lounge',     icon: '☕', name: '휴게실',  cost: 40,  desc: '만족도 ↑ 이탈 방지', capacity: 2, processTime: 3 },
+  reception:  { id: 'reception',  icon: '📋', name: '접수대',  cost: 20,  desc: '헌혈자 접수 속도 ↑', capacity: 0, processTime: 0 },
+  bed:        { id: 'bed',        icon: '🛏️', name: '채혈대',  cost: 40,  desc: '채혈 수행 (핵심)', capacity: 1, processTime: 6 },
+  lab:        { id: 'lab',        icon: '🔬', name: '검사실',  cost: 60,  desc: '혈액 품질검사 → 주문보상 ↑',     capacity: 2, processTime: 5 },
+  storage:    { id: 'storage',    icon: '❄️', name: '저장고',  cost: 70,  desc: '혈액 보관 +10팩',   capacity: 10, processTime: 0 },
+  lounge:     { id: 'lounge',     icon: '☕', name: '휴게실',  cost: 30,  desc: '만족도 ↑ 이탈 방지', capacity: 2, processTime: 3 },
+  emergency:  { id: 'emergency',  icon: '🚑', name: '응급실',  cost: 100, desc: '부작용 처리 · 긴장형 안정화', capacity: 1, processTime: 0 },
+  booth:      { id: 'booth',      icon: '🎪', name: '홍보부스', cost: 60,  desc: '다음 날 헌혈자 +3 · 평판 자연회복', capacity: 0, processTime: 0 },
 };
 
 export const BLOOD_TYPES = ['A', 'B', 'O', 'AB'];
@@ -1515,13 +1517,13 @@ export function createTycoonState(day) {
     grid,
     gridW: w,
     gridH: h,
-    gold: 100,
+    gold: 200,
     reputation: 20,
     phase: 'prep',
     donors: [],
     donorQueue: [],
     blood: { A: 0, B: 0, O: 0, AB: 0 },
-    maxStorage: 10,
+    maxStorage: 15,
     orders: [],
     completedOrders: 0,
     totalDonors: 0,
@@ -1530,47 +1532,66 @@ export function createTycoonState(day) {
     tickCount: 0,
     facilityCount: 0,
     dayIncome: 0,
+    boothCount: 0,
+    milestones: {},
+    autoFulfill: false,
   };
 }
 
-export function generateDonorWave(day) {
-  const count = Math.min(30, 3 + day * 2);
+export function generateDonorWave(day, boothCount) {
+  const boothBonus = (boothCount || 0) * 3;
+  const earlyPhase = day <= 5;
+  const count = Math.min(30, (earlyPhase ? 2 + day : 3 + day * 2) + boothBonus);
   const donors = [];
   for (let i = 0; i < count; i++) {
     const bloodType = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
     const isVIP = day >= 5 && Math.random() < 0.1;
-    const isNervous = Math.random() < 0.2;
+    const isNervous = Math.random() < 0.15;
+    const isGroup = day >= 8 && Math.random() < 0.1;
+    const isRepeater = day >= 4 && Math.random() < 0.12;
+    const basePat = earlyPhase ? 30 : 20;
+    const nervousPat = earlyPhase ? 18 : 12;
+    const patience = isNervous ? nervousPat : basePat;
+    const spawnGap = earlyPhase ? 4 : 3;
     donors.push({
       id: `donor-${day}-${i}`,
       bloodType,
-      patience: isNervous ? 12 : 20,
-      maxPatience: isNervous ? 12 : 20,
+      patience,
+      maxPatience: patience,
       status: 'waiting',
       isVIP,
       isNervous,
-      amount: isVIP ? 2 : 1,
-      spawnDelay: i * 3,
+      isGroup,
+      isRepeater,
+      amount: isVIP ? 2 : isGroup ? 3 : 1,
+      spawnDelay: i * spawnGap,
       assignedFacility: null,
     });
   }
   return donors;
 }
 
-export function getDayPreview(day) {
-  const count = Math.min(30, 3 + day * 2);
+export function getDayPreview(day, boothCount) {
+  const boothBonus = (boothCount || 0) * 3;
+  const earlyPhase = day <= 5;
+  const count = Math.min(30, (earlyPhase ? 2 + day : 3 + day * 2) + boothBonus);
   const hasVIP = day >= 5;
   return { count, hasVIP, day };
 }
 
 export function generateOrders(day) {
   const count = Math.min(3, 1 + Math.floor(day / 3));
+  const earlyPhase = day <= 5;
   const orders = [];
   for (let i = 0; i < count; i++) {
     const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
-    const qty = Math.min(8, 1 + Math.floor(day / 2) + Math.floor(Math.random() * 2));
+    const qty = earlyPhase
+      ? Math.min(3, 1 + Math.floor(Math.random() * 2))
+      : Math.min(8, 1 + Math.floor(day / 2) + Math.floor(Math.random() * 2));
     const urgent = day >= 7 && Math.random() < 0.2;
     const reward = qty * (urgent ? 30 : 15) + day * 5;
-    const deadline = urgent ? 15 : 30;
+    const baseDeadline = earlyPhase ? 45 : 30;
+    const deadline = urgent ? 15 : baseDeadline;
     orders.push({
       id: `order-${day}-${i}`,
       bloodType: bt,
@@ -1644,6 +1665,46 @@ export function getProcessingSpeed(facility) {
   return speed;
 }
 
+export function getAdjacencyBonus(state, row, col) {
+  const fac = state.grid[row]?.[col];
+  if (!fac) return 0;
+  const neighbors = [
+    [row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1],
+  ];
+  let bonus = 0;
+  for (const [r, c] of neighbors) {
+    const n = state.grid[r]?.[c];
+    if (!n) continue;
+    if (fac.id === 'bed' && n.id === 'lounge') bonus += 0.2;
+    if (fac.id === 'reception' && n.id === 'bed') bonus += 0.15;
+    if (fac.id === 'lab' && n.id === 'storage') bonus += 0.25;
+    if (fac.id === 'bed' && n.id === 'emergency') bonus += 0.1;
+  }
+  return bonus;
+}
+
+export const MILESTONES = {
+  donors10:  { id: 'donors10',  label: '헌혈자 10명', check: s => s.totalDonors >= 10, reward: 50 },
+  donors30:  { id: 'donors30',  label: '헌혈자 30명', check: s => s.totalDonors >= 30, reward: 120 },
+  donors50:  { id: 'donors50',  label: '헌혈자 50명', check: s => s.totalDonors >= 50, reward: 250 },
+  days5:     { id: 'days5',     label: '5일 운영',    check: s => s.day >= 5,          reward: 80 },
+  days10:    { id: 'days10',    label: '10일 운영',   check: s => s.day >= 10,         reward: 200 },
+  days20:    { id: 'days20',    label: '20일 운영',   check: s => s.day >= 20,         reward: 500 },
+};
+
+export function checkMilestones(state) {
+  const earned = [];
+  for (const [key, ms] of Object.entries(MILESTONES)) {
+    if (state.milestones[key]) continue;
+    if (ms.check(state)) {
+      state.milestones[key] = true;
+      state.gold += ms.reward;
+      earned.push(ms);
+    }
+  }
+  return earned;
+}
+
 export function tycoonTick(state) {
   const events = [];
   state.tickCount++;
@@ -1659,6 +1720,7 @@ export function tycoonTick(state) {
 
   const receptions = countFacilities(state, 'reception');
   const lounges = countFacilities(state, 'lounge');
+  const emergencies = countFacilities(state, 'emergency');
   const patienceBonus = lounges * 2;
 
   for (const donor of state.donors) {
@@ -1668,6 +1730,9 @@ export function tycoonTick(state) {
       const receptionSpeed = 1 + receptions * 0.5;
       donor.patience -= (1 / receptionSpeed);
       donor.patience += patienceBonus * 0.05;
+      if (donor.isNervous && emergencies > 0) {
+        donor.patience += emergencies * 0.15;
+      }
       if (donor.patience <= 0) {
         donor.status = 'left';
         state.lostDonors++;
@@ -1690,7 +1755,8 @@ export function tycoonTick(state) {
       const bed = _findFacilityByUid(state, donor.assignedFacility);
       if (bed) {
         const speed = getProcessingSpeed(bed);
-        bed.progress += speed;
+        const adjBonus = _getAdjBonusForFacility(state, bed);
+        bed.progress += speed * (1 + adjBonus);
         if (bed.progress >= bed.processTime) {
           donor.status = 'done';
           bed.busy = false;
@@ -1728,6 +1794,25 @@ export function tycoonTick(state) {
   }
   state.orders = state.orders.filter(o => o.fulfilled >= 0 && o.fulfilled < o.quantity);
 
+  if (state.autoFulfill) {
+    for (const order of [...state.orders]) {
+      if (order.fulfilled >= order.quantity) continue;
+      const bt = order.bloodType;
+      const need = order.quantity - order.fulfilled;
+      const available = state.blood[bt] || 0;
+      if (available >= need) {
+        const result = fulfillOrder(state, order.id);
+        if (result.done) events.push({ type: 'auto_fulfilled', order });
+      }
+    }
+  }
+
+  const booths = countFacilities(state, 'booth');
+  if (booths > 0 && state.tickCount % 10 === 0) {
+    state.reputation = Math.min(30, state.reputation + booths);
+    events.push({ type: 'booth_reputation', amount: booths });
+  }
+
   const waveComplete = state.donorQueue.length === 0 &&
     state.donors.every(d => d.status === 'done' || d.status === 'left') &&
     state.donors.length === 0;
@@ -1737,6 +1822,15 @@ export function tycoonTick(state) {
   }
 
   return events;
+}
+
+function _getAdjBonusForFacility(state, facility) {
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      if (state.grid[r][c] === facility) return getAdjacencyBonus(state, r, c);
+    }
+  }
+  return 0;
 }
 
 function _findFreeFacility(state, facilityId) {

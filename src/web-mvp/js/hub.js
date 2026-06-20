@@ -19,6 +19,7 @@ import {
   placeFacility, assignStaff, countFacilities, getProcessingSpeed,
   tycoonTick, fulfillOrder, tycoonDayIncome,
   upgradeFacility, TYCOON_EVENTS, rollTycoonEvent,
+  getAdjacencyBonus, MILESTONES, checkMilestones,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -1702,7 +1703,7 @@ function renderTycoon() {
     html += '<div class="tyc-donor-queue">';
     donors.filter(d => d.status === 'waiting' || d.status === 'collecting').slice(0, 8).forEach(d => {
       const patiencePct = Math.round(d.patience / d.maxPatience * 100);
-      const statusIcon = d.status === 'collecting' ? '🛏️' : d.isVIP ? '👑' : d.isNervous ? '😰' : '🧑';
+      const statusIcon = d.status === 'collecting' ? '🛏️' : d.isVIP ? '👑' : d.isGroup ? '👥' : d.isRepeater ? '🔄' : d.isNervous ? '😰' : '🧑';
       html += `<div class="tyc-donor ${d.patience < 5 ? 'tyc-donor-angry' : ''}">
         <span class="tyc-donor-icon">${statusIcon}</span>
         <span class="tyc-donor-bt tyc-bt-${d.bloodType}">${d.bloodType}</span>
@@ -1747,13 +1748,14 @@ function showFacilityInfo(row, col) {
   if (existing) existing.remove();
   const fType = FACILITY_TYPES[fac.id];
   const speed = getProcessingSpeed(fac);
+  const adjBonus = getAdjacencyBonus(tycoonState, row, col);
   const upgCost = fac.level < 3 ? fType.cost * fac.level : 0;
   const popup = document.createElement('div');
   popup.className = 'def-unit-info';
   popup.innerHTML = `
     <div class="def-info-header">${fac.icon} ${fac.name} Lv.${fac.level}</div>
     <div class="def-info-role">${fType.desc}</div>
-    <div class="def-info-stats">처리속도: ${speed.toFixed(1)}x · ${fac.staff ? `직원: ${fac.staff.name}` : '직원 없음'}</div>
+    <div class="def-info-stats">처리속도: ${speed.toFixed(1)}x${adjBonus > 0 ? ` · 인접보너스 +${Math.round(adjBonus * 100)}%` : ''} · ${fac.staff ? `직원: ${fac.staff.name}` : '직원 없음'}</div>
     ${fac.level < 3 ? `<button class="btn-secondary tyc-upgrade-btn" style="margin-top:4px;font-size:0.7rem">업그레이드 ${upgCost}G</button>` : '<div style="font-size:0.7rem;color:#C9A54E">MAX</div>'}
     <button class="btn-secondary tyc-staff-btn" style="margin-top:4px;font-size:0.7rem">${fac.staff ? '직원 교체' : '직원 배치'}</button>`;
   document.getElementById('defense-screen').appendChild(popup);
@@ -1816,11 +1818,18 @@ function showTycoonBanner(text, type) {
   setTimeout(() => banner.remove(), 2000);
 }
 
+function showDailyReport(state, dayGold, milestones) {
+  const totalBlood = Object.values(state.blood).reduce((s, v) => s + v, 0);
+  const msHtml = milestones.length > 0 ? `<div class="tyc-report-ms">${milestones.map(m => `🏆 ${m.label} +${m.reward}G`).join('<br>')}</div>` : '';
+  showTycoonBanner(`${state.day}일차 종료! +${dayGold}G · 헌혈 ${state.totalDonors}명 · 재고 ${totalBlood}팩`, 'upgrade');
+  if (msHtml) showTycoonBanner(milestones.map(m => `🏆 ${m.label}`).join(' '), 'legendary');
+}
+
 function tycoonStartPrep() {
   tycoonState.phase = 'prep';
   tycoonPrepRemain = 10000;
 
-  const preview = getDayPreview(tycoonState.day);
+  const preview = getDayPreview(tycoonState.day, countFacilities(tycoonState, 'booth'));
   let previewEl = document.getElementById('defense-wave-preview');
   if (!previewEl) {
     previewEl = document.createElement('div');
@@ -1868,9 +1877,10 @@ function tycoonStartOperating() {
   tycoonState.phase = 'operating';
   tycoonPrepRemain = 0;
   tycoonState.tickCount = 0;
-  let donorWave = generateDonorWave(tycoonState.day);
+  tycoonState.boothCount = countFacilities(tycoonState, 'booth');
+  let donorWave = generateDonorWave(tycoonState.day, tycoonState.boothCount);
   if (tycoonActiveEvent?.id === 'campaign') {
-    donorWave = donorWave.concat(generateDonorWave(tycoonState.day));
+    donorWave = donorWave.concat(generateDonorWave(tycoonState.day, tycoonState.boothCount));
   }
   tycoonState.donorQueue = donorWave;
   tycoonState.donors = [];
@@ -1899,6 +1909,13 @@ function tycoonGameTick() {
     if (ev.type === 'blood_collected') sfxCollect();
     if (ev.type === 'storage_full') showTycoonBanner('❄️ 저장고 가득!', 'same');
     if (ev.type === 'order_expired') { sfxDebuff(); showTycoonBanner(`📦 주문 기한 만료! 평판 -1`, 'same'); }
+    if (ev.type === 'auto_fulfilled') {
+      sfxCollect();
+      showTycoonBanner(`📦 자동 납품 완료!`, 'upgrade');
+    }
+    if (ev.type === 'booth_reputation') {
+      showTycoonBanner(`🎪 홍보부스 — 평판 +${ev.amount}`, 'same');
+    }
     if (ev.type === 'day_complete') {
       sfxWin();
       stopTycoonLoop();
@@ -1926,11 +1943,16 @@ function tycoonGameTick() {
 
       tycoonActiveEvent = null;
 
+      const milestones = checkMilestones(tycoonState);
+      milestones.forEach(ms => {
+        showTycoonBanner(`🏆 ${ms.label} 달성! +${ms.reward}G`, 'legendary');
+      });
+
       if (tycoonState.day > (gameSave.tycoonBest || 0)) {
         gameSave.tycoonBest = tycoonState.day;
       }
       saveGame(gameSave);
-      showTycoonBanner(`${tycoonState.day}일차 종료! +${dayGold}G (이자 포함)`, 'upgrade');
+      showDailyReport(tycoonState, dayGold, milestones);
       tycoonState.day++;
       tycoonStartPrep();
       renderTycoon();
@@ -2022,6 +2044,14 @@ function initTycoonControls() {
     updateTycoonSpeedBtn();
     if (tycoonSpeed > 0) startTycoonLoop();
     else stopTycoonLoop();
+  });
+  document.getElementById('btn-tyc-autofulfill')?.addEventListener('click', () => {
+    if (!tycoonState) return;
+    tycoonState.autoFulfill = !tycoonState.autoFulfill;
+    const btn = document.getElementById('btn-tyc-autofulfill');
+    btn.textContent = tycoonState.autoFulfill ? '자동납품 ON' : '자동납품 OFF';
+    btn.classList.toggle('btn-primary', tycoonState.autoFulfill);
+    btn.classList.toggle('btn-secondary', !tycoonState.autoFulfill);
   });
 }
 
