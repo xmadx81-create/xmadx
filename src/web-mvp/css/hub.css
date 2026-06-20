@@ -7555,7 +7555,6 @@ body {
   box-shadow: 0 6px 28px rgba(0,0,0,0.6), inset 0 0 50px rgba(0,0,0,0.2);
   border: 2px solid rgba(233,196,106,0.25);
   margin: 4px auto;
-  max-width: 520px;
 }
 #tyc-canvas-wrap canvas {
   border-radius: 12px;
