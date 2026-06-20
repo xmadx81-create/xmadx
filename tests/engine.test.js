@@ -15,6 +15,7 @@ import {
   executeUltimate, useItem, tickBuffs, ULTIMATES,
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy, getDangerZone,
+  STORY_ACTS, getScaledEnemyLevel,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -668,8 +669,8 @@ describe('loot system', () => {
 });
 
 describe('expanded stages', () => {
-  it('7개의 스테이지가 정의되어 있다', () => {
-    expect(STAGES.length).toBe(7);
+  it('15개의 스테이지가 정의되어 있다', () => {
+    expect(STAGES.length).toBe(15);
   });
 
   it('각 스테이지에 enemyLevel이 있다', () => {
@@ -1758,8 +1759,8 @@ describe('역할별 스탯 차별화', () => {
 });
 
 describe('설정 시스템', () => {
-  it('STAGES가 7개 존재하고 각각 필수 필드를 갖는다', () => {
-    expect(STAGES.length).toBe(7);
+  it('STAGES가 15개 존재하고 각각 필수 필드를 갖는다', () => {
+    expect(STAGES.length).toBe(15);
     STAGES.forEach(s => {
       expect(s.id).toBeTruthy();
       expect(s.name).toBeTruthy();
@@ -2559,5 +2560,60 @@ describe('spawnReinforcements', () => {
     state.turnNumber = 999;
     const result = spawnReinforcements(state);
     expect(result).toBeNull();
+  });
+});
+
+// ── STORY_ACTS 테스트 ──
+
+describe('STORY_ACTS', () => {
+  it('3막 구조가 정의되어 있다', () => {
+    expect(STORY_ACTS.length).toBe(3);
+    expect(STORY_ACTS[0].act).toBe(1);
+    expect(STORY_ACTS[1].act).toBe(2);
+    expect(STORY_ACTS[2].act).toBe(3);
+  });
+
+  it('모든 스테이지가 하나의 막에 속한다', () => {
+    const allActStages = STORY_ACTS.flatMap(a => a.stages);
+    STAGES.forEach(s => {
+      expect(allActStages).toContain(s.id);
+    });
+  });
+
+  it('각 막에 이름과 소개가 있다', () => {
+    STORY_ACTS.forEach(act => {
+      expect(act.name).toBeTruthy();
+      expect(act.intro).toBeTruthy();
+      expect(act.stages.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('2막은 stage-7 클리어 후 해금된다', () => {
+    expect(STORY_ACTS[1].unlock).toBe('stage-7');
+  });
+
+  it('3막은 stage-11 클리어 후 해금된다', () => {
+    expect(STORY_ACTS[2].unlock).toBe('stage-11');
+  });
+});
+
+// ── getScaledEnemyLevel 테스트 ──
+
+describe('getScaledEnemyLevel', () => {
+  it('플레이어 레벨이 낮으면 기본 레벨을 반환한다', () => {
+    const stage = { enemyLevel: 5 };
+    expect(getScaledEnemyLevel(stage, 3)).toBe(5);
+  });
+
+  it('플레이어 레벨이 높으면 스케일된 레벨을 반환한다', () => {
+    const stage = { enemyLevel: 5 };
+    const scaled = getScaledEnemyLevel(stage, 15);
+    expect(scaled).toBeGreaterThan(5);
+    expect(scaled).toBe(5 + Math.floor((15 - 5) * 0.3));
+  });
+
+  it('enemyLevel 없으면 기본값 1 사용', () => {
+    const stage = {};
+    expect(getScaledEnemyLevel(stage, 1)).toBe(1);
   });
 });
