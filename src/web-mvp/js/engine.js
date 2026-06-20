@@ -916,6 +916,7 @@ export const STAGES = [
       { turn: 3, units: [{ charId: 'kaspar-wren', x: 9, y: 7 }], message: '🔴 통로 끝에서 적 증원 출현!' },
     ],
     victoryCondition: 'defeat_all',
+    tactics: { enemyDefBonus: 2 },
   },
   {
     id: 'stage-4',
@@ -985,6 +986,7 @@ export const STAGES = [
       { turn: 4, units: [{ charId: 'nadia-petrova', x: 10, y: 5 }, { charId: 'kaspar-wren', x: 11, y: 5 }], message: '🔴 적 후속 부대 도착!' },
     ],
     victoryCondition: 'defeat_all',
+    tactics: { enemyHpMult: 1.2 },
   },
   {
     id: 'stage-6',
@@ -1058,6 +1060,7 @@ export const STAGES = [
     ],
     victoryCondition: 'defeat_all',
     weather: 'bloodmoon',
+    tactics: { enemyAtkBonus: 3, enemyDefBonus: 1 },
   },
   // ── ACT 2: 반격 ──────────────────────────────────
   {
@@ -1131,6 +1134,7 @@ export const STAGES = [
     victoryCondition: 'capture_point',
     capturePoints: [{ x: 2, y: 2 }, { x: 7, y: 2 }],
     holdTurns: 2,
+    tactics: { enemyDefBonus: 3, enemyHpMult: 1.15 },
   },
   {
     id: 'stage-10',
@@ -1209,6 +1213,7 @@ export const STAGES = [
       { turn: 3, units: [{ charId: 'aldric-thorne', x: 1, y: 8 }, { charId: 'otto-brandt', x: 8, y: 8 }], message: '🔴 퇴로가 차단되었다! 뒤에서 적 출현!' },
     ],
     victoryCondition: 'defeat_all',
+    tactics: { enemyAtkBonus: 2, enemyHpMult: 1.2 },
   },
   // ── ACT 3: 결전 ──────────────────────────────────
   {
@@ -1250,6 +1255,7 @@ export const STAGES = [
       { turn: 5, units: [{ charId: 'madeleine-voss', x: 5, y: 0 }], message: '🔴 저격수가 성벽 위에 나타났다!' },
     ],
     victoryCondition: 'defeat_all',
+    tactics: { enemyAtkBonus: 3, enemyHpMult: 1.25 },
   },
   {
     id: 'stage-13',
@@ -1329,6 +1335,7 @@ export const STAGES = [
       { turn: 6, units: [{ charId: 'lucien-deveraux', x: 4, y: 9 }], message: '🔴 퇴로에서 적 출현! 포위되었다!' },
     ],
     victoryCondition: 'defeat_all',
+    tactics: { enemyAtkBonus: 4, enemyDefBonus: 2, enemyHpMult: 1.3 },
   },
   {
     id: 'stage-15',
@@ -1373,6 +1380,7 @@ export const STAGES = [
     ],
     victoryCondition: 'boss_kill',
     bossCharId: 'kartein-duke',
+    tactics: { enemyAtkBonus: 5, enemyDefBonus: 3, enemyHpMult: 1.4 },
   },
 ];
 
@@ -1505,7 +1513,7 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
     units.push(unit);
   });
 
-  // Place enemy units (scaled to stage enemyLevel)
+  // Place enemy units (scaled to stage enemyLevel with progressive scaling)
   stage.enemyUnits.forEach((eu, i) => {
     const charData = CHARACTERS.find(c => c.id === eu.charId);
     if (!charData) return;
@@ -1515,10 +1523,13 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
     const eLv = stage.enemyLevel || 1;
     for (let lv = 1; lv < eLv; lv++) {
       unit.level++;
-      unit.maxHp += Math.floor(unit.maxHp * 0.05);
+      const hpScale = lv >= 8 ? 0.07 : 0.05;
+      const atkGrowth = lv >= 10 ? 3 : 2;
+      const defGrowth = lv >= 8 ? 2 : 1;
+      unit.maxHp += Math.floor(unit.maxHp * hpScale);
       unit.hp = unit.maxHp;
-      unit.atk += 2;
-      unit.def += 1;
+      unit.atk += atkGrowth;
+      unit.def += defGrowth;
       unit.xpToNext = unit.level * 50;
     }
     units.push(unit);
@@ -1542,6 +1553,21 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
       u.atk += 2;
       u.def += 1;
       u._leaderBuff = true;
+    });
+  }
+
+  // ⚫조조: 스테이지 전술 효과 — 적에게 고유 이점 부여
+  const tactics = stage.tactics || {};
+  if (tactics.enemyAtkBonus) {
+    units.filter(u => u.team === 'enemy').forEach(u => { u.atk += tactics.enemyAtkBonus; });
+  }
+  if (tactics.enemyDefBonus) {
+    units.filter(u => u.team === 'enemy').forEach(u => { u.def += tactics.enemyDefBonus; });
+  }
+  if (tactics.enemyHpMult) {
+    units.filter(u => u.team === 'enemy').forEach(u => {
+      u.maxHp = Math.floor(u.maxHp * tactics.enemyHpMult);
+      u.hp = u.maxHp;
     });
   }
 
@@ -1586,7 +1612,10 @@ export function endPlayerPhase(state) {
 export function endEnemyPhase(state) {
   if (state.phase !== 'enemy_phase') return;
   state.units.forEach(u => {
-    if (u.team === 'enemy') u.acted = false;
+    if (u.team === 'enemy') {
+      u.acted = false;
+      if (u._flankBuff) { u.atk -= u._flankBuff; u._flankBuff = 0; u._flankApplied = false; }
+    }
   });
   state.units.forEach(u => {
     if (u.hp > 0) u.mp = Math.min(u.maxMp, u.mp + 2);
@@ -2392,7 +2421,7 @@ export function getFlankingBonus(state, attacker, defender) {
 }
 
 // 🔴 사마의: 적 타겟 우선순위 — 힐러 > 약체 > 원딜 > 가까운 적
-function scoreTarget(enemy, target) {
+function scoreTarget(enemy, target, state) {
   let score = 0;
   const healRoles = ['support', 'battle_support'];
   const squishyRoles = ['ranged_dps', 'evasive_dps'];
@@ -2404,10 +2433,11 @@ function scoreTarget(enemy, target) {
   const canKill = target.hp <= enemy.atk - target.def + 3;
   if (canKill) score += 60;
   score -= manhattanDist(enemy, target) * 3;
+  if (state && state._focusTarget === target.uid) score += 30;
   return score;
 }
 
-// 🔴 사마의: 이동 시 방어 지형 선호
+// 🔴 사마의: 이동 시 방어 지형 + 협공 진형 선호
 function scoreMoveTile(state, tile, target) {
   let score = 0;
   score -= manhattanDist(tile, target) * 10;
@@ -2415,6 +2445,16 @@ function scoreMoveTile(state, tile, target) {
   score += (terrain.defBonus || 0) * 5;
   score += (terrain.evaBonus || 0) * 30;
   score += (terrain.atkBonus || 0) * 3;
+  // ⚫조조: 아군 적과 인접하면 협공 보너스 → 모여서 공격
+  const adjAllies = state.units.filter(u =>
+    u.team === 'enemy' && u.hp > 0 && manhattanDist(tile, u) === 1
+  ).length;
+  score += adjAllies * 8;
+  // ⚫조조: 공격 사거리 안에 집중 대상이 있으면 보너스
+  if (state._focusTarget) {
+    const focusUnit = state.units.find(u => u.uid === state._focusTarget && u.hp > 0);
+    if (focusUnit && manhattanDist(tile, focusUnit) <= 2) score += 15;
+  }
   return score;
 }
 
@@ -2427,11 +2467,31 @@ export function runEnemyPhase(state) {
 
   if (players.length === 0) return actions;
 
-  // 🔴 사마의: 보스(레전더리)는 마지막에 행동 (부하가 먼저 길을 닦는다)
+  // ⚫조조: 집중 공격 대상 선정 — 가장 약한 적 1명에 전원 집중
+  if (!state._focusTarget || !players.find(p => p.uid === state._focusTarget && p.hp > 0)) {
+    let bestFocus = null;
+    let bestFocusScore = -Infinity;
+    for (const p of players) {
+      if (p.hp <= 0) continue;
+      let s = 0;
+      const hpPct = p.hp / p.maxHp;
+      if (hpPct < 0.4) s += 60;
+      if (p.role === 'support' || p.role === 'battle_support') s += 40;
+      if (p.role === 'ranged_dps' || p.role === 'evasive_dps') s += 20;
+      s -= p.def * 2;
+      if (bestFocusScore < s) { bestFocusScore = s; bestFocus = p; }
+    }
+    if (bestFocus) state._focusTarget = bestFocus.uid;
+  }
+
+  // ⚫조조: 탱크 보호 진형 — 탱크 역할 적이 힐러 주변에 배치되도록 우선순위 조정
   enemies.sort((a, b) => {
     const aIsBoss = a.rarity === 'legendary' ? 1 : 0;
     const bIsBoss = b.rarity === 'legendary' ? 1 : 0;
-    return aIsBoss - bIsBoss;
+    if (aIsBoss !== bIsBoss) return aIsBoss - bIsBoss;
+    const aIsTank = a.role === 'tank' ? -1 : 0;
+    const bIsTank = b.role === 'tank' ? -1 : 0;
+    return aIsTank - bIsTank;
   });
 
   for (const enemy of enemies) {
@@ -2444,12 +2504,20 @@ export function runEnemyPhase(state) {
       continue;
     }
 
-    // 🔴 사마의: 전략적 타겟 선정 (힐러 우선 > 처치 가능 > 약체 > 가까운 적)
+    // 🔴 사마의: 적 협공 보너스 (인접 아군 수 × 1 ATK)
+    const adjAllies = enemies.filter(a => a.uid !== enemy.uid && a.hp > 0 && manhattanDist(enemy, a) <= 1).length;
+    if (adjAllies > 0 && !enemy._flankApplied) {
+      enemy._flankBuff = Math.min(adjAllies * 1, 3);
+      enemy.atk += enemy._flankBuff;
+      enemy._flankApplied = true;
+    }
+
+    // 🔴 사마의: 전략적 타겟 선정 (집중 대상 우선 > 힐러 > 처치 가능 > 가까운 적)
     let priorityTarget = null;
     let bestScore = -Infinity;
     for (const p of players) {
       if (p.hp <= 0) continue;
-      const score = scoreTarget(enemy, p);
+      const score = scoreTarget(enemy, p, state);
       if (score > bestScore) {
         bestScore = score;
         priorityTarget = p;

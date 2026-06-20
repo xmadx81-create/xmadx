@@ -2674,3 +2674,42 @@ describe('checkVictory 승리 조건', () => {
     expect(result).toBe('win');
   });
 });
+
+// ── 적 전술 시스템 테스트 ──
+
+describe('적 전술 밸런스', () => {
+  it('tactics.enemyAtkBonus가 적 ATK에 적용된다', () => {
+    const state = createBattleState('stage-7', ['park-harin']);
+    const enemy = state.units.find(u => u.team === 'enemy');
+    const stateNoTac = createBattleState('stage-1', ['park-harin']);
+    const enemyBase = stateNoTac.units.find(u => u.team === 'enemy');
+    expect(enemy.atk).toBeGreaterThan(enemyBase.atk);
+  });
+
+  it('집중 공격 대상이 설정된다', () => {
+    const state = createBattleState('stage-1', ['park-harin', 'kim-doyun']);
+    state.phase = 'enemy_phase';
+    runEnemyPhase(state);
+    expect(state._focusTarget).toBeTruthy();
+  });
+
+  it('후반 스테이지 적 스탯이 크게 성장한다', () => {
+    const state15 = createBattleState('stage-15', ['park-harin']);
+    const enemy15 = state15.units.find(u => u.team === 'enemy');
+    const state1 = createBattleState('stage-1', ['park-harin']);
+    const enemy1 = state1.units.find(u => u.team === 'enemy');
+    expect(enemy15.atk).toBeGreaterThan(enemy1.atk * 2);
+  });
+
+  it('적 협공 보너스가 전투 후 리셋된다', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    const enemy = state.units.find(u => u.team === 'enemy');
+    enemy._flankBuff = 2;
+    enemy._flankApplied = true;
+    enemy.atk += 2;
+    state.phase = 'enemy_phase';
+    endEnemyPhase(state);
+    expect(enemy._flankBuff).toBe(0);
+    expect(enemy._flankApplied).toBe(false);
+  });
+});
