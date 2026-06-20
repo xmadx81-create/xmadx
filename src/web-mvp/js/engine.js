@@ -1536,8 +1536,8 @@ function _defenseWaveInfo(wave) {
     : wave <= 9
     ? CHARACTERS.filter(c => c.rarity === 'uncommon' || c.rarity === 'rare')
     : CHARACTERS.filter(c => c.faction === 'kartein');
-  const count = Math.min(20, 4 + wave * 2);
-  const hpMult = wave <= 3 ? 1.0 : wave <= 6 ? 1.3 : wave <= 9 ? 1.6 : 2.0 + (wave - 10) * 0.15;
+  const count = Math.min(30, 4 + wave * 3);
+  const hpMult = Math.pow(1.12, wave);
   const hasBoss = wave % 5 === 0 && wave > 0;
   return { pool, count, hpMult, hasBoss };
 }
@@ -1610,38 +1610,30 @@ export function defenseDrawCards(wave) {
   const choices = [];
   for (let i = 0; i < 3; i++) {
     const roll = Math.random();
+    let pick;
     if (wave >= 7 && roll < 0.08) {
-      choices.push(rares[Math.floor(Math.random() * rares.length)]);
+      pick = rares[Math.floor(Math.random() * rares.length)];
     } else if (wave >= 4 && roll < 0.2) {
-      choices.push(uncommons[Math.floor(Math.random() * uncommons.length)]);
+      pick = uncommons[Math.floor(Math.random() * uncommons.length)];
     } else {
-      choices.push(pool[Math.floor(Math.random() * pool.length)]);
+      pick = pool[Math.floor(Math.random() * pool.length)];
     }
+    const card = { ...pick, _waveLv: Math.floor(1 + wave / 2) };
+    choices.push(card);
   }
   return choices;
 }
 
 export function defenseMerge(charId, rarity) {
-  const roll = Math.random();
-  const LEGENDARY_CHANCE = 0.005;
+  const char = CHARACTERS.find(c => c.id === charId);
+  if (!char) return { success: false };
   const rarityOrder = ['common', 'uncommon', 'rare', 'legendary'];
   const curIdx = rarityOrder.indexOf(rarity);
-
-  if (roll < LEGENDARY_CHANCE && curIdx < 3) {
-    const legendaries = CHARACTERS.filter(c => c.rarity === 'legendary');
-    return { success: true, upgraded: true, legendary: true, char: legendaries[Math.floor(Math.random() * legendaries.length)] };
+  if (curIdx < 3) {
+    const nextRarity = rarityOrder[curIdx + 1];
+    return { success: true, upgraded: true, legendary: nextRarity === 'legendary', char, newRarity: nextRarity, statMult: 1.5 };
   }
-
-  const upgradeChance = curIdx >= 3 ? 0 : 0.49;
-  if (roll < LEGENDARY_CHANCE + upgradeChance) {
-    const nextRarity = rarityOrder[Math.min(curIdx + 1, 3)];
-    const candidates = CHARACTERS.filter(c => c.rarity === nextRarity);
-    return { success: true, upgraded: true, legendary: false, char: candidates[Math.floor(Math.random() * candidates.length)] };
-  }
-
-  const samePool = CHARACTERS.filter(c => c.rarity === rarity && c.id !== charId);
-  if (samePool.length === 0) return { success: true, upgraded: false, char: CHARACTERS.find(c => c.id === charId) };
-  return { success: true, upgraded: false, char: samePool[Math.floor(Math.random() * samePool.length)] };
+  return { success: true, upgraded: false, legendary: false, char, newRarity: rarity, statMult: 1.2 };
 }
 
 export function defenseRewardChoices(wave) {

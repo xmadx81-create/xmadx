@@ -2948,17 +2948,16 @@ describe('방어전 (Tower Defense) 시스템', () => {
     expect(entry._slowed).toBeUndefined();
   });
 
-  it('합성 확률 — 전설 0.5%, 상급 49%', () => {
-    let legendaryCount = 0;
-    let upgradeCount = 0;
-    const runs = 1000;
-    for (let i = 0; i < runs; i++) {
-      const result = defenseMerge('kim-doyun', 'common');
-      if (result.legendary) legendaryCount++;
-      else if (result.upgraded) upgradeCount++;
-    }
-    expect(upgradeCount).toBeGreaterThan(300);
-    expect(upgradeCount).toBeLessThan(700);
+  it('합성 — 같은 캐릭 유지, 등급 업', () => {
+    const result = defenseMerge('kim-doyun', 'common');
+    expect(result.success).toBe(true);
+    expect(result.char.id).toBe('kim-doyun');
+    expect(result.newRarity).toBe('uncommon');
+    expect(result.upgraded).toBe(true);
+    expect(result.statMult).toBe(1.5);
+    const legendResult = defenseMerge('kim-doyun', 'legendary');
+    expect(legendResult.newRarity).toBe('legendary');
+    expect(legendResult.statMult).toBe(1.2);
   });
 });
 
@@ -3224,10 +3223,10 @@ describe('방어전 스킬 시스템', () => {
 describe('웨이브 미리보기 시스템', () => {
   it('getWavePreview가 올바른 구조를 반환한다', () => {
     const p = getWavePreview(1);
-    expect(p.count).toBe(6);
+    expect(p.count).toBe(7);
     expect(p.wave).toBe(1);
     expect(p.hasBoss).toBe(false);
-    expect(p.hpMult).toBe(1.0);
+    expect(p.hpMult).toBeCloseTo(1.12, 1);
     expect(p.topRoles).toBeDefined();
     expect(p.topRoles.length).toBeGreaterThan(0);
     expect(p.topRoles.length).toBeLessThanOrEqual(3);
