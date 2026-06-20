@@ -14,10 +14,10 @@ import {
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
   getTowerRewards,
   STORY_ACTS, getScaledEnemyLevel, ROLE_MODIFIERS,
-  createTycoonState, TYCOON_GRID, FACILITY_TYPES, BLOOD_TYPES,
-  generateDonorWave, getDayPreview, generateOrders,
-  placeFacility, assignStaff, countFacilities, getProcessingSpeed,
-  tycoonTick, fulfillOrder, tycoonDayIncome,
+  createTycoonState, TYCOON_GRID, FACILITY_TYPES, BLOOD_TYPES, TYCOON_ROLES,
+  generateDonorWave, getDayPreview, generateOrders, generateNamedDonor,
+  placeFacility, deployNurse, removeNurse, getNurseAt, countFacilities, getProcessingSpeed,
+  tycoonTick, fulfillOrder, tycoonDayFame,
   upgradeFacility, TYCOON_EVENTS, rollTycoonEvent,
   getAdjacencyBonus, MILESTONES, checkMilestones,
 } from './engine.js';
@@ -1613,8 +1613,8 @@ function startTycoonMode() {
   tycoonActiveEvent = null;
   const prestige = gameSave.tycoonPrestige || 0;
   if (prestige > 0) {
-    tycoonState.gold += prestige * 20;
-    showTycoonBanner(`🏅 프레스티지 ${prestige} — 시작 골드 +${prestige * 20}G`, 'legendary');
+    tycoonState.fame += prestige * 5;
+    showTycoonBanner(`🏅 프레스티지 ${prestige} — 시작 명성 +${prestige * 5}`, 'legendary');
   }
   document.getElementById('stage-select').style.display = 'none';
   document.getElementById('defense-screen').style.display = '';
@@ -1626,15 +1626,15 @@ function startTycoonMode() {
 
 function renderTycoon() {
   if (!tycoonState) return;
-  const { gridW, gridH, gold, reputation, day, donors, blood, orders, maxStorage } = tycoonState;
+  const { gridW, gridH, fame, reputation, day, donors, blood, orders, maxStorage, nurses } = tycoonState;
   const totalBlood = Object.values(blood).reduce((s, v) => s + v, 0);
   const waitingDonors = donors.filter(d => d.status === 'waiting').length;
   const collectingDonors = donors.filter(d => d.status === 'collecting').length;
 
-  document.getElementById('defense-wave').innerHTML = `${day}일차 <span class="tyc-donor-count">${waitingDonors > 0 ? `대기 ${waitingDonors}` : ''}${collectingDonors > 0 ? ` 채혈 ${collectingDonors}` : ''}</span>`;
+  document.getElementById('defense-wave').innerHTML = `${day}일차 <span class="tyc-donor-count">${waitingDonors > 0 ? `대기 ${waitingDonors}` : ''}${collectingDonors > 0 ? ` 채혈 ${collectingDonors}` : ''} 👩‍⚕️${nurses.length}</span>`;
   document.getElementById('defense-lives').textContent = `⭐ ${reputation}`;
   document.getElementById('defense-merges').textContent = `🩸 ${totalBlood}/${maxStorage}`;
-  document.getElementById('defense-gold').textContent = `💰 ${gold}`;
+  document.getElementById('defense-gold').textContent = `🏅 ${fame}`;
   const timerEl = document.getElementById('defense-timer');
   if (timerEl) {
     if (tycoonState.phase === 'prep') {
@@ -1654,7 +1654,7 @@ function renderTycoon() {
     const orderHtml = orders.filter(o => o.fulfilled < o.quantity && o.fulfilled >= 0).map(o => {
       const pct = Math.round(o.deadline / o.maxDeadline * 100);
       const urgCls = o.urgent ? ' tyc-order-urgent' : '';
-      return `<span class="tyc-order-tag${urgCls}" data-oid="${o.id}">${o.bloodType}형 ${o.fulfilled}/${o.quantity} 💰${o.reward} <span class="tyc-order-time" style="width:${pct}%"></span></span>`;
+      return `<span class="tyc-order-tag${urgCls}" data-oid="${o.id}">${o.bloodType}형 ${o.fulfilled}/${o.quantity} 🏅${o.reward} <span class="tyc-order-time" style="width:${pct}%"></span></span>`;
     }).join('');
     synEl.innerHTML = bloodHtml + orderHtml;
     synEl.querySelectorAll('.tyc-order-tag').forEach(tag => {
@@ -1662,7 +1662,7 @@ function renderTycoon() {
         const oid = tag.dataset.oid;
         const result = fulfillOrder(tycoonState, oid);
         if (result.success && result.done) {
-          showTycoonBanner(`📦 주문 완료! +${result.reward}G`, 'upgrade');
+          showTycoonBanner(`📦 주문 완료! 명성 +${result.reward}`, 'upgrade');
           sfxCollect();
         } else if (result.success) {
           showTycoonBanner(`🩸 ${result.delivered}팩 납품!`, 'same');
@@ -1678,21 +1678,22 @@ function renderTycoon() {
   for (let r = 0; r < gridH; r++) {
     for (let c = 0; c < gridW; c++) {
       const fac = tycoonState.grid[r][c];
+      const nurseHere = nurses.find(n => n.row === r && n.col === c);
+      const nurseIcon = nurseHere ? `<div class="tyc-nurse-icon ${nurseHere.task === 'working' ? 'tyc-nurse-working' : 'tyc-nurse-moving'}">${nurseHere.tycoonRole.icon}<span class="tyc-nurse-name">${nurseHere.charData.name.slice(0, 2)}</span></div>` : '';
       if (fac) {
         const lvStars = '★'.repeat(fac.level);
         const progressPct = fac.processTime > 0 ? Math.round(fac.progress / fac.processTime * 100) : 0;
-        const staffName = fac.staff ? fac.staff.name.slice(0, 2) : '';
         const busyCls = fac.busy ? ' tyc-fac-busy' : '';
         html += `<div class="def-tile tyc-fac${busyCls}" data-row="${r}" data-col="${c}">
           <div class="tyc-fac-icon">${fac.icon}</div>
           <div class="tyc-fac-name">${fac.name.slice(0, 2)}</div>
           <div class="tyc-fac-lv">${lvStars}</div>
-          ${staffName ? `<div class="tyc-fac-staff">${staffName}</div>` : ''}
+          ${nurseIcon}
           ${fac.busy ? `<div class="tyc-fac-progress"><div class="tyc-fac-progress-fill" style="width:${progressPct}%"></div></div>` : ''}
         </div>`;
       } else {
         html += `<div class="def-tile tyc-empty" data-row="${r}" data-col="${c}">
-          ${tycoonSelectedFacility ? `<div class="tyc-place-hint">+</div>` : ''}
+          ${nurseIcon || (tycoonSelectedFacility ? `<div class="tyc-place-hint">+</div>` : '')}
         </div>`;
       }
     }
@@ -1703,7 +1704,7 @@ function renderTycoon() {
     html += '<div class="tyc-donor-queue">';
     donors.filter(d => d.status === 'waiting' || d.status === 'collecting').slice(0, 8).forEach(d => {
       const patiencePct = Math.round(d.patience / d.maxPatience * 100);
-      const statusIcon = d.status === 'collecting' ? '🛏️' : d.isVIP ? '👑' : d.isGroup ? '👥' : d.isRepeater ? '🔄' : d.isNervous ? '😰' : '🧑';
+      const statusIcon = d.status === 'collecting' ? '🛏️' : d.isNamed ? `${d.charData.name.slice(0, 1)}` : d.isVIP ? '👑' : d.isGroup ? '👥' : d.isRepeater ? '🔄' : d.isNervous ? '😰' : '🧑';
       html += `<div class="tyc-donor ${d.patience < 5 ? 'tyc-donor-angry' : ''}">
         <span class="tyc-donor-icon">${statusIcon}</span>
         <span class="tyc-donor-bt tyc-bt-${d.bloodType}">${d.bloodType}</span>
@@ -1747,7 +1748,8 @@ function showFacilityInfo(row, col) {
   const existing = document.querySelector('.def-unit-info');
   if (existing) existing.remove();
   const fType = FACILITY_TYPES[fac.id];
-  const speed = getProcessingSpeed(fac);
+  const nurseHere = getNurseAt(tycoonState, row, col);
+  const speed = getProcessingSpeed(fac, nurseHere);
   const adjBonus = getAdjacencyBonus(tycoonState, row, col);
   const upgCost = fac.level < 3 ? fType.cost * fac.level : 0;
   const popup = document.createElement('div');
@@ -1755,9 +1757,9 @@ function showFacilityInfo(row, col) {
   popup.innerHTML = `
     <div class="def-info-header">${fac.icon} ${fac.name} Lv.${fac.level}</div>
     <div class="def-info-role">${fType.desc}</div>
-    <div class="def-info-stats">처리속도: ${speed.toFixed(1)}x${adjBonus > 0 ? ` · 인접보너스 +${Math.round(adjBonus * 100)}%` : ''} · ${fac.staff ? `직원: ${fac.staff.name}` : '직원 없음'}</div>
-    ${fac.level < 3 ? `<button class="btn-secondary tyc-upgrade-btn" style="margin-top:4px;font-size:0.7rem">업그레이드 ${upgCost}G</button>` : '<div style="font-size:0.7rem;color:#C9A54E">MAX</div>'}
-    <button class="btn-secondary tyc-staff-btn" style="margin-top:4px;font-size:0.7rem">${fac.staff ? '직원 교체' : '직원 배치'}</button>`;
+    <div class="def-info-stats">처리속도: ${speed.toFixed(1)}x${adjBonus > 0 ? ` · 인접보너스 +${Math.round(adjBonus * 100)}%` : ''} · ${nurseHere ? `👩‍⚕️ ${nurseHere.charData.name}` : '간호사 없음'}</div>
+    ${fac.level < 3 ? `<button class="btn-secondary tyc-upgrade-btn" style="margin-top:4px;font-size:0.7rem">업그레이드 ${upgCost} 명성</button>` : '<div style="font-size:0.7rem;color:#C9A54E">MAX</div>'}
+    <button class="btn-secondary tyc-staff-btn" style="margin-top:4px;font-size:0.7rem">간호사 고용</button>`;
   document.getElementById('defense-screen').appendChild(popup);
   popup.querySelector('.tyc-upgrade-btn')?.addEventListener('click', () => {
     const result = upgradeFacility(tycoonState, row, col);
@@ -1782,17 +1784,23 @@ function showFacilityInfo(row, col) {
 function showStaffSelect(row, col) {
   const existing = document.querySelector('.tyc-staff-panel');
   if (existing) existing.remove();
-  const chars = CHARACTERS.filter(c => gameSave.ownedCards?.[c.id]);
-  if (chars.length === 0) return;
+  const deployed = tycoonState.nurses.map(n => n.charData.id);
+  const chars = CHARACTERS.filter(c => gameSave.ownedCards?.[c.id] && !deployed.includes(c.id));
+  if (chars.length === 0) {
+    showTycoonBanner('배치 가능한 캐릭터가 없습니다!', 'same');
+    return;
+  }
   const panel = document.createElement('div');
   panel.className = 'def-reward-overlay tyc-staff-panel';
   panel.innerHTML = `<div class="def-reward-panel">
-    <div class="def-reward-title">직원 배치</div>
-    <div class="def-reward-cards">${chars.slice(0, 6).map(c => `
-      <button class="def-reward-card" data-cid="${c.id}">
-        <div class="def-reward-icon">${c.name}</div>
-        <div class="def-reward-desc">${c.role} · ${c.rarity}</div>
-      </button>`).join('')}
+    <div class="def-reward-title">간호사 고용</div>
+    <div class="def-reward-cards">${chars.slice(0, 8).map(c => {
+      const tRole = TYCOON_ROLES[c.role] || TYCOON_ROLES.support;
+      return `<button class="def-reward-card" data-cid="${c.id}">
+        <div class="def-reward-icon">${tRole.icon} ${c.name}</div>
+        <div class="def-reward-desc">${tRole.job} · ${c.rarity}</div>
+      </button>`;
+    }).join('')}
     </div></div>`;
   document.getElementById('defense-screen').appendChild(panel);
   panel.querySelectorAll('.def-reward-card').forEach(btn => {
@@ -1800,9 +1808,12 @@ function showStaffSelect(row, col) {
       const cid = btn.dataset.cid;
       const charData = CHARACTERS.find(c => c.id === cid);
       if (charData) {
-        assignStaff(tycoonState, row, col, charData);
-        sfxEquip();
-        showTycoonBanner(`${charData.name} 배치!`, 'upgrade');
+        const result = deployNurse(tycoonState, charData);
+        if (result.success) {
+          sfxEquip();
+          const tRole = TYCOON_ROLES[charData.role] || TYCOON_ROLES.support;
+          showTycoonBanner(`${tRole.icon} ${charData.name} — ${tRole.job} 배치!`, 'upgrade');
+        }
       }
       panel.remove();
       renderTycoon();
@@ -1818,11 +1829,10 @@ function showTycoonBanner(text, type) {
   setTimeout(() => banner.remove(), 2000);
 }
 
-function showDailyReport(state, dayGold, milestones) {
+function showDailyReport(state, dayFameEarned, milestones) {
   const totalBlood = Object.values(state.blood).reduce((s, v) => s + v, 0);
-  const msHtml = milestones.length > 0 ? `<div class="tyc-report-ms">${milestones.map(m => `🏆 ${m.label} +${m.reward}G`).join('<br>')}</div>` : '';
-  showTycoonBanner(`${state.day}일차 종료! +${dayGold}G · 헌혈 ${state.totalDonors}명 · 재고 ${totalBlood}팩`, 'upgrade');
-  if (msHtml) showTycoonBanner(milestones.map(m => `🏆 ${m.label}`).join(' '), 'legendary');
+  showTycoonBanner(`${state.day}일차 종료! 명성 +${dayFameEarned} · 헌혈 ${state.totalDonors}명 · 재고 ${totalBlood}팩`, 'upgrade');
+  if (milestones.length > 0) showTycoonBanner(milestones.map(m => `🏆 ${m.label}`).join(' '), 'legendary');
 }
 
 function tycoonStartPrep() {
@@ -1859,9 +1869,9 @@ function updateFacilityBtns() {
   const facPanel = document.getElementById('tyc-facility-panel');
   if (!facPanel || !tycoonState) return;
   facPanel.innerHTML = Object.values(FACILITY_TYPES).map(f => {
-    const canBuy = tycoonState.gold >= f.cost;
+    const canBuy = tycoonState.fame >= f.cost;
     const sel = tycoonSelectedFacility === f.id ? ' btn-primary' : ' btn-secondary';
-    return `<button class="tyc-fac-btn${sel}" data-fid="${f.id}" ${!canBuy ? 'disabled' : ''}>${f.icon} ${f.name} ${f.cost}G</button>`;
+    return `<button class="tyc-fac-btn${sel}" data-fid="${f.id}" ${!canBuy ? 'disabled' : ''}>${f.icon} ${f.name} ${f.cost}🏅</button>`;
   }).join('');
   facPanel.querySelectorAll('.tyc-fac-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1879,9 +1889,69 @@ function tycoonStartOperating() {
   tycoonState.tickCount = 0;
   tycoonState.boothCount = countFacilities(tycoonState, 'booth');
   let donorWave = generateDonorWave(tycoonState.day, tycoonState.boothCount);
+
   if (tycoonActiveEvent?.id === 'campaign') {
     donorWave = donorWave.concat(generateDonorWave(tycoonState.day, tycoonState.boothCount));
   }
+  if (tycoonActiveEvent?.id === 'students') {
+    for (let i = 0; i < 8; i++) {
+      donorWave.push({ id: `student-${tycoonState.day}-${i}`, bloodType: BLOOD_TYPES[Math.floor(Math.random() * 4)], patience: 12, maxPatience: 12, status: 'waiting', isVIP: false, isNervous: false, isGroup: true, isRepeater: false, amount: 1, spawnDelay: i * 2, assignedFacility: null });
+    }
+  }
+  if (tycoonActiveEvent?.id === 'military') {
+    for (let i = 0; i < 6; i++) {
+      donorWave.push({ id: `mil-${tycoonState.day}-${i}`, bloodType: 'O', patience: 40, maxPatience: 40, status: 'waiting', isVIP: false, isNervous: false, isGroup: true, isRepeater: false, amount: 1, spawnDelay: i * 2, assignedFacility: null });
+    }
+  }
+  if (tycoonActiveEvent?.id === 'bloodday') {
+    BLOOD_TYPES.forEach(bt => {
+      for (let i = 0; i < 3; i++) {
+        donorWave.push({ id: `bday-${bt}-${i}`, bloodType: bt, patience: 25, maxPatience: 25, status: 'waiting', isVIP: false, isNervous: false, isGroup: false, isRepeater: false, amount: 1, spawnDelay: donorWave.length + i * 3, assignedFacility: null });
+      }
+    });
+  }
+  if (tycoonActiveEvent?.id === 'corporate') {
+    for (let i = 0; i < 10; i++) {
+      donorWave.push({ id: `corp-${tycoonState.day}-${i}`, bloodType: BLOOD_TYPES[Math.floor(Math.random() * 4)], patience: 30, maxPatience: 30, status: 'waiting', isVIP: false, isNervous: false, isGroup: true, isRepeater: false, amount: 1, spawnDelay: i * 2, assignedFacility: null });
+    }
+  }
+  if (tycoonActiveEvent?.id === 'rain') {
+    donorWave = donorWave.slice(0, Math.ceil(donorWave.length / 2));
+    tycoonState._rainBonus = true;
+  }
+  if (tycoonActiveEvent?.id === 'press') {
+    tycoonState._pressBonus = true;
+  }
+  if (tycoonActiveEvent?.id === 'breakdown') {
+    const hasBreaker = tycoonState.nurses.some(n => n.charData.role === 'breaker');
+    if (!hasBreaker) {
+      const facilities = [];
+      for (let r = 0; r < tycoonState.gridH; r++) {
+        for (let c = 0; c < tycoonState.gridW; c++) {
+          if (tycoonState.grid[r][c]) facilities.push({ r, c });
+        }
+      }
+      if (facilities.length > 0) {
+        const pick = facilities[Math.floor(Math.random() * facilities.length)];
+        tycoonState._disabledFac = { row: pick.r, col: pick.c };
+        const fac = tycoonState.grid[pick.r][pick.c];
+        showTycoonBanner(`🔧 ${fac.name} 고장! 오늘 사용 불가`, 'same');
+      }
+    } else {
+      showTycoonBanner(`🔧 시설관리 직원이 고장을 예방!`, 'upgrade');
+    }
+  }
+  if (tycoonActiveEvent?.id === 'medteam') {
+    const tempChar = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+    if (tempChar) {
+      deployNurse(tycoonState, tempChar);
+      showTycoonBanner(`👨‍⚕️ ${tempChar.name} 임시 파견!`, 'upgrade');
+    }
+  }
+
+  const namedDonor = generateNamedDonor(tycoonState.day, CHARACTERS);
+  if (namedDonor) donorWave.unshift(namedDonor);
+
   tycoonState.donorQueue = donorWave;
   tycoonState.donors = [];
   const startBtn = document.getElementById('btn-defense-start');
@@ -1916,44 +1986,61 @@ function tycoonGameTick() {
     if (ev.type === 'booth_reputation') {
       showTycoonBanner(`🎪 홍보부스 — 평판 +${ev.amount}`, 'same');
     }
+    if (ev.type === 'named_donor_done') {
+      sfxLevelUp();
+      showTycoonBanner(`🌟 ${ev.donor.charData.name} 헌혈 완료! 명성 +${ev.fameBonus}`, 'legendary');
+    }
     if (ev.type === 'day_complete') {
       sfxWin();
       stopTycoonLoop();
-      const dayGold = tycoonDayIncome(tycoonState.day, tycoonState.gold);
-      tycoonState.gold += dayGold;
+      let dayFameEarned = tycoonDayFame(tycoonState.day);
+      if (tycoonState._rainBonus) { dayFameEarned *= 2; tycoonState._rainBonus = false; }
+      if (tycoonState._pressBonus) { dayFameEarned = Math.ceil(dayFameEarned * 1.5); tycoonState._pressBonus = false; }
+      tycoonState.fame += dayFameEarned;
 
       if (tycoonActiveEvent?.id === 'inspection') {
         const hasLab = countFacilities(tycoonState, 'lab') > 0;
         if (hasLab) {
-          const bonus = 50 + tycoonState.day * 10;
-          tycoonState.gold += bonus;
-          showTycoonBanner(`🏥 보건검사 통과! +${bonus}G`, 'legendary');
+          const bonus = 5 + tycoonState.day;
+          tycoonState.fame += bonus;
+          showTycoonBanner(`🏥 보건검사 통과! 명성 +${bonus}`, 'legendary');
         }
       }
       if (tycoonActiveEvent?.id === 'accident') {
         const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
         if (tycoonState.blood[bt] >= 3) {
           tycoonState.blood[bt] -= 3;
-          const bonus = 100 + tycoonState.day * 20;
-          tycoonState.gold += bonus;
+          const bonus = 10 + tycoonState.day * 2;
+          tycoonState.fame += bonus;
           tycoonState.reputation = Math.min(30, tycoonState.reputation + 2);
-          showTycoonBanner(`🚨 긴급납품 ${bt}형 3팩! +${bonus}G`, 'legendary');
+          showTycoonBanner(`🚨 긴급납품 ${bt}형 3팩! 명성 +${bonus}`, 'legendary');
         }
+      }
+      if (tycoonActiveEvent?.id === 'corporate') {
+        tycoonState.fame += 5;
+        showTycoonBanner(`🏢 기업 기부 집기 수령! 명성 +5`, 'legendary');
       }
 
       tycoonActiveEvent = null;
+      tycoonState._disabledFac = null;
+
+      if (tycoonState.lostDonors === 0 && tycoonState.totalDonors > 0) {
+        tycoonState.fame += 3;
+        showTycoonBanner(`🎉 이탈 0명! 명성 +3 보너스`, 'upgrade');
+      }
 
       const milestones = checkMilestones(tycoonState);
       milestones.forEach(ms => {
-        showTycoonBanner(`🏆 ${ms.label} 달성! +${ms.reward}G`, 'legendary');
+        showTycoonBanner(`🏆 ${ms.label} 달성! 명성 +${ms.reward}`, 'legendary');
       });
 
       if (tycoonState.day > (gameSave.tycoonBest || 0)) {
         gameSave.tycoonBest = tycoonState.day;
       }
       saveGame(gameSave);
-      showDailyReport(tycoonState, dayGold, milestones);
+      showDailyReport(tycoonState, dayFameEarned, milestones);
       tycoonState.day++;
+      tycoonState.lostDonors = 0;
       tycoonStartPrep();
       renderTycoon();
       return;
@@ -1996,7 +2083,7 @@ function endTycoonMode(won) {
         <div><span>시설 수</span><strong>${facCount}</strong></div>
         <div><span>이탈 헌혈자</span><strong>${tycoonState.lostDonors}</strong></div>
       </div>
-      ${prestigeEarned > 0 ? `<div class="def-result-prestige">🏅 프레스티지 +${prestigeEarned} (총 ${gameSave.tycoonPrestige}) — 다음 판 시작 골드 +${gameSave.tycoonPrestige * 20}G</div>` : ''}
+      ${prestigeEarned > 0 ? `<div class="def-result-prestige">🏅 프레스티지 +${prestigeEarned} (총 ${gameSave.tycoonPrestige}) — 다음 판 시작 명성 +${gameSave.tycoonPrestige * 5}</div>` : ''}
       <button class="btn-primary def-result-close">확인</button>
     </div>`;
   screen.appendChild(overlay);

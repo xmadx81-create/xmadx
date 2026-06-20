@@ -7441,6 +7441,18 @@ body {
 .tyc-fac-btn:hover:not(:disabled) { border-color: rgba(233,196,106,0.5); }
 .tyc-fac-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.tyc-nurse-icon {
+  position: absolute; bottom: 1px; right: 1px;
+  font-size: 0.7rem; line-height: 1;
+  background: rgba(30,25,20,0.7); border-radius: 4px; padding: 1px 2px;
+  z-index: 2; transition: transform 0.3s ease;
+}
+.tyc-nurse-working { animation: nurse-pulse 0.8s infinite alternate; }
+.tyc-nurse-moving { opacity: 0.8; }
+.tyc-nurse-name { font-size: 0.5rem; display: block; text-align: center; color: #E9C46A; }
+@keyframes nurse-pulse { from { transform: scale(1); } to { transform: scale(1.15); } }
+.def-tile { position: relative; }
+
 .defense-controls {
   display: flex; gap: 8px; justify-content: center; padding: 8px 0;
 }
