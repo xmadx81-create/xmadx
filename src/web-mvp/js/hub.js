@@ -13,7 +13,7 @@ import {
   WEATHER_TYPES, applyWeatherToUnit, generateTowerStage,
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
   getTowerRewards,
-  STORY_ACTS, getScaledEnemyLevel,
+  STORY_ACTS, getScaledEnemyLevel, ROLE_MODIFIERS,
   createDefenseState, DEFENSE_GRID, defenseDrawCards, defenseMerge,
   defenseAutoAttack, defenseAdvanceEnemies, defenseSpawnEnemies,
   isDefenseWaveComplete, getDefenseRewards, generateDefenseWave, defenseTickSlow,

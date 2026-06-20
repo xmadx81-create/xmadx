@@ -99,7 +99,7 @@ export const ULTIMATES = {
   ],
   battle_support: [
     { id: 'ult-warcry', name: '전투 함성', icon: '📯', type: 'team_atk_buff', mpCost: 7, power: 4, duration: 2, cooldown: 4, unlockLevel: 5, desc: '아군 전체 ATK +4 (2턴)' },
-    { id: 'ult-barrier', name: '보호막', icon: '🔮', type: 'team_shield', mpCost: 9, power: 15, cooldown: 5, unlockLevel: 8, desc: '아군 전체에 15 HP 실드' },
+    { id: 'ult-barrier', name: '보호막', icon: '🔮', type: 'team_shield', mpCost: 9, powerMult: 0.4, cooldown: 5, unlockLevel: 8, desc: '아군 전체에 ATK×40% 실드' },
   ],
   evasive_dps: [
     { id: 'ult-shadow', name: '그림자 일격', icon: '🌑', type: 'guaranteed_crit', mpCost: 6, powerMult: 2.0, cooldown: 4, unlockLevel: 5, desc: '확정 크리티컬 ATK×2.0' },
@@ -536,10 +536,12 @@ export function executeUltimate(state, unit, ultIndex) {
         }
       });
       break;
-    case 'team_shield':
-      allies.concat([unit]).forEach(a => { if (a.hp > 0) a.shield = (a.shield || 0) + ult.power; });
-      result.effects.push(`아군 전체 실드 +${ult.power}`);
+    case 'team_shield': {
+      const shieldAmt = ult.power || Math.floor(unit.atk * (ult.powerMult || 0.4));
+      allies.concat([unit]).forEach(a => { if (a.hp > 0) a.shield = (a.shield || 0) + shieldAmt; });
+      result.effects.push(`아군 전체 실드 +${shieldAmt}`);
       break;
+    }
     case 'revive': {
       const dead = state.units.find(u => u.team === unit.team && u.hp <= 0);
       if (dead) {
@@ -1953,6 +1955,16 @@ export function createBattleState(stageId, playerCharIds, centerBuff, teamSynerg
     });
   }
 
+  // 🟢서서: 후반 스테이지 적 시너지 보너스 (스테이지 8+)
+  const stageNum = parseInt(stageId.replace(/\D/g, '')) || 0;
+  if (stageNum >= 8) {
+    const synergyBonus = Math.floor((stageNum - 7) * 1.5);
+    units.filter(u => u.team === 'enemy' && u.hp > 0).forEach(u => {
+      u.atk += synergyBonus;
+      u.def += Math.floor(synergyBonus * 0.5);
+    });
+  }
+
   // ⚫조조: 스테이지 전술 효과 — 적에게 고유 이점 부여
   const tactics = stage.tactics || {};
   if (tactics.enemyAtkBonus) {
@@ -2210,14 +2222,16 @@ function calcCombatResult(state, attacker, defender, isCounter = false) {
   // 🔵 제갈량: 협공 보너스 (인접 아군 1명당 ATK +2)
   atkPower += getFlankingBonus(state, attacker, defender);
 
-  // Evasion check (includes terrain bonus)
+  // Evasion check (includes terrain bonus, capped at 25%)
   const defTerrainEva = state ? (getTerrainEffect(state.map, defender.x, defender.y).evaBonus || 0) : 0;
-  if (Math.random() < ((defender.eva || 0) + defTerrainEva)) {
+  const totalEva = Math.min(0.25, (defender.eva || 0) + defTerrainEva);
+  if (Math.random() < totalEva) {
     return { damage: 0, critical: false, evaded: true, penetrated: false };
   }
 
-  // Penetration
-  const pen = attacker.pen || 0;
+  // Penetration (base + ATK scaling)
+  const basePen = attacker.pen || 0;
+  const pen = basePen + Math.floor(attacker.atk * 0.05);
   const effectiveDef = Math.max(0, defPower - pen);
   const penetrated = pen > 0 && defPower > effectiveDef;
 
@@ -2449,7 +2463,8 @@ export function previewDamage(state, attacker, defender) {
   const flanking = getFlankingBonus(state, attacker, defender);
   atkPower += flanking;
 
-  const pen = attacker.pen || 0;
+  const basePen = attacker.pen || 0;
+  const pen = basePen + Math.floor(attacker.atk * 0.05);
   const effectiveDef = Math.max(0, defPower - pen);
   const rawDamage = atkPower - effectiveDef;
   let typeMult = 1.0;
@@ -2460,7 +2475,8 @@ export function previewDamage(state, attacker, defender) {
   const maxDmg = Math.max(1, Math.floor((rawDamage + maxVariance) * typeMult));
   const critDmg = Math.max(1, Math.floor((rawDamage + maxVariance) * typeMult * 1.5));
 
-  return { minDmg, maxDmg, critDmg, crt: attacker.crt, eva: defender.eva, flanking, shield: defender.shield || 0, invuln: !!defender.invuln };
+  const totalEva = Math.min(0.25, defender.eva || 0);
+  return { minDmg, maxDmg, critDmg, crt: attacker.crt, eva: totalEva, flanking, shield: defender.shield || 0, invuln: !!defender.invuln };
 }
 
 export function previewSkillDamage(unit, state) {

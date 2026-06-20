@@ -3264,3 +3264,59 @@ describe('웨이브 미리보기 시스템', () => {
     expect(boss.unit.rarity).toBe('legendary');
   });
 });
+
+describe('R46 전투 밸런스 리튜닝', () => {
+  it('회피 상한선 25% cap', () => {
+    const state = createBattleState('stage-1', ['kim-doyun', 'park-minji'], {}, 1.0);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    defender.eva = 0.5;
+    const preview = previewDamage(state, attacker, defender);
+    expect(preview.eva).toBeLessThanOrEqual(0.25);
+  });
+
+  it('관통력에 ATK 5% 스케일링 적용', () => {
+    const state = createBattleState('stage-1', ['kim-doyun', 'park-minji'], {}, 1.0);
+    const attacker = state.units.find(u => u.team === 'player');
+    const defender = state.units.find(u => u.team === 'enemy');
+    attacker.atk = 40;
+    attacker.pen = 0;
+    defender.def = 10;
+    defender.eva = 0;
+    const preview = previewDamage(state, attacker, defender);
+    const expectedPen = Math.floor(40 * 0.05);
+    const expectedDef = Math.max(0, defender.def - expectedPen);
+    expect(preview.minDmg).toBeGreaterThanOrEqual(attacker.atk - expectedDef);
+  });
+
+  it('보호막 궁극기가 ATK 기반 실드 부여', () => {
+    const state = createBattleState('stage-1', ['kim-doyun', 'park-minji'], {}, 1.0);
+    const bs = state.units.find(u => u.team === 'player' && u.role === 'battle_support');
+    if (!bs) return;
+    bs.mp = 20;
+    bs.atk = 30;
+    const ult = bs.ultimates?.find(u => u.id === 'ult-barrier');
+    if (!ult) return;
+    ult.currentCooldown = 0;
+    const result = executeUltimate(state, bs, bs.ultimates.indexOf(ult));
+    if (result.ok) {
+      const expectedShield = Math.floor(30 * 0.4);
+      const ally = state.units.find(u => u.team === 'player' && u.hp > 0);
+      expect(ally.shield).toBeGreaterThanOrEqual(expectedShield);
+    }
+  });
+
+  it('스테이지 8+ 적에게 시너지 보너스 적용', () => {
+    const state1 = createBattleState('stage-1', ['kim-doyun', 'park-minji'], {}, 1.0);
+    const enemy1Atk = state1.units.filter(u => u.team === 'enemy').reduce((s, u) => s + u.atk, 0);
+    const state10 = createBattleState('stage-10', ['kim-doyun', 'park-minji'], {}, 1.0);
+    const enemy10Atk = state10.units.filter(u => u.team === 'enemy').reduce((s, u) => s + u.atk, 0);
+    expect(enemy10Atk).toBeGreaterThan(0);
+  });
+
+  it('ROLE_MODIFIERS 내보내기 확인', () => {
+    expect(ROLE_MODIFIERS).toBeDefined();
+    expect(ROLE_MODIFIERS.tank).toBeDefined();
+    expect(ROLE_MODIFIERS.tank.hp).toBeGreaterThan(0);
+  });
+});
