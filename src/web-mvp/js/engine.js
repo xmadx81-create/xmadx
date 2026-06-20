@@ -1523,6 +1523,8 @@ export function createDefenseState(wave) {
     gridW: w,
     gridH: h,
     mergeCount: 0,
+    gold: 100,
+    summonCost: 30,
   };
 }
 
@@ -1635,6 +1637,23 @@ export function defenseMerge(charId, rarity) {
   const samePool = CHARACTERS.filter(c => c.rarity === rarity && c.id !== charId);
   if (samePool.length === 0) return { success: true, upgraded: false, char: CHARACTERS.find(c => c.id === charId) };
   return { success: true, upgraded: false, char: samePool[Math.floor(Math.random() * samePool.length)] };
+}
+
+export function defenseRewardChoices(wave) {
+  const goldAmt = 30 + wave * 10;
+  const choices = [
+    { type: 'gold', label: `💰 ${goldAmt}G`, desc: `골드 ${goldAmt} 획득`, value: goldAmt },
+    { type: 'buff', label: '⚔ 전체 ATK+3', desc: '배치 유닛 ATK+3 영구', value: 3 },
+  ];
+  const roll = Math.random();
+  if (wave >= 5 && roll < 0.3) {
+    const rares = CHARACTERS.filter(c => c.rarity === 'rare');
+    const pick = rares[Math.floor(Math.random() * rares.length)];
+    choices.push({ type: 'unit', label: `💎 ${pick.name}`, desc: '레어 유닛 즉시 소환', value: pick });
+  } else {
+    choices.push({ type: 'costDown', label: '🔻 소환 비용 -10', desc: '소환 비용 10 감소', value: 10 });
+  }
+  return choices;
 }
 
 export const DEFENSE_SKILLS = {

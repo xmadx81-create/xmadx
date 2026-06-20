@@ -18,7 +18,7 @@ import {
   defenseAutoAttack, defenseAdvanceEnemies, defenseSpawnEnemies,
   isDefenseWaveComplete, getDefenseRewards, generateDefenseWave, defenseTickSlow,
   defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
-  getWavePreview,
+  getWavePreview, defenseRewardChoices,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -1600,6 +1600,7 @@ function startTowerWave() {
 // ── Defense Mode (혈맹의 벽) ──
 
 let defenseState = null;
+let defenseHeldUnit = null;
 let defenseSpeed = 0;
 let defenseAutoTimer = null;
 let defenseKills = 0;
@@ -1609,6 +1610,7 @@ const DEF_ROLE_DESC = { tank: '🛡감속', melee_dps: '⚔근접', ranged_dps: 
 
 function startDefenseMode() {
   defenseState = createDefenseState(1);
+  defenseHeldUnit = null;
   defenseSpeed = 1;
   defenseKills = 0;
   defenseDmgTotal = 0;
@@ -1626,12 +1628,25 @@ function renderDefense() {
   document.getElementById('defense-wave').innerHTML = `웨이브 ${wave} <span class="def-remaining">${remaining > 0 ? `잔여 ${remaining}` : '클리어 대기'}${bossPending ? ' 👑' : ''}</span>`;
   document.getElementById('defense-lives').textContent = `❤ ${lives}`;
   document.getElementById('defense-merges').textContent = `합성 ${mergeCount} · 처치 ${defenseKills}`;
+  document.getElementById('defense-gold').textContent = `💰 ${defenseState.gold}`;
 
   const totalW = gridW + 2;
   const totalH = gridH + 2;
   let html = `<div class="defense-grid" style="grid-template-columns:repeat(${totalW},1fr);grid-template-rows:repeat(${totalH},1fr)">`;
 
   const rangeSet = new Set();
+  if (defenseHeldUnit) {
+    const rng = ROLE_MODIFIERS[defenseHeldUnit.role]?.rng ?? 1;
+    for (let r = 0; r < gridH; r++) {
+      for (let c = 0; c < gridW; c++) {
+        if (defenseState.grid[r][c]) continue;
+        const gx = c + 1, gy = r + 1;
+        path.forEach(p => {
+          if (Math.abs(gx - p.x) + Math.abs(gy - p.y) <= rng) rangeSet.add(`${p.x},${p.y}`);
+        });
+      }
+    }
+  }
 
   for (let r = 0; r < totalH; r++) {
     for (let c = 0; c < totalW; c++) {
@@ -1693,7 +1708,18 @@ function renderDefense() {
     tile.addEventListener('click', () => {
       const gx = parseInt(tile.dataset.gx);
       const gy = parseInt(tile.dataset.gy);
-      if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
+      if (defenseHeldUnit && !defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
+        const unit = cardToUnit(defenseHeldUnit, gx, gy);
+        unit.team = 'player';
+        unit.uid = `def-player-${gx}-${gy}-${Date.now()}`;
+        defenseState.grid[gy][gx] = unit;
+        const roleDesc = DEF_ROLE_DESC[defenseHeldUnit.role] || '?';
+        showDefenseBanner(`${defenseHeldUnit.name} ${roleDesc} 배치!`, defenseHeldUnit.rarity === 'legendary' ? 'legendary' : 'upgrade');
+        defenseHeldUnit = null;
+        sfxCardPlay();
+        updateSummonBtn();
+        renderDefense();
+      } else if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
         tryDefenseMerge(gx, gy);
       } else if (defenseState.grid[gy][gx]) {
         showDefenseUnitInfo(defenseState.grid[gy][gx]);
@@ -1773,15 +1799,25 @@ function defenseStartDraw() {
     <span class="def-preview-hp">HP ×${preview.hpMult.toFixed(1)}</span>
     ${preview.hasBoss ? '<span class="def-preview-boss">👑보스</span>' : ''}`;
 
-  const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
-  document.getElementById('btn-defense-summon').disabled = !hasEmpty;
+  updateSummonBtn();
   document.getElementById('btn-defense-next').disabled = false;
 
   if (defenseSpeed > 0) startDefenseAuto();
 }
 
+function updateSummonBtn() {
+  const btn = document.getElementById('btn-defense-summon');
+  if (!btn || !defenseState) return;
+  const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
+  const canAfford = defenseState.gold >= defenseState.summonCost;
+  btn.disabled = !hasEmpty || !canAfford || !!defenseHeldUnit;
+  btn.textContent = defenseHeldUnit ? `배치 대기중...` : `소환 🎲 ${defenseState.summonCost}G`;
+}
+
 function defenseSummon() {
   if (!defenseState || defenseState.phase !== 'draw') return;
+  if (defenseHeldUnit) return;
+  if (defenseState.gold < defenseState.summonCost) return;
   const emptyTiles = [];
   for (let r = 0; r < defenseState.gridH; r++) {
     for (let c = 0; c < defenseState.gridW; c++) {
@@ -1790,20 +1826,27 @@ function defenseSummon() {
   }
   if (emptyTiles.length === 0) return;
 
+  defenseState.gold -= defenseState.summonCost;
+  defenseState.summonCost += 5;
   const card = defenseDrawCards(defenseState.wave)[0];
-  const tile = emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
-  const unit = cardToUnit(card, tile.x, tile.y);
-  unit.team = 'player';
-  unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}`;
-  defenseState.grid[tile.y][tile.x] = unit;
 
-  sfxCardPlay();
-  const roleDesc = DEF_ROLE_DESC[card.role] || '?';
-  showDefenseBanner(`${card.name} ${roleDesc} 소환!`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
+  if (defenseSpeed === 0) {
+    defenseHeldUnit = card;
+    sfxCardPlay();
+    const roleDesc = DEF_ROLE_DESC[card.role] || '?';
+    showDefenseBanner(`${card.name} ${roleDesc} — 타일을 선택하세요`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
+  } else {
+    const tile = emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
+    const unit = cardToUnit(card, tile.x, tile.y);
+    unit.team = 'player';
+    unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}`;
+    defenseState.grid[tile.y][tile.x] = unit;
+    sfxCardPlay();
+    const roleDesc = DEF_ROLE_DESC[card.role] || '?';
+    showDefenseBanner(`${card.name} ${roleDesc} 소환!`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
+  }
+  updateSummonBtn();
   renderDefense();
-
-  const stillEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
-  document.getElementById('btn-defense-summon').disabled = !stillEmpty;
 }
 
 function tryDefenseMerge(gx, gy) {
@@ -1853,6 +1896,78 @@ function showDefenseBanner(text, type) {
   setTimeout(() => banner.remove(), 2000);
 }
 
+function showDefenseRewardPanel(wave) {
+  const choices = defenseRewardChoices(wave);
+  const screen = document.getElementById('defense-screen');
+  const panel = document.createElement('div');
+  panel.className = 'def-reward-overlay';
+  panel.innerHTML = `
+    <div class="def-reward-panel">
+      <div class="def-reward-title">🎁 웨이브 ${wave} 보상 선택</div>
+      <div class="def-reward-cards">
+        ${choices.map((c, i) => `
+          <button class="def-reward-card" data-idx="${i}">
+            <div class="def-reward-icon">${c.label}</div>
+            <div class="def-reward-desc">${c.desc}</div>
+          </button>
+        `).join('')}
+      </div>
+    </div>`;
+  screen.appendChild(panel);
+  panel.querySelectorAll('.def-reward-card').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      applyDefenseReward(choices[idx]);
+      panel.remove();
+      defenseState.wave++;
+      defenseState.spawnQueue = generateDefenseWave(defenseState.wave);
+      defenseState.spawnIndex = 0;
+      defenseState.turnNumber = 0;
+      defenseStartDraw();
+      renderDefense();
+    });
+  });
+}
+
+function applyDefenseReward(choice) {
+  switch (choice.type) {
+    case 'gold':
+      defenseState.gold += choice.value;
+      showDefenseBanner(`💰 ${choice.value}G 획득!`, 'upgrade');
+      break;
+    case 'buff':
+      for (let r = 0; r < defenseState.gridH; r++) {
+        for (let c = 0; c < defenseState.gridW; c++) {
+          const u = defenseState.grid[r][c];
+          if (u && u.team === 'player') u.atk += choice.value;
+        }
+      }
+      showDefenseBanner(`⚔ 전체 ATK+${choice.value}!`, 'upgrade');
+      break;
+    case 'unit': {
+      const emptyTiles = [];
+      for (let r = 0; r < defenseState.gridH; r++) {
+        for (let c = 0; c < defenseState.gridW; c++) {
+          if (!defenseState.grid[r][c]) emptyTiles.push({ x: c, y: r });
+        }
+      }
+      if (emptyTiles.length > 0) {
+        const tile = emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
+        const unit = cardToUnit(choice.value, tile.x, tile.y);
+        unit.team = 'player';
+        unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}`;
+        defenseState.grid[tile.y][tile.x] = unit;
+        showDefenseBanner(`💎 ${choice.value.name} 소환!`, 'legendary');
+      }
+      break;
+    }
+    case 'costDown':
+      defenseState.summonCost = Math.max(10, defenseState.summonCost - choice.value);
+      showDefenseBanner(`🔻 소환 비용 → ${defenseState.summonCost}G`, 'upgrade');
+      break;
+  }
+}
+
 function showDefenseDmgPopup(x, y, dmg, crit, killed) {
   const wrap = document.getElementById('defense-grid-wrap');
   const popup = document.createElement('div');
@@ -1879,7 +1994,10 @@ function runDefenseTurn() {
     showDefenseBanner(skillNames.join(' '), 'skill');
     sfxSkill();
     skillResults.forEach(s => {
-      if (s.type === 'skill_dmg' && s.killed) defenseKills++;
+      if (s.type === 'skill_dmg' && s.killed) {
+        defenseKills++;
+        defenseState.gold += 10;
+      }
     });
   }
 
@@ -1887,7 +2005,12 @@ function runDefenseTurn() {
 
   atkResults.forEach(r => {
     defenseDmgTotal += r.damage;
-    if (r.killed) { defenseKills++; sfxDeath(); }
+    if (r.killed) {
+      defenseKills++;
+      const isBoss = r.enemy && r.enemy.rarity === 'legendary';
+      defenseState.gold += isBoss ? 50 : 10;
+      sfxDeath();
+    }
     else if (r.crit) sfxCritical();
     else sfxHit();
     const ep = defenseState.path.find((p, i) => {
@@ -1912,6 +2035,7 @@ function runDefenseTurn() {
 
   if (isDefenseWaveComplete(defenseState)) {
     sfxWin();
+    stopDefenseAuto();
     const rewards = getDefenseRewards(defenseState.wave);
     rewards.cards.forEach(rarity => {
       const pool = CHARACTERS.filter(c => c.rarity === rarity);
@@ -1924,15 +2048,8 @@ function runDefenseTurn() {
     }
     saveGame(gameSave);
 
-    showDefenseBanner(`웨이브 ${defenseState.wave} 클리어!\n보상: ${rewards.cards.join(', ')} + 🎟${rewards.tickets}`, 'upgrade');
-    setTimeout(() => {
-      defenseState.wave++;
-      defenseState.spawnQueue = generateDefenseWave(defenseState.wave);
-      defenseState.spawnIndex = 0;
-      defenseState.turnNumber = 0;
-      defenseStartDraw();
-      renderDefense();
-    }, 1500);
+    showDefenseBanner(`웨이브 ${defenseState.wave} 클리어!`, 'upgrade');
+    showDefenseRewardPanel(defenseState.wave);
     return;
   }
 
@@ -1987,7 +2104,8 @@ function startDefenseAuto() {
     if (!defenseState) { stopDefenseAuto(); return; }
     if (defenseState.phase !== 'draw') return;
     const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
-    if (hasEmpty) { defenseSummon(); return; }
+    const canAfford = defenseState.gold >= defenseState.summonCost;
+    if (hasEmpty && canAfford) { defenseSummon(); return; }
     runDefenseTurn();
   }, interval);
 }
