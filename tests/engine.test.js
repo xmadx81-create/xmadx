@@ -21,6 +21,7 @@ import {
   defenseAdvanceEnemies, defenseSpawnEnemies, isDefenseWaveComplete,
   generateDefenseWave, getDefenseRewards, defenseTickSlow,
   defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
+  getWavePreview,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, getUnlockedLoreStage, LORE_MILESTONES } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -3217,5 +3218,49 @@ describe('방어전 스킬 시스템', () => {
     const buffResults = defenseAutoAttack(state);
     const buffDmg = buffResults[0]?.damage || 0;
     expect(buffDmg).toBeGreaterThan(normalDmg);
+  });
+});
+
+describe('웨이브 미리보기 시스템', () => {
+  it('getWavePreview가 올바른 구조를 반환한다', () => {
+    const p = getWavePreview(1);
+    expect(p.count).toBe(6);
+    expect(p.wave).toBe(1);
+    expect(p.hasBoss).toBe(false);
+    expect(p.hpMult).toBe(1.0);
+    expect(p.topRoles).toBeDefined();
+    expect(p.topRoles.length).toBeGreaterThan(0);
+    expect(p.topRoles.length).toBeLessThanOrEqual(3);
+  });
+
+  it('웨이브 5에 보스 표시', () => {
+    const p = getWavePreview(5);
+    expect(p.hasBoss).toBe(true);
+  });
+
+  it('웨이브 10에 보스 표시 + HP 배율 상승', () => {
+    const p = getWavePreview(10);
+    expect(p.hasBoss).toBe(true);
+    expect(p.hpMult).toBeGreaterThan(1.5);
+  });
+
+  it('웨이브 수 증가에 따라 적 수 증가', () => {
+    const p1 = getWavePreview(1);
+    const p5 = getWavePreview(5);
+    expect(p5.count).toBeGreaterThan(p1.count);
+  });
+
+  it('generateDefenseWave가 여전히 유닛 배열을 반환한다', () => {
+    const queue = generateDefenseWave(1);
+    expect(queue.length).toBeGreaterThan(0);
+    expect(queue[0].unit).toBeDefined();
+    expect(queue[0].speed).toBeDefined();
+  });
+
+  it('웨이브 5 generateDefenseWave에 보스가 포함된다', () => {
+    const queue = generateDefenseWave(5);
+    const boss = queue.find(e => e.unit.uid.includes('boss'));
+    expect(boss).toBeDefined();
+    expect(boss.unit.rarity).toBe('legendary');
   });
 });

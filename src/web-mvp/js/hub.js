@@ -18,6 +18,7 @@ import {
   defenseAutoAttack, defenseAdvanceEnemies, defenseSpawnEnemies,
   isDefenseWaveComplete, getDefenseRewards, generateDefenseWave, defenseTickSlow,
   defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
+  getWavePreview,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -1599,7 +1600,8 @@ function startTowerWave() {
 
 let defenseState = null;
 let defenseSelectedCard = null;
-let defenseSpeed = 1;
+let defenseSpeed = 0;
+let defenseAutoTimer = null;
 let defenseKills = 0;
 let defenseDmgTotal = 0;
 
@@ -1716,6 +1718,8 @@ function renderDefense() {
         renderDefense();
       } else if (defenseState.grid[gy][gx] && defenseState.phase === 'draw') {
         tryDefenseMerge(gx, gy);
+      } else if (defenseState.grid[gy][gx] && !defenseSelectedCard) {
+        showDefenseUnitInfo(defenseState.grid[gy][gx]);
       }
     });
     tile.addEventListener('contextmenu', (e) => {
@@ -1756,6 +1760,24 @@ function countSameUnits(charId) {
   return count;
 }
 
+function showDefenseUnitInfo(unit) {
+  const existing = document.querySelector('.def-unit-info');
+  if (existing) existing.remove();
+  const skill = DEFENSE_SKILLS[unit.role] || {};
+  const cd = unit._defSkillCd || 0;
+  const roleDesc = DEF_ROLE_DESC[unit.role] || '?';
+  const popup = document.createElement('div');
+  popup.className = 'def-unit-info';
+  popup.innerHTML = `
+    <div class="def-info-header">${unit.name} <span class="def-info-rarity r-${unit.rarity}">${unit.rarity}</span></div>
+    <div class="def-info-role">${roleDesc}</div>
+    <div class="def-info-stats">ATK ${unit.atk} · DEF ${unit.def} · HP ${unit.hp}/${unit.maxHp} · RNG ${unit.rng || 1}</div>
+    ${skill.name ? `<div class="def-info-skill">${skill.icon} ${skill.name} — ${skill.desc}<br>쿨다운: ${cd > 0 ? `${cd}턴 남음` : '준비 완료'}</div>` : ''}`;
+  document.getElementById('defense-screen').appendChild(popup);
+  setTimeout(() => popup.remove(), 3000);
+  popup.addEventListener('click', () => popup.remove());
+}
+
 function defenseStartDraw() {
   defenseState.phase = 'draw';
   const choices = defenseDrawCards(defenseState.wave);
@@ -1776,6 +1798,21 @@ function defenseStartDraw() {
   }).join('');
   panel.style.display = '';
 
+  const preview = getWavePreview(defenseState.wave);
+  const roleIcons = { tank: '🛡', melee_dps: '⚔', ranged_dps: '🏹', support: '💚', bruiser: '🔨', breaker: '💥', evasive_dps: '🌀', battle_support: '⚡' };
+  let previewEl = document.getElementById('defense-wave-preview');
+  if (!previewEl) {
+    previewEl = document.createElement('div');
+    previewEl.id = 'defense-wave-preview';
+    previewEl.className = 'def-wave-preview';
+    panel.parentElement.insertBefore(previewEl, panel);
+  }
+  previewEl.innerHTML = `<span class="def-preview-label">다음 적</span>
+    <span class="def-preview-count">💀${preview.count}</span>
+    <span class="def-preview-roles">${preview.topRoles.map(r => roleIcons[r] || '?').join('')}</span>
+    <span class="def-preview-hp">HP ×${preview.hpMult.toFixed(1)}</span>
+    ${preview.hasBoss ? '<span class="def-preview-boss">👑보스</span>' : ''}`;
+
   container.querySelectorAll('.def-draw-card').forEach(card => {
     card.addEventListener('click', () => {
       const idx = parseInt(card.dataset.idx);
@@ -1785,6 +1822,8 @@ function defenseStartDraw() {
       renderDefense();
     });
   });
+
+  if (defenseSpeed > 0) startDefenseAuto();
 }
 
 function tryDefenseMerge(gx, gy) {
@@ -1920,24 +1959,67 @@ function runDefenseTurn() {
   defenseStartDraw();
 }
 
-function endDefenseMode() {
+function endDefenseMode(won) {
+  stopDefenseAuto();
   const wave = defenseState.wave;
-  if (wave > (gameSave.defenseBest || 0)) {
-    gameSave.defenseBest = wave;
-  }
+  const prevBest = gameSave.defenseBest || 0;
+  const isNewRecord = wave > prevBest;
+  if (isNewRecord) gameSave.defenseBest = wave;
   gameSave.stats.totalBattles++;
   saveGame(gameSave);
 
   const unitCount = defenseState.grid.flat().filter(Boolean).length;
-  const msg = `혈맹의 벽 — 웨이브 ${wave} 도달\n최고 기록: ${gameSave.defenseBest}웨이브\n처치: ${defenseKills} · 총 데미지: ${defenseDmgTotal}\n배치 유닛: ${unitCount} · 합성: ${defenseState.mergeCount}`;
-  showDefenseBanner(msg, 'same');
-
-  setTimeout(() => {
+  const screen = document.getElementById('defense-screen');
+  const overlay = document.createElement('div');
+  overlay.className = 'def-result-overlay';
+  const title = won === false ? '방어 실패' : '철수 완료';
+  overlay.innerHTML = `
+    <div class="def-result-card">
+      <div class="def-result-title ${won === false ? 'def-result-lose' : 'def-result-quit'}">${title}</div>
+      <div class="def-result-wave">웨이브 ${wave}${isNewRecord ? ' <span class="def-new-record">NEW RECORD!</span>' : ''}</div>
+      <div class="def-result-stats">
+        <div><span>최고 기록</span><strong>${gameSave.defenseBest}</strong></div>
+        <div><span>처치</span><strong>${defenseKills}</strong></div>
+        <div><span>총 데미지</span><strong>${defenseDmgTotal.toLocaleString()}</strong></div>
+        <div><span>배치 유닛</span><strong>${unitCount}</strong></div>
+        <div><span>합성</span><strong>${defenseState.mergeCount}</strong></div>
+      </div>
+      <button class="btn-primary def-result-close">확인</button>
+    </div>`;
+  screen.appendChild(overlay);
+  overlay.querySelector('.def-result-close').addEventListener('click', () => {
+    overlay.remove();
     defenseState = null;
-    document.getElementById('defense-screen').style.display = 'none';
+    screen.style.display = 'none';
     document.getElementById('stage-select').style.display = '';
     renderStageSelect();
-  }, 3000);
+  });
+}
+
+function stopDefenseAuto() {
+  if (defenseAutoTimer) { clearInterval(defenseAutoTimer); defenseAutoTimer = null; }
+}
+
+function startDefenseAuto() {
+  stopDefenseAuto();
+  const interval = defenseSpeed === 2 ? 400 : 800;
+  defenseAutoTimer = setInterval(() => {
+    if (!defenseState) { stopDefenseAuto(); return; }
+    if (defenseState.phase !== 'draw') return;
+    const nextBtn = document.getElementById('btn-defense-next');
+    if (nextBtn && !nextBtn.disabled) {
+      runDefenseTurn();
+    }
+  }, interval);
+}
+
+function updateSpeedBtn() {
+  const btn = document.getElementById('btn-defense-speed');
+  if (!btn) return;
+  const labels = ['수동', '×1', '×2'];
+  btn.textContent = labels[defenseSpeed] || '수동';
+  btn.classList.toggle('btn-primary', defenseSpeed > 0);
+  btn.classList.toggle('btn-secondary', defenseSpeed === 0);
 }
 
 function initDefenseControls() {
@@ -1947,12 +2029,14 @@ function initDefenseControls() {
   });
   document.getElementById('btn-defense-quit')?.addEventListener('click', () => {
     if (!defenseState) return;
-    endDefenseMode();
+    stopDefenseAuto();
+    endDefenseMode(false);
   });
   document.getElementById('btn-defense-speed')?.addEventListener('click', () => {
-    defenseSpeed = defenseSpeed === 1 ? 2 : 1;
-    const btn = document.getElementById('btn-defense-speed');
-    if (btn) btn.textContent = `×${defenseSpeed}`;
+    defenseSpeed = (defenseSpeed + 1) % 3;
+    updateSpeedBtn();
+    if (defenseSpeed > 0 && defenseState?.phase === 'draw') startDefenseAuto();
+    else stopDefenseAuto();
   });
 }
 
