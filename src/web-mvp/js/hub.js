@@ -19,7 +19,8 @@ import {
   isDefenseWaveComplete, getDefenseRewards, generateDefenseWave, defenseTickSlow,
   defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
   getWavePreview, defenseRewardChoices, defenseWaveIncome,
-  defenseHealerTick, ENEMY_TRAITS,
+  defenseHealerTick, defenseBossTick, ENEMY_TRAITS,
+  DEF_ROLE_SYNERGY, applyDefenseSynergy,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -1634,6 +1635,11 @@ function renderDefense() {
   document.getElementById('defense-lives').textContent = `❤ ${lives}`;
   document.getElementById('defense-merges').textContent = `합성 ${mergeCount} · 처치 ${defenseKills}${defenseCombo >= 5 ? ` · 💥${defenseCombo}` : ''}`;
   document.getElementById('defense-gold').textContent = `💰 ${defenseState.gold}`;
+  const activeSynergies = applyDefenseSynergy(defenseState);
+  const synEl = document.getElementById('defense-synergy');
+  if (synEl) {
+    synEl.innerHTML = activeSynergies.map(s => `<span class="def-syn-tag">${s.label}</span>`).join('');
+  }
   const timerEl = document.getElementById('defense-timer');
   if (timerEl) {
     if (defenseState.phase === 'prep') {
@@ -1871,6 +1877,50 @@ function defenseSummon() {
   renderDefense();
 }
 
+function defenseMultiSummon() {
+  if (!defenseState || defenseHeldUnit) return;
+  const emptyTiles = [];
+  for (let r = 0; r < defenseState.gridH; r++) {
+    for (let c = 0; c < defenseState.gridW; c++) {
+      if (!defenseState.grid[r][c]) emptyTiles.push({ x: c, y: r });
+    }
+  }
+  const count = Math.min(10, emptyTiles.length);
+  if (count === 0) return;
+  let totalCost = 0;
+  for (let i = 0; i < count; i++) totalCost += defenseState.summonCost + i * 3;
+  const discountCost = Math.floor(totalCost * 0.8);
+  if (defenseState.gold < discountCost) {
+    showDefenseBanner(`골드 부족! (${discountCost}G 필요)`, 'same');
+    return;
+  }
+  defenseState.gold -= discountCost;
+  let placed = 0;
+  for (let i = 0; i < count && emptyTiles.length > 0; i++) {
+    const idx = Math.floor(Math.random() * emptyTiles.length);
+    const tile = emptyTiles.splice(idx, 1)[0];
+    const card = defenseDrawCards(defenseState.wave)[0];
+    const unit = cardToUnit(card, tile.x, tile.y);
+    unit.team = 'player';
+    unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}-${i}`;
+    const waveLv = card._waveLv || 1;
+    for (let lv = 1; lv < waveLv; lv++) {
+      unit.maxHp += Math.floor(unit.maxHp * 0.08);
+      unit.atk += 3;
+      unit.def += 1;
+    }
+    unit.hp = unit.maxHp;
+    unit._star = 1;
+    defenseState.grid[tile.y][tile.x] = unit;
+    placed++;
+  }
+  defenseState.summonCost += count * 3;
+  sfxCardPlay();
+  showDefenseBanner(`10연소환! ${placed}체 배치 (20%할인)`, 'upgrade');
+  updateSummonBtn();
+  renderDefense();
+}
+
 function tryDefenseMerge(gx, gy) {
   const unit = defenseState.grid[gy][gx];
   if (!unit) return;
@@ -2078,6 +2128,12 @@ function defenseGameTick() {
   }
 
   defenseHealerTick(defenseState);
+  const bossActions = defenseBossTick(defenseState);
+  bossActions.forEach(a => {
+    if (a.type === 'shield') showDefenseBanner(`👑 ${a.boss.name} 실드!`, 'skill');
+    else if (a.type === 'summon') showDefenseBanner(`👑 ${a.boss.name} 소환!`, 'skill');
+    else if (a.type === 'rage') showDefenseBanner(`👑 ${a.boss.name} 광폭화!`, 'legendary');
+  });
   const escaped = defenseAdvanceEnemies(defenseState);
   if (escaped.length > 0) { sfxDebuff(); defenseCombo = 0; }
   defenseTickSlow(defenseState);
@@ -2106,9 +2162,10 @@ function defenseGameTick() {
     }
     saveGame(gameSave);
 
-    const waveGold = defenseWaveIncome(defenseState.wave);
+    const waveGold = defenseWaveIncome(defenseState.wave, defenseState.gold);
     defenseState.gold += waveGold;
-    showDefenseBanner(`웨이브 ${defenseState.wave} 클리어! +${waveGold}G`, 'upgrade');
+    defenseState.summonCost = 30;
+    showDefenseBanner(`웨이브 ${defenseState.wave} 클리어! +${waveGold}G (이자 포함)`, 'upgrade');
     showDefenseRewardPanel(defenseState.wave);
     return;
   }
@@ -2175,6 +2232,10 @@ function initDefenseControls() {
   document.getElementById('btn-defense-summon')?.addEventListener('click', () => {
     if (!defenseState) return;
     defenseSummon();
+  });
+  document.getElementById('btn-defense-multi')?.addEventListener('click', () => {
+    if (!defenseState) return;
+    defenseMultiSummon();
   });
   document.getElementById('btn-defense-start')?.addEventListener('click', () => {
     if (!defenseState || defenseState.phase !== 'prep') return;

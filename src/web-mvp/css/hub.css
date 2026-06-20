@@ -7307,6 +7307,16 @@ body {
 .defense-timer[data-phase="prep"] { animation: timer-pulse 1s ease-in-out infinite; }
 @keyframes timer-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 
+.defense-synergy {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px;
+  min-height: 0;
+}
+.def-syn-tag {
+  font-size: 0.65rem; padding: 1px 6px; border-radius: 8px;
+  background: rgba(201,165,78,0.15); color: var(--accent-gold, #C9A54E);
+  border: 1px solid rgba(201,165,78,0.3); font-weight: 600;
+}
+
 .def-reward-overlay {
   position: absolute; inset: 0; background: rgba(0,0,0,0.6);
   display: flex; align-items: center; justify-content: center; z-index: 100;
