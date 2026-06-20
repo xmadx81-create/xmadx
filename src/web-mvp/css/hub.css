@@ -3023,6 +3023,10 @@ body {
 .vc-capture_point { background: rgba(74,127,181,0.2); color: var(--accent-blue); }
 .vc-survive { background: rgba(75,155,110,0.2); color: var(--accent-green); }
 .vc-protect_target { background: rgba(212,168,67,0.2); color: var(--accent-gold); }
+.stage-tactics-warn {
+  font-size: 0.6rem; padding: 0.1rem 0.3rem; border-radius: 3px;
+  background: rgba(255,100,0,0.2); color: #ff6a00; font-weight: 700;
+}
 
 /* ── Unit Detail Panel (Bottom Sheet) ── */
 .unit-detail {
@@ -5120,6 +5124,27 @@ body {
   color: #ff6b6b;
   margin: 4px 0;
   font-weight: bold;
+}
+.intel-tactics {
+  background: rgba(255, 100, 0, 0.12);
+  border: 1px solid rgba(255, 100, 0, 0.3);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 0.7rem;
+  color: #ff6a00;
+  margin: 4px 0;
+  font-weight: bold;
+}
+.intel-vc {
+  background: rgba(196, 55, 75, 0.1);
+  border: 1px solid rgba(196, 55, 75, 0.3);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 0.75rem;
+  color: var(--accent-red);
+  margin: 4px 0;
+  font-weight: 700;
+  text-align: center;
 }
 
 /* ── Danger Zone ── */

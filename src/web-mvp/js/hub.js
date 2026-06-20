@@ -517,6 +517,7 @@ function renderStageSelect() {
             <span class="stage-enemy-count">적 ${enemyCount}명</span>
             <span class="stage-deploy-count">출전 ${maxDeploy}명</span>
             <span class="stage-victory-badge vc-${s.victoryCondition}">${VICTORY_LABEL[s.victoryCondition] || VICTORY_LABEL.defeat_all}</span>
+            ${s.tactics ? '<span class="stage-tactics-warn">⚠️전술</span>' : ''}
             ${hasReinforce}
             ${weatherInfo}
           </div>
@@ -922,13 +923,20 @@ function renderEnemyIntel(stage) {
     : '';
 
   const hardInfo = currentHardMode ? '<div class="intel-reinforce" style="color:#fc8181">🔥 하드 모드: 적 레벨 ×2 · ATK/DEF +30%</div>' : '';
+  const t = stage.tactics;
+  const tacticsInfo = t ? `<div class="intel-tactics">⚠️ 전장 효과: ${
+    [t.enemyAtkBonus ? `적 ATK+${t.enemyAtkBonus}` : '',
+     t.enemyDefBonus ? `적 DEF+${t.enemyDefBonus}` : '',
+     t.enemyHpMult ? `적 HP×${t.enemyHpMult}` : ''].filter(Boolean).join(' · ')
+  }</div>` : '';
+  const vcInfo = `<div class="intel-vc">${VICTORY_LABEL[stage.victoryCondition] || VICTORY_LABEL.defeat_all}</div>`;
 
   panel.innerHTML = `
     <div class="intel-header">
       <span class="intel-title">적 정보</span>
       <span class="intel-count">${enemies.length}명 · Lv.${currentHardMode ? eLv * 2 : eLv}${currentHardMode ? ' 🔥' : ''}</span>
     </div>
-    ${hardInfo}${reinforceInfo}
+    ${vcInfo}${hardInfo}${tacticsInfo}${reinforceInfo}
     <div class="intel-list">${enemies.map(e => {
       const threat = e.charData.rarity === 'legendary' ? '<span class="intel-threat boss">👑 보스</span>' :
                      e.charData.rarity === 'rare' ? '<span class="intel-threat elite">⚠ 강적</span>' : '';
