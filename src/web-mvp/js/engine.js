@@ -1616,6 +1616,133 @@ export function defenseMerge(charId, rarity) {
   return { success: true, upgraded: false, char: samePool[Math.floor(Math.random() * samePool.length)] };
 }
 
+export const DEFENSE_SKILLS = {
+  tank:           { name: '철벽',       icon: '🛡', cooldown: 5, desc: '경로 위 적 전체 감속 1턴' },
+  melee_dps:      { name: '회심의 일격', icon: '⚔', cooldown: 4, desc: '다음 공격 데미지 ×3' },
+  ranged_dps:     { name: '저격',       icon: '🎯', cooldown: 4, desc: '사거리+2, 데미지 ×2' },
+  support:        { name: '치유의 파동', icon: '💚', cooldown: 5, desc: '인접 아군 ATK+5 2턴' },
+  bruiser:        { name: '지진',       icon: '💥', cooldown: 5, desc: '경로 적 3체에 ATK×1.5' },
+  breaker:        { name: '파쇄탄',     icon: '💣', cooldown: 5, desc: 'DEF 무시 + 데미지 ×2.5' },
+  evasive_dps:    { name: '그림자 연격', icon: '🌀', cooldown: 4, desc: '4체 연속 공격' },
+  battle_support: { name: '약화의 안개', icon: '🌫', cooldown: 5, desc: '사거리 내 적 DEF-3 2턴' },
+};
+
+export function defenseActivateSkills(state) {
+  const skillResults = [];
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const unit = state.grid[r][c];
+      if (!unit) continue;
+      if (!unit._defSkillCd) unit._defSkillCd = 0;
+      if (unit._defSkillCd > 0) { unit._defSkillCd--; continue; }
+
+      const skill = DEFENSE_SKILLS[unit.role];
+      if (!skill) continue;
+      unit._defSkillCd = skill.cooldown;
+
+      const gx = c + 1, gy = r + 1;
+      const rng = unit.rng || 1;
+
+      if (unit.role === 'tank') {
+        state.enemies.forEach(e => {
+          if (e.unit.hp > 0) {
+            e.speed = Math.max(1, e.speed - 1);
+            e._slowed = Math.max(e._slowed || 0, 1);
+          }
+        });
+        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'aoe_slow' });
+
+      } else if (unit.role === 'melee_dps') {
+        unit._skillDmgMult = 3;
+        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'buff_self' });
+
+      } else if (unit.role === 'ranged_dps') {
+        unit._skillRngBonus = 2;
+        unit._skillDmgMult = 2;
+        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'buff_self' });
+
+      } else if (unit.role === 'support') {
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < state.gridH && nc >= 0 && nc < state.gridW && state.grid[nr][nc]) {
+              state.grid[nr][nc]._skillBuff = { stat: 'atk', val: 5, turns: 2 };
+            }
+          }
+        }
+        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'aoe_buff' });
+
+      } else if (unit.role === 'bruiser') {
+        const targets = [];
+        for (const enemy of state.enemies) {
+          if (enemy.unit.hp <= 0) continue;
+          const ep = state.path[enemy.pathIndex];
+          if (!ep) continue;
+          const dist = Math.abs(gx - ep.x) + Math.abs(gy - ep.y);
+          if (dist <= rng + 1) targets.push(enemy);
+        }
+        targets.slice(0, 3).forEach(t => {
+          const dmg = Math.max(1, Math.floor(unit.atk * 1.5));
+          t.unit.hp -= dmg;
+          skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'skill_dmg', target: t.unit, damage: dmg, killed: t.unit.hp <= 0 });
+        });
+
+      } else if (unit.role === 'breaker') {
+        const target = state.enemies.find(e => {
+          if (e.unit.hp <= 0) return false;
+          const ep = state.path[e.pathIndex];
+          if (!ep) return false;
+          return Math.abs(gx - ep.x) + Math.abs(gy - ep.y) <= rng;
+        });
+        if (target) {
+          const dmg = Math.max(1, Math.floor(unit.atk * 2.5));
+          target.unit.hp -= dmg;
+          skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'skill_dmg', target: target.unit, damage: dmg, killed: target.unit.hp <= 0 });
+        }
+
+      } else if (unit.role === 'evasive_dps') {
+        unit._skillHitCount = 4;
+        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'buff_self' });
+
+      } else if (unit.role === 'battle_support') {
+        state.enemies.forEach(e => {
+          if (e.unit.hp <= 0) return;
+          const ep = state.path[e.pathIndex];
+          if (!ep) return;
+          if (Math.abs(gx - ep.x) + Math.abs(gy - ep.y) <= rng) {
+            e.unit._defDebuff = { stat: 'def', val: 3, turns: 2 };
+          }
+        });
+        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'aoe_debuff' });
+      }
+    }
+  }
+  return skillResults;
+}
+
+export function defenseTickSkillEffects(state) {
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const unit = state.grid[r][c];
+      if (!unit) continue;
+      if (unit._skillBuff) {
+        unit._skillBuff.turns--;
+        if (unit._skillBuff.turns <= 0) delete unit._skillBuff;
+      }
+      if (unit._skillDmgMult) delete unit._skillDmgMult;
+      if (unit._skillRngBonus) delete unit._skillRngBonus;
+      if (unit._skillHitCount) delete unit._skillHitCount;
+    }
+  }
+  state.enemies.forEach(e => {
+    if (e.unit._defDebuff) {
+      e.unit._defDebuff.turns--;
+      if (e.unit._defDebuff.turns <= 0) delete e.unit._defDebuff;
+    }
+  });
+}
+
 export function defenseAutoAttack(state) {
   const results = [];
   for (let r = 0; r < state.gridH; r++) {
@@ -1639,8 +1766,13 @@ export function defenseAutoAttack(state) {
     for (let c = 0; c < state.gridW; c++) {
       const unit = state.grid[r][c];
       if (!unit) continue;
-      const rng = unit.rng || 1;
+      const baseRng = unit.rng || 1;
+      const rng = baseRng + (unit._skillRngBonus || 0);
       let atkPower = unit.atk + (unit._supportBuff || 0);
+      if (unit._skillBuff && unit._skillBuff.stat === 'atk') {
+        atkPower += unit._skillBuff.val;
+      }
+      const dmgMult = unit._skillDmgMult || 1;
       const gx = c + 1, gy = r + 1;
       const targets = [];
       for (const enemy of state.enemies) {
@@ -1652,13 +1784,14 @@ export function defenseAutoAttack(state) {
       }
       if (targets.length === 0) { unit._supportBuff = 0; continue; }
       targets.sort((a, b) => a.dist - b.dist);
-      const hitCount = unit.role === 'evasive_dps' ? 2 : 1;
+      const hitCount = unit._skillHitCount || (unit.role === 'evasive_dps' ? 2 : 1);
       const aoeCount = unit.role === 'bruiser' ? Math.min(3, targets.length) : 1;
       const mainTargets = targets.slice(0, Math.max(hitCount, aoeCount));
       for (const t of mainTargets) {
         const pen = unit.role === 'breaker' ? (unit.pen || 0) + 3 : (unit.pen || 0);
-        const effectiveDef = Math.max(0, t.enemy.unit.def - pen);
-        let dmg = Math.max(1, atkPower - effectiveDef);
+        const debuffVal = t.enemy.unit._defDebuff ? t.enemy.unit._defDebuff.val : 0;
+        const effectiveDef = Math.max(0, t.enemy.unit.def - pen - debuffVal);
+        let dmg = Math.max(1, Math.floor((atkPower - effectiveDef) * dmgMult));
         const isCrit = Math.random() < (unit.crt || 0);
         if (isCrit) dmg = Math.floor(dmg * 1.5);
         t.enemy.unit.hp -= dmg;

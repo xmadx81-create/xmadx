@@ -17,6 +17,7 @@ import {
   createDefenseState, DEFENSE_GRID, defenseDrawCards, defenseMerge,
   defenseAutoAttack, defenseAdvanceEnemies, defenseSpawnEnemies,
   isDefenseWaveComplete, getDefenseRewards, generateDefenseWave, defenseTickSlow,
+  defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -1654,13 +1655,22 @@ function renderDefense() {
         const gx = c - 1, gy = r - 1;
         const unit = defenseState.grid[gy][gx];
         const roleIcon = unit ? (DEF_ROLE_DESC[unit.role]?.[0] || '?') : '';
-        const unitHtml = unit ? `<div class="def-unit def-role-${unit.role}" data-gx="${gx}" data-gy="${gy}">
+        const skill = unit ? DEFENSE_SKILLS[unit.role] : null;
+        const cd = unit?._defSkillCd || 0;
+        const maxCd = skill ? skill.cooldown : 1;
+        const cdPct = cd > 0 ? Math.round((1 - cd / maxCd) * 100) : 100;
+        const skillActive = unit && cd === 0 && skill;
+        const unitHtml = unit ? `<div class="def-unit def-role-${unit.role}${skillActive ? ' def-skill-ready' : ''}" data-gx="${gx}" data-gy="${gy}">
           <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
           <div class="def-unit-initial" style="display:none">${unit.name[0]}</div>
           <div class="def-unit-name">${unit.name.slice(0,3)}</div>
           <div class="def-rarity-dot r-${unit.rarity}"></div>
           <div class="def-role-badge">${roleIcon}</div>
+          ${skill ? `<div class="def-skill-cd" title="${skill.name}: ${skill.desc}">
+            <div class="def-skill-cd-fill" style="width:${cdPct}%"></div>
+            <span class="def-skill-cd-label">${cd > 0 ? cd : skill.icon}</span>
+          </div>` : ''}
         </div>` : '';
         const sameCount = unit ? countSameUnits(unit.id) : 0;
         const mergeHint = unit && sameCount >= 3 ? ' def-mergeable' : '';
@@ -1843,6 +1853,17 @@ function runDefenseTurn() {
   defenseState.phase = 'combat';
 
   defenseSpawnEnemies(defenseState);
+
+  const skillResults = defenseActivateSkills(defenseState);
+  if (skillResults.length > 0) {
+    const skillNames = [...new Set(skillResults.map(s => `${s.skill.icon}${s.skill.name}`))];
+    showDefenseBanner(skillNames.join(' '), 'skill');
+    sfxSkill();
+    skillResults.forEach(s => {
+      if (s.type === 'skill_dmg' && s.killed) defenseKills++;
+    });
+  }
+
   const atkResults = defenseAutoAttack(defenseState);
 
   atkResults.forEach(r => {
@@ -1860,6 +1881,7 @@ function runDefenseTurn() {
   const escaped = defenseAdvanceEnemies(defenseState);
   if (escaped.length > 0) sfxDebuff();
   defenseTickSlow(defenseState);
+  defenseTickSkillEffects(defenseState);
 
   renderDefense();
 

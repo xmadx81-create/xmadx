@@ -7496,3 +7496,30 @@ body {
 }
 
 .defense-grid-wrap { position: relative; }
+
+.def-skill-cd {
+  position: absolute; bottom: 1px; left: 1px; right: 1px;
+  height: 5px; background: rgba(0,0,0,0.5);
+  border-radius: 2px; overflow: hidden;
+}
+.def-skill-cd-fill {
+  height: 100%; background: #a78bfa;
+  transition: width 0.3s ease;
+}
+.def-skill-cd-label {
+  position: absolute; inset: 0;
+  font-size: 0.4rem; line-height: 5px;
+  text-align: center; color: #fff;
+  text-shadow: 0 0 2px rgba(0,0,0,0.8);
+}
+.def-skill-ready {
+  animation: skill-ready-pulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes skill-ready-pulse {
+  from { box-shadow: 0 0 3px rgba(167,139,250,0.3); }
+  to { box-shadow: 0 0 10px rgba(167,139,250,0.7); }
+}
+.defense-banner-skill {
+  background: linear-gradient(135deg, rgba(167,139,250,0.9), rgba(126,200,227,0.9));
+  color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
