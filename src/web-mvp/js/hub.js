@@ -1611,7 +1611,7 @@ const DEF_ROLE_DESC = { tank: '🛡감속', melee_dps: '⚔근접', ranged_dps: 
 function startDefenseMode() {
   defenseState = createDefenseState(1);
   defenseHeldUnit = null;
-  defenseSpeed = 1;
+  defenseSpeed = 0;
   defenseKills = 0;
   defenseDmgTotal = 0;
   document.getElementById('stage-select').style.display = 'none';
