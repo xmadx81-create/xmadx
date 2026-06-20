@@ -1491,7 +1491,150 @@ export function getTowerRewards(wave) {
 // 헌혈의집 타이쿤 (Blood Donation Tycoon) — "헌혈센터 경영"
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const TYCOON_GRID = { w: 5, h: 8 };
+export const TYCOON_GRID_DEFAULT = { w: 5, h: 8 };
+export const TYCOON_GRID_EXPANDED = { w: 6, h: 10 };
+
+export const TYCOON_STORY = [
+  {
+    id: 1, title: '개원 준비', days: [1, 3],
+    unlock: ['reception', 'bed'],
+    recruit: 'kim-doyun',
+    objective: { type: 'donors', count: 5 },
+    dialogue: [
+      { speaker: '센터장', text: '오늘부터 이 헌혈센터를 맡게 되었습니다.' },
+      { speaker: '김도윤', text: '안녕하세요! 첫 간호사로 배정된 김도윤입니다. 잘 부탁드려요!' },
+      { speaker: '센터장', text: '우선 접수대와 채혈대를 설치하고, 헌혈자를 받아봅시다.' },
+    ],
+  },
+  {
+    id: 2, title: '첫 납품', days: [4, 6],
+    unlock: ['lab', 'storage'],
+    recruit: 'lee-seoyeon',
+    objective: { type: 'orders', count: 1 },
+    dialogue: [
+      { speaker: '이서연', text: '근처 병원에서 혈액 요청이 왔어요! 검사실이 필요합니다.' },
+      { speaker: '센터장', text: '검사실과 저장고를 설치하고 납품을 시작하자.' },
+      { speaker: '이서연', text: '검사원으로 배정해주시면 제가 품질검사를 맡을게요!' },
+    ],
+  },
+  {
+    id: 3, title: '긴장의 연속', days: [7, 9],
+    unlock: ['lounge', 'emergency'],
+    recruit: 'park-harin',
+    objective: { type: 'lostRate', maxRate: 0.2 },
+    dialogue: [
+      { speaker: '박하린', text: '요즘 긴장해서 돌아가는 헌혈자가 많대요...' },
+      { speaker: '센터장', text: '휴게실과 응급실을 마련해서 안정시키자.' },
+      { speaker: '박하린', text: '저도 상담사로 도울게요. 긴장형 헌혈자는 제게 맡겨주세요!' },
+    ],
+  },
+  {
+    id: 4, title: '언론의 관심', days: [10, 12],
+    unlock: ['booth'],
+    recruit: 'dimitri-rad',
+    objective: { type: 'fame', count: 50 },
+    dialogue: [
+      { speaker: '기자', text: '이 센터가 지역 헌혈률 1위라면서요? 취재 좀 할게요!' },
+      { speaker: '디미트리', text: '홍보는 제가 맡겠습니다. 홍보부스를 설치해주세요.' },
+      { speaker: '센터장', text: '드디어 센터가 알려지기 시작했군. 명성을 쌓아가자!' },
+    ],
+  },
+  {
+    id: 5, title: '대형사고', days: [13, 16],
+    unlock: [],
+    recruit: 'kartein-duke',
+    objective: { type: 'blood', count: 20 },
+    gridExpand: true,
+    dialogue: [
+      { speaker: '뉴스', text: '[긴급] 고속도로 연쇄 추돌 — 대규모 수혈 필요!' },
+      { speaker: '카르테인', text: '내가 돕겠다. 센터를 확장하고 최대 역량으로 가동해라.' },
+      { speaker: '센터장', text: '그리드를 확장하고 전력 가동합니다! 모든 혈액이 필요해!' },
+    ],
+  },
+  {
+    id: 6, title: '전국 센터', days: [17, 99],
+    unlock: [],
+    recruit: null,
+    objective: null,
+    dialogue: [
+      { speaker: '센터장', text: '우리 센터가 전국 모범 헌혈센터로 선정되었습니다!' },
+      { speaker: '김도윤', text: '여기까지 오다니... 앞으로도 화이팅이에요!' },
+      { speaker: '센터장', text: '자유 운영 모드입니다. 최고 기록에 도전하세요!' },
+    ],
+  },
+];
+
+export const TYCOON_RESEARCH = {
+  speed1:    { id: 'speed1',    name: '채혈 효율 I',   cost: 5,  desc: '채혈 속도 +15%',   effect: { type: 'bedSpeed', value: 0.15 }, req: null },
+  speed2:    { id: 'speed2',    name: '채혈 효율 II',  cost: 10, desc: '채혈 속도 +25%',   effect: { type: 'bedSpeed', value: 0.25 }, req: 'speed1' },
+  patience1: { id: 'patience1', name: '쾌적한 환경 I', cost: 5,  desc: '인내심 +20%',      effect: { type: 'patience', value: 0.2 },  req: null },
+  patience2: { id: 'patience2', name: '쾌적한 환경 II',cost: 10, desc: '인내심 +30%',      effect: { type: 'patience', value: 0.3 },  req: 'patience1' },
+  storage1:  { id: 'storage1',  name: '냉장 기술 I',   cost: 8,  desc: '보관량 +10',       effect: { type: 'storage', value: 10 },    req: null },
+  storage2:  { id: 'storage2',  name: '냉장 기술 II',  cost: 15, desc: '보관량 +20',       effect: { type: 'storage', value: 20 },    req: 'storage1' },
+  fame1:     { id: 'fame1',     name: '홍보 전략 I',   cost: 6,  desc: '명성 획득 +25%',   effect: { type: 'fameBonus', value: 0.25 },req: null },
+  fame2:     { id: 'fame2',     name: '홍보 전략 II',  cost: 12, desc: '명성 획득 +50%',   effect: { type: 'fameBonus', value: 0.5 }, req: 'fame1' },
+  nurse1:    { id: 'nurse1',    name: '직원 교육 I',   cost: 8,  desc: '간호사 이동속도 2배', effect: { type: 'nurseSpeed', value: 2 }, req: null },
+  order1:    { id: 'order1',    name: '물류 개선',     cost: 7,  desc: '주문 데드라인 +10', effect: { type: 'deadline', value: 10 },   req: null },
+};
+
+export function getStoryChapter(day) {
+  return TYCOON_STORY.find(ch => day >= ch.days[0] && day <= ch.days[1]) || TYCOON_STORY[TYCOON_STORY.length - 1];
+}
+
+export function getUnlockedFacilities(chapter) {
+  const unlocked = new Set();
+  for (const ch of TYCOON_STORY) {
+    ch.unlock.forEach(f => unlocked.add(f));
+    if (ch.id === chapter) break;
+  }
+  return unlocked;
+}
+
+export function checkStoryObjective(state, chapter) {
+  if (!chapter.objective) return true;
+  const obj = chapter.objective;
+  if (obj.type === 'donors') return state.totalDonors >= obj.count;
+  if (obj.type === 'orders') return state.completedOrders >= obj.count;
+  if (obj.type === 'fame') return state.fame >= obj.count;
+  if (obj.type === 'blood') {
+    const total = Object.values(state.blood).reduce((s, v) => s + v, 0);
+    return state.totalDonors >= obj.count;
+  }
+  if (obj.type === 'lostRate') {
+    if (state.totalDonors === 0) return false;
+    return (state.lostDonors / (state.totalDonors + state.lostDonors)) <= obj.maxRate;
+  }
+  return false;
+}
+
+export function purchaseResearch(state, researchId) {
+  const research = TYCOON_RESEARCH[researchId];
+  if (!research) return { success: false };
+  if (state.research[researchId]) return { success: false, reason: 'already' };
+  if (research.req && !state.research[research.req]) return { success: false, reason: 'req' };
+  if (state.researchPoints < research.cost) return { success: false, reason: 'points' };
+  state.researchPoints -= research.cost;
+  state.research[researchId] = true;
+  _applyResearch(state, research);
+  return { success: true };
+}
+
+function _applyResearch(state, research) {
+  const eff = research.effect;
+  if (eff.type === 'storage') state.maxStorage += eff.value;
+}
+
+export function getResearchBonus(state, type) {
+  let total = 0;
+  for (const [id, owned] of Object.entries(state.research)) {
+    if (!owned) continue;
+    const r = TYCOON_RESEARCH[id];
+    if (r && r.effect.type === type) total += r.effect.value;
+  }
+  return total;
+}
+
+export const TYCOON_GRID = TYCOON_GRID_DEFAULT;
 
 export const FACILITY_TYPES = {
   reception:  { id: 'reception',  icon: '📋', name: '접수대',  cost: 5,  desc: '헌혈자 접수 속도 ↑', capacity: 0, processTime: 0 },
@@ -1517,7 +1660,7 @@ export const TYCOON_ROLES = {
 export const BLOOD_TYPES = ['A', 'B', 'O', 'AB'];
 
 export function createTycoonState(day) {
-  const { w, h } = TYCOON_GRID;
+  const { w, h } = TYCOON_GRID_DEFAULT;
   const grid = [];
   for (let r = 0; r < h; r++) {
     grid[r] = [];
@@ -1546,22 +1689,41 @@ export function createTycoonState(day) {
     boothCount: 0,
     milestones: {},
     autoFulfill: false,
+    chapter: 1,
+    storyShown: {},
+    research: {},
+    researchPoints: 0,
   };
 }
 
-export function generateDonorWave(day, boothCount) {
+export function expandGrid(state) {
+  const { w, h } = TYCOON_GRID_EXPANDED;
+  if (state.gridW >= w && state.gridH >= h) return false;
+  for (let r = 0; r < h; r++) {
+    if (!state.grid[r]) state.grid[r] = [];
+    for (let c = 0; c < w; c++) {
+      if (state.grid[r][c] === undefined) state.grid[r][c] = null;
+    }
+  }
+  state.gridW = w;
+  state.gridH = h;
+  return true;
+}
+
+export function generateDonorWave(day, boothCount, patienceBonus) {
   const boothBonus = (boothCount || 0) * 3;
   const earlyPhase = day <= 5;
   const count = Math.min(30, (earlyPhase ? 2 + day : 3 + day * 2) + boothBonus);
   const donors = [];
+  const patMult = 1 + (patienceBonus || 0);
   for (let i = 0; i < count; i++) {
     const bloodType = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
     const isVIP = day >= 5 && Math.random() < 0.1;
     const isNervous = Math.random() < 0.15;
     const isGroup = day >= 8 && Math.random() < 0.1;
     const isRepeater = day >= 4 && Math.random() < 0.12;
-    const basePat = earlyPhase ? 30 : 20;
-    const nervousPat = earlyPhase ? 18 : 12;
+    const basePat = Math.round((earlyPhase ? 30 : 20) * patMult);
+    const nervousPat = Math.round((earlyPhase ? 18 : 12) * patMult);
     const patience = isNervous ? nervousPat : basePat;
     const spawnGap = earlyPhase ? 4 : 3;
     donors.push({
@@ -1590,9 +1752,10 @@ export function getDayPreview(day, boothCount) {
   return { count, hasVIP, day };
 }
 
-export function generateOrders(day) {
+export function generateOrders(day, deadlineBonus) {
   const count = Math.min(3, 1 + Math.floor(day / 3));
   const earlyPhase = day <= 5;
+  const dlBonus = deadlineBonus || 0;
   const orders = [];
   for (let i = 0; i < count; i++) {
     const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
@@ -1602,7 +1765,7 @@ export function generateOrders(day) {
     const urgent = day >= 7 && Math.random() < 0.2;
     const reward = qty * (urgent ? 6 : 3) + day;
     const baseDeadline = earlyPhase ? 45 : 30;
-    const deadline = urgent ? 15 : baseDeadline;
+    const deadline = (urgent ? 15 : baseDeadline) + dlBonus;
     orders.push({
       id: `order-${day}-${i}`,
       bloodType: bt,
@@ -1762,7 +1925,7 @@ export function countFacilities(state, facilityId) {
   return count;
 }
 
-export function getProcessingSpeed(facility, nurse) {
+export function getProcessingSpeed(facility, nurse, researchBonus) {
   let speed = 1;
   const staff = nurse ? nurse.charData : facility.staff;
   if (staff) {
@@ -1774,6 +1937,7 @@ export function getProcessingSpeed(facility, nurse) {
     const starBonus = staff.rarity === 'legendary' ? 0.5 : staff.rarity === 'rare' ? 0.3 : staff.rarity === 'uncommon' ? 0.15 : 0;
     speed += starBonus;
   }
+  if (facility.id === 'bed' && researchBonus) speed += researchBonus;
   return speed;
 }
 
@@ -1867,7 +2031,8 @@ export function tycoonTick(state) {
       const bed = _findFacilityByUid(state, donor.assignedFacility);
       if (bed) {
         const nurseOnBed = _findNurseOnFacility(state, bed);
-        const speed = getProcessingSpeed(bed, nurseOnBed);
+        const bedResearch = getResearchBonus(state, 'bedSpeed');
+        const speed = getProcessingSpeed(bed, nurseOnBed, bedResearch);
         const adjBonus = _getAdjBonusForFacility(state, bed);
         bed.progress += speed * (1 + adjBonus);
         if (bed.progress >= bed.processTime) {
@@ -1884,7 +2049,8 @@ export function tycoonTick(state) {
             events.push({ type: 'storage_full', donor });
           }
           state.totalDonors++;
-          state.fame += 1;
+          const fameGain = Math.ceil(1 * (1 + getResearchBonus(state, 'fameBonus')));
+          state.fame += fameGain;
           if (donor.isNamed && donor.fameBonusOnComplete) {
             state.fame += donor.fameBonusOnComplete;
             events.push({ type: 'named_donor_done', donor, fameBonus: donor.fameBonusOnComplete });
@@ -2011,13 +2177,14 @@ export function tycoonDayFame(day) {
 export function upgradeFacility(state, row, col) {
   const fac = state.grid[row]?.[col];
   if (!fac) return { success: false };
-  if (fac.level >= 3) return { success: false };
+  const maxLv = state.chapter >= 5 ? 5 : 3;
+  if (fac.level >= maxLv) return { success: false };
   const cost = FACILITY_TYPES[fac.id].cost * fac.level;
   if (state.fame < cost) return { success: false };
   state.fame -= cost;
   fac.level++;
-  if (fac.id === 'bed') fac.processTime = Math.max(4, fac.processTime - 2);
-  if (fac.id === 'lab') fac.processTime = Math.max(2, fac.processTime - 1);
+  if (fac.id === 'bed') fac.processTime = Math.max(2, fac.processTime - 1);
+  if (fac.id === 'lab') fac.processTime = Math.max(1, fac.processTime - 1);
   if (fac.id === 'storage') state.maxStorage += 5 * fac.level;
   if (fac.id === 'lounge') fac.processTime = Math.max(1, fac.processTime - 1);
   return { success: true, level: fac.level, cost };
