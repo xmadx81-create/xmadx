@@ -2617,3 +2617,60 @@ describe('getScaledEnemyLevel', () => {
     expect(getScaledEnemyLevel(stage, 1)).toBe(1);
   });
 });
+
+// ── 승리 조건 테스트 ──
+
+describe('checkVictory 승리 조건', () => {
+  it('boss_kill: 보스가 죽으면 승리', () => {
+    const state = createBattleState('stage-1', ['park-harin', 'kim-doyun']);
+    state.victoryCondition = 'boss_kill';
+    state.stage = { ...state.stage, bossCharId: 'elena-morgan' };
+    const boss = state.units.find(u => u.charId === 'elena-morgan');
+    expect(boss).toBeTruthy();
+    boss.hp = 0;
+    const result = checkVictory(state);
+    expect(result).toBe('win');
+  });
+
+  it('boss_kill: 보스가 살아있으면 승리 아님', () => {
+    const state = createBattleState('stage-1', ['park-harin', 'kim-doyun']);
+    state.victoryCondition = 'boss_kill';
+    state.stage = { ...state.stage, bossCharId: 'elena-morgan' };
+    const result = checkVictory(state);
+    expect(result).toBeNull();
+  });
+
+  it('capture_point: 거점 점령 시 카운트 증가', () => {
+    const state = createBattleState('stage-1', ['park-harin']);
+    state.victoryCondition = 'capture_point';
+    state.stage = { ...state.stage, capturePoints: [{ x: 0, y: 5 }], holdTurns: 2 };
+    const player = state.units.find(u => u.team === 'player');
+    player.x = 0;
+    player.y = 5;
+    const r1 = checkVictory(state);
+    expect(r1).toBeNull();
+    expect(state._captureCount).toBe(1);
+    const r2 = checkVictory(state);
+    expect(r2).toBe('win');
+  });
+
+  it('protect_target: 보호 대상 사망 시 패배', () => {
+    const state = createBattleState('stage-1', ['park-harin', 'kim-doyun']);
+    state.victoryCondition = 'protect_target';
+    const protectUnit = state.units.find(u => u.team === 'player');
+    state.stage = { ...state.stage, protectUid: protectUnit.uid };
+    protectUnit.hp = 0;
+    const result = checkVictory(state);
+    expect(result).toBe('lose');
+  });
+
+  it('protect_target: 적 전멸 시 승리', () => {
+    const state = createBattleState('stage-1', ['park-harin', 'kim-doyun']);
+    state.victoryCondition = 'protect_target';
+    const protectUnit = state.units.find(u => u.team === 'player');
+    state.stage = { ...state.stage, protectUid: protectUnit.uid };
+    state.units.filter(u => u.team === 'enemy').forEach(u => { u.hp = 0; });
+    const result = checkVictory(state);
+    expect(result).toBe('win');
+  });
+});

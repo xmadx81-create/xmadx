@@ -123,14 +123,15 @@ const WEEKLY_QUEST_POOL = [
 const MONTHLY_QUEST = { id: 'mq-attend', name: '월간 만근 보상 (20일 출석)', goal: 20, type: 'attendance', reward: { cards: ['legendary','rare','rare','uncommon','uncommon','uncommon','common','common','common','common'], xp: 1000 } };
 
 const ATTENDANCE_REWARDS = [
-  { day: 1, cards: ['common'] },
-  { day: 3, cards: ['common', 'common'] },
-  { day: 5, cards: ['uncommon'] },
-  { day: 7, cards: ['uncommon', 'common', 'common'] },
-  { day: 10, cards: ['rare'] },
-  { day: 14, cards: ['rare', 'uncommon'] },
-  { day: 20, cards: ['legendary'] },
-  { day: 30, cards: ['legendary', 'rare', 'rare'] },
+  { day: 1, cards: ['common'], tickets: 1, items: ['heal'] },
+  { day: 2, cards: ['common'], tickets: 1 },
+  { day: 3, cards: ['common', 'common'], tickets: 2 },
+  { day: 5, cards: ['uncommon'], tickets: 2, items: ['mp', 'heal'] },
+  { day: 7, cards: ['uncommon', 'common', 'common'], tickets: 3 },
+  { day: 10, cards: ['rare'], tickets: 3, items: ['atkBuff', 'defBuff'] },
+  { day: 14, cards: ['rare', 'uncommon'], tickets: 5 },
+  { day: 20, cards: ['legendary'], tickets: 5, items: ['crtBuff', 'xp'] },
+  { day: 30, cards: ['legendary', 'rare', 'rare'], tickets: 10, items: ['heal', 'mp', 'atkBuff', 'defBuff', 'crtBuff'] },
 ];
 
 export function refreshQuests(save) {
