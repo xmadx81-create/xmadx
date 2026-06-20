@@ -1608,6 +1608,9 @@ let defensePrepRemain = 0;
 let defenseKills = 0;
 let defenseDmgTotal = 0;
 let defenseCombo = 0;
+let defenseAutoSummon = false;
+let defenseAutoMerge = false;
+let defenseLastMilestone = 0;
 
 const DEF_ROLE_DESC = { tank: '🛡감속', melee_dps: '⚔근접', ranged_dps: '🏹원거리', support: '💚인접버프', bruiser: '🔨범위공격', breaker: '💥관통', evasive_dps: '🌀2연타', battle_support: '⚡디버프' };
 
@@ -1617,6 +1620,12 @@ function startDefenseMode() {
   defenseKills = 0;
   defenseDmgTotal = 0;
   defenseCombo = 0;
+  defenseLastMilestone = 0;
+  const prestige = gameSave.defensePrestige || 0;
+  if (prestige > 0) {
+    defenseState.gold += prestige * 20;
+    showDefenseBanner(`🏅 프레스티지 ${prestige} — 시작 골드 +${prestige * 20}G`, 'legendary');
+  }
   document.getElementById('stage-select').style.display = 'none';
   document.getElementById('defense-screen').style.display = '';
   updateSpeedBtn();
@@ -1694,9 +1703,11 @@ function renderDefense() {
           const speedIcon = e.speed >= 3 ? '⚡' : e.speed >= 2 ? '💨' : '';
           const slowIcon = e._slowed ? '🐌' : '';
           const traitIcon = e.unit._trait && ENEMY_TRAITS[e.unit._trait] ? ENEMY_TRAITS[e.unit._trait].icon : '';
+          const shieldPct = e.unit._shield && e.unit._shield > 0 ? Math.round(e.unit._shield / (e.unit.maxHp * 0.3) * 100) : 0;
+          const bossSkillIcon = e.unit._bossSkill === 'shield' ? '🛡' : e.unit._bossSkill === 'summon' ? '👥' : e.unit._bossSkill === 'rage' ? '🔥' : '';
           enemyHtml = `<div class="def-enemy ${e.unit.rarity === 'legendary' ? 'def-boss' : ''} ${e.unit._trait ? 'def-trait-' + e.unit._trait : ''}">
-            <div class="def-enemy-hp"><div class="def-enemy-hp-fill" style="width:${hpPct}%"></div></div>
-            <span class="def-enemy-icon">${e.unit.rarity === 'legendary' ? '👑' : '💀'}${traitIcon}${speedIcon}${slowIcon}</span>
+            <div class="def-enemy-hp"><div class="def-enemy-hp-fill" style="width:${hpPct}%"></div>${shieldPct > 0 ? `<div class="def-enemy-shield-fill" style="width:${shieldPct}%"></div>` : ''}</div>
+            <span class="def-enemy-icon">${e.unit.rarity === 'legendary' ? '👑' : '💀'}${bossSkillIcon}${traitIcon}${speedIcon}${slowIcon}</span>
             ${enemyHere.length > 1 ? `<span class="def-enemy-count">×${enemyHere.length}</span>` : ''}
           </div>`;
         }
@@ -2085,6 +2096,11 @@ function defenseGameTick() {
   if (defenseState.phase === 'prep') {
     const interval = defenseSpeed === 2 ? 250 : 500;
     defensePrepRemain -= interval;
+    if (defenseAutoMerge && findMergeTarget()) defenseDoMerge();
+    if (defenseAutoSummon && defenseState.gold >= defenseState.summonCost) {
+      const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
+      if (hasEmpty) defenseSummon();
+    }
     renderDefense();
     if (defensePrepRemain <= 0) defenseStartCombat();
     return;
@@ -2137,6 +2153,16 @@ function defenseGameTick() {
     defenseCombo = 0;
   }
 
+  const milestone = Math.floor(defenseKills / 50);
+  if (milestone > defenseLastMilestone) {
+    defenseLastMilestone = milestone;
+    const bonus = milestone * 30;
+    defenseState.gold += bonus;
+    showDefenseBanner(`🏆 ${defenseKills}킬 달성! +${bonus}G`, 'legendary');
+  }
+
+  if (defenseAutoMerge && findMergeTarget()) defenseDoMerge();
+
   defenseHealerTick(defenseState);
   const bossActions = defenseBossTick(defenseState);
   bossActions.forEach(a => {
@@ -2188,6 +2214,8 @@ function endDefenseMode(won) {
   const isNewRecord = wave > prevBest;
   if (isNewRecord) gameSave.defenseBest = wave;
   gameSave.stats.totalBattles++;
+  const prestigeEarned = Math.floor(wave / 5);
+  gameSave.defensePrestige = (gameSave.defensePrestige || 0) + prestigeEarned;
   saveGame(gameSave);
 
   const unitCount = defenseState.grid.flat().filter(Boolean).length;
@@ -2206,6 +2234,7 @@ function endDefenseMode(won) {
         <div><span>배치 유닛</span><strong>${unitCount}</strong></div>
         <div><span>합성</span><strong>${defenseState.mergeCount}</strong></div>
       </div>
+      ${prestigeEarned > 0 ? `<div class="def-result-prestige">🏅 프레스티지 +${prestigeEarned} (총 ${gameSave.defensePrestige}) — 다음 판 시작 골드 +${gameSave.defensePrestige * 20}G</div>` : ''}
       <button class="btn-primary def-result-close">확인</button>
     </div>`;
   screen.appendChild(overlay);
@@ -2265,6 +2294,20 @@ function initDefenseControls() {
     updateSpeedBtn();
     if (defenseSpeed > 0) startDefenseLoop();
     else stopDefenseLoop();
+  });
+  document.getElementById('btn-defense-auto-summon')?.addEventListener('click', () => {
+    defenseAutoSummon = !defenseAutoSummon;
+    const btn = document.getElementById('btn-defense-auto-summon');
+    btn.textContent = defenseAutoSummon ? '자동소환 ON' : '자동소환 OFF';
+    btn.classList.toggle('btn-primary', defenseAutoSummon);
+    btn.classList.toggle('btn-secondary', !defenseAutoSummon);
+  });
+  document.getElementById('btn-defense-auto-merge')?.addEventListener('click', () => {
+    defenseAutoMerge = !defenseAutoMerge;
+    const btn = document.getElementById('btn-defense-auto-merge');
+    btn.textContent = defenseAutoMerge ? '자동합성 ON' : '자동합성 OFF';
+    btn.classList.toggle('btn-primary', defenseAutoMerge);
+    btn.classList.toggle('btn-secondary', !defenseAutoMerge);
   });
 }
 
