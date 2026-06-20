@@ -1494,13 +1494,24 @@ export function getTowerRewards(wave) {
 export const TYCOON_GRID = { w: 5, h: 8 };
 
 export const FACILITY_TYPES = {
-  reception:  { id: 'reception',  icon: '📋', name: '접수대',  cost: 20,  desc: '헌혈자 접수 속도 ↑', capacity: 0, processTime: 0 },
-  bed:        { id: 'bed',        icon: '🛏️', name: '채혈대',  cost: 40,  desc: '채혈 수행 (핵심)', capacity: 1, processTime: 6 },
-  lab:        { id: 'lab',        icon: '🔬', name: '검사실',  cost: 60,  desc: '혈액 품질검사 → 주문보상 ↑',     capacity: 2, processTime: 5 },
-  storage:    { id: 'storage',    icon: '❄️', name: '저장고',  cost: 70,  desc: '혈액 보관 +10팩',   capacity: 10, processTime: 0 },
-  lounge:     { id: 'lounge',     icon: '☕', name: '휴게실',  cost: 30,  desc: '만족도 ↑ 이탈 방지', capacity: 2, processTime: 3 },
-  emergency:  { id: 'emergency',  icon: '🚑', name: '응급실',  cost: 100, desc: '부작용 처리 · 긴장형 안정화', capacity: 1, processTime: 0 },
-  booth:      { id: 'booth',      icon: '🎪', name: '홍보부스', cost: 60,  desc: '다음 날 헌혈자 +3 · 평판 자연회복', capacity: 0, processTime: 0 },
+  reception:  { id: 'reception',  icon: '📋', name: '접수대',  cost: 5,  desc: '헌혈자 접수 속도 ↑', capacity: 0, processTime: 0 },
+  bed:        { id: 'bed',        icon: '🛏️', name: '채혈대',  cost: 8,  desc: '채혈 수행 (핵심)', capacity: 1, processTime: 6 },
+  lab:        { id: 'lab',        icon: '🔬', name: '검사실',  cost: 12, desc: '혈액 품질검사 → 납품보상 ↑', capacity: 2, processTime: 5 },
+  storage:    { id: 'storage',    icon: '❄️', name: '저장고',  cost: 15, desc: '혈액 보관 +10팩',   capacity: 10, processTime: 0 },
+  lounge:     { id: 'lounge',     icon: '☕', name: '휴게실',  cost: 6,  desc: '만족도 ↑ 이탈 방지', capacity: 2, processTime: 3 },
+  emergency:  { id: 'emergency',  icon: '🚑', name: '응급실',  cost: 20, desc: '부작용 처리 · 긴장형 안정화', capacity: 1, processTime: 0 },
+  booth:      { id: 'booth',      icon: '🎪', name: '홍보부스', cost: 12, desc: '다음 날 헌혈자 +3 · 명성 자연회복', capacity: 0, processTime: 0 },
+};
+
+export const TYCOON_ROLES = {
+  support:        { job: '간호사',   icon: '👩‍⚕️', bestAt: ['bed'],            bonus: 0.5 },
+  battle_support: { job: '상담사',   icon: '💬', bestAt: ['lounge', 'emergency'], bonus: 0.5 },
+  tank:           { job: '안내원',   icon: '🛡️', bestAt: ['reception'],        bonus: 0.5 },
+  melee_dps:      { job: '운반원',   icon: '📦', bestAt: ['lab', 'storage'],   bonus: 0.3 },
+  ranged_dps:     { job: '검사원',   icon: '🔍', bestAt: ['lab'],              bonus: 0.5 },
+  evasive_dps:    { job: '홍보원',   icon: '📣', bestAt: ['booth'],            bonus: 0.5 },
+  breaker:        { job: '시설관리', icon: '🔧', bestAt: [],                   bonus: 0.1 },
+  bruiser:        { job: '물류담당', icon: '🏋️', bestAt: ['storage'],          bonus: 0.4 },
 };
 
 export const BLOOD_TYPES = ['A', 'B', 'O', 'AB'];
@@ -1517,7 +1528,7 @@ export function createTycoonState(day) {
     grid,
     gridW: w,
     gridH: h,
-    gold: 200,
+    fame: 20,
     reputation: 20,
     phase: 'prep',
     donors: [],
@@ -1528,10 +1539,10 @@ export function createTycoonState(day) {
     completedOrders: 0,
     totalDonors: 0,
     lostDonors: 0,
-    staff: [],
+    nurses: [],
     tickCount: 0,
     facilityCount: 0,
-    dayIncome: 0,
+    dayFame: 0,
     boothCount: 0,
     milestones: {},
     autoFulfill: false,
@@ -1589,7 +1600,7 @@ export function generateOrders(day) {
       ? Math.min(3, 1 + Math.floor(Math.random() * 2))
       : Math.min(8, 1 + Math.floor(day / 2) + Math.floor(Math.random() * 2));
     const urgent = day >= 7 && Math.random() < 0.2;
-    const reward = qty * (urgent ? 30 : 15) + day * 5;
+    const reward = qty * (urgent ? 6 : 3) + day;
     const baseDeadline = earlyPhase ? 45 : 30;
     const deadline = urgent ? 15 : baseDeadline;
     orders.push({
@@ -1611,8 +1622,8 @@ export function placeFacility(state, row, col, facilityId) {
   if (state.grid[row][col]) return { success: false };
   const fType = FACILITY_TYPES[facilityId];
   if (!fType) return { success: false };
-  if (state.gold < fType.cost) return { success: false };
-  state.gold -= fType.cost;
+  if (state.fame < fType.cost) return { success: false };
+  state.fame -= fType.cost;
   state.facilityCount++;
   const facility = {
     id: facilityId,
@@ -1641,6 +1652,106 @@ export function assignStaff(state, row, col, charData) {
   return true;
 }
 
+export function deployNurse(state, charData) {
+  if (state.nurses.find(n => n.charData.id === charData.id)) return { success: false, reason: 'already_deployed' };
+  const role = TYCOON_ROLES[charData.role] || TYCOON_ROLES.support;
+  const nurse = {
+    charData,
+    row: 0,
+    col: Math.floor(state.gridW / 2),
+    targetRow: null,
+    targetCol: null,
+    task: 'idle',
+    workTicks: 0,
+    tycoonRole: role,
+  };
+  state.nurses.push(nurse);
+  return { success: true, nurse };
+}
+
+export function removeNurse(state, charId) {
+  const idx = state.nurses.findIndex(n => n.charData.id === charId);
+  if (idx === -1) return false;
+  state.nurses.splice(idx, 1);
+  return true;
+}
+
+export function getNurseAt(state, row, col) {
+  return state.nurses.find(n => n.row === row && n.col === col) || null;
+}
+
+function _moveNurses(state) {
+  const events = [];
+  for (const nurse of state.nurses) {
+    if (nurse.task === 'working') {
+      nurse.workTicks--;
+      if (nurse.workTicks <= 0) {
+        nurse.task = 'idle';
+      }
+      continue;
+    }
+
+    if (nurse.task === 'moving' && nurse.targetRow !== null) {
+      if (nurse.row !== nurse.targetRow) {
+        nurse.row += nurse.row < nurse.targetRow ? 1 : -1;
+      } else if (nurse.col !== nurse.targetCol) {
+        nurse.col += nurse.col < nurse.targetCol ? 1 : -1;
+      }
+      if (nurse.row === nurse.targetRow && nurse.col === nurse.targetCol) {
+        const fac = state.grid[nurse.row]?.[nurse.col];
+        if (fac) {
+          nurse.task = 'working';
+          nurse.workTicks = 3;
+          events.push({ type: 'nurse_working', nurse, facility: fac });
+        } else {
+          nurse.task = 'idle';
+        }
+      }
+      continue;
+    }
+
+    const target = _findNurseTarget(state, nurse);
+    if (target) {
+      nurse.targetRow = target.row;
+      nurse.targetCol = target.col;
+      nurse.task = 'moving';
+      events.push({ type: 'nurse_moving', nurse });
+    }
+  }
+  return events;
+}
+
+function _findNurseTarget(state, nurse) {
+  let bestDist = Infinity;
+  let best = null;
+  const preferred = nurse.tycoonRole.bestAt;
+
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const fac = state.grid[r][c];
+      if (!fac) continue;
+      if (r === nurse.row && c === nurse.col) continue;
+      const otherNurse = state.nurses.find(n => n !== nurse && n.targetRow === r && n.targetCol === c);
+      if (otherNurse) continue;
+
+      let priority = 0;
+      if (fac.busy) priority += 3;
+      if (preferred.includes(fac.id)) priority += 2;
+      if (fac.id === 'bed' && fac.busy) priority += 2;
+
+      if (priority > 0) {
+        const dist = Math.abs(r - nurse.row) + Math.abs(c - nurse.col);
+        const score = dist - priority * 10;
+        if (score < bestDist) {
+          bestDist = score;
+          best = { row: r, col: c };
+        }
+      }
+    }
+  }
+  return best;
+}
+
 export function countFacilities(state, facilityId) {
   let count = 0;
   for (let r = 0; r < state.gridH; r++) {
@@ -1651,15 +1762,16 @@ export function countFacilities(state, facilityId) {
   return count;
 }
 
-export function getProcessingSpeed(facility) {
+export function getProcessingSpeed(facility, nurse) {
   let speed = 1;
-  if (facility.staff) {
-    const role = facility.staff.role;
-    if (facility.id === 'bed' && (role === 'support' || role === 'battle_support')) speed += 0.5;
-    if (facility.id === 'lab' && (role === 'ranged_dps' || role === 'breaker')) speed += 0.5;
-    if (facility.id === 'reception' && (role === 'evasive_dps' || role === 'melee_dps')) speed += 0.5;
-    if (facility.id === 'lounge' && role === 'support') speed += 0.5;
-    const starBonus = facility.staff.rarity === 'legendary' ? 0.5 : facility.staff.rarity === 'rare' ? 0.3 : facility.staff.rarity === 'uncommon' ? 0.15 : 0;
+  const staff = nurse ? nurse.charData : facility.staff;
+  if (staff) {
+    const role = staff.role;
+    const tRole = TYCOON_ROLES[role];
+    if (tRole && tRole.bestAt.includes(facility.id)) {
+      speed += tRole.bonus;
+    }
+    const starBonus = staff.rarity === 'legendary' ? 0.5 : staff.rarity === 'rare' ? 0.3 : staff.rarity === 'uncommon' ? 0.15 : 0;
     speed += starBonus;
   }
   return speed;
@@ -1684,12 +1796,12 @@ export function getAdjacencyBonus(state, row, col) {
 }
 
 export const MILESTONES = {
-  donors10:  { id: 'donors10',  label: '헌혈자 10명', check: s => s.totalDonors >= 10, reward: 50 },
-  donors30:  { id: 'donors30',  label: '헌혈자 30명', check: s => s.totalDonors >= 30, reward: 120 },
-  donors50:  { id: 'donors50',  label: '헌혈자 50명', check: s => s.totalDonors >= 50, reward: 250 },
-  days5:     { id: 'days5',     label: '5일 운영',    check: s => s.day >= 5,          reward: 80 },
-  days10:    { id: 'days10',    label: '10일 운영',   check: s => s.day >= 10,         reward: 200 },
-  days20:    { id: 'days20',    label: '20일 운영',   check: s => s.day >= 20,         reward: 500 },
+  donors10:  { id: 'donors10',  label: '헌혈자 10명', check: s => s.totalDonors >= 10, reward: 8 },
+  donors30:  { id: 'donors30',  label: '헌혈자 30명', check: s => s.totalDonors >= 30, reward: 15 },
+  donors50:  { id: 'donors50',  label: '헌혈자 50명', check: s => s.totalDonors >= 50, reward: 30 },
+  days5:     { id: 'days5',     label: '5일 운영',    check: s => s.day >= 5,          reward: 10 },
+  days10:    { id: 'days10',    label: '10일 운영',   check: s => s.day >= 10,         reward: 20 },
+  days20:    { id: 'days20',    label: '20일 운영',   check: s => s.day >= 20,         reward: 40 },
 };
 
 export function checkMilestones(state) {
@@ -1698,7 +1810,7 @@ export function checkMilestones(state) {
     if (state.milestones[key]) continue;
     if (ms.check(state)) {
       state.milestones[key] = true;
-      state.gold += ms.reward;
+      state.fame += ms.reward;
       earned.push(ms);
     }
   }
@@ -1754,7 +1866,8 @@ export function tycoonTick(state) {
     if (donor.status === 'collecting') {
       const bed = _findFacilityByUid(state, donor.assignedFacility);
       if (bed) {
-        const speed = getProcessingSpeed(bed);
+        const nurseOnBed = _findNurseOnFacility(state, bed);
+        const speed = getProcessingSpeed(bed, nurseOnBed);
         const adjBonus = _getAdjBonusForFacility(state, bed);
         bed.progress += speed * (1 + adjBonus);
         if (bed.progress >= bed.processTime) {
@@ -1771,6 +1884,11 @@ export function tycoonTick(state) {
             events.push({ type: 'storage_full', donor });
           }
           state.totalDonors++;
+          state.fame += 1;
+          if (donor.isNamed && donor.fameBonusOnComplete) {
+            state.fame += donor.fameBonusOnComplete;
+            events.push({ type: 'named_donor_done', donor, fameBonus: donor.fameBonusOnComplete });
+          }
 
           const lab = _findFreeFacility(state, 'lab');
           if (lab) {
@@ -1813,6 +1931,8 @@ export function tycoonTick(state) {
     events.push({ type: 'booth_reputation', amount: booths });
   }
 
+  events.push(..._moveNurses(state));
+
   const waveComplete = state.donorQueue.length === 0 &&
     state.donors.every(d => d.status === 'done' || d.status === 'left') &&
     state.donors.length === 0;
@@ -1822,6 +1942,17 @@ export function tycoonTick(state) {
   }
 
   return events;
+}
+
+function _findNurseOnFacility(state, facility) {
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      if (state.grid[r][c] === facility) {
+        return state.nurses.find(n => n.row === r && n.col === c && n.task === 'working') || null;
+      }
+    }
+  }
+  return null;
 }
 
 function _getAdjBonusForFacility(state, facility) {
@@ -1865,18 +1996,16 @@ export function fulfillOrder(state, orderId) {
   order.fulfilled += deliver;
   const done = order.fulfilled >= order.quantity;
   if (done) {
-    state.gold += order.reward;
+    state.fame += order.reward;
     state.completedOrders++;
-    state.dayIncome += order.reward;
+    state.dayFame += order.reward;
     state.reputation = Math.min(30, state.reputation + 1);
   }
   return { success: true, delivered: deliver, done, reward: done ? order.reward : 0 };
 }
 
-export function tycoonDayIncome(day, currentGold) {
-  const base = 20 + day * 5;
-  const interest = Math.floor(currentGold * 0.1);
-  return base + interest;
+export function tycoonDayFame(day) {
+  return 3 + day;
 }
 
 export function upgradeFacility(state, row, col) {
@@ -1884,8 +2013,8 @@ export function upgradeFacility(state, row, col) {
   if (!fac) return { success: false };
   if (fac.level >= 3) return { success: false };
   const cost = FACILITY_TYPES[fac.id].cost * fac.level;
-  if (state.gold < cost) return { success: false };
-  state.gold -= cost;
+  if (state.fame < cost) return { success: false };
+  state.fame -= cost;
   fac.level++;
   if (fac.id === 'bed') fac.processTime = Math.max(4, fac.processTime - 2);
   if (fac.id === 'lab') fac.processTime = Math.max(2, fac.processTime - 1);
@@ -1895,15 +2024,51 @@ export function upgradeFacility(state, row, col) {
 }
 
 export const TYCOON_EVENTS = [
-  { id: 'accident',  icon: '🚨', name: '대형사고',   desc: '특정 혈액 긴급 수요 — 납품 시 보너스 2배' },
-  { id: 'inspection', icon: '🏥', name: '보건검사',   desc: '검사실 보유 시 골드 보너스' },
-  { id: 'campaign',  icon: '📺', name: '헌혈캠페인',  desc: '다음 웨이브 헌혈자 2배' },
-  { id: 'rare',      icon: '💉', name: '희귀혈액',   desc: 'AB형 헌혈자 등장, 고가 납품' },
+  { id: 'accident',   icon: '🚨', name: '대형사고',   desc: '특정 혈액 긴급 수요 — 납품 시 명성 2배' },
+  { id: 'inspection', icon: '🏥', name: '보건검사',   desc: '검사실 보유 시 명성 보너스' },
+  { id: 'campaign',   icon: '📺', name: '헌혈캠페인', desc: '헌혈자 2배 방문' },
+  { id: 'rare',       icon: '💉', name: '희귀혈액',   desc: 'AB형 헌혈자 등장, 고가 납품' },
+  { id: 'students',   icon: '🎓', name: '학생단체',   desc: '헌혈자 +8 일시 도착, 인내심 낮음' },
+  { id: 'military',   icon: '🎖️', name: '군부대 방문', desc: 'O형 전용 헌혈자 6명, 인내심 최대' },
+  { id: 'rain',       icon: '🌧️', name: '폭우',       desc: '헌혈자 절반, 명성 보상 2배' },
+  { id: 'bloodday',   icon: '☀️', name: '헌혈의 날',  desc: '전 혈액형 헌혈자 +3씩' },
+  { id: 'corporate',  icon: '🏢', name: '기업봉사',   desc: '단체 10명 + 무료 기부 집기 1개' },
+  { id: 'medteam',    icon: '👨‍⚕️', name: '의료진 파견', desc: '임시 간호사 1명 자동 배치' },
+  { id: 'press',      icon: '📰', name: '언론보도',   desc: '당일 명성 획득 1.5배' },
+  { id: 'breakdown',  icon: '🔧', name: '장비고장',   desc: '랜덤 시설 1개 비활성 (시설관리 면역)' },
 ];
 
 export function rollTycoonEvent(day) {
   if (day % 3 !== 0 || day === 0) return null;
+  if (day <= 3) {
+    const easy = TYCOON_EVENTS.filter(e => ['campaign', 'bloodday', 'press'].includes(e.id));
+    return easy[Math.floor(Math.random() * easy.length)];
+  }
   return TYCOON_EVENTS[Math.floor(Math.random() * TYCOON_EVENTS.length)];
+}
+
+export function generateNamedDonor(day, allCharacters) {
+  if (Math.random() > 0.15) return null;
+  const char = allCharacters[Math.floor(Math.random() * allCharacters.length)];
+  if (!char) return null;
+  const bloodType = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
+  return {
+    id: `named-${day}-${char.id}`,
+    bloodType,
+    patience: 40,
+    maxPatience: 40,
+    status: 'waiting',
+    isVIP: true,
+    isNervous: false,
+    isGroup: false,
+    isRepeater: false,
+    isNamed: true,
+    charData: char,
+    amount: 2,
+    spawnDelay: 0,
+    assignedFacility: null,
+    fameBonusOnComplete: 3,
+  };
 }
 
 export function createBattleState(stageId, playerCharIds, centerBuff, teamSynergyMult) {

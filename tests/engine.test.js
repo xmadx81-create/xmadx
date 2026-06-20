@@ -16,10 +16,11 @@ import {
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy, getDangerZone,
   STORY_ACTS, getScaledEnemyLevel,
-  createTycoonState, TYCOON_GRID, FACILITY_TYPES, BLOOD_TYPES,
-  generateDonorWave, getDayPreview, generateOrders,
-  placeFacility, assignStaff, countFacilities, getProcessingSpeed,
-  tycoonTick, fulfillOrder, tycoonDayIncome,
+  createTycoonState, TYCOON_GRID, FACILITY_TYPES, BLOOD_TYPES, TYCOON_ROLES,
+  generateDonorWave, getDayPreview, generateOrders, generateNamedDonor,
+  placeFacility, assignStaff, deployNurse, removeNurse, getNurseAt,
+  countFacilities, getProcessingSpeed,
+  tycoonTick, fulfillOrder, tycoonDayFame,
   upgradeFacility, TYCOON_EVENTS, rollTycoonEvent,
   getAdjacencyBonus, MILESTONES, checkMilestones,
 } from '../src/web-mvp/js/engine.js';
@@ -2826,7 +2827,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
     const state = createTycoonState(1);
     expect(state.day).toBe(1);
     expect(state.reputation).toBe(20);
-    expect(state.gold).toBe(200);
+    expect(state.fame).toBe(20);
     expect(state.grid.length).toBe(8);
     expect(state.grid[0].length).toBe(5);
     expect(state.donors).toEqual([]);
@@ -2835,6 +2836,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(state.maxStorage).toBe(15);
     expect(state.milestones).toEqual({});
     expect(state.autoFulfill).toBe(false);
+    expect(state.nurses).toEqual([]);
   });
 
   it('generateDonorWave — 날짜별 헌혈자 수 증가', () => {
@@ -2880,12 +2882,12 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(result.success).toBe(true);
     expect(state.grid[0][0]).toBeDefined();
     expect(state.grid[0][0].id).toBe('bed');
-    expect(state.gold).toBe(160);
+    expect(state.fame).toBe(12);
   });
 
-  it('placeFacility — 골드 부족 시 실패', () => {
+  it('placeFacility — 명성 부족 시 실패', () => {
     const state = createTycoonState(1);
-    state.gold = 10;
+    state.fame = 1;
     const result = placeFacility(state, 0, 0, 'bed');
     expect(result.success).toBe(false);
   });
@@ -2921,7 +2923,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
 
   it('countFacilities — 시설 개수 카운트', () => {
     const state = createTycoonState(1);
-    state.gold = 500;
+    state.fame = 500;
     placeFacility(state, 0, 0, 'bed');
     placeFacility(state, 0, 1, 'bed');
     placeFacility(state, 0, 2, 'lab');
@@ -2955,7 +2957,7 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(result.done).toBe(true);
     expect(result.reward).toBe(100);
     expect(state.blood.A).toBe(2);
-    expect(state.gold).toBe(300);
+    expect(state.fame).toBe(120);
   });
 
   it('fulfillOrder — 혈액 부족 시 실패', () => {
@@ -2977,17 +2979,17 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(state.blood.B).toBe(0);
   });
 
-  it('tycoonDayIncome — 기본 수입 + 이자', () => {
-    const income = tycoonDayIncome(1, 100);
-    expect(income).toBe(25 + 10);
-    const income5 = tycoonDayIncome(5, 200);
-    expect(income5).toBe(45 + 20);
+  it('tycoonDayFame — 일일 명성 수입', () => {
+    const fame1 = tycoonDayFame(1);
+    expect(fame1).toBe(4);
+    const fame5 = tycoonDayFame(5);
+    expect(fame5).toBe(8);
   });
 
   it('upgradeFacility — 업그레이드 성공', () => {
     const state = createTycoonState(1);
     placeFacility(state, 0, 0, 'bed');
-    state.gold = 200;
+    state.fame = 200;
     const result = upgradeFacility(state, 0, 0);
     expect(result.success).toBe(true);
     expect(result.level).toBe(2);
@@ -2998,13 +3000,13 @@ describe('헌혈의집 타이쿤 시스템', () => {
     const state = createTycoonState(1);
     placeFacility(state, 0, 0, 'bed');
     state.grid[0][0].level = 3;
-    state.gold = 9999;
+    state.fame = 9999;
     const result = upgradeFacility(state, 0, 0);
     expect(result.success).toBe(false);
   });
 
-  it('TYCOON_EVENTS에 4종 이벤트가 정의되어 있다', () => {
-    expect(TYCOON_EVENTS.length).toBe(4);
+  it('TYCOON_EVENTS에 12종 이벤트가 정의되어 있다', () => {
+    expect(TYCOON_EVENTS.length).toBe(12);
     TYCOON_EVENTS.forEach(e => {
       expect(e.id).toBeDefined();
       expect(e.icon).toBeDefined();
@@ -3090,8 +3092,8 @@ describe('헌혈의집 타이쿤 시스템', () => {
 
   it('MILESTONES 정의 확인', () => {
     expect(Object.keys(MILESTONES).length).toBe(6);
-    expect(MILESTONES.donors10.reward).toBe(50);
-    expect(MILESTONES.days5.reward).toBe(80);
+    expect(MILESTONES.donors10.reward).toBe(8);
+    expect(MILESTONES.days5.reward).toBe(10);
   });
 
   it('checkMilestones — 마일스톤 달성 시 보상', () => {
@@ -3107,10 +3109,10 @@ describe('헌혈의집 타이쿤 시스템', () => {
     const state = createTycoonState(5);
     state.totalDonors = 10;
     checkMilestones(state);
-    const goldAfterFirst = state.gold;
+    const fameAfterFirst = state.fame;
     const earned2 = checkMilestones(state);
     expect(earned2.length).toBe(0);
-    expect(state.gold).toBe(goldAfterFirst);
+    expect(state.fame).toBe(fameAfterFirst);
   });
 
   it('generateDonorWave — 초기 페이즈 인내심 더 높음', () => {
@@ -3166,6 +3168,106 @@ describe('헌혈의집 타이쿤 시스템', () => {
     const result = placeFacility(state, 0, 0, 'booth');
     expect(result.success).toBe(true);
     expect(state.grid[0][0].id).toBe('booth');
+  });
+
+  it('TYCOON_ROLES — 9개 역할 매핑', () => {
+    expect(Object.keys(TYCOON_ROLES).length).toBe(8);
+    expect(TYCOON_ROLES.support.job).toBe('간호사');
+    expect(TYCOON_ROLES.tank.job).toBe('안내원');
+    expect(TYCOON_ROLES.breaker.job).toBe('시설관리');
+  });
+
+  it('deployNurse — 간호사 배치', () => {
+    const state = createTycoonState(1);
+    const char = CHARACTERS[0];
+    const result = deployNurse(state, char);
+    expect(result.success).toBe(true);
+    expect(state.nurses.length).toBe(1);
+    expect(state.nurses[0].charData.id).toBe(char.id);
+    expect(state.nurses[0].task).toBe('idle');
+  });
+
+  it('deployNurse — 중복 배치 불가', () => {
+    const state = createTycoonState(1);
+    const char = CHARACTERS[0];
+    deployNurse(state, char);
+    const result = deployNurse(state, char);
+    expect(result.success).toBe(false);
+  });
+
+  it('removeNurse — 간호사 제거', () => {
+    const state = createTycoonState(1);
+    const char = CHARACTERS[0];
+    deployNurse(state, char);
+    expect(state.nurses.length).toBe(1);
+    const removed = removeNurse(state, char.id);
+    expect(removed).toBe(true);
+    expect(state.nurses.length).toBe(0);
+  });
+
+  it('getNurseAt — 위치별 간호사 조회', () => {
+    const state = createTycoonState(1);
+    const char = CHARACTERS[0];
+    deployNurse(state, char);
+    const nurse = getNurseAt(state, 0, Math.floor(state.gridW / 2));
+    expect(nurse).toBeDefined();
+    expect(nurse.charData.id).toBe(char.id);
+  });
+
+  it('getProcessingSpeed — 간호사 보너스 적용', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    const supporter = CHARACTERS.find(c => c.role === 'support');
+    const nurse = { charData: supporter, task: 'working' };
+    const speed = getProcessingSpeed(state.grid[0][0], nurse);
+    expect(speed).toBeGreaterThan(1);
+  });
+
+  it('generateNamedDonor — 이름있는 헌혈자 구조', () => {
+    let named = null;
+    for (let i = 0; i < 100; i++) {
+      named = generateNamedDonor(5, CHARACTERS);
+      if (named) break;
+    }
+    if (named) {
+      expect(named.isNamed).toBe(true);
+      expect(named.charData).toBeDefined();
+      expect(named.fameBonusOnComplete).toBe(3);
+      expect(named.patience).toBe(40);
+    }
+  });
+
+  it('TYCOON_EVENTS — 신규 이벤트 포함', () => {
+    const ids = TYCOON_EVENTS.map(e => e.id);
+    expect(ids).toContain('students');
+    expect(ids).toContain('military');
+    expect(ids).toContain('rain');
+    expect(ids).toContain('breakdown');
+    expect(ids).toContain('press');
+    expect(ids).toContain('medteam');
+  });
+
+  it('rollTycoonEvent — 초기 3일차는 쉬운 이벤트만', () => {
+    for (let i = 0; i < 20; i++) {
+      const ev = rollTycoonEvent(3);
+      if (ev) {
+        expect(['campaign', 'bloodday', 'press']).toContain(ev.id);
+      }
+    }
+  });
+
+  it('tycoonTick — 헌혈 완료 시 명성 +1', () => {
+    const state = createTycoonState(1);
+    state.phase = 'operating';
+    placeFacility(state, 0, 0, 'bed');
+    const bed = state.grid[0][0];
+    bed.busy = true;
+    bed.progress = bed.processTime - 0.5;
+    bed.donor = { id: 'd1', bloodType: 'O', patience: 20, maxPatience: 20, status: 'collecting', amount: 1, assignedFacility: bed.uid };
+    state.donors = [bed.donor];
+    const fameBefore = state.fame;
+    tycoonTick(state);
+    expect(state.fame).toBe(fameBefore + 1);
   });
 });
 
