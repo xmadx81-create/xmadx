@@ -41,6 +41,13 @@ const ROLE_COLORS = {
   bruiser:        0xe67e22,
 };
 
+const ASSET_BASE = 'assets/';
+const CHAR_MAP = {
+  '서윤': 'char_seoyoon',
+  '하나': 'char_hana',
+  '민수': 'char_minsoo',
+};
+
 class TycoonScene extends Phaser.Scene {
   constructor() {
     super('TycoonScene');
@@ -60,6 +67,7 @@ class TycoonScene extends Phaser.Scene {
   }
 
   create() {
+    this.bgSprite = null;
     this.gridBg = this.add.graphics();
     this.facLayer = this.add.container(0, 0);
     this.nurseLayer = this.add.container(0, 0);
@@ -108,16 +116,28 @@ class TycoonScene extends Phaser.Scene {
 
   _drawGrid() {
     this.gridBg.clear();
-    const bgColor = FLOOR_BG[this._floor] || 0x1e1912;
-    this.gridBg.fillStyle(bgColor, 1);
-    this.gridBg.fillRoundedRect(PAD - 2, PAD + 26, TILE * GRID + 4, TILE * GRID + 4, 6);
+    if (this.bgSprite) { this.bgSprite.destroy(); this.bgSprite = null; }
+    const gridX = PAD - 2;
+    const gridY = PAD + 26;
+    const gridW = TILE * GRID + 4;
+    const gridH = TILE * GRID + 4;
+    const bgKey = 'bg_' + this._floor;
+    if (this.textures && this.textures.exists(bgKey)) {
+      this.bgSprite = this.add.image(gridX + gridW / 2, gridY + gridH / 2, bgKey);
+      this.bgSprite.setDisplaySize(gridW, gridH);
+      this.bgSprite.setDepth(-1);
+    } else {
+      const bgColor = FLOOR_BG[this._floor] || 0x1e1912;
+      this.gridBg.fillStyle(bgColor, 1);
+      this.gridBg.fillRoundedRect(gridX, gridY, gridW, gridH, 6);
+    }
     for (let r = 0; r < GRID; r++) {
       for (let c = 0; c < GRID; c++) {
         const x = this._tileX(c);
         const y = this._tileY(r);
-        this.gridBg.fillStyle(0xffffff, 0.03);
+        this.gridBg.fillStyle(0x000000, 0.15);
         this.gridBg.fillRect(x, y, TILE - 1, TILE - 1);
-        this.gridBg.lineStyle(1, 0xffffff, 0.06);
+        this.gridBg.lineStyle(1, 0xffffff, 0.08);
         this.gridBg.strokeRect(x, y, TILE - 1, TILE - 1);
       }
     }
@@ -298,24 +318,44 @@ class TycoonScene extends Phaser.Scene {
   _createNurseSprite(nurse, tx, ty) {
     const roleColor = ROLE_COLORS[nurse.charData.role] || 0xffffff;
     const container = this.add.container(0, 0);
+    const charKey = CHAR_MAP[nurse.charData.name];
+    const hasImage = charKey && this.textures && this.textures.exists(charKey);
 
     const shadow = this.add.circle(tx, ty + 3, 7, 0x000000, 0.3);
     shadow.setScale(1, 0.5);
     container.add(shadow);
 
-    const body = this.add.circle(tx, ty - 2, 8, roleColor, 0.9);
-    body.setStrokeStyle(1.5, 0x000000, 0.5);
-    container.add(body);
+    let body, head, animTargets;
 
-    const head = this.add.circle(tx, ty - 10, 5, roleColor, 0.95);
-    head.setStrokeStyle(1, 0xffffff, 0.3);
-    container.add(head);
+    if (hasImage) {
+      const ring = this.add.graphics();
+      ring.fillStyle(roleColor, 0.25);
+      ring.fillCircle(tx, ty - 4, 16);
+      ring.lineStyle(2, roleColor, 0.9);
+      ring.strokeCircle(tx, ty - 4, 16);
+      container.add(ring);
 
-    const role = TYCOON_ROLES[nurse.charData.role] || TYCOON_ROLES.support;
-    const icon = this.add.text(tx, ty - 10, role.icon, {
-      fontSize: '8px',
-    }).setOrigin(0.5);
-    container.add(icon);
+      body = this.add.image(tx, ty - 4, charKey);
+      body.setDisplaySize(26, 26);
+      container.add(body);
+      head = body;
+      animTargets = [body];
+    } else {
+      body = this.add.circle(tx, ty - 2, 8, roleColor, 0.9);
+      body.setStrokeStyle(1.5, 0x000000, 0.5);
+      container.add(body);
+
+      head = this.add.circle(tx, ty - 10, 5, roleColor, 0.95);
+      head.setStrokeStyle(1, 0xffffff, 0.3);
+      container.add(head);
+
+      const role = TYCOON_ROLES[nurse.charData.role] || TYCOON_ROLES.support;
+      const icon = this.add.text(tx, ty - 10, role.icon, {
+        fontSize: '8px',
+      }).setOrigin(0.5);
+      container.add(icon);
+      animTargets = [body, head, icon];
+    }
 
     const nameLabel = this.add.text(tx, ty + 8, nurse.charData.name.slice(0, 2), {
       fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold',
@@ -324,12 +364,12 @@ class TycoonScene extends Phaser.Scene {
     container.add(nameLabel);
 
     this.nurseLayer.add(container);
-    const ns = { container, body, head, shadow, nameLabel, _originX: tx, _originY: ty, _targetX: tx, _targetY: ty };
+    const ns = { container, body, head, shadow, nameLabel, _originX: tx, _originY: ty, _targetX: tx, _targetY: ty, _baseScaleX: body.scaleX, _baseScaleY: body.scaleY };
     this._updateNurseState(ns, nurse);
     this.nurseSprites[nurse.charData.id] = ns;
 
     this.tweens.add({
-      targets: [body, head, icon],
+      targets: animTargets,
       y: '-=2',
       duration: 600 + Math.random() * 200,
       yoyo: true,
@@ -339,13 +379,15 @@ class TycoonScene extends Phaser.Scene {
   }
 
   _updateNurseState(ns, nurse) {
+    const bsx = ns._baseScaleX || 1;
+    const bsy = ns._baseScaleY || 1;
     if (nurse.task === 'working') {
       ns.body.setAlpha(1);
       if (!ns._pulseAnim) {
         ns._pulseAnim = this.tweens.add({
           targets: ns.body,
-          scaleX: 1.2,
-          scaleY: 1.2,
+          scaleX: bsx * 1.2,
+          scaleY: bsy * 1.2,
           duration: 400,
           yoyo: true,
           repeat: -1,
@@ -356,7 +398,7 @@ class TycoonScene extends Phaser.Scene {
       if (ns._pulseAnim) {
         ns._pulseAnim.stop();
         ns._pulseAnim = null;
-        ns.body.setScale(1);
+        ns.body.setScale(bsx, bsy);
       }
     }
   }
@@ -481,12 +523,22 @@ export class TycoonRenderer {
       backgroundColor: '#0e0c0a',
       transparent: false,
       scene: {
+        preload: function () {
+          this.load.image('bg_1F', ASSET_BASE + 'backgrounds/floor_1f.png');
+          this.load.image('bg_2F', ASSET_BASE + 'backgrounds/floor_2f.png');
+          this.load.image('bg_B1', ASSET_BASE + 'backgrounds/floor_b1.png');
+          this.load.image('char_seoyoon', ASSET_BASE + 'characters/seoyoon.png');
+          this.load.image('char_hana', ASSET_BASE + 'characters/hana.png');
+          this.load.image('char_minsoo', ASSET_BASE + 'characters/minsoo.png');
+          this.load.image('char_doyoon', ASSET_BASE + 'characters/doyoon.png');
+        },
         init: function (data) { TycoonScene.prototype.init.call(this, data); },
         create: function () {
           self.scene = this;
           Object.setPrototypeOf(this, TycoonScene.prototype);
           this.facSprites = {};
           this.nurseSprites = {};
+          this.bgSprite = null;
           this.gridBg = null;
           this.floorTabBtns = [];
           this.donorDots = [];
