@@ -14,13 +14,11 @@ import {
   getKillForecast, PASSIVE_TREE, FACTION_SYNERGY,
   getTowerRewards,
   STORY_ACTS, getScaledEnemyLevel, ROLE_MODIFIERS,
-  createDefenseState, DEFENSE_GRID, defenseDrawCards, defenseMerge,
-  defenseAutoAttack, defenseAdvanceEnemies, defenseSpawnEnemies,
-  isDefenseWaveComplete, getDefenseRewards, generateDefenseWave, defenseTickSlow,
-  defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
-  getWavePreview, defenseRewardChoices, defenseWaveIncome,
-  defenseHealerTick, defenseBossTick, ENEMY_TRAITS,
-  DEF_ROLE_SYNERGY, applyDefenseSynergy,
+  createTycoonState, TYCOON_GRID, FACILITY_TYPES, BLOOD_TYPES,
+  generateDonorWave, getDayPreview, generateOrders,
+  placeFacility, assignStaff, countFacilities, getProcessingSpeed,
+  tycoonTick, fulfillOrder, tycoonDayIncome,
+  upgradeFacility, TYCOON_EVENTS, rollTycoonEvent,
 } from './engine.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
@@ -722,16 +720,16 @@ function renderStageSelect() {
       ${towerInfo}
     </div>
   </div>`;
-  const defBest = gameSave.defenseBest || 0;
-  const defInfo = defBest > 0 ? `<span class="stage-clear-info">최고 ${defBest}웨이브</span>` : '';
+  const defBest = gameSave.tycoonBest || 0;
+  const defInfo = defBest > 0 ? `<span class="stage-clear-info">최고 ${defBest}일</span>` : '';
   list.innerHTML += `<div class="stage-card stage-defense" data-stage="defense">
-    <div class="stage-num">🏰</div>
+    <div class="stage-num">🏥</div>
     <div class="stage-info">
-      <div class="stage-name">혈맹의 벽 <span class="stage-lv">TD</span></div>
-      <div class="stage-desc">랜덤 카드를 배치하고 합성하라! 밀려오는 적을 막아라!</div>
+      <div class="stage-name">헌혈의집 타이쿤 <span class="stage-lv">경영</span></div>
+      <div class="stage-desc">헌혈센터를 경영하라! 시설 배치, 헌혈자 관리, 혈액 납품!</div>
       <div class="stage-meta">
         <span class="stage-stars">★★★★★</span>
-        <span class="stage-enemy-count">무한 웨이브</span>
+        <span class="stage-enemy-count">무한 경영</span>
         <span class="stage-deploy-count">랜덤 배치</span>
       </div>
       ${defInfo}
@@ -746,7 +744,7 @@ function renderStageSelect() {
       if (sid === 'tower') {
         openTowerDeploy();
       } else if (sid === 'defense') {
-        startDefenseMode();
+        startTycoonMode();
       } else {
         openDeploy(sid);
       }
@@ -1599,394 +1597,218 @@ function startTowerWave() {
   }
 }
 
-// ── Defense Mode (혈맹의 벽) ──
+// ── Tycoon Mode (헌혈의집 타이쿤) ──
 
-let defenseState = null;
-let defenseSpeed = 1;
-let defenseLoopTimer = null;
-let defensePrepRemain = 0;
-let defenseKills = 0;
-let defenseDmgTotal = 0;
-let defenseCombo = 0;
-let defenseAutoSummon = false;
-let defenseAutoMerge = false;
-let defenseLastMilestone = 0;
+let tycoonState = null;
+let tycoonSpeed = 1;
+let tycoonLoopTimer = null;
+let tycoonPrepRemain = 0;
+let tycoonSelectedFacility = null;
+let tycoonActiveEvent = null;
 
-const DEF_ROLE_DESC = { tank: '🛡감속', melee_dps: '⚔근접', ranged_dps: '🏹원거리', support: '💚인접버프', bruiser: '🔨범위공격', breaker: '💥관통', evasive_dps: '🌀2연타', battle_support: '⚡디버프' };
-
-function startDefenseMode() {
-  defenseState = createDefenseState(1);
-  defenseSpeed = 1;
-  defenseKills = 0;
-  defenseDmgTotal = 0;
-  defenseCombo = 0;
-  defenseLastMilestone = 0;
-  const prestige = gameSave.defensePrestige || 0;
+function startTycoonMode() {
+  tycoonState = createTycoonState(1);
+  tycoonSpeed = 1;
+  tycoonActiveEvent = null;
+  const prestige = gameSave.tycoonPrestige || 0;
   if (prestige > 0) {
-    defenseState.gold += prestige * 20;
-    showDefenseBanner(`🏅 프레스티지 ${prestige} — 시작 골드 +${prestige * 20}G`, 'legendary');
+    tycoonState.gold += prestige * 20;
+    showTycoonBanner(`🏅 프레스티지 ${prestige} — 시작 골드 +${prestige * 20}G`, 'legendary');
   }
   document.getElementById('stage-select').style.display = 'none';
   document.getElementById('defense-screen').style.display = '';
-  updateSpeedBtn();
-  renderDefense();
-  defenseStartPrep();
+  tycoonSelectedFacility = null;
+  updateTycoonSpeedBtn();
+  renderTycoon();
+  tycoonStartPrep();
 }
 
-function renderDefense() {
-  if (!defenseState) return;
-  const { gridW, gridH, path, enemies, lives, wave, mergeCount, spawnQueue, spawnIndex } = defenseState;
-  const remaining = spawnQueue.length - spawnIndex + enemies.filter(e => e.unit.hp > 0).length;
-  const bossPending = spawnQueue.slice(spawnIndex).some(e => e.unit.rarity === 'legendary') || enemies.some(e => e.unit.hp > 0 && e.unit.rarity === 'legendary');
-  document.getElementById('defense-wave').innerHTML = `웨이브 ${wave} <span class="def-remaining">${remaining > 0 ? `잔여 ${remaining}` : '클리어 대기'}${bossPending ? ' 👑' : ''}</span>`;
-  document.getElementById('defense-lives').textContent = `❤ ${lives}`;
-  document.getElementById('defense-merges').textContent = `합성 ${mergeCount} · 처치 ${defenseKills}${defenseCombo >= 5 ? ` · 💥${defenseCombo}` : ''}`;
-  document.getElementById('defense-gold').textContent = `💰 ${defenseState.gold}`;
-  const activeSynergies = applyDefenseSynergy(defenseState);
-  const synEl = document.getElementById('defense-synergy');
-  if (synEl) {
-    synEl.innerHTML = activeSynergies.map(s => `<span class="def-syn-tag">${s.label}</span>`).join('');
-  }
+function renderTycoon() {
+  if (!tycoonState) return;
+  const { gridW, gridH, gold, reputation, day, donors, blood, orders, maxStorage } = tycoonState;
+  const totalBlood = Object.values(blood).reduce((s, v) => s + v, 0);
+  const waitingDonors = donors.filter(d => d.status === 'waiting').length;
+  const collectingDonors = donors.filter(d => d.status === 'collecting').length;
+
+  document.getElementById('defense-wave').innerHTML = `${day}일차 <span class="tyc-donor-count">${waitingDonors > 0 ? `대기 ${waitingDonors}` : ''}${collectingDonors > 0 ? ` 채혈 ${collectingDonors}` : ''}</span>`;
+  document.getElementById('defense-lives').textContent = `⭐ ${reputation}`;
+  document.getElementById('defense-merges').textContent = `🩸 ${totalBlood}/${maxStorage}`;
+  document.getElementById('defense-gold').textContent = `💰 ${gold}`;
   const timerEl = document.getElementById('defense-timer');
   if (timerEl) {
-    if (defenseState.phase === 'prep') {
-      const secs = Math.ceil(defensePrepRemain / 1000);
+    if (tycoonState.phase === 'prep') {
+      const secs = Math.ceil(tycoonPrepRemain / 1000);
       timerEl.textContent = `⏱ ${secs}초`;
     } else {
-      timerEl.textContent = '⚔ 전투중';
+      timerEl.textContent = '🏥 운영중';
     }
   }
 
-  const totalW = gridW + 2;
-  const totalH = gridH + 2;
-  let html = `<div class="defense-grid" style="grid-template-columns:repeat(${totalW},1fr);grid-template-rows:repeat(${totalH},1fr)">`;
-  const rangeSet = new Set();
-
-  for (let r = 0; r < totalH; r++) {
-    for (let c = 0; c < totalW; c++) {
-      const isPathTile = path.some(p => p.x === c && p.y === r);
-      const isGridTile = c >= 1 && c <= gridW && r >= 1 && r <= gridH;
-      const isEntrance = c === 0 && r === 0;
-      const isExit = c === gridW + 1 && r === 0;
-
-      if (isGridTile) {
-        const gx = c - 1, gy = r - 1;
-        const unit = defenseState.grid[gy][gx];
-        const roleIcon = unit ? (DEF_ROLE_DESC[unit.role]?.[0] || '?') : '';
-        const skill = unit ? DEFENSE_SKILLS[unit.role] : null;
-        const cd = unit?._defSkillCd || 0;
-        const maxCd = skill ? skill.cooldown : 1;
-        const cdPct = cd > 0 ? Math.round((1 - cd / maxCd) * 100) : 100;
-        const skillActive = unit && cd === 0 && skill;
-        const unitHtml = unit ? `<div class="def-unit def-role-${unit.role}${skillActive ? ' def-skill-ready' : ''}" data-gx="${gx}" data-gy="${gy}">
-          <img src="${portraitSrc(`assets/portraits/${unit.id}`)}" alt="${unit.name}"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
-          <div class="def-unit-initial" style="display:none">${unit.name[0]}</div>
-          <div class="def-unit-name">${unit.name.slice(0,3)}</div>
-          ${(unit._star || 1) > 1 ? `<div class="def-star">★${unit._star}</div>` : ''}
-          <div class="def-rarity-dot r-${unit.rarity}"></div>
-          <div class="def-role-badge">${roleIcon}</div>
-          ${skill ? `<div class="def-skill-cd" title="${skill.name}: ${skill.desc}">
-            <div class="def-skill-cd-fill" style="width:${cdPct}%"></div>
-            <span class="def-skill-cd-label">${cd > 0 ? cd : skill.icon}</span>
-          </div>` : ''}
-        </div>` : '';
-        const sameCount = unit ? countSameUnits(unit.id, unit.rarity) : 0;
-        const mergeHint = unit && sameCount >= 3 ? ' def-mergeable' : '';
-        html += `<div class="def-tile def-placement${mergeHint}" data-gx="${gx}" data-gy="${gy}">${unitHtml}</div>`;
-      } else if (isPathTile) {
-        const enemyHere = enemies.filter(e => e.unit.hp > 0 && path[e.pathIndex]?.x === c && path[e.pathIndex]?.y === r);
-        let enemyHtml = '';
-        if (enemyHere.length > 0) {
-          const e = enemyHere[0];
-          const hpPct = Math.round(e.unit.hp / e.unit.maxHp * 100);
-          const speedIcon = e.speed >= 3 ? '⚡' : e.speed >= 2 ? '💨' : '';
-          const slowIcon = e._slowed ? '🐌' : '';
-          const traitIcon = e.unit._trait && ENEMY_TRAITS[e.unit._trait] ? ENEMY_TRAITS[e.unit._trait].icon : '';
-          const shieldPct = e.unit._shield && e.unit._shield > 0 ? Math.round(e.unit._shield / (e.unit.maxHp * 0.3) * 100) : 0;
-          const bossSkillIcon = e.unit._bossSkill === 'shield' ? '🛡' : e.unit._bossSkill === 'summon' ? '👥' : e.unit._bossSkill === 'rage' ? '🔥' : '';
-          enemyHtml = `<div class="def-enemy ${e.unit.rarity === 'legendary' ? 'def-boss' : ''} ${e.unit._trait ? 'def-trait-' + e.unit._trait : ''}">
-            <div class="def-enemy-hp"><div class="def-enemy-hp-fill" style="width:${hpPct}%"></div>${shieldPct > 0 ? `<div class="def-enemy-shield-fill" style="width:${shieldPct}%"></div>` : ''}</div>
-            <span class="def-enemy-icon">${e.unit.rarity === 'legendary' ? '👑' : '💀'}${bossSkillIcon}${traitIcon}${speedIcon}${slowIcon}</span>
-            ${enemyHere.length > 1 ? `<span class="def-enemy-count">×${enemyHere.length}</span>` : ''}
-          </div>`;
+  const synEl = document.getElementById('defense-synergy');
+  if (synEl) {
+    const bloodHtml = BLOOD_TYPES.map(bt => {
+      const cls = blood[bt] > 0 ? 'tyc-blood-has' : '';
+      return `<span class="tyc-blood-tag ${cls}" data-bt="${bt}">${bt}형: ${blood[bt]}</span>`;
+    }).join('');
+    const orderHtml = orders.filter(o => o.fulfilled < o.quantity && o.fulfilled >= 0).map(o => {
+      const pct = Math.round(o.deadline / o.maxDeadline * 100);
+      const urgCls = o.urgent ? ' tyc-order-urgent' : '';
+      return `<span class="tyc-order-tag${urgCls}" data-oid="${o.id}">${o.bloodType}형 ${o.fulfilled}/${o.quantity} 💰${o.reward} <span class="tyc-order-time" style="width:${pct}%"></span></span>`;
+    }).join('');
+    synEl.innerHTML = bloodHtml + orderHtml;
+    synEl.querySelectorAll('.tyc-order-tag').forEach(tag => {
+      tag.addEventListener('click', () => {
+        const oid = tag.dataset.oid;
+        const result = fulfillOrder(tycoonState, oid);
+        if (result.success && result.done) {
+          showTycoonBanner(`📦 주문 완료! +${result.reward}G`, 'upgrade');
+          sfxCollect();
+        } else if (result.success) {
+          showTycoonBanner(`🩸 ${result.delivered}팩 납품!`, 'same');
+        } else {
+          showTycoonBanner('혈액 부족!', 'same');
         }
-        const inRange = rangeSet.has(`${c},${r}`) ? ' def-in-range' : '';
-        const pathCls = isEntrance ? ' def-entrance' : isExit ? ' def-exit' : '';
-        html += `<div class="def-tile def-path${pathCls}${inRange}">${enemyHtml}${isEntrance ? '<span class="def-label">IN</span>' : ''}${isExit ? '<span class="def-label">OUT</span>' : ''}</div>`;
+        renderTycoon();
+      });
+    });
+  }
+
+  let html = `<div class="defense-grid tyc-grid" style="grid-template-columns:repeat(${gridW},1fr);grid-template-rows:repeat(${gridH},1fr)">`;
+  for (let r = 0; r < gridH; r++) {
+    for (let c = 0; c < gridW; c++) {
+      const fac = tycoonState.grid[r][c];
+      if (fac) {
+        const lvStars = '★'.repeat(fac.level);
+        const progressPct = fac.processTime > 0 ? Math.round(fac.progress / fac.processTime * 100) : 0;
+        const staffName = fac.staff ? fac.staff.name.slice(0, 2) : '';
+        const busyCls = fac.busy ? ' tyc-fac-busy' : '';
+        html += `<div class="def-tile tyc-fac${busyCls}" data-row="${r}" data-col="${c}">
+          <div class="tyc-fac-icon">${fac.icon}</div>
+          <div class="tyc-fac-name">${fac.name.slice(0, 2)}</div>
+          <div class="tyc-fac-lv">${lvStars}</div>
+          ${staffName ? `<div class="tyc-fac-staff">${staffName}</div>` : ''}
+          ${fac.busy ? `<div class="tyc-fac-progress"><div class="tyc-fac-progress-fill" style="width:${progressPct}%"></div></div>` : ''}
+        </div>`;
       } else {
-        html += `<div class="def-tile def-empty"></div>`;
+        html += `<div class="def-tile tyc-empty" data-row="${r}" data-col="${c}">
+          ${tycoonSelectedFacility ? `<div class="tyc-place-hint">+</div>` : ''}
+        </div>`;
       }
     }
   }
   html += '</div>';
+
+  if (donors.length > 0) {
+    html += '<div class="tyc-donor-queue">';
+    donors.filter(d => d.status === 'waiting' || d.status === 'collecting').slice(0, 8).forEach(d => {
+      const patiencePct = Math.round(d.patience / d.maxPatience * 100);
+      const statusIcon = d.status === 'collecting' ? '🛏️' : d.isVIP ? '👑' : d.isNervous ? '😰' : '🧑';
+      html += `<div class="tyc-donor ${d.patience < 5 ? 'tyc-donor-angry' : ''}">
+        <span class="tyc-donor-icon">${statusIcon}</span>
+        <span class="tyc-donor-bt tyc-bt-${d.bloodType}">${d.bloodType}</span>
+        <div class="tyc-donor-patience"><div class="tyc-donor-patience-fill" style="width:${patiencePct}%"></div></div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
   document.getElementById('defense-grid-wrap').innerHTML = html;
 
-  document.querySelectorAll('.def-placement').forEach(tile => {
+  document.querySelectorAll('.tyc-empty').forEach(tile => {
     tile.addEventListener('click', () => {
-      const gx = parseInt(tile.dataset.gx);
-      const gy = parseInt(tile.dataset.gy);
-      if (defenseState.grid[gy][gx]) {
-        showDefenseUnitInfo(defenseState.grid[gy][gx]);
+      if (!tycoonSelectedFacility || !tycoonState) return;
+      const row = parseInt(tile.dataset.row);
+      const col = parseInt(tile.dataset.col);
+      const result = placeFacility(tycoonState, row, col, tycoonSelectedFacility);
+      if (result.success) {
+        sfxCardPlay();
+        showTycoonBanner(`${result.facility.name} 설치!`, 'upgrade');
+        updateFacilityBtns();
+        renderTycoon();
+      } else {
+        showTycoonBanner('설치 불가!', 'same');
       }
     });
-    tile.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      const gx = parseInt(tile.dataset.gx);
-      const gy = parseInt(tile.dataset.gy);
-      if (defenseState.grid[gy][gx]) {
-        const sellGold = Math.floor(defenseState.summonCost * 0.6);
-        defenseState.gold += sellGold;
-        defenseState.grid[gy][gx] = null;
-        sfxDebuff();
-        showDefenseBanner(`판매 +${sellGold}G`, 'same');
-        updateSummonBtn();
-        renderDefense();
-      }
+  });
+
+  document.querySelectorAll('.tyc-fac').forEach(tile => {
+    tile.addEventListener('click', () => {
+      const row = parseInt(tile.dataset.row);
+      const col = parseInt(tile.dataset.col);
+      showFacilityInfo(row, col);
     });
-    let holdTimer = null;
-    tile.addEventListener('touchstart', () => {
-      const gx = parseInt(tile.dataset.gx);
-      const gy = parseInt(tile.dataset.gy);
-      if (defenseState.grid[gy][gx]) {
-        holdTimer = setTimeout(() => {
-          const sellGold = Math.floor(defenseState.summonCost * 0.6);
-          defenseState.gold += sellGold;
-          defenseState.grid[gy][gx] = null;
-          sfxDebuff();
-          showDefenseBanner(`판매 +${sellGold}G`, 'same');
-          updateSummonBtn();
-          renderDefense();
-        }, 600);
-      }
-    }, { passive: true });
-    tile.addEventListener('touchend', () => { if (holdTimer) clearTimeout(holdTimer); });
-    tile.addEventListener('touchcancel', () => { if (holdTimer) clearTimeout(holdTimer); });
   });
 }
 
-function countSameUnits(charId, rarity) {
-  let count = 0;
-  for (let r = 0; r < defenseState.gridH; r++) {
-    for (let c = 0; c < defenseState.gridW; c++) {
-      const u = defenseState.grid[r][c];
-      if (u && u.id === charId && u.rarity === rarity) count++;
-    }
-  }
-  return count;
-}
-
-function showDefenseUnitInfo(unit) {
+function showFacilityInfo(row, col) {
+  const fac = tycoonState.grid[row]?.[col];
+  if (!fac) return;
   const existing = document.querySelector('.def-unit-info');
   if (existing) existing.remove();
-  const skill = DEFENSE_SKILLS[unit.role] || {};
-  const cd = unit._defSkillCd || 0;
-  const roleDesc = DEF_ROLE_DESC[unit.role] || '?';
+  const fType = FACILITY_TYPES[fac.id];
+  const speed = getProcessingSpeed(fac);
+  const upgCost = fac.level < 3 ? fType.cost * fac.level : 0;
   const popup = document.createElement('div');
   popup.className = 'def-unit-info';
-  const totalDmg = unit._totalDmg || 0;
   popup.innerHTML = `
-    <div class="def-info-header">${unit.name} ${'★'.repeat(unit._star || 1)} <span class="def-info-rarity r-${unit.rarity}">${unit.rarity}</span></div>
-    <div class="def-info-role">${roleDesc}</div>
-    <div class="def-info-stats">ATK ${unit.atk} · DEF ${unit.def} · HP ${unit.hp}/${unit.maxHp} · RNG ${unit.rng || 1}</div>
-    <div class="def-info-dps">⚔ 총 데미지: ${totalDmg.toLocaleString()}</div>
-    ${skill.name ? `<div class="def-info-skill">${skill.icon} ${skill.name} — ${skill.desc}<br>쿨다운: ${cd > 0 ? `${cd}턴 남음` : '준비 완료'}</div>` : ''}`;
+    <div class="def-info-header">${fac.icon} ${fac.name} Lv.${fac.level}</div>
+    <div class="def-info-role">${fType.desc}</div>
+    <div class="def-info-stats">처리속도: ${speed.toFixed(1)}x · ${fac.staff ? `직원: ${fac.staff.name}` : '직원 없음'}</div>
+    ${fac.level < 3 ? `<button class="btn-secondary tyc-upgrade-btn" style="margin-top:4px;font-size:0.7rem">업그레이드 ${upgCost}G</button>` : '<div style="font-size:0.7rem;color:#C9A54E">MAX</div>'}
+    <button class="btn-secondary tyc-staff-btn" style="margin-top:4px;font-size:0.7rem">${fac.staff ? '직원 교체' : '직원 배치'}</button>`;
   document.getElementById('defense-screen').appendChild(popup);
-  setTimeout(() => popup.remove(), 3000);
-  popup.addEventListener('click', () => popup.remove());
-}
-
-function defenseStartPrep() {
-  defenseState.phase = 'prep';
-  defensePrepRemain = 10000;
-
-  const preview = getWavePreview(defenseState.wave);
-  const roleIcons = { tank: '🛡', melee_dps: '⚔', ranged_dps: '🏹', support: '💚', bruiser: '🔨', breaker: '💥', evasive_dps: '🌀', battle_support: '⚡' };
-  let previewEl = document.getElementById('defense-wave-preview');
-  if (!previewEl) {
-    previewEl = document.createElement('div');
-    previewEl.id = 'defense-wave-preview';
-    previewEl.className = 'def-wave-preview';
-    document.getElementById('defense-grid-wrap').parentElement.insertBefore(previewEl, document.getElementById('defense-grid-wrap'));
-  }
-  previewEl.innerHTML = `<span class="def-preview-label">다음 웨이브</span>
-    <span class="def-preview-count">💀${preview.count}</span>
-    <span class="def-preview-roles">${preview.topRoles.map(r => roleIcons[r] || '?').join('')}</span>
-    <span class="def-preview-hp">HP ×${preview.hpMult.toFixed(1)}</span>
-    ${preview.hasBoss ? '<span class="def-preview-boss">👑보스</span>' : ''}`;
-
-  if (defenseState.wave > 1 && defenseState.wave % 3 === 0) {
-    const events = [
-      () => { const bonus = 50 + defenseState.wave * 10; defenseState.gold += bonus; showDefenseBanner(`💰 골드 러시! +${bonus}G`, 'upgrade'); },
-      () => {
-        for (let r = 0; r < defenseState.gridH; r++)
-          for (let c = 0; c < defenseState.gridW; c++) {
-            const u = defenseState.grid[r][c];
-            if (u) { u.atk += 5; u.maxHp += 20; u.hp = Math.min(u.hp + 20, u.maxHp); }
-          }
-        showDefenseBanner('🔥 전원 강화! ATK+5 HP+20', 'legendary');
-      },
-      () => {
-        const rares = CHARACTERS.filter(c => c.rarity === 'rare');
-        const pick = rares[Math.floor(Math.random() * rares.length)];
-        if (pick) {
-          const card = { ...pick, _waveLv: Math.floor(1 + defenseState.wave / 2) };
-          defenseSpawnUnit(card);
-          showDefenseBanner(`🎁 보너스! ${pick.name} 지급!`, 'legendary');
-        }
-      },
-    ];
-    events[Math.floor(Math.random() * events.length)]();
-  }
-  updateSummonBtn();
-  const startBtn = document.getElementById('btn-defense-start');
-  if (startBtn) { startBtn.disabled = false; startBtn.textContent = '전투 시작 ▶'; }
-  startDefenseLoop();
-}
-
-function updateSummonBtn() {
-  const btn = document.getElementById('btn-defense-summon');
-  if (!btn || !defenseState) return;
-  const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
-  const canAfford = defenseState.gold >= defenseState.summonCost;
-  btn.disabled = !hasEmpty || !canAfford;
-  btn.textContent = `소환 🎲 ${defenseState.summonCost}G`;
-  updateMergeBtn();
-}
-
-function findMergeTarget() {
-  if (!defenseState) return null;
-  const counts = {};
-  for (let r = 0; r < defenseState.gridH; r++) {
-    for (let c = 0; c < defenseState.gridW; c++) {
-      const u = defenseState.grid[r][c];
-      if (!u) continue;
-      const key = `${u.id}|${u.rarity}`;
-      if (!counts[key]) counts[key] = [];
-      counts[key].push({ x: c, y: r });
+  popup.querySelector('.tyc-upgrade-btn')?.addEventListener('click', () => {
+    const result = upgradeFacility(tycoonState, row, col);
+    if (result.success) {
+      sfxLevelUp();
+      showTycoonBanner(`${fac.name} Lv.${result.level}!`, 'upgrade');
+      popup.remove();
+      updateFacilityBtns();
+      renderTycoon();
+    } else {
+      showTycoonBanner('골드 부족!', 'same');
     }
-  }
-  for (const [key, positions] of Object.entries(counts)) {
-    if (positions.length >= 3) return { key, positions };
-  }
-  return null;
+  });
+  popup.querySelector('.tyc-staff-btn')?.addEventListener('click', () => {
+    popup.remove();
+    showStaffSelect(row, col);
+  });
+  setTimeout(() => popup.remove(), 5000);
+  popup.addEventListener('click', (e) => { if (e.target === popup) popup.remove(); });
 }
 
-function updateMergeBtn() {
-  const btn = document.getElementById('btn-defense-merge');
-  if (!btn || !defenseState) return;
-  const target = findMergeTarget();
-  btn.disabled = !target;
-  btn.textContent = target ? `합성 ⬆ (${target.positions.length})` : '합성 ⬆';
+function showStaffSelect(row, col) {
+  const existing = document.querySelector('.tyc-staff-panel');
+  if (existing) existing.remove();
+  const chars = CHARACTERS.filter(c => gameSave.ownedCards?.[c.id]);
+  if (chars.length === 0) return;
+  const panel = document.createElement('div');
+  panel.className = 'def-reward-overlay tyc-staff-panel';
+  panel.innerHTML = `<div class="def-reward-panel">
+    <div class="def-reward-title">직원 배치</div>
+    <div class="def-reward-cards">${chars.slice(0, 6).map(c => `
+      <button class="def-reward-card" data-cid="${c.id}">
+        <div class="def-reward-icon">${c.name}</div>
+        <div class="def-reward-desc">${c.role} · ${c.rarity}</div>
+      </button>`).join('')}
+    </div></div>`;
+  document.getElementById('defense-screen').appendChild(panel);
+  panel.querySelectorAll('.def-reward-card').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cid = btn.dataset.cid;
+      const charData = CHARACTERS.find(c => c.id === cid);
+      if (charData) {
+        assignStaff(tycoonState, row, col, charData);
+        sfxEquip();
+        showTycoonBanner(`${charData.name} 배치!`, 'upgrade');
+      }
+      panel.remove();
+      renderTycoon();
+    });
+  });
 }
 
-function defenseDoMerge() {
-  const target = findMergeTarget();
-  if (!target) return;
-  const positions = target.positions;
-  const keepPos = positions[0];
-  const unit = defenseState.grid[keepPos.y][keepPos.x];
-  const removePos = positions.slice(1, 3);
-  removePos.forEach(p => { defenseState.grid[p.y][p.x] = null; });
-
-  const mergeResult = defenseMerge(unit.id, unit.rarity);
-  const star = (unit._star || 1) + 1;
-  unit.rarity = mergeResult.newRarity;
-  unit.atk = Math.floor(unit.atk * mergeResult.statMult);
-  unit.def = Math.floor(unit.def * mergeResult.statMult);
-  unit.maxHp = Math.floor(unit.maxHp * mergeResult.statMult);
-  unit.hp = unit.maxHp;
-  unit._star = star;
-  unit._totalDmg = unit._totalDmg || 0;
-  defenseState.mergeCount++;
-
-  if (mergeResult.legendary) {
-    showDefenseBanner(`⭐ ${unit.name} ★${star} 전설 승급!!`, 'legendary');
-    sfxCritical();
-  } else if (mergeResult.upgraded) {
-    showDefenseBanner(`⬆ ${unit.name} ★${star} 승급!`, 'upgrade');
-    sfxLevelUp();
-  } else {
-    showDefenseBanner(`${unit.name} ★${star} 강화!`, 'same');
-    sfxEquip();
-  }
-  const tile = document.querySelector(`.def-placement[data-gx="${keepPos.x}"][data-gy="${keepPos.y}"]`);
-  if (tile) { tile.classList.add('def-merge-flash'); setTimeout(() => tile.classList.remove('def-merge-flash'), 600); }
-  updateSummonBtn();
-  renderDefense();
-}
-
-function defenseSpawnUnit(card) {
-  const emptyTiles = [];
-  for (let r = 0; r < defenseState.gridH; r++) {
-    for (let c = 0; c < defenseState.gridW; c++) {
-      if (!defenseState.grid[r][c]) emptyTiles.push({ x: c, y: r });
-    }
-  }
-  if (emptyTiles.length === 0) return null;
-  const tile = emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
-  const unit = cardToUnit(card, tile.x, tile.y);
-  unit.team = 'player';
-  unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}`;
-  const waveLv = card._waveLv || 1;
-  for (let lv = 1; lv < waveLv; lv++) {
-    unit.maxHp += Math.floor(unit.maxHp * 0.08);
-    unit.atk += 3;
-    unit.def += 1;
-  }
-  unit.hp = unit.maxHp;
-  unit._star = 1;
-  defenseState.grid[tile.y][tile.x] = unit;
-  return unit;
-}
-
-function defenseSummon() {
-  if (!defenseState) return;
-  if (defenseState.gold < defenseState.summonCost) return;
-  const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
-  if (!hasEmpty) return;
-
-  defenseState.gold -= defenseState.summonCost;
-  defenseState.summonCost += 3;
-  const card = defenseDrawCards(defenseState.wave)[0];
-  const unit = defenseSpawnUnit(card);
-  if (!unit) return;
-  sfxCardPlay();
-  const roleDesc = DEF_ROLE_DESC[card.role] || '?';
-  showDefenseBanner(`${unit.name} ${roleDesc} 소환!`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
-  updateSummonBtn();
-  renderDefense();
-}
-
-function defenseMultiSummon() {
-  if (!defenseState) return;
-  let emptyCount = 0;
-  for (let r = 0; r < defenseState.gridH; r++)
-    for (let c = 0; c < defenseState.gridW; c++)
-      if (!defenseState.grid[r][c]) emptyCount++;
-  const count = Math.min(10, emptyCount);
-  if (count === 0) return;
-  let totalCost = 0;
-  for (let i = 0; i < count; i++) totalCost += defenseState.summonCost + i * 3;
-  const discountCost = Math.floor(totalCost * 0.8);
-  if (defenseState.gold < discountCost) {
-    showDefenseBanner(`골드 부족! (${discountCost}G 필요)`, 'same');
-    return;
-  }
-  defenseState.gold -= discountCost;
-  let placed = 0;
-  for (let i = 0; i < count; i++) {
-    const card = defenseDrawCards(defenseState.wave)[0];
-    if (defenseSpawnUnit(card)) placed++;
-  }
-  defenseState.summonCost += count * 3;
-  sfxCardPlay();
-  showDefenseBanner(`10연소환! ${placed}체 배치 (20%할인)`, 'upgrade');
-  updateSummonBtn();
-  renderDefense();
-}
-
-function showDefenseBanner(text, type) {
+function showTycoonBanner(text, type) {
   const banner = document.createElement('div');
   banner.className = `defense-banner defense-banner-${type}`;
   banner.textContent = text;
@@ -1994,320 +1816,212 @@ function showDefenseBanner(text, type) {
   setTimeout(() => banner.remove(), 2000);
 }
 
-function showDefenseRewardPanel(wave) {
-  const choices = defenseRewardChoices(wave);
-  const screen = document.getElementById('defense-screen');
-  const panel = document.createElement('div');
-  panel.className = 'def-reward-overlay';
-  panel.innerHTML = `
-    <div class="def-reward-panel">
-      <div class="def-reward-title">🎁 웨이브 ${wave} 보상 선택</div>
-      <div class="def-reward-cards">
-        ${choices.map((c, i) => `
-          <button class="def-reward-card" data-idx="${i}">
-            <div class="def-reward-icon">${c.label}</div>
-            <div class="def-reward-desc">${c.desc}</div>
-          </button>
-        `).join('')}
-      </div>
-    </div>`;
-  screen.appendChild(panel);
-  panel.querySelectorAll('.def-reward-card').forEach(btn => {
+function tycoonStartPrep() {
+  tycoonState.phase = 'prep';
+  tycoonPrepRemain = 10000;
+
+  const preview = getDayPreview(tycoonState.day);
+  let previewEl = document.getElementById('defense-wave-preview');
+  if (!previewEl) {
+    previewEl = document.createElement('div');
+    previewEl.id = 'defense-wave-preview';
+    previewEl.className = 'def-wave-preview';
+    document.getElementById('defense-grid-wrap').parentElement.insertBefore(previewEl, document.getElementById('defense-grid-wrap'));
+  }
+  previewEl.innerHTML = `<span class="def-preview-label">다음 날</span>
+    <span class="def-preview-count">🧑${preview.count}명</span>
+    ${preview.hasVIP ? '<span class="def-preview-boss">👑VIP</span>' : ''}`;
+
+  const event = rollTycoonEvent(tycoonState.day);
+  if (event) {
+    tycoonActiveEvent = event;
+    showTycoonBanner(`${event.icon} ${event.name} — ${event.desc}`, 'legendary');
+  }
+
+  tycoonState.orders.push(...generateOrders(tycoonState.day));
+
+  updateFacilityBtns();
+  const startBtn = document.getElementById('btn-defense-start');
+  if (startBtn) { startBtn.disabled = false; startBtn.textContent = '개원 ▶'; }
+  startTycoonLoop();
+}
+
+function updateFacilityBtns() {
+  const facPanel = document.getElementById('tyc-facility-panel');
+  if (!facPanel || !tycoonState) return;
+  facPanel.innerHTML = Object.values(FACILITY_TYPES).map(f => {
+    const canBuy = tycoonState.gold >= f.cost;
+    const sel = tycoonSelectedFacility === f.id ? ' btn-primary' : ' btn-secondary';
+    return `<button class="tyc-fac-btn${sel}" data-fid="${f.id}" ${!canBuy ? 'disabled' : ''}>${f.icon} ${f.name} ${f.cost}G</button>`;
+  }).join('');
+  facPanel.querySelectorAll('.tyc-fac-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.idx);
-      applyDefenseReward(choices[idx]);
-      panel.remove();
-      defenseState.wave++;
-      defenseState.spawnQueue = generateDefenseWave(defenseState.wave);
-      defenseState.spawnIndex = 0;
-      defenseState.turnNumber = 0;
-      defenseStartPrep();
-      renderDefense();
+      const fid = btn.dataset.fid;
+      tycoonSelectedFacility = tycoonSelectedFacility === fid ? null : fid;
+      updateFacilityBtns();
+      renderTycoon();
     });
   });
 }
 
-function applyDefenseReward(choice) {
-  switch (choice.type) {
-    case 'gold':
-      defenseState.gold += choice.value;
-      showDefenseBanner(`💰 ${choice.value}G 획득!`, 'upgrade');
-      break;
-    case 'buff':
-      for (let r = 0; r < defenseState.gridH; r++) {
-        for (let c = 0; c < defenseState.gridW; c++) {
-          const u = defenseState.grid[r][c];
-          if (u && u.team === 'player') u.atk += choice.value;
-        }
-      }
-      showDefenseBanner(`⚔ 전체 ATK+${choice.value}!`, 'upgrade');
-      break;
-    case 'unit': {
-      const emptyTiles = [];
-      for (let r = 0; r < defenseState.gridH; r++) {
-        for (let c = 0; c < defenseState.gridW; c++) {
-          if (!defenseState.grid[r][c]) emptyTiles.push({ x: c, y: r });
-        }
-      }
-      if (emptyTiles.length > 0) {
-        const tile = emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
-        const unit = cardToUnit(choice.value, tile.x, tile.y);
-        unit.team = 'player';
-        unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}`;
-        defenseState.grid[tile.y][tile.x] = unit;
-        showDefenseBanner(`💎 ${choice.value.name} 소환!`, 'legendary');
-      }
-      break;
-    }
-    case 'costDown':
-      defenseState.summonCost = Math.max(10, defenseState.summonCost - choice.value);
-      showDefenseBanner(`🔻 소환 비용 → ${defenseState.summonCost}G`, 'upgrade');
-      break;
+function tycoonStartOperating() {
+  tycoonState.phase = 'operating';
+  tycoonPrepRemain = 0;
+  tycoonState.tickCount = 0;
+  let donorWave = generateDonorWave(tycoonState.day);
+  if (tycoonActiveEvent?.id === 'campaign') {
+    donorWave = donorWave.concat(generateDonorWave(tycoonState.day));
   }
-}
-
-function showDefenseDmgPopup(x, y, dmg, crit, killed) {
-  const wrap = document.getElementById('defense-grid-wrap');
-  const popup = document.createElement('div');
-  popup.className = `def-dmg-popup${crit ? ' def-dmg-crit' : ''}${killed ? ' def-dmg-kill' : ''}`;
-  popup.textContent = killed ? `${dmg}💀` : `${dmg}`;
-  const gridEl = wrap.querySelector('.defense-grid');
-  if (!gridEl) return;
-  const tileSize = gridEl.children[0]?.offsetWidth || 40;
-  popup.style.left = `${x * tileSize + tileSize / 2}px`;
-  popup.style.top = `${y * tileSize}px`;
-  wrap.appendChild(popup);
-  setTimeout(() => popup.remove(), 800);
-}
-
-function defenseStartCombat() {
-  defenseState.phase = 'combat';
-  defensePrepRemain = 0;
+  tycoonState.donorQueue = donorWave;
+  tycoonState.donors = [];
   const startBtn = document.getElementById('btn-defense-start');
-  if (startBtn) { startBtn.disabled = true; startBtn.textContent = '전투 중...'; }
+  if (startBtn) { startBtn.disabled = true; startBtn.textContent = '운영 중...'; }
   const previewEl = document.getElementById('defense-wave-preview');
   if (previewEl) previewEl.innerHTML = '';
-  renderDefense();
+  renderTycoon();
 }
 
-function defenseGameTick() {
-  if (!defenseState) { stopDefenseLoop(); return; }
+function tycoonGameTick() {
+  if (!tycoonState) { stopTycoonLoop(); return; }
 
-  if (defenseState.phase === 'prep') {
-    const interval = defenseSpeed === 2 ? 250 : 500;
-    defensePrepRemain -= interval;
-    if (defenseAutoMerge && findMergeTarget()) defenseDoMerge();
-    if (defenseAutoSummon && defenseState.gold >= defenseState.summonCost) {
-      const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
-      if (hasEmpty) defenseSummon();
-    }
-    renderDefense();
-    if (defensePrepRemain <= 0) defenseStartCombat();
+  if (tycoonState.phase === 'prep') {
+    const interval = tycoonSpeed === 2 ? 250 : 500;
+    tycoonPrepRemain -= interval;
+    renderTycoon();
+    if (tycoonPrepRemain <= 0) tycoonStartOperating();
     return;
   }
 
-  defenseState.turnNumber++;
-  defenseSpawnEnemies(defenseState);
-  let tickKills = 0;
+  const events = tycoonTick(tycoonState);
+  events.forEach(ev => {
+    if (ev.type === 'donor_arrive') sfxEvent();
+    if (ev.type === 'donor_left') { sfxDebuff(); showTycoonBanner(`😤 헌혈자 이탈! 평판 -1`, 'same'); }
+    if (ev.type === 'blood_collected') sfxCollect();
+    if (ev.type === 'storage_full') showTycoonBanner('❄️ 저장고 가득!', 'same');
+    if (ev.type === 'order_expired') { sfxDebuff(); showTycoonBanner(`📦 주문 기한 만료! 평판 -1`, 'same'); }
+    if (ev.type === 'day_complete') {
+      sfxWin();
+      stopTycoonLoop();
+      const dayGold = tycoonDayIncome(tycoonState.day, tycoonState.gold);
+      tycoonState.gold += dayGold;
 
-  const skillResults = defenseActivateSkills(defenseState);
-  if (skillResults.length > 0) {
-    const skillNames = [...new Set(skillResults.map(s => `${s.skill.icon}${s.skill.name}`))];
-    showDefenseBanner(skillNames.join(' '), 'skill');
-    sfxSkill();
-    skillResults.forEach(s => {
-      if (s.type === 'skill_dmg') {
-        if (s.unit) s.unit._totalDmg = (s.unit._totalDmg || 0) + (s.damage || 0);
-        if (s.killed) { tickKills++; defenseKills++; }
+      if (tycoonActiveEvent?.id === 'inspection') {
+        const hasLab = countFacilities(tycoonState, 'lab') > 0;
+        if (hasLab) {
+          const bonus = 50 + tycoonState.day * 10;
+          tycoonState.gold += bonus;
+          showTycoonBanner(`🏥 보건검사 통과! +${bonus}G`, 'legendary');
+        }
       }
-    });
-  }
+      if (tycoonActiveEvent?.id === 'accident') {
+        const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
+        if (tycoonState.blood[bt] >= 3) {
+          tycoonState.blood[bt] -= 3;
+          const bonus = 100 + tycoonState.day * 20;
+          tycoonState.gold += bonus;
+          tycoonState.reputation = Math.min(30, tycoonState.reputation + 2);
+          showTycoonBanner(`🚨 긴급납품 ${bt}형 3팩! +${bonus}G`, 'legendary');
+        }
+      }
 
-  const atkResults = defenseAutoAttack(defenseState);
-  atkResults.forEach(r => {
-    defenseDmgTotal += r.damage;
-    if (r.attacker) r.attacker._totalDmg = (r.attacker._totalDmg || 0) + r.damage;
-    if (r.killed) {
-      tickKills++;
-      defenseKills++;
-      sfxDeath();
+      tycoonActiveEvent = null;
+
+      if (tycoonState.day > (gameSave.tycoonBest || 0)) {
+        gameSave.tycoonBest = tycoonState.day;
+      }
+      saveGame(gameSave);
+      showTycoonBanner(`${tycoonState.day}일차 종료! +${dayGold}G (이자 포함)`, 'upgrade');
+      tycoonState.day++;
+      tycoonStartPrep();
+      renderTycoon();
+      return;
     }
-    else if (r.crit) sfxCritical();
-    else sfxHit();
-    const ep = defenseState.path.find((p, i) => {
-      const enemy = defenseState.enemies.find(e => e.unit === r.enemy);
-      return enemy && i === enemy.pathIndex;
-    });
-    if (ep) showDefenseDmgPopup(ep.x, ep.y, r.damage, r.crit, r.killed);
   });
 
-  if (tickKills > 0) {
-    defenseCombo += tickKills;
-    const comboMult = defenseCombo >= 20 ? 4 : defenseCombo >= 10 ? 3 : defenseCombo >= 5 ? 2 : 1;
-    const goldPerKill = 10 * comboMult;
-    defenseState.gold += tickKills * goldPerKill;
-    if (defenseCombo >= 5) {
-      showDefenseBanner(`💥 ${defenseCombo} COMBO ×${comboMult}`, 'upgrade');
-    }
-  } else {
-    defenseCombo = 0;
-  }
+  renderTycoon();
 
-  const milestone = Math.floor(defenseKills / 50);
-  if (milestone > defenseLastMilestone) {
-    defenseLastMilestone = milestone;
-    const bonus = milestone * 30;
-    defenseState.gold += bonus;
-    showDefenseBanner(`🏆 ${defenseKills}킬 달성! +${bonus}G`, 'legendary');
-  }
-
-  if (defenseAutoMerge && findMergeTarget()) defenseDoMerge();
-
-  defenseHealerTick(defenseState);
-  const bossActions = defenseBossTick(defenseState);
-  bossActions.forEach(a => {
-    if (a.type === 'shield') showDefenseBanner(`👑 ${a.boss.name} 실드!`, 'skill');
-    else if (a.type === 'summon') showDefenseBanner(`👑 ${a.boss.name} 소환!`, 'skill');
-    else if (a.type === 'rage') showDefenseBanner(`👑 ${a.boss.name} 광폭화!`, 'legendary');
-  });
-  const escaped = defenseAdvanceEnemies(defenseState);
-  if (escaped.length > 0) { sfxDebuff(); defenseCombo = 0; }
-  defenseTickSlow(defenseState);
-  defenseTickSkillEffects(defenseState);
-
-  renderDefense();
-
-  if (defenseState.lives <= 0) {
+  if (tycoonState.reputation <= 0) {
     sfxLose();
-    endDefenseMode(false);
-    return;
-  }
-
-  if (isDefenseWaveComplete(defenseState)) {
-    sfxWin();
-    stopDefenseLoop();
-    const rewards = getDefenseRewards(defenseState.wave);
-    rewards.cards.forEach(rarity => {
-      const pool = CHARACTERS.filter(c => c.rarity === rarity);
-      const pick = pool[Math.floor(Math.random() * pool.length)];
-      if (pick) addCard(gameSave, pick.id, rarity);
-    });
-    gameSave.recruitTickets += rewards.tickets;
-    if (defenseState.wave > (gameSave.defenseBest || 0)) {
-      gameSave.defenseBest = defenseState.wave;
-    }
-    saveGame(gameSave);
-
-    const waveGold = defenseWaveIncome(defenseState.wave, defenseState.gold);
-    defenseState.gold += waveGold;
-    defenseState.summonCost = 30;
-    showDefenseBanner(`웨이브 ${defenseState.wave} 클리어! +${waveGold}G (이자 포함)`, 'upgrade');
-    showDefenseRewardPanel(defenseState.wave);
+    endTycoonMode(false);
     return;
   }
 }
 
-function endDefenseMode(won) {
-  stopDefenseLoop();
-  const wave = defenseState.wave;
-  const prevBest = gameSave.defenseBest || 0;
-  const isNewRecord = wave > prevBest;
-  if (isNewRecord) gameSave.defenseBest = wave;
+function endTycoonMode(won) {
+  stopTycoonLoop();
+  const day = tycoonState.day;
+  const prevBest = gameSave.tycoonBest || 0;
+  const isNewRecord = day > prevBest;
+  if (isNewRecord) gameSave.tycoonBest = day;
   gameSave.stats.totalBattles++;
-  const prestigeEarned = Math.floor(wave / 5);
-  gameSave.defensePrestige = (gameSave.defensePrestige || 0) + prestigeEarned;
+  const prestigeEarned = Math.floor(day / 5);
+  gameSave.tycoonPrestige = (gameSave.tycoonPrestige || 0) + prestigeEarned;
   saveGame(gameSave);
 
-  const unitCount = defenseState.grid.flat().filter(Boolean).length;
+  const facCount = tycoonState.grid.flat().filter(Boolean).length;
   const screen = document.getElementById('defense-screen');
   const overlay = document.createElement('div');
   overlay.className = 'def-result-overlay';
-  const title = won === false ? '방어 실패' : '철수 완료';
+  const title = won === false ? '폐원' : '영업 종료';
   overlay.innerHTML = `
     <div class="def-result-card">
       <div class="def-result-title ${won === false ? 'def-result-lose' : 'def-result-quit'}">${title}</div>
-      <div class="def-result-wave">웨이브 ${wave}${isNewRecord ? ' <span class="def-new-record">NEW RECORD!</span>' : ''}</div>
+      <div class="def-result-wave">${day}일차${isNewRecord ? ' <span class="def-new-record">NEW RECORD!</span>' : ''}</div>
       <div class="def-result-stats">
-        <div><span>최고 기록</span><strong>${gameSave.defenseBest}</strong></div>
-        <div><span>처치</span><strong>${defenseKills}</strong></div>
-        <div><span>총 데미지</span><strong>${defenseDmgTotal.toLocaleString()}</strong></div>
-        <div><span>배치 유닛</span><strong>${unitCount}</strong></div>
-        <div><span>합성</span><strong>${defenseState.mergeCount}</strong></div>
+        <div><span>최고 기록</span><strong>${gameSave.tycoonBest}일</strong></div>
+        <div><span>처리 헌혈자</span><strong>${tycoonState.totalDonors}</strong></div>
+        <div><span>완료 주문</span><strong>${tycoonState.completedOrders}</strong></div>
+        <div><span>시설 수</span><strong>${facCount}</strong></div>
+        <div><span>이탈 헌혈자</span><strong>${tycoonState.lostDonors}</strong></div>
       </div>
-      ${prestigeEarned > 0 ? `<div class="def-result-prestige">🏅 프레스티지 +${prestigeEarned} (총 ${gameSave.defensePrestige}) — 다음 판 시작 골드 +${gameSave.defensePrestige * 20}G</div>` : ''}
+      ${prestigeEarned > 0 ? `<div class="def-result-prestige">🏅 프레스티지 +${prestigeEarned} (총 ${gameSave.tycoonPrestige}) — 다음 판 시작 골드 +${gameSave.tycoonPrestige * 20}G</div>` : ''}
       <button class="btn-primary def-result-close">확인</button>
     </div>`;
   screen.appendChild(overlay);
   overlay.querySelector('.def-result-close').addEventListener('click', () => {
     overlay.remove();
-    defenseState = null;
+    tycoonState = null;
     screen.style.display = 'none';
     document.getElementById('stage-select').style.display = '';
     renderStageSelect();
   });
 }
 
-function stopDefenseLoop() {
-  if (defenseLoopTimer) { clearInterval(defenseLoopTimer); defenseLoopTimer = null; }
+function stopTycoonLoop() {
+  if (tycoonLoopTimer) { clearInterval(tycoonLoopTimer); tycoonLoopTimer = null; }
 }
 
-function startDefenseLoop() {
-  stopDefenseLoop();
-  if (defenseSpeed === 0) return;
-  const interval = defenseSpeed === 2 ? 250 : 500;
-  defenseLoopTimer = setInterval(defenseGameTick, interval);
+function startTycoonLoop() {
+  stopTycoonLoop();
+  if (tycoonSpeed === 0) return;
+  const interval = tycoonSpeed === 2 ? 250 : 500;
+  tycoonLoopTimer = setInterval(tycoonGameTick, interval);
 }
 
-function updateSpeedBtn() {
+function updateTycoonSpeedBtn() {
   const btn = document.getElementById('btn-defense-speed');
   if (!btn) return;
   const labels = ['⏸', '×1', '×2'];
-  btn.textContent = labels[defenseSpeed] || '⏸';
-  btn.classList.toggle('btn-primary', defenseSpeed > 0);
-  btn.classList.toggle('btn-secondary', defenseSpeed === 0);
+  btn.textContent = labels[tycoonSpeed] || '⏸';
+  btn.classList.toggle('btn-primary', tycoonSpeed > 0);
+  btn.classList.toggle('btn-secondary', tycoonSpeed === 0);
 }
 
-function initDefenseControls() {
-  document.getElementById('btn-defense-summon')?.addEventListener('click', () => {
-    if (!defenseState) return;
-    defenseSummon();
-  });
-  document.getElementById('btn-defense-multi')?.addEventListener('click', () => {
-    if (!defenseState) return;
-    defenseMultiSummon();
-  });
-  document.getElementById('btn-defense-merge')?.addEventListener('click', () => {
-    if (!defenseState) return;
-    defenseDoMerge();
-  });
+function initTycoonControls() {
   document.getElementById('btn-defense-start')?.addEventListener('click', () => {
-    if (!defenseState || defenseState.phase !== 'prep') return;
-    defenseStartCombat();
+    if (!tycoonState || tycoonState.phase !== 'prep') return;
+    tycoonStartOperating();
   });
   document.getElementById('btn-defense-quit')?.addEventListener('click', () => {
-    if (!defenseState) return;
-    stopDefenseLoop();
-    endDefenseMode(false);
+    if (!tycoonState) return;
+    stopTycoonLoop();
+    endTycoonMode(false);
   });
   document.getElementById('btn-defense-speed')?.addEventListener('click', () => {
-    defenseSpeed = (defenseSpeed + 1) % 3;
-    updateSpeedBtn();
-    if (defenseSpeed > 0) startDefenseLoop();
-    else stopDefenseLoop();
-  });
-  document.getElementById('btn-defense-auto-summon')?.addEventListener('click', () => {
-    defenseAutoSummon = !defenseAutoSummon;
-    const btn = document.getElementById('btn-defense-auto-summon');
-    btn.textContent = defenseAutoSummon ? '자동소환 ON' : '자동소환 OFF';
-    btn.classList.toggle('btn-primary', defenseAutoSummon);
-    btn.classList.toggle('btn-secondary', !defenseAutoSummon);
-  });
-  document.getElementById('btn-defense-auto-merge')?.addEventListener('click', () => {
-    defenseAutoMerge = !defenseAutoMerge;
-    const btn = document.getElementById('btn-defense-auto-merge');
-    btn.textContent = defenseAutoMerge ? '자동합성 ON' : '자동합성 OFF';
-    btn.classList.toggle('btn-primary', defenseAutoMerge);
-    btn.classList.toggle('btn-secondary', !defenseAutoMerge);
+    tycoonSpeed = (tycoonSpeed + 1) % 3;
+    updateTycoonSpeedBtn();
+    if (tycoonSpeed > 0) startTycoonLoop();
+    else stopTycoonLoop();
   });
 }
 
@@ -4650,7 +4364,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderStageSelect();
   renderStats();
   renderSettings();
-  initDefenseControls();
+  initTycoonControls();
 
   document.querySelectorAll('.log-filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {

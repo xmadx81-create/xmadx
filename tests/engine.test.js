@@ -16,12 +16,11 @@ import {
   spawnReinforcements, getFlankingBonus, applyStatGrowth, FACTIONS,
   PASSIVE_TREE, FACTION_SYNERGY, applyFactionSynergy, getDangerZone,
   STORY_ACTS, getScaledEnemyLevel,
-  createDefenseState, DEFENSE_GRID, createDefensePath,
-  defenseDrawCards, defenseMerge, defenseAutoAttack,
-  defenseAdvanceEnemies, defenseSpawnEnemies, isDefenseWaveComplete,
-  generateDefenseWave, getDefenseRewards, defenseTickSlow,
-  defenseActivateSkills, defenseTickSkillEffects, DEFENSE_SKILLS,
-  getWavePreview,
+  createTycoonState, TYCOON_GRID, FACILITY_TYPES, BLOOD_TYPES,
+  generateDonorWave, getDayPreview, generateOrders,
+  placeFacility, assignStaff, countFacilities, getProcessingSpeed,
+  tycoonTick, fulfillOrder, tycoonDayIncome,
+  upgradeFacility, TYCOON_EVENTS, rollTycoonEvent,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, getUnlockedLoreStage, LORE_MILESTONES } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -2801,466 +2800,266 @@ describe('서사 해금 시스템', () => {
   });
 });
 
-describe('방어전 (Tower Defense) 시스템', () => {
-  it('DEFENSE_GRID는 5×8이다', () => {
-    expect(DEFENSE_GRID.w).toBe(5);
-    expect(DEFENSE_GRID.h).toBe(8);
+describe('헌혈의집 타이쿤 시스템', () => {
+  it('TYCOON_GRID는 5×8이다', () => {
+    expect(TYCOON_GRID.w).toBe(5);
+    expect(TYCOON_GRID.h).toBe(8);
   });
 
-  it('방어전 경로가 U자형이다', () => {
-    const path = createDefensePath(5, 8);
-    expect(path.length).toBeGreaterThan(10);
-    expect(path[0].x).toBe(0);
-    expect(path[path.length - 1].x).toBe(6);
-  });
-
-  it('createDefenseState가 올바른 초기 상태를 생성한다', () => {
-    const state = createDefenseState(1);
-    expect(state.wave).toBe(1);
-    expect(state.lives).toBe(20);
-    expect(state.grid.length).toBe(8);
-    expect(state.grid[0].length).toBe(5);
-    expect(state.enemies).toEqual([]);
-    expect(state.spawnQueue.length).toBeGreaterThan(0);
-    expect(state.phase).toBe('draw');
-  });
-
-  it('웨이브별 적 수가 증가한다', () => {
-    const w1 = generateDefenseWave(1);
-    const w5 = generateDefenseWave(5);
-    const w10 = generateDefenseWave(10);
-    expect(w5.length).toBeGreaterThan(w1.length);
-    expect(w10.length).toBeGreaterThan(w5.length);
-  });
-
-  it('웨이브 5의 배수에 보스가 출현한다', () => {
-    const w5 = generateDefenseWave(5);
-    const boss = w5.find(e => e.unit.uid.includes('boss'));
-    expect(boss).toBeDefined();
-    expect(boss.unit.rarity).toBe('legendary');
-  });
-
-  it('defenseDrawCards가 3장의 카드를 반환한다', () => {
-    const cards = defenseDrawCards(1);
-    expect(cards.length).toBe(3);
-    cards.forEach(c => expect(c.id).toBeDefined());
-  });
-
-  it('defenseMerge가 항상 결과를 반환한다', () => {
-    const result = defenseMerge('kim-doyun', 'common');
-    expect(result.success).toBe(true);
-    expect(result.char).toBeDefined();
-    expect(result.char.id).toBeDefined();
-  });
-
-  it('defenseAutoAttack이 사거리 내 적을 공격한다', () => {
-    const state = createDefenseState(1);
-    const char = CHARACTERS.find(c => c.id === 'kim-doyun');
-    const unit = cardToUnit(char, 0, 0);
-    unit.team = 'player';
-    unit.uid = 'def-test-0-0';
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(char, -1, -1);
-    enemy.team = 'enemy';
-    enemy.uid = 'def-enemy-test';
-    enemy.hp = 100;
-    enemy.maxHp = 100;
-    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
-    const results = defenseAutoAttack(state);
-    expect(results.length).toBeGreaterThanOrEqual(0);
-  });
-
-  it('적이 경로 끝에 도달하면 라이프가 감소한다', () => {
-    const state = createDefenseState(1);
-    const char = CHARACTERS.find(c => c.rarity === 'common');
-    const enemy = cardToUnit(char, -1, -1);
-    enemy.team = 'enemy';
-    enemy.uid = 'escape-test';
-    state.enemies.push({ unit: enemy, speed: 999, pathIndex: 0 });
-    const escaped = defenseAdvanceEnemies(state);
-    expect(escaped.length).toBe(1);
-    expect(state.lives).toBe(19);
-  });
-
-  it('getDefenseRewards가 웨이브에 따라 보상을 반환한다', () => {
-    const r1 = getDefenseRewards(1);
-    const r10 = getDefenseRewards(10);
-    expect(r1.cards.length).toBeGreaterThan(0);
-    expect(r10.cards).toContain('rare');
-    expect(r10.tickets).toBe(3);
-  });
-
-  it('isDefenseWaveComplete — 모든 적 처리 후 true', () => {
-    const state = createDefenseState(1);
-    state.spawnIndex = state.spawnQueue.length;
-    state.enemies = state.spawnQueue.map(e => ({ ...e, unit: { ...e.unit, hp: 0 } }));
-    expect(isDefenseWaveComplete(state)).toBe(true);
-  });
-
-  it('서포트 유닛이 인접 아군에게 ATK+3 버프 적용', () => {
-    const state = createDefenseState(1);
-    const supporter = CHARACTERS.find(c => c.role === 'support');
-    const fighter = CHARACTERS.find(c => c.role === 'melee_dps');
-    const sUnit = cardToUnit(supporter, 0, 0);
-    sUnit.team = 'player';
-    state.grid[0][0] = sUnit;
-    const fUnit = cardToUnit(fighter, 1, 0);
-    fUnit.team = 'player';
-    state.grid[0][1] = fUnit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy';
-    enemy.hp = 500;
-    enemy.maxHp = 500;
-    enemy.def = 0;
-    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
-    defenseAutoAttack(state);
-    expect(fUnit._supportBuff).toBe(0);
-  });
-
-  it('탱크가 적을 감속시킨다', () => {
-    const state = createDefenseState(1);
-    const tank = CHARACTERS.find(c => c.role === 'tank');
-    const tUnit = cardToUnit(tank, 0, 0);
-    tUnit.team = 'player';
-    tUnit.atk = 50;
-    state.grid[0][0] = tUnit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy';
-    enemy.hp = 500;
-    enemy.maxHp = 500;
-    enemy.def = 0;
-    const enemyEntry = { unit: enemy, speed: 2, pathIndex: 1 };
-    state.enemies.push(enemyEntry);
-    defenseAutoAttack(state);
-    expect(enemyEntry.speed).toBe(1);
-    expect(enemyEntry._slowed).toBe(2);
-  });
-
-  it('defenseTickSlow가 감속을 해제한다', () => {
-    const state = createDefenseState(1);
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy';
-    enemy.role = 'melee_dps';
-    const entry = { unit: enemy, speed: 1, pathIndex: 0, _slowed: 1 };
-    state.enemies.push(entry);
-    defenseTickSlow(state);
-    expect(entry.speed).toBe(2);
-    expect(entry._slowed).toBeUndefined();
-  });
-
-  it('합성 — 같은 캐릭 유지, 등급 업', () => {
-    const result = defenseMerge('kim-doyun', 'common');
-    expect(result.success).toBe(true);
-    expect(result.char.id).toBe('kim-doyun');
-    expect(result.newRarity).toBe('uncommon');
-    expect(result.upgraded).toBe(true);
-    expect(result.statMult).toBe(1.5);
-    const legendResult = defenseMerge('kim-doyun', 'legendary');
-    expect(legendResult.newRarity).toBe('legendary');
-    expect(legendResult.statMult).toBe(1.2);
-  });
-});
-
-describe('방어전 스킬 시스템', () => {
-  it('DEFENSE_SKILLS에 8개 역할별 스킬이 정의되어 있다', () => {
-    const roles = ['tank', 'melee_dps', 'ranged_dps', 'support', 'bruiser', 'breaker', 'evasive_dps', 'battle_support'];
-    roles.forEach(role => {
-      const skill = DEFENSE_SKILLS[role];
-      expect(skill).toBeDefined();
-      expect(skill.name).toBeDefined();
-      expect(skill.icon).toBeDefined();
-      expect(skill.cooldown).toBeGreaterThan(0);
-      expect(skill.desc).toBeDefined();
+  it('FACILITY_TYPES에 5종 시설이 정의되어 있다', () => {
+    const ids = ['reception', 'bed', 'lab', 'storage', 'lounge'];
+    ids.forEach(id => {
+      const f = FACILITY_TYPES[id];
+      expect(f).toBeDefined();
+      expect(f.name).toBeDefined();
+      expect(f.cost).toBeGreaterThan(0);
+      expect(f.icon).toBeDefined();
     });
   });
 
-  it('defenseActivateSkills — 쿨다운 0이면 스킬 발동 + 쿨다운 설정', () => {
-    const state = createDefenseState(1);
-    const melee = CHARACTERS.find(c => c.role === 'melee_dps');
-    const unit = cardToUnit(melee, 0, 0);
-    unit.team = 'player';
-    unit._defSkillCd = 0;
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy'; enemy.hp = 500; enemy.maxHp = 500;
-    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
-    const results = defenseActivateSkills(state);
-    expect(results.length).toBeGreaterThan(0);
-    expect(unit._defSkillCd).toBe(DEFENSE_SKILLS.melee_dps.cooldown);
-    expect(unit._skillDmgMult).toBe(3);
+  it('BLOOD_TYPES에 4종 혈액형이 정의되어 있다', () => {
+    expect(BLOOD_TYPES).toEqual(['A', 'B', 'O', 'AB']);
   });
 
-  it('defenseActivateSkills — 쿨다운 > 0이면 스킬 미발동 + 쿨다운 감소', () => {
-    const state = createDefenseState(1);
-    const melee = CHARACTERS.find(c => c.role === 'melee_dps');
-    const unit = cardToUnit(melee, 0, 0);
-    unit.team = 'player';
-    unit._defSkillCd = 3;
-    state.grid[0][0] = unit;
-    const results = defenseActivateSkills(state);
-    expect(results.length).toBe(0);
-    expect(unit._defSkillCd).toBe(2);
+  it('createTycoonState가 올바른 초기 상태를 생성한다', () => {
+    const state = createTycoonState(1);
+    expect(state.day).toBe(1);
+    expect(state.reputation).toBe(20);
+    expect(state.gold).toBe(100);
+    expect(state.grid.length).toBe(8);
+    expect(state.grid[0].length).toBe(5);
+    expect(state.donors).toEqual([]);
+    expect(state.blood).toEqual({ A: 0, B: 0, O: 0, AB: 0 });
+    expect(state.phase).toBe('prep');
+    expect(state.maxStorage).toBe(10);
   });
 
-  it('탱크 스킬 — 경로 위 적 전체 감속', () => {
-    const state = createDefenseState(1);
-    const tank = CHARACTERS.find(c => c.role === 'tank');
-    const unit = cardToUnit(tank, 0, 0);
-    unit.team = 'player';
-    unit._defSkillCd = 0;
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy'; enemy.hp = 500; enemy.maxHp = 500;
-    const entry = { unit: enemy, speed: 2, pathIndex: 1 };
-    state.enemies.push(entry);
-    defenseActivateSkills(state);
-    expect(entry.speed).toBe(1);
-    expect(entry._slowed).toBeGreaterThanOrEqual(1);
+  it('generateDonorWave — 날짜별 헌혈자 수 증가', () => {
+    const d1 = generateDonorWave(1);
+    const d5 = generateDonorWave(5);
+    const d10 = generateDonorWave(10);
+    expect(d5.length).toBeGreaterThan(d1.length);
+    expect(d10.length).toBeGreaterThan(d5.length);
   });
 
-  it('원거리 스킬 — 사거리+2, 데미지×2 적용', () => {
-    const state = createDefenseState(1);
-    const ranged = CHARACTERS.find(c => c.role === 'ranged_dps');
-    const unit = cardToUnit(ranged, 0, 0);
-    unit.team = 'player';
-    unit._defSkillCd = 0;
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy'; enemy.hp = 500; enemy.maxHp = 500;
-    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
-    defenseActivateSkills(state);
-    expect(unit._skillRngBonus).toBe(2);
-    expect(unit._skillDmgMult).toBe(2);
+  it('generateDonorWave — 헌혈자 혈액형이 유효하다', () => {
+    const donors = generateDonorWave(1);
+    donors.forEach(d => {
+      expect(BLOOD_TYPES).toContain(d.bloodType);
+      expect(d.patience).toBeGreaterThan(0);
+      expect(d.status).toBe('waiting');
+    });
   });
 
-  it('서포트 스킬 — 인접 아군 ATK+5 버프', () => {
-    const state = createDefenseState(1);
-    const support = CHARACTERS.find(c => c.role === 'support');
-    const fighter = CHARACTERS.find(c => c.role === 'melee_dps');
-    const sUnit = cardToUnit(support, 0, 0);
-    sUnit.team = 'player';
-    sUnit._defSkillCd = 0;
-    state.grid[0][0] = sUnit;
-    const fUnit = cardToUnit(fighter, 1, 0);
-    fUnit.team = 'player';
-    state.grid[0][1] = fUnit;
-    defenseActivateSkills(state);
-    expect(fUnit._skillBuff).toBeDefined();
-    expect(fUnit._skillBuff.stat).toBe('atk');
-    expect(fUnit._skillBuff.val).toBe(5);
-    expect(fUnit._skillBuff.turns).toBe(2);
+  it('getDayPreview가 올바른 구조를 반환한다', () => {
+    const p = getDayPreview(1);
+    expect(p.count).toBe(5);
+    expect(p.day).toBe(1);
+    expect(p.hasVIP).toBe(false);
+    const p5 = getDayPreview(5);
+    expect(p5.hasVIP).toBe(true);
   });
 
-  it('회피딜러 스킬 — 4체 연속 공격', () => {
-    const state = createDefenseState(1);
-    const evasive = CHARACTERS.find(c => c.role === 'evasive_dps');
-    const unit = cardToUnit(evasive, 0, 0);
-    unit.team = 'player';
-    unit._defSkillCd = 0;
-    state.grid[0][0] = unit;
-    state.enemies.push({ unit: { hp: 500, maxHp: 500, def: 0, team: 'enemy' }, speed: 1, pathIndex: 1 });
-    defenseActivateSkills(state);
-    expect(unit._skillHitCount).toBe(4);
+  it('generateOrders — 날짜별 주문 생성', () => {
+    const o1 = generateOrders(1);
+    expect(o1.length).toBeGreaterThan(0);
+    o1.forEach(o => {
+      expect(BLOOD_TYPES).toContain(o.bloodType);
+      expect(o.quantity).toBeGreaterThan(0);
+      expect(o.reward).toBeGreaterThan(0);
+      expect(o.deadline).toBeGreaterThan(0);
+    });
   });
 
-  it('전투서포트 스킬 — 적 DEF-3 디버프', () => {
-    const state = createDefenseState(1);
-    const bs = CHARACTERS.find(c => c.role === 'battle_support');
-    const unit = cardToUnit(bs, 0, 0);
-    unit.team = 'player';
-    unit._defSkillCd = 0;
-    unit.rng = 2;
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy'; enemy.hp = 500; enemy.maxHp = 500;
-    const entry = { unit: enemy, speed: 1, pathIndex: 1 };
-    state.enemies.push(entry);
-    defenseActivateSkills(state);
-    expect(enemy._defDebuff).toBeDefined();
-    expect(enemy._defDebuff.val).toBe(3);
-    expect(enemy._defDebuff.turns).toBe(2);
+  it('placeFacility — 시설 배치 성공', () => {
+    const state = createTycoonState(1);
+    const result = placeFacility(state, 0, 0, 'bed');
+    expect(result.success).toBe(true);
+    expect(state.grid[0][0]).toBeDefined();
+    expect(state.grid[0][0].id).toBe('bed');
+    expect(state.gold).toBe(50);
   });
 
-  it('defenseTickSkillEffects — 1회성 플래그 제거', () => {
-    const state = createDefenseState(1);
-    const unit = cardToUnit(CHARACTERS.find(c => c.role === 'melee_dps'), 0, 0);
-    unit._skillDmgMult = 3;
-    unit._skillRngBonus = 2;
-    unit._skillHitCount = 4;
-    state.grid[0][0] = unit;
-    state.enemies = [];
-    defenseTickSkillEffects(state);
-    expect(unit._skillDmgMult).toBeUndefined();
-    expect(unit._skillRngBonus).toBeUndefined();
-    expect(unit._skillHitCount).toBeUndefined();
+  it('placeFacility — 골드 부족 시 실패', () => {
+    const state = createTycoonState(1);
+    state.gold = 10;
+    const result = placeFacility(state, 0, 0, 'bed');
+    expect(result.success).toBe(false);
   });
 
-  it('defenseTickSkillEffects — 버프 턴 감소 후 제거', () => {
-    const state = createDefenseState(1);
-    const unit = cardToUnit(CHARACTERS.find(c => c.role === 'melee_dps'), 0, 0);
-    unit._skillBuff = { stat: 'atk', val: 5, turns: 1 };
-    state.grid[0][0] = unit;
-    state.enemies = [];
-    defenseTickSkillEffects(state);
-    expect(unit._skillBuff).toBeUndefined();
+  it('placeFacility — 이미 배치된 타일에 실패', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    const result = placeFacility(state, 0, 0, 'lab');
+    expect(result.success).toBe(false);
   });
 
-  it('defenseTickSkillEffects — 적 디버프 턴 감소 후 제거', () => {
-    const state = createDefenseState(1);
-    state.grid[0][0] = null;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy._defDebuff = { stat: 'def', val: 3, turns: 1 };
-    state.enemies = [{ unit: enemy, speed: 1, pathIndex: 0 }];
-    defenseTickSkillEffects(state);
-    expect(enemy._defDebuff).toBeUndefined();
+  it('placeFacility — 저장고 배치 시 maxStorage 증가', () => {
+    const state = createTycoonState(1);
+    const before = state.maxStorage;
+    placeFacility(state, 0, 0, 'storage');
+    expect(state.maxStorage).toBe(before + 10);
   });
 
-  it('defenseAutoAttack — _skillDmgMult가 데미지 배율에 반영', () => {
-    const state = createDefenseState(1);
-    const melee = CHARACTERS.find(c => c.role === 'melee_dps');
-    const unit = cardToUnit(melee, 0, 0);
-    unit.team = 'player';
-    unit.atk = 20;
-    unit.crt = 0;
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy'; enemy.hp = 5000; enemy.maxHp = 5000; enemy.def = 0;
-    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
-    const normalResults = defenseAutoAttack(state);
-    const normalDmg = normalResults[0]?.damage || 0;
-    enemy.hp = 5000;
-    unit._skillDmgMult = 3;
-    const skillResults = defenseAutoAttack(state);
-    const skillDmg = skillResults[0]?.damage || 0;
-    expect(skillDmg).toBeGreaterThan(normalDmg);
+  it('assignStaff — 직원 배치', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    const char = CHARACTERS[0];
+    const result = assignStaff(state, 0, 0, char);
+    expect(result).toBe(true);
+    expect(state.grid[0][0].staff).toBe(char);
   });
 
-  it('defenseAutoAttack — _defDebuff가 적 DEF 감소에 반영', () => {
-    const state = createDefenseState(1);
-    const breaker = CHARACTERS.find(c => c.role === 'melee_dps');
-    const unit = cardToUnit(breaker, 0, 0);
-    unit.team = 'player';
-    unit.atk = 20;
-    unit.crt = 0;
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy'; enemy.hp = 5000; enemy.maxHp = 5000; enemy.def = 10;
-    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
-    const normalResults = defenseAutoAttack(state);
-    const normalDmg = normalResults[0]?.damage || 0;
-    enemy.hp = 5000;
-    enemy._defDebuff = { stat: 'def', val: 5, turns: 2 };
-    const debuffResults = defenseAutoAttack(state);
-    const debuffDmg = debuffResults[0]?.damage || 0;
-    expect(debuffDmg).toBeGreaterThan(normalDmg);
+  it('assignStaff — 빈 타일에 실패', () => {
+    const state = createTycoonState(1);
+    const result = assignStaff(state, 0, 0, CHARACTERS[0]);
+    expect(result).toBe(false);
   });
 
-  it('defenseAutoAttack — _skillRngBonus가 사거리 확장에 반영', () => {
-    const state = createDefenseState(1);
-    const ranged = CHARACTERS.find(c => c.role === 'ranged_dps');
-    const unit = cardToUnit(ranged, 0, 0);
-    unit.team = 'player';
-    unit.atk = 20;
-    unit.rng = 1;
-    unit.crt = 0;
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy'; enemy.hp = 5000; enemy.maxHp = 5000; enemy.def = 0;
-    const farPath = state.path.findIndex(p => Math.abs((0 + 1) - p.x) + Math.abs((0 + 1) - p.y) === 3);
-    if (farPath >= 0) {
-      state.enemies.push({ unit: enemy, speed: 1, pathIndex: farPath });
-      const noSkill = defenseAutoAttack(state);
-      expect(noSkill.length).toBe(0);
-      unit._skillRngBonus = 2;
-      const withSkill = defenseAutoAttack(state);
-      expect(withSkill.length).toBeGreaterThan(0);
-    }
+  it('countFacilities — 시설 개수 카운트', () => {
+    const state = createTycoonState(1);
+    state.gold = 500;
+    placeFacility(state, 0, 0, 'bed');
+    placeFacility(state, 0, 1, 'bed');
+    placeFacility(state, 0, 2, 'lab');
+    expect(countFacilities(state, 'bed')).toBe(2);
+    expect(countFacilities(state, 'lab')).toBe(1);
+    expect(countFacilities(state, 'storage')).toBe(0);
   });
 
-  it('defenseAutoAttack — _skillHitCount가 타격 횟수 오버라이드', () => {
-    const state = createDefenseState(1);
-    const evasive = CHARACTERS.find(c => c.role === 'evasive_dps');
-    const unit = cardToUnit(evasive, 0, 0);
-    unit.team = 'player';
-    unit.atk = 10;
-    unit.crt = 0;
-    state.grid[0][0] = unit;
-    for (let i = 0; i < 5; i++) {
-      const e = cardToUnit(CHARACTERS[0], -1, -1);
-      e.team = 'enemy'; e.hp = 5000; e.maxHp = 5000; e.def = 0;
-      state.enemies.push({ unit: e, speed: 1, pathIndex: 1 });
-    }
-    const normalResults = defenseAutoAttack(state);
-    const normalHits = normalResults.filter(r => r.attacker === unit).length;
-    state.enemies.forEach(e => e.unit.hp = 5000);
-    unit._skillHitCount = 4;
-    const skillResults = defenseAutoAttack(state);
-    const skillHits = skillResults.filter(r => r.attacker === unit).length;
-    expect(skillHits).toBeGreaterThanOrEqual(normalHits);
+  it('getProcessingSpeed — 기본 속도 1', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    const speed = getProcessingSpeed(state.grid[0][0]);
+    expect(speed).toBe(1);
   });
 
-  it('defenseAutoAttack — _skillBuff ATK 반영', () => {
-    const state = createDefenseState(1);
-    const fighter = CHARACTERS.find(c => c.role === 'melee_dps');
-    const unit = cardToUnit(fighter, 0, 0);
-    unit.team = 'player';
-    unit.atk = 20;
-    unit.crt = 0;
-    state.grid[0][0] = unit;
-    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
-    enemy.team = 'enemy'; enemy.hp = 5000; enemy.maxHp = 5000; enemy.def = 0;
-    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
-    const normalResults = defenseAutoAttack(state);
-    const normalDmg = normalResults[0]?.damage || 0;
-    enemy.hp = 5000;
-    unit._skillBuff = { stat: 'atk', val: 10, turns: 2 };
-    const buffResults = defenseAutoAttack(state);
-    const buffDmg = buffResults[0]?.damage || 0;
-    expect(buffDmg).toBeGreaterThan(normalDmg);
-  });
-});
-
-describe('웨이브 미리보기 시스템', () => {
-  it('getWavePreview가 올바른 구조를 반환한다', () => {
-    const p = getWavePreview(1);
-    expect(p.count).toBe(7);
-    expect(p.wave).toBe(1);
-    expect(p.hasBoss).toBe(false);
-    expect(p.hpMult).toBeCloseTo(1.12, 1);
-    expect(p.topRoles).toBeDefined();
-    expect(p.topRoles.length).toBeGreaterThan(0);
-    expect(p.topRoles.length).toBeLessThanOrEqual(3);
+  it('getProcessingSpeed — 직원 배치 시 보너스', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    const supporter = CHARACTERS.find(c => c.role === 'support');
+    assignStaff(state, 0, 0, supporter);
+    const speed = getProcessingSpeed(state.grid[0][0]);
+    expect(speed).toBeGreaterThan(1);
   });
 
-  it('웨이브 5에 보스 표시', () => {
-    const p = getWavePreview(5);
-    expect(p.hasBoss).toBe(true);
+  it('fulfillOrder — 혈액 납품 성공', () => {
+    const state = createTycoonState(1);
+    state.blood.A = 5;
+    state.orders.push({ id: 'test-order', bloodType: 'A', quantity: 3, reward: 100, deadline: 10, maxDeadline: 10, urgent: false, fulfilled: 0 });
+    const result = fulfillOrder(state, 'test-order');
+    expect(result.success).toBe(true);
+    expect(result.done).toBe(true);
+    expect(result.reward).toBe(100);
+    expect(state.blood.A).toBe(2);
+    expect(state.gold).toBe(200);
   });
 
-  it('웨이브 10에 보스 표시 + HP 배율 상승', () => {
-    const p = getWavePreview(10);
-    expect(p.hasBoss).toBe(true);
-    expect(p.hpMult).toBeGreaterThan(1.5);
+  it('fulfillOrder — 혈액 부족 시 실패', () => {
+    const state = createTycoonState(1);
+    state.blood.A = 0;
+    state.orders.push({ id: 'test-order', bloodType: 'A', quantity: 3, reward: 100, deadline: 10, maxDeadline: 10, urgent: false, fulfilled: 0 });
+    const result = fulfillOrder(state, 'test-order');
+    expect(result.success).toBe(false);
   });
 
-  it('웨이브 수 증가에 따라 적 수 증가', () => {
-    const p1 = getWavePreview(1);
-    const p5 = getWavePreview(5);
-    expect(p5.count).toBeGreaterThan(p1.count);
+  it('fulfillOrder — 부분 납품', () => {
+    const state = createTycoonState(1);
+    state.blood.B = 2;
+    state.orders.push({ id: 'test-order', bloodType: 'B', quantity: 5, reward: 100, deadline: 10, maxDeadline: 10, urgent: false, fulfilled: 0 });
+    const result = fulfillOrder(state, 'test-order');
+    expect(result.success).toBe(true);
+    expect(result.delivered).toBe(2);
+    expect(result.done).toBe(false);
+    expect(state.blood.B).toBe(0);
   });
 
-  it('generateDefenseWave가 여전히 유닛 배열을 반환한다', () => {
-    const queue = generateDefenseWave(1);
-    expect(queue.length).toBeGreaterThan(0);
-    expect(queue[0].unit).toBeDefined();
-    expect(queue[0].speed).toBeDefined();
+  it('tycoonDayIncome — 기본 수입 + 이자', () => {
+    const income = tycoonDayIncome(1, 100);
+    expect(income).toBe(25 + 10);
+    const income5 = tycoonDayIncome(5, 200);
+    expect(income5).toBe(45 + 20);
   });
 
-  it('웨이브 5 generateDefenseWave에 보스가 포함된다', () => {
-    const queue = generateDefenseWave(5);
-    const boss = queue.find(e => e.unit.uid.includes('boss'));
-    expect(boss).toBeDefined();
-    expect(boss.unit.rarity).toBe('legendary');
+  it('upgradeFacility — 업그레이드 성공', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    state.gold = 200;
+    const result = upgradeFacility(state, 0, 0);
+    expect(result.success).toBe(true);
+    expect(result.level).toBe(2);
+    expect(state.grid[0][0].level).toBe(2);
+  });
+
+  it('upgradeFacility — MAX 레벨 시 실패', () => {
+    const state = createTycoonState(1);
+    placeFacility(state, 0, 0, 'bed');
+    state.grid[0][0].level = 3;
+    state.gold = 9999;
+    const result = upgradeFacility(state, 0, 0);
+    expect(result.success).toBe(false);
+  });
+
+  it('TYCOON_EVENTS에 4종 이벤트가 정의되어 있다', () => {
+    expect(TYCOON_EVENTS.length).toBe(4);
+    TYCOON_EVENTS.forEach(e => {
+      expect(e.id).toBeDefined();
+      expect(e.icon).toBeDefined();
+      expect(e.name).toBeDefined();
+    });
+  });
+
+  it('rollTycoonEvent — 3의 배수 날에만 이벤트 발생', () => {
+    expect(rollTycoonEvent(1)).toBeNull();
+    expect(rollTycoonEvent(2)).toBeNull();
+    const e3 = rollTycoonEvent(3);
+    expect(e3).toBeDefined();
+    expect(e3.id).toBeDefined();
+    expect(rollTycoonEvent(0)).toBeNull();
+  });
+
+  it('tycoonTick — 헌혈자 도착 이벤트', () => {
+    const state = createTycoonState(1);
+    state.phase = 'operating';
+    state.donorQueue = [{ id: 'd1', bloodType: 'A', patience: 20, maxPatience: 20, status: 'waiting', isVIP: false, isNervous: false, amount: 1, spawnDelay: 0, assignedFacility: null }];
+    state.tickCount = 0;
+    const events = tycoonTick(state);
+    const arrive = events.find(e => e.type === 'donor_arrive');
+    expect(arrive).toBeDefined();
+    expect(state.donors.length).toBe(1);
+  });
+
+  it('tycoonTick — 헌혈자 이탈 시 평판 감소', () => {
+    const state = createTycoonState(1);
+    state.phase = 'operating';
+    state.donors = [{ id: 'd1', bloodType: 'A', patience: 0.5, maxPatience: 20, status: 'waiting', isVIP: false, isNervous: false, amount: 1, spawnDelay: 0, assignedFacility: null }];
+    const events = tycoonTick(state);
+    const left = events.find(e => e.type === 'donor_left');
+    expect(left).toBeDefined();
+    expect(state.reputation).toBe(19);
+  });
+
+  it('tycoonTick — 채혈 완료 시 혈액 수집', () => {
+    const state = createTycoonState(1);
+    state.phase = 'operating';
+    placeFacility(state, 0, 0, 'bed');
+    const bed = state.grid[0][0];
+    bed.busy = true;
+    bed.progress = bed.processTime - 0.5;
+    bed.donor = { id: 'd1', bloodType: 'O', patience: 20, maxPatience: 20, status: 'collecting', amount: 1, assignedFacility: bed.uid };
+    state.donors = [bed.donor];
+    const events = tycoonTick(state);
+    const collected = events.find(e => e.type === 'blood_collected');
+    expect(collected).toBeDefined();
+    expect(state.blood.O).toBe(1);
+  });
+
+  it('tycoonTick — 주문 기한 만료 시 평판 감소', () => {
+    const state = createTycoonState(1);
+    state.phase = 'operating';
+    state.orders = [{ id: 'o1', bloodType: 'A', quantity: 3, reward: 100, deadline: 1, maxDeadline: 10, urgent: false, fulfilled: 0 }];
+    tycoonTick(state);
+    expect(state.reputation).toBe(19);
   });
 });
 

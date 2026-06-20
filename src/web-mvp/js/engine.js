@@ -1488,530 +1488,328 @@ export function getTowerRewards(wave) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 방어전 (Tower Defense) — "혈맹의 벽"
+// 헌혈의집 타이쿤 (Blood Donation Tycoon) — "헌혈센터 경영"
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function createDefensePath(gridW, gridH) {
-  const path = [];
-  const ox = 1, oy = 0;
-  for (let y = oy; y < gridH + 2; y++) path.push({ x: ox - 1, y });
-  for (let x = ox; x < gridW + 1; x++) path.push({ x, y: gridH + 1 });
-  for (let y = gridH; y >= 0; y--) path.push({ x: gridW + 1, y });
-  return path;
-}
+export const TYCOON_GRID = { w: 5, h: 8 };
 
-export const DEFENSE_GRID = { w: 5, h: 8 };
+export const FACILITY_TYPES = {
+  reception:  { id: 'reception',  icon: '📋', name: '접수대',  cost: 30,  desc: '헌혈자 접수 속도 ↑', capacity: 0, processTime: 0 },
+  bed:        { id: 'bed',        icon: '🛏️', name: '채혈대',  cost: 50,  desc: '채혈 수행 (핵심)', capacity: 1, processTime: 8 },
+  lab:        { id: 'lab',        icon: '🔬', name: '검사실',  cost: 60,  desc: '혈액 품질검사',     capacity: 2, processTime: 5 },
+  storage:    { id: 'storage',    icon: '❄️', name: '저장고',  cost: 80,  desc: '혈액 보관 +10팩',   capacity: 10, processTime: 0 },
+  lounge:     { id: 'lounge',     icon: '☕', name: '휴게실',  cost: 40,  desc: '만족도 ↑ 이탈 방지', capacity: 2, processTime: 3 },
+};
 
-export function createDefenseState(wave) {
-  const { w, h } = DEFENSE_GRID;
-  const path = createDefensePath(w, h);
+export const BLOOD_TYPES = ['A', 'B', 'O', 'AB'];
+
+export function createTycoonState(day) {
+  const { w, h } = TYCOON_GRID;
   const grid = [];
   for (let r = 0; r < h; r++) {
     grid[r] = [];
     for (let c = 0; c < w; c++) grid[r][c] = null;
   }
   return {
-    wave,
+    day,
     grid,
-    path,
-    enemies: [],
-    lives: 20,
-    turnNumber: 0,
-    spawnQueue: generateDefenseWave(wave),
-    spawnIndex: 0,
-    phase: 'draw',
     gridW: w,
     gridH: h,
-    mergeCount: 0,
     gold: 100,
-    summonCost: 30,
+    reputation: 20,
+    phase: 'prep',
+    donors: [],
+    donorQueue: [],
+    blood: { A: 0, B: 0, O: 0, AB: 0 },
+    maxStorage: 10,
+    orders: [],
+    completedOrders: 0,
+    totalDonors: 0,
+    lostDonors: 0,
+    staff: [],
+    tickCount: 0,
+    facilityCount: 0,
+    dayIncome: 0,
   };
 }
 
-function _defenseWaveInfo(wave) {
-  const pool = wave <= 3
-    ? CHARACTERS.filter(c => c.rarity === 'common')
-    : wave <= 6
-    ? CHARACTERS.filter(c => c.rarity === 'common' || c.rarity === 'uncommon')
-    : wave <= 9
-    ? CHARACTERS.filter(c => c.rarity === 'uncommon' || c.rarity === 'rare')
-    : CHARACTERS.filter(c => c.faction === 'kartein');
-  const count = Math.min(30, 4 + wave * 3);
-  const hpMult = Math.pow(1.12, wave);
-  const hasBoss = wave % 5 === 0 && wave > 0;
-  return { pool, count, hpMult, hasBoss };
-}
-
-export function getWavePreview(wave) {
-  const info = _defenseWaveInfo(wave);
-  const roleCounts = {};
-  info.pool.forEach(c => { roleCounts[c.role] = (roleCounts[c.role] || 0) + 1; });
-  const topRoles = Object.entries(roleCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]);
-  return {
-    count: info.count,
-    hasBoss: info.hasBoss,
-    hpMult: info.hpMult,
-    topRoles,
-    wave,
-  };
-}
-
-export function generateDefenseWave(wave) {
-  const { pool, count, hpMult, hasBoss } = _defenseWaveInfo(wave);
-  const levelBase = Math.min(20, wave);
-  const queue = [];
-
-  const traitPool = wave >= 4 ? ['fast', 'tank', 'healer', null, null, null] : [null];
+export function generateDonorWave(day) {
+  const count = Math.min(30, 3 + day * 2);
+  const donors = [];
   for (let i = 0; i < count; i++) {
-    const charData = pool[Math.floor(Math.random() * pool.length)];
-    const unit = cardToUnit(charData, -1, -1);
-    unit.team = 'enemy';
-    unit.uid = `def-enemy-${wave}-${i}`;
-    for (let lv = 1; lv < levelBase; lv++) {
-      unit.maxHp += Math.floor(unit.maxHp * 0.05);
-      unit.atk += 2;
-      unit.def += 1;
-      unit.level++;
+    const bloodType = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
+    const isVIP = day >= 5 && Math.random() < 0.1;
+    const isNervous = Math.random() < 0.2;
+    donors.push({
+      id: `donor-${day}-${i}`,
+      bloodType,
+      patience: isNervous ? 12 : 20,
+      maxPatience: isNervous ? 12 : 20,
+      status: 'waiting',
+      isVIP,
+      isNervous,
+      amount: isVIP ? 2 : 1,
+      spawnDelay: i * 3,
+      assignedFacility: null,
+    });
+  }
+  return donors;
+}
+
+export function getDayPreview(day) {
+  const count = Math.min(30, 3 + day * 2);
+  const hasVIP = day >= 5;
+  return { count, hasVIP, day };
+}
+
+export function generateOrders(day) {
+  const count = Math.min(3, 1 + Math.floor(day / 3));
+  const orders = [];
+  for (let i = 0; i < count; i++) {
+    const bt = BLOOD_TYPES[Math.floor(Math.random() * BLOOD_TYPES.length)];
+    const qty = Math.min(8, 1 + Math.floor(day / 2) + Math.floor(Math.random() * 2));
+    const urgent = day >= 7 && Math.random() < 0.2;
+    const reward = qty * (urgent ? 30 : 15) + day * 5;
+    const deadline = urgent ? 15 : 30;
+    orders.push({
+      id: `order-${day}-${i}`,
+      bloodType: bt,
+      quantity: qty,
+      reward,
+      deadline,
+      maxDeadline: deadline,
+      urgent,
+      fulfilled: 0,
+    });
+  }
+  return orders;
+}
+
+export function placeFacility(state, row, col, facilityId) {
+  if (row < 0 || row >= state.gridH || col < 0 || col >= state.gridW) return { success: false };
+  if (state.grid[row][col]) return { success: false };
+  const fType = FACILITY_TYPES[facilityId];
+  if (!fType) return { success: false };
+  if (state.gold < fType.cost) return { success: false };
+  state.gold -= fType.cost;
+  state.facilityCount++;
+  const facility = {
+    id: facilityId,
+    uid: `fac-${state.facilityCount}`,
+    icon: fType.icon,
+    name: fType.name,
+    level: 1,
+    staff: null,
+    busy: false,
+    progress: 0,
+    processTime: fType.processTime,
+    donor: null,
+  };
+  if (facilityId === 'storage') {
+    state.maxStorage += fType.capacity;
+  }
+  state.grid[row][col] = facility;
+  return { success: true, facility };
+}
+
+export function assignStaff(state, row, col, charData) {
+  if (row < 0 || row >= state.gridH || col < 0 || col >= state.gridW) return false;
+  const fac = state.grid[row][col];
+  if (!fac) return false;
+  fac.staff = charData;
+  return true;
+}
+
+export function countFacilities(state, facilityId) {
+  let count = 0;
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      if (state.grid[r][c] && state.grid[r][c].id === facilityId) count++;
     }
-    unit.maxHp = Math.floor(unit.maxHp * hpMult);
-    unit.hp = unit.maxHp;
-    const trait = traitPool[Math.floor(Math.random() * traitPool.length)];
-    let speed = unit.role === 'evasive_dps' ? 3 : unit.role === 'melee_dps' ? 2 : 1;
-    if (trait === 'fast') speed *= 2;
-    if (trait === 'tank') unit.def = Math.floor(unit.def * 2);
-    if (trait) unit._trait = trait;
-    queue.push({ unit, speed, pathIndex: 0, spawnDelay: i * 2 });
+  }
+  return count;
+}
+
+export function getProcessingSpeed(facility) {
+  let speed = 1;
+  if (facility.staff) {
+    const role = facility.staff.role;
+    if (facility.id === 'bed' && (role === 'support' || role === 'battle_support')) speed += 0.5;
+    if (facility.id === 'lab' && (role === 'ranged_dps' || role === 'breaker')) speed += 0.5;
+    if (facility.id === 'reception' && (role === 'evasive_dps' || role === 'melee_dps')) speed += 0.5;
+    if (facility.id === 'lounge' && role === 'support') speed += 0.5;
+    const starBonus = facility.staff.rarity === 'legendary' ? 0.5 : facility.staff.rarity === 'rare' ? 0.3 : facility.staff.rarity === 'uncommon' ? 0.15 : 0;
+    speed += starBonus;
+  }
+  return speed;
+}
+
+export function tycoonTick(state) {
+  const events = [];
+  state.tickCount++;
+
+  while (state.donorQueue.length > 0) {
+    const next = state.donorQueue[0];
+    if (next.spawnDelay > state.tickCount) break;
+    next.status = 'waiting';
+    state.donors.push(next);
+    state.donorQueue.shift();
+    events.push({ type: 'donor_arrive', donor: next });
   }
 
-  if (hasBoss) {
-    const bosses = CHARACTERS.filter(c => c.rarity === 'legendary');
-    const bossChar = bosses[Math.floor(Math.random() * bosses.length)];
-    const boss = cardToUnit(bossChar, -1, -1);
-    boss.team = 'enemy';
-    boss.uid = `def-boss-${wave}`;
-    for (let lv = 1; lv < levelBase + 3; lv++) {
-      boss.maxHp += Math.floor(boss.maxHp * 0.07);
-      boss.atk += 3;
-      boss.def += 2;
-      boss.level++;
+  const receptions = countFacilities(state, 'reception');
+  const lounges = countFacilities(state, 'lounge');
+  const patienceBonus = lounges * 2;
+
+  for (const donor of state.donors) {
+    if (donor.status === 'done' || donor.status === 'left') continue;
+
+    if (donor.status === 'waiting') {
+      const receptionSpeed = 1 + receptions * 0.5;
+      donor.patience -= (1 / receptionSpeed);
+      donor.patience += patienceBonus * 0.05;
+      if (donor.patience <= 0) {
+        donor.status = 'left';
+        state.lostDonors++;
+        state.reputation--;
+        events.push({ type: 'donor_left', donor });
+        continue;
+      }
+      const bed = _findFreeFacility(state, 'bed');
+      if (bed) {
+        donor.status = 'collecting';
+        donor.assignedFacility = bed.uid;
+        bed.busy = true;
+        bed.donor = donor;
+        bed.progress = 0;
+        events.push({ type: 'donor_seated', donor, facility: bed });
+      }
     }
-    boss.maxHp = Math.floor(boss.maxHp * hpMult * 1.5);
-    boss.hp = boss.maxHp;
-    const bossSkills = ['shield', 'summon', 'rage'];
-    boss._bossSkill = bossSkills[Math.floor(Math.random() * bossSkills.length)];
-    queue.push({ unit: boss, speed: 1, pathIndex: 0, spawnDelay: Math.floor(count / 2) * 2 });
-  }
 
-  return queue;
-}
+    if (donor.status === 'collecting') {
+      const bed = _findFacilityByUid(state, donor.assignedFacility);
+      if (bed) {
+        const speed = getProcessingSpeed(bed);
+        bed.progress += speed;
+        if (bed.progress >= bed.processTime) {
+          donor.status = 'done';
+          bed.busy = false;
+          bed.donor = null;
+          bed.progress = 0;
+          const collected = donor.amount;
+          const totalBlood = Object.values(state.blood).reduce((s, v) => s + v, 0);
+          if (totalBlood + collected <= state.maxStorage) {
+            state.blood[donor.bloodType] += collected;
+            events.push({ type: 'blood_collected', donor, amount: collected, bloodType: donor.bloodType });
+          } else {
+            events.push({ type: 'storage_full', donor });
+          }
+          state.totalDonors++;
 
-export function defenseDrawCards(wave) {
-  const pool = CHARACTERS.filter(c => c.rarity === 'common');
-  const uncommons = CHARACTERS.filter(c => c.rarity === 'uncommon');
-  const rares = CHARACTERS.filter(c => c.rarity === 'rare');
-  const choices = [];
-  for (let i = 0; i < 3; i++) {
-    const roll = Math.random();
-    let pick;
-    if (wave >= 7 && roll < 0.08) {
-      pick = rares[Math.floor(Math.random() * rares.length)];
-    } else if (wave >= 4 && roll < 0.2) {
-      pick = uncommons[Math.floor(Math.random() * uncommons.length)];
-    } else {
-      pick = pool[Math.floor(Math.random() * pool.length)];
+          const lab = _findFreeFacility(state, 'lab');
+          if (lab) {
+            events.push({ type: 'blood_tested', bloodType: donor.bloodType });
+          }
+        }
+      }
     }
-    const card = { ...pick, _waveLv: Math.floor(1 + wave / 2) };
-    choices.push(card);
   }
-  return choices;
+
+  state.donors = state.donors.filter(d => d.status !== 'done' && d.status !== 'left');
+
+  for (const order of state.orders) {
+    if (order.fulfilled >= order.quantity) continue;
+    order.deadline--;
+    if (order.deadline <= 0) {
+      state.reputation--;
+      events.push({ type: 'order_expired', order });
+      order.fulfilled = -1;
+    }
+  }
+  state.orders = state.orders.filter(o => o.fulfilled >= 0 && o.fulfilled < o.quantity);
+
+  const waveComplete = state.donorQueue.length === 0 &&
+    state.donors.every(d => d.status === 'done' || d.status === 'left') &&
+    state.donors.length === 0;
+
+  if (waveComplete && state.phase === 'operating') {
+    events.push({ type: 'day_complete' });
+  }
+
+  return events;
 }
 
-export function defenseMerge(charId, rarity) {
-  const char = CHARACTERS.find(c => c.id === charId);
-  if (!char) return { success: false };
-  const rarityOrder = ['common', 'uncommon', 'rare', 'legendary'];
-  const curIdx = rarityOrder.indexOf(rarity);
-  if (curIdx < 3) {
-    const nextRarity = rarityOrder[curIdx + 1];
-    return { success: true, upgraded: true, legendary: nextRarity === 'legendary', char, newRarity: nextRarity, statMult: 1.5 };
+function _findFreeFacility(state, facilityId) {
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const f = state.grid[r][c];
+      if (f && f.id === facilityId && !f.busy) return f;
+    }
   }
-  return { success: true, upgraded: false, legendary: false, char, newRarity: rarity, statMult: 1.2 };
+  return null;
 }
 
-export function defenseRewardChoices(wave) {
-  const goldAmt = 30 + wave * 10;
-  const choices = [
-    { type: 'gold', label: `💰 ${goldAmt}G`, desc: `골드 ${goldAmt} 획득`, value: goldAmt },
-    { type: 'buff', label: '⚔ 전체 ATK+3', desc: '배치 유닛 ATK+3 영구', value: 3 },
-  ];
-  const roll = Math.random();
-  if (wave >= 5 && roll < 0.3) {
-    const rares = CHARACTERS.filter(c => c.rarity === 'rare');
-    const pick = rares[Math.floor(Math.random() * rares.length)];
-    choices.push({ type: 'unit', label: `💎 ${pick.name}`, desc: '레어 유닛 즉시 소환', value: pick });
-  } else {
-    choices.push({ type: 'costDown', label: '🔻 소환 비용 -10', desc: '소환 비용 10 감소', value: 10 });
+function _findFacilityByUid(state, uid) {
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const f = state.grid[r][c];
+      if (f && f.uid === uid) return f;
+    }
   }
-  return choices;
+  return null;
 }
 
-export function defenseWaveIncome(wave, currentGold) {
-  const base = 20 + wave * 5;
+export function fulfillOrder(state, orderId) {
+  const order = state.orders.find(o => o.id === orderId);
+  if (!order) return { success: false };
+  const bt = order.bloodType;
+  const need = order.quantity - order.fulfilled;
+  const available = state.blood[bt] || 0;
+  const deliver = Math.min(need, available);
+  if (deliver <= 0) return { success: false, reason: 'no_blood' };
+  state.blood[bt] -= deliver;
+  order.fulfilled += deliver;
+  const done = order.fulfilled >= order.quantity;
+  if (done) {
+    state.gold += order.reward;
+    state.completedOrders++;
+    state.dayIncome += order.reward;
+    state.reputation = Math.min(30, state.reputation + 1);
+  }
+  return { success: true, delivered: deliver, done, reward: done ? order.reward : 0 };
+}
+
+export function tycoonDayIncome(day, currentGold) {
+  const base = 20 + day * 5;
   const interest = Math.floor(currentGold * 0.1);
   return base + interest;
 }
 
-export const DEF_ROLE_SYNERGY = {
-  tank:           { 2: { stat: 'def', val: 3, label: '🛡철벽 진형 DEF+3' },    4: { stat: 'def', val: 8, label: '🛡불멸의 방벽 DEF+8' } },
-  melee_dps:      { 2: { stat: 'atk', val: 4, label: '⚔쌍검 ATK+4' },         4: { stat: 'atk', val: 10, label: '⚔검의 폭풍 ATK+10' } },
-  ranged_dps:     { 2: { stat: 'atk', val: 3, label: '🏹교차 사격 ATK+3' },    4: { stat: 'crt', val: 0.15, label: '🏹명사수 CRT+15%' } },
-  support:        { 2: { stat: 'maxHp', val: 15, label: '💚생명의 결속 HP+15' },4: { stat: 'maxHp', val: 40, label: '💚치유의 성역 HP+40' } },
-  bruiser:        { 2: { stat: 'atk', val: 3, label: '🔨진동 ATK+3' },          4: { stat: 'atk', val: 8, label: '🔨대지 파쇄 ATK+8' } },
-  breaker:        { 2: { stat: 'pen', val: 2, label: '💥관통력 PEN+2' },        4: { stat: 'pen', val: 5, label: '💥절대 관통 PEN+5' } },
-  evasive_dps:    { 2: { stat: 'crt', val: 0.08, label: '🌀이중 타격 CRT+8%' },4: { stat: 'crt', val: 0.2, label: '🌀잔상 CRT+20%' } },
-  battle_support: { 2: { stat: 'atk', val: 2, label: '⚡전술 지원 ATK+2' },    4: { stat: 'def', val: 5, label: '⚡전선 강화 DEF+5' } },
-};
-
-export function applyDefenseSynergy(state) {
-  const roleCounts = {};
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      const u = state.grid[r][c];
-      if (u) roleCounts[u.role] = (roleCounts[u.role] || 0) + 1;
-    }
-  }
-  const active = [];
-  for (const [role, count] of Object.entries(roleCounts)) {
-    const syn = DEF_ROLE_SYNERGY[role];
-    if (!syn) continue;
-    if (count >= 4 && syn[4]) active.push({ role, tier: 4, ...syn[4] });
-    else if (count >= 2 && syn[2]) active.push({ role, tier: 2, ...syn[2] });
-  }
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      const u = state.grid[r][c];
-      if (!u) continue;
-      active.forEach(s => {
-        if (u.role === s.role) {
-          if (s.stat === 'maxHp') { u._synBuff_hp = s.val; }
-          else { u['_synBuff_' + s.stat] = s.val; }
-        }
-      });
-    }
-  }
-  return active;
+export function upgradeFacility(state, row, col) {
+  const fac = state.grid[row]?.[col];
+  if (!fac) return { success: false };
+  if (fac.level >= 3) return { success: false };
+  const cost = FACILITY_TYPES[fac.id].cost * fac.level;
+  if (state.gold < cost) return { success: false };
+  state.gold -= cost;
+  fac.level++;
+  if (fac.id === 'bed') fac.processTime = Math.max(4, fac.processTime - 2);
+  if (fac.id === 'lab') fac.processTime = Math.max(2, fac.processTime - 1);
+  if (fac.id === 'storage') state.maxStorage += 5 * fac.level;
+  if (fac.id === 'lounge') fac.processTime = Math.max(1, fac.processTime - 1);
+  return { success: true, level: fac.level, cost };
 }
 
-export const ENEMY_TRAITS = {
-  fast:   { icon: '⚡', label: '쾌속', desc: '이동속도 2배' },
-  tank:   { icon: '🪨', label: '중장갑', desc: 'DEF 2배' },
-  healer: { icon: '💊', label: '치유자', desc: '매 턴 주변 적 HP 5% 회복' },
-};
+export const TYCOON_EVENTS = [
+  { id: 'accident',  icon: '🚨', name: '대형사고',   desc: '특정 혈액 긴급 수요 — 납품 시 보너스 2배' },
+  { id: 'inspection', icon: '🏥', name: '보건검사',   desc: '검사실 보유 시 골드 보너스' },
+  { id: 'campaign',  icon: '📺', name: '헌혈캠페인',  desc: '다음 웨이브 헌혈자 2배' },
+  { id: 'rare',      icon: '💉', name: '희귀혈액',   desc: 'AB형 헌혈자 등장, 고가 납품' },
+];
 
-export function defenseBossTick(state) {
-  const results = [];
-  for (const enemy of state.enemies) {
-    if (enemy.unit.hp <= 0 || enemy.unit.rarity !== 'legendary') continue;
-    if (!enemy.unit._bossSkill) continue;
-    if (!enemy.unit._bossCd) enemy.unit._bossCd = 0;
-    if (enemy.unit._bossCd > 0) { enemy.unit._bossCd--; continue; }
-    enemy.unit._bossCd = 8;
-    const skill = enemy.unit._bossSkill;
-    if (skill === 'shield') {
-      enemy.unit._shield = Math.floor(enemy.unit.maxHp * 0.3);
-      results.push({ type: 'shield', boss: enemy.unit });
-    } else if (skill === 'summon') {
-      const pool = CHARACTERS.filter(c => c.rarity === 'common');
-      for (let i = 0; i < 2; i++) {
-        const minion = cardToUnit(pool[Math.floor(Math.random() * pool.length)], -1, -1);
-        minion.team = 'enemy';
-        minion.uid = `def-minion-${Date.now()}-${i}`;
-        state.enemies.push({ unit: minion, speed: 2, pathIndex: Math.max(0, enemy.pathIndex - 2) });
-      }
-      results.push({ type: 'summon', boss: enemy.unit });
-    } else if (skill === 'rage') {
-      enemy.unit.atk = Math.floor(enemy.unit.atk * 1.5);
-      enemy.speed = Math.min(4, enemy.speed + 1);
-      results.push({ type: 'rage', boss: enemy.unit });
-    }
-  }
-  return results;
-}
-
-export function defenseHealerTick(state) {
-  const healed = [];
-  for (const enemy of state.enemies) {
-    if (enemy.unit.hp <= 0 || enemy.unit._trait !== 'healer') continue;
-    const ep = state.path[enemy.pathIndex];
-    if (!ep) continue;
-    for (const other of state.enemies) {
-      if (other === enemy || other.unit.hp <= 0) continue;
-      if (other.unit.hp >= other.unit.maxHp) continue;
-      const op = state.path[other.pathIndex];
-      if (!op) continue;
-      if (Math.abs(ep.x - op.x) + Math.abs(ep.y - op.y) <= 2) {
-        const amt = Math.max(1, Math.floor(other.unit.maxHp * 0.05));
-        other.unit.hp = Math.min(other.unit.maxHp, other.unit.hp + amt);
-        healed.push({ healer: enemy.unit, target: other.unit, amount: amt });
-      }
-    }
-  }
-  return healed;
-}
-
-export const DEFENSE_SKILLS = {
-  tank:           { name: '철벽',       icon: '🛡', cooldown: 5, desc: '경로 위 적 전체 감속 1턴' },
-  melee_dps:      { name: '회심의 일격', icon: '⚔', cooldown: 4, desc: '다음 공격 데미지 ×3' },
-  ranged_dps:     { name: '저격',       icon: '🎯', cooldown: 4, desc: '사거리+2, 데미지 ×2' },
-  support:        { name: '치유의 파동', icon: '💚', cooldown: 5, desc: '인접 아군 ATK+5 2턴' },
-  bruiser:        { name: '지진',       icon: '💥', cooldown: 5, desc: '경로 적 3체에 ATK×1.5' },
-  breaker:        { name: '파쇄탄',     icon: '💣', cooldown: 5, desc: 'DEF 무시 + 데미지 ×2.5' },
-  evasive_dps:    { name: '그림자 연격', icon: '🌀', cooldown: 4, desc: '4체 연속 공격' },
-  battle_support: { name: '약화의 안개', icon: '🌫', cooldown: 5, desc: '사거리 내 적 DEF-3 2턴' },
-};
-
-export function defenseActivateSkills(state) {
-  const skillResults = [];
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      const unit = state.grid[r][c];
-      if (!unit) continue;
-      if (!unit._defSkillCd) unit._defSkillCd = 0;
-      if (unit._defSkillCd > 0) { unit._defSkillCd--; continue; }
-
-      const skill = DEFENSE_SKILLS[unit.role];
-      if (!skill) continue;
-      unit._defSkillCd = skill.cooldown;
-
-      const gx = c + 1, gy = r + 1;
-      const rng = unit.rng || 1;
-
-      if (unit.role === 'tank') {
-        state.enemies.forEach(e => {
-          if (e.unit.hp > 0) {
-            e.speed = Math.max(1, e.speed - 1);
-            e._slowed = Math.max(e._slowed || 0, 1);
-          }
-        });
-        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'aoe_slow' });
-
-      } else if (unit.role === 'melee_dps') {
-        unit._skillDmgMult = 3;
-        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'buff_self' });
-
-      } else if (unit.role === 'ranged_dps') {
-        unit._skillRngBonus = 2;
-        unit._skillDmgMult = 2;
-        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'buff_self' });
-
-      } else if (unit.role === 'support') {
-        for (let dr = -1; dr <= 1; dr++) {
-          for (let dc = -1; dc <= 1; dc++) {
-            if (dr === 0 && dc === 0) continue;
-            const nr = r + dr, nc = c + dc;
-            if (nr >= 0 && nr < state.gridH && nc >= 0 && nc < state.gridW && state.grid[nr][nc]) {
-              state.grid[nr][nc]._skillBuff = { stat: 'atk', val: 5, turns: 2 };
-            }
-          }
-        }
-        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'aoe_buff' });
-
-      } else if (unit.role === 'bruiser') {
-        const targets = [];
-        for (const enemy of state.enemies) {
-          if (enemy.unit.hp <= 0) continue;
-          const ep = state.path[enemy.pathIndex];
-          if (!ep) continue;
-          const dist = Math.abs(gx - ep.x) + Math.abs(gy - ep.y);
-          if (dist <= rng + 1) targets.push(enemy);
-        }
-        targets.slice(0, 3).forEach(t => {
-          const dmg = Math.max(1, Math.floor(unit.atk * 1.5));
-          t.unit.hp -= dmg;
-          skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'skill_dmg', target: t.unit, damage: dmg, killed: t.unit.hp <= 0 });
-        });
-
-      } else if (unit.role === 'breaker') {
-        const target = state.enemies.find(e => {
-          if (e.unit.hp <= 0) return false;
-          const ep = state.path[e.pathIndex];
-          if (!ep) return false;
-          return Math.abs(gx - ep.x) + Math.abs(gy - ep.y) <= rng;
-        });
-        if (target) {
-          const dmg = Math.max(1, Math.floor(unit.atk * 2.5));
-          target.unit.hp -= dmg;
-          skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'skill_dmg', target: target.unit, damage: dmg, killed: target.unit.hp <= 0 });
-        }
-
-      } else if (unit.role === 'evasive_dps') {
-        unit._skillHitCount = 4;
-        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'buff_self' });
-
-      } else if (unit.role === 'battle_support') {
-        state.enemies.forEach(e => {
-          if (e.unit.hp <= 0) return;
-          const ep = state.path[e.pathIndex];
-          if (!ep) return;
-          if (Math.abs(gx - ep.x) + Math.abs(gy - ep.y) <= rng) {
-            e.unit._defDebuff = { stat: 'def', val: 3, turns: 2 };
-          }
-        });
-        skillResults.push({ unit, pos: { x: c, y: r }, skill, type: 'aoe_debuff' });
-      }
-    }
-  }
-  return skillResults;
-}
-
-export function defenseTickSkillEffects(state) {
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      const unit = state.grid[r][c];
-      if (!unit) continue;
-      if (unit._skillBuff) {
-        unit._skillBuff.turns--;
-        if (unit._skillBuff.turns <= 0) delete unit._skillBuff;
-      }
-      if (unit._skillDmgMult) delete unit._skillDmgMult;
-      if (unit._skillRngBonus) delete unit._skillRngBonus;
-      if (unit._skillHitCount) delete unit._skillHitCount;
-    }
-  }
-  state.enemies.forEach(e => {
-    if (e.unit._defDebuff) {
-      e.unit._defDebuff.turns--;
-      if (e.unit._defDebuff.turns <= 0) delete e.unit._defDebuff;
-    }
-  });
-}
-
-export function defenseAutoAttack(state) {
-  const results = [];
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      const unit = state.grid[r][c];
-      if (!unit) continue;
-      if (unit.role === 'support') {
-        for (let dr = -1; dr <= 1; dr++) {
-          for (let dc = -1; dc <= 1; dc++) {
-            if (dr === 0 && dc === 0) continue;
-            const nr = r + dr, nc = c + dc;
-            if (nr >= 0 && nr < state.gridH && nc >= 0 && nc < state.gridW && state.grid[nr][nc]) {
-              state.grid[nr][nc]._supportBuff = 3;
-            }
-          }
-        }
-      }
-    }
-  }
-  for (let r = 0; r < state.gridH; r++) {
-    for (let c = 0; c < state.gridW; c++) {
-      const unit = state.grid[r][c];
-      if (!unit) continue;
-      const baseRng = unit.rng || 1;
-      const rng = baseRng + (unit._skillRngBonus || 0);
-      let atkPower = unit.atk + (unit._supportBuff || 0) + (unit._synBuff_atk || 0);
-      if (unit._skillBuff && unit._skillBuff.stat === 'atk') {
-        atkPower += unit._skillBuff.val;
-      }
-      const dmgMult = unit._skillDmgMult || 1;
-      const gx = c + 1, gy = r + 1;
-      const targets = [];
-      for (const enemy of state.enemies) {
-        if (enemy.unit.hp <= 0) continue;
-        const ep = state.path[enemy.pathIndex];
-        if (!ep) continue;
-        const dist = Math.abs(gx - ep.x) + Math.abs(gy - ep.y);
-        if (dist <= rng) targets.push({ enemy, dist });
-      }
-      if (targets.length === 0) { unit._supportBuff = 0; continue; }
-      targets.sort((a, b) => a.dist - b.dist);
-      const hitCount = unit._skillHitCount || (unit.role === 'evasive_dps' ? 2 : 1);
-      const aoeCount = unit.role === 'bruiser' ? Math.min(3, targets.length) : 1;
-      const mainTargets = targets.slice(0, Math.max(hitCount, aoeCount));
-      for (const t of mainTargets) {
-        const synPen = unit._synBuff_pen || 0;
-        const pen = unit.role === 'breaker' ? (unit.pen || 0) + 3 + synPen : (unit.pen || 0) + synPen;
-        const synDef = unit._synBuff_def || 0;
-        const debuffVal = t.enemy.unit._defDebuff ? t.enemy.unit._defDebuff.val : 0;
-        const effectiveDef = Math.max(0, t.enemy.unit.def - pen - debuffVal);
-        let dmg = Math.max(1, Math.floor((atkPower - effectiveDef) * dmgMult));
-        const synCrt = unit._synBuff_crt || 0;
-        const isCrit = Math.random() < ((unit.crt || 0) + synCrt);
-        if (isCrit) dmg = Math.floor(dmg * 1.5);
-        if (t.enemy.unit._shield && t.enemy.unit._shield > 0) {
-          const absorbed = Math.min(dmg, t.enemy.unit._shield);
-          t.enemy.unit._shield -= absorbed;
-          dmg -= absorbed;
-        }
-        t.enemy.unit.hp -= dmg;
-        const killed = t.enemy.unit.hp <= 0;
-        if (unit.role === 'tank' && !killed) {
-          t.enemy.speed = Math.max(1, t.enemy.speed - 1);
-          t.enemy._slowed = 2;
-        }
-        results.push({ attacker: unit, attackerPos: { x: c, y: r }, enemy: t.enemy.unit, damage: dmg, killed, crit: isCrit, role: unit.role });
-      }
-      unit._supportBuff = 0;
-    }
-  }
-  return results;
-}
-
-export function defenseTickSlow(state) {
-  state.enemies.forEach(e => {
-    if (e._slowed) {
-      e._slowed--;
-      if (e._slowed <= 0) {
-        const orig = e.unit.role === 'evasive_dps' ? 3 : e.unit.role === 'melee_dps' ? 2 : 1;
-        e.speed = orig;
-        delete e._slowed;
-      }
-    }
-  });
-}
-
-export function defenseAdvanceEnemies(state) {
-  const escaped = [];
-  state.enemies.forEach(e => {
-    if (e.unit.hp <= 0) return;
-    e.pathIndex += e.speed;
-    if (e.pathIndex >= state.path.length) {
-      escaped.push(e);
-      e.unit.hp = 0;
-    }
-  });
-  state.lives -= escaped.length;
-  state.enemies = state.enemies.filter(e => e.unit.hp > 0);
-  return escaped;
-}
-
-export function defenseSpawnEnemies(state) {
-  const spawned = [];
-  while (state.spawnIndex < state.spawnQueue.length) {
-    const next = state.spawnQueue[state.spawnIndex];
-    if (next.spawnDelay > state.turnNumber) break;
-    state.enemies.push(next);
-    spawned.push(next);
-    state.spawnIndex++;
-  }
-  return spawned;
-}
-
-export function isDefenseWaveComplete(state) {
-  return state.spawnIndex >= state.spawnQueue.length && state.enemies.every(e => e.unit.hp <= 0);
-}
-
-export function getDefenseRewards(wave) {
-  const cards = [];
-  if (wave >= 15) cards.push('legendary', 'rare', 'rare');
-  else if (wave >= 10) cards.push('rare', 'rare', 'uncommon');
-  else if (wave >= 5) cards.push('rare', 'uncommon', 'uncommon');
-  else if (wave >= 3) cards.push('uncommon', 'common', 'common');
-  else cards.push('common', 'common');
-  const tickets = wave >= 10 ? 3 : wave >= 5 ? 2 : 1;
-  return { cards, tickets };
+export function rollTycoonEvent(day) {
+  if (day % 3 !== 0 || day === 0) return null;
+  return TYCOON_EVENTS[Math.floor(Math.random() * TYCOON_EVENTS.length)];
 }
 
 export function createBattleState(stageId, playerCharIds, centerBuff, teamSynergyMult) {
