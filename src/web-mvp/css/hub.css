@@ -7302,6 +7302,34 @@ body {
 .defense-wave { color: #C9A54E; font-weight: 700; font-size: 1rem; }
 .defense-lives { color: #f87171; font-weight: 700; font-size: 0.9rem; }
 .defense-merges { color: #4ade80; font-size: 0.8rem; }
+.defense-gold { color: #C9A54E; font-weight: 700; font-size: 0.9rem; }
+
+.def-reward-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.def-reward-panel {
+  background: var(--bg-card, #FFF9F2); border-radius: 16px;
+  padding: 20px; max-width: 340px; width: 90%; text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.def-reward-title {
+  font-size: 1.1rem; font-weight: 700; color: var(--accent-gold, #C9A54E);
+  margin-bottom: 16px;
+}
+.def-reward-cards { display: flex; flex-direction: column; gap: 10px; }
+.def-reward-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-radius: 10px;
+  background: var(--bg-secondary, #fff); border: 2px solid var(--border, #E8D5B5);
+  cursor: pointer; transition: border-color 0.2s, transform 0.15s;
+  text-align: left;
+}
+.def-reward-card:hover {
+  border-color: var(--accent-gold, #C9A54E); transform: scale(1.03);
+}
+.def-reward-icon { font-size: 1.1rem; font-weight: 700; white-space: nowrap; }
+.def-reward-desc { font-size: 0.85rem; color: var(--text-secondary, #8B7A6B); }
 
 .defense-main { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; }
 
