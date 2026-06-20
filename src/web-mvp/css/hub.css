@@ -7407,6 +7407,12 @@ body {
 .def-trait-tank { border: 1px solid #a78bfa; }
 .def-trait-healer { border: 1px solid #34d399; }
 .def-info-dps { color: var(--accent-red, #D94F4F); font-weight: 700; font-size: 0.85rem; margin-top: 2px; }
+.def-star {
+  position: absolute; top: 0; left: 0;
+  font-size: 0.5rem; color: #fbbf24; font-weight: 700;
+  text-shadow: 0 0 3px rgba(0,0,0,0.5);
+  z-index: 2;
+}
 
 .defense-draw-panel {
   padding: 10px; background: rgba(251,246,239,0.97);

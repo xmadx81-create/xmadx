@@ -1607,6 +1607,7 @@ let defenseLoopTimer = null;
 let defensePrepRemain = 0;
 let defenseKills = 0;
 let defenseDmgTotal = 0;
+let defenseCombo = 0;
 
 const DEF_ROLE_DESC = { tank: '🛡감속', melee_dps: '⚔근접', ranged_dps: '🏹원거리', support: '💚인접버프', bruiser: '🔨범위공격', breaker: '💥관통', evasive_dps: '🌀2연타', battle_support: '⚡디버프' };
 
@@ -1616,6 +1617,7 @@ function startDefenseMode() {
   defenseSpeed = 1;
   defenseKills = 0;
   defenseDmgTotal = 0;
+  defenseCombo = 0;
   document.getElementById('stage-select').style.display = 'none';
   document.getElementById('defense-screen').style.display = '';
   updateSpeedBtn();
@@ -1630,7 +1632,7 @@ function renderDefense() {
   const bossPending = spawnQueue.slice(spawnIndex).some(e => e.unit.rarity === 'legendary') || enemies.some(e => e.unit.hp > 0 && e.unit.rarity === 'legendary');
   document.getElementById('defense-wave').innerHTML = `웨이브 ${wave} <span class="def-remaining">${remaining > 0 ? `잔여 ${remaining}` : '클리어 대기'}${bossPending ? ' 👑' : ''}</span>`;
   document.getElementById('defense-lives').textContent = `❤ ${lives}`;
-  document.getElementById('defense-merges').textContent = `합성 ${mergeCount} · 처치 ${defenseKills}`;
+  document.getElementById('defense-merges').textContent = `합성 ${mergeCount} · 처치 ${defenseKills}${defenseCombo >= 5 ? ` · 💥${defenseCombo}` : ''}`;
   document.getElementById('defense-gold').textContent = `💰 ${defenseState.gold}`;
   const timerEl = document.getElementById('defense-timer');
   if (timerEl) {
@@ -1681,6 +1683,7 @@ function renderDefense() {
                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
           <div class="def-unit-initial" style="display:none">${unit.name[0]}</div>
           <div class="def-unit-name">${unit.name.slice(0,3)}</div>
+          ${(unit._star || 1) > 1 ? `<div class="def-star">★${unit._star}</div>` : ''}
           <div class="def-rarity-dot r-${unit.rarity}"></div>
           <div class="def-role-badge">${roleIcon}</div>
           ${skill ? `<div class="def-skill-cd" title="${skill.name}: ${skill.desc}">
@@ -1725,6 +1728,14 @@ function renderDefense() {
         const unit = cardToUnit(defenseHeldUnit, gx, gy);
         unit.team = 'player';
         unit.uid = `def-player-${gx}-${gy}-${Date.now()}`;
+        const waveLv = defenseHeldUnit._waveLv || 1;
+        for (let lv = 1; lv < waveLv; lv++) {
+          unit.maxHp += Math.floor(unit.maxHp * 0.08);
+          unit.atk += 3;
+          unit.def += 1;
+        }
+        unit.hp = unit.maxHp;
+        unit._star = 1;
         defenseState.grid[gy][gx] = unit;
         const roleDesc = DEF_ROLE_DESC[defenseHeldUnit.role] || '?';
         showDefenseBanner(`${defenseHeldUnit.name} ${roleDesc} 배치!`, defenseHeldUnit.rarity === 'legendary' ? 'legendary' : 'upgrade');
@@ -1792,7 +1803,7 @@ function showDefenseUnitInfo(unit) {
   popup.className = 'def-unit-info';
   const totalDmg = unit._totalDmg || 0;
   popup.innerHTML = `
-    <div class="def-info-header">${unit.name} <span class="def-info-rarity r-${unit.rarity}">${unit.rarity}</span></div>
+    <div class="def-info-header">${unit.name} ${'★'.repeat(unit._star || 1)} <span class="def-info-rarity r-${unit.rarity}">${unit.rarity}</span></div>
     <div class="def-info-role">${roleDesc}</div>
     <div class="def-info-stats">ATK ${unit.atk} · DEF ${unit.def} · HP ${unit.hp}/${unit.maxHp} · RNG ${unit.rng || 1}</div>
     <div class="def-info-dps">⚔ 총 데미지: ${totalDmg.toLocaleString()}</div>
@@ -1867,7 +1878,7 @@ function tryDefenseMerge(gx, gy) {
   for (let r = 0; r < defenseState.gridH; r++) {
     for (let c = 0; c < defenseState.gridW; c++) {
       const u = defenseState.grid[r][c];
-      if (u && u.id === unit.id && !(c === gx && r === gy)) {
+      if (u && u.id === unit.id && u.rarity === unit.rarity && !(c === gx && r === gy)) {
         sameUnits.push({ x: c, y: r });
       }
     }
@@ -1878,24 +1889,29 @@ function tryDefenseMerge(gx, gy) {
   toRemove.forEach(p => { defenseState.grid[p.y][p.x] = null; });
 
   const mergeResult = defenseMerge(unit.id, unit.rarity);
-  const newUnit = cardToUnit(mergeResult.char, gx, gy);
-  newUnit.team = 'player';
-  newUnit.uid = `def-player-${gx}-${gy}-m${defenseState.mergeCount}`;
-  defenseState.grid[gy][gx] = newUnit;
+  const star = (unit._star || 1) + 1;
+  unit.rarity = mergeResult.newRarity;
+  unit.atk = Math.floor(unit.atk * mergeResult.statMult);
+  unit.def = Math.floor(unit.def * mergeResult.statMult);
+  unit.maxHp = Math.floor(unit.maxHp * mergeResult.statMult);
+  unit.hp = unit.maxHp;
+  unit._star = star;
+  unit._totalDmg = unit._totalDmg || 0;
   defenseState.mergeCount++;
 
   if (mergeResult.legendary) {
-    showDefenseBanner('⭐ 전설 합성 대성공!! ⭐', 'legendary');
+    showDefenseBanner(`⭐ ${unit.name} ★${star} 전설 승급!!`, 'legendary');
     sfxCritical();
   } else if (mergeResult.upgraded) {
-    showDefenseBanner(`⬆ 합성 성공! → ${mergeResult.char.name} (${mergeResult.char.rarity.toUpperCase()})`, 'upgrade');
+    showDefenseBanner(`⬆ ${unit.name} ★${star} 승급!`, 'upgrade');
     sfxLevelUp();
   } else {
-    showDefenseBanner(`합성 → ${mergeResult.char.name}`, 'same');
+    showDefenseBanner(`${unit.name} ★${star} 강화!`, 'same');
     sfxEquip();
   }
   const tile = document.querySelector(`.def-placement[data-gx="${gx}"][data-gy="${gy}"]`);
   if (tile) { tile.classList.add('def-merge-flash'); setTimeout(() => tile.classList.remove('def-merge-flash'), 600); }
+  updateSummonBtn();
   renderDefense();
 }
 
@@ -2016,6 +2032,7 @@ function defenseGameTick() {
 
   defenseState.turnNumber++;
   defenseSpawnEnemies(defenseState);
+  let tickKills = 0;
 
   const skillResults = defenseActivateSkills(defenseState);
   if (skillResults.length > 0) {
@@ -2025,10 +2042,7 @@ function defenseGameTick() {
     skillResults.forEach(s => {
       if (s.type === 'skill_dmg') {
         if (s.unit) s.unit._totalDmg = (s.unit._totalDmg || 0) + (s.damage || 0);
-        if (s.killed) {
-          defenseKills++;
-          defenseState.gold += 10;
-        }
+        if (s.killed) { tickKills++; defenseKills++; }
       }
     });
   }
@@ -2038,9 +2052,8 @@ function defenseGameTick() {
     defenseDmgTotal += r.damage;
     if (r.attacker) r.attacker._totalDmg = (r.attacker._totalDmg || 0) + r.damage;
     if (r.killed) {
+      tickKills++;
       defenseKills++;
-      const isBoss = r.enemy && r.enemy.rarity === 'legendary';
-      defenseState.gold += isBoss ? 50 : 10;
       sfxDeath();
     }
     else if (r.crit) sfxCritical();
@@ -2052,9 +2065,21 @@ function defenseGameTick() {
     if (ep) showDefenseDmgPopup(ep.x, ep.y, r.damage, r.crit, r.killed);
   });
 
+  if (tickKills > 0) {
+    defenseCombo += tickKills;
+    const comboMult = defenseCombo >= 20 ? 4 : defenseCombo >= 10 ? 3 : defenseCombo >= 5 ? 2 : 1;
+    const goldPerKill = 10 * comboMult;
+    defenseState.gold += tickKills * goldPerKill;
+    if (defenseCombo >= 5) {
+      showDefenseBanner(`💥 ${defenseCombo} COMBO ×${comboMult}`, 'upgrade');
+    }
+  } else {
+    defenseCombo = 0;
+  }
+
   defenseHealerTick(defenseState);
   const escaped = defenseAdvanceEnemies(defenseState);
-  if (escaped.length > 0) sfxDebuff();
+  if (escaped.length > 0) { sfxDebuff(); defenseCombo = 0; }
   defenseTickSlow(defenseState);
   defenseTickSkillEffects(defenseState);
 
