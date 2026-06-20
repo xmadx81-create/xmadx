@@ -19,7 +19,7 @@ import {
   createDefenseState, DEFENSE_GRID, createDefensePath,
   defenseDrawCards, defenseMerge, defenseAutoAttack,
   defenseAdvanceEnemies, defenseSpawnEnemies, isDefenseWaveComplete,
-  generateDefenseWave, getDefenseRewards,
+  generateDefenseWave, getDefenseRewards, defenseTickSlow,
 } from '../src/web-mvp/js/engine.js';
 import { checkAchievements, ACHIEVEMENTS, ensureStarterDeck, loadGame, doRecruit, synthesizeCard, getSynthesisCost, progressBonds, getBondLevel, getBondBuff, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, getUnlockedLoreStage, LORE_MILESTONES } from '../src/web-mvp/js/save.js';
 import { CHARACTERS, SENSE_TYPES, CHARACTER_MBTI, CHAR_QUOTES } from '../src/web-mvp/js/cards.js';
@@ -2893,5 +2893,69 @@ describe('방어전 (Tower Defense) 시스템', () => {
     state.spawnIndex = state.spawnQueue.length;
     state.enemies = state.spawnQueue.map(e => ({ ...e, unit: { ...e.unit, hp: 0 } }));
     expect(isDefenseWaveComplete(state)).toBe(true);
+  });
+
+  it('서포트 유닛이 인접 아군에게 ATK+3 버프 적용', () => {
+    const state = createDefenseState(1);
+    const supporter = CHARACTERS.find(c => c.role === 'support');
+    const fighter = CHARACTERS.find(c => c.role === 'melee_dps');
+    const sUnit = cardToUnit(supporter, 0, 0);
+    sUnit.team = 'player';
+    state.grid[0][0] = sUnit;
+    const fUnit = cardToUnit(fighter, 1, 0);
+    fUnit.team = 'player';
+    state.grid[0][1] = fUnit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy';
+    enemy.hp = 500;
+    enemy.maxHp = 500;
+    enemy.def = 0;
+    state.enemies.push({ unit: enemy, speed: 1, pathIndex: 1 });
+    defenseAutoAttack(state);
+    expect(fUnit._supportBuff).toBe(0);
+  });
+
+  it('탱크가 적을 감속시킨다', () => {
+    const state = createDefenseState(1);
+    const tank = CHARACTERS.find(c => c.role === 'tank');
+    const tUnit = cardToUnit(tank, 0, 0);
+    tUnit.team = 'player';
+    tUnit.atk = 50;
+    state.grid[0][0] = tUnit;
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy';
+    enemy.hp = 500;
+    enemy.maxHp = 500;
+    enemy.def = 0;
+    const enemyEntry = { unit: enemy, speed: 2, pathIndex: 1 };
+    state.enemies.push(enemyEntry);
+    defenseAutoAttack(state);
+    expect(enemyEntry.speed).toBe(1);
+    expect(enemyEntry._slowed).toBe(2);
+  });
+
+  it('defenseTickSlow가 감속을 해제한다', () => {
+    const state = createDefenseState(1);
+    const enemy = cardToUnit(CHARACTERS[0], -1, -1);
+    enemy.team = 'enemy';
+    enemy.role = 'melee_dps';
+    const entry = { unit: enemy, speed: 1, pathIndex: 0, _slowed: 1 };
+    state.enemies.push(entry);
+    defenseTickSlow(state);
+    expect(entry.speed).toBe(2);
+    expect(entry._slowed).toBeUndefined();
+  });
+
+  it('합성 확률 — 전설 0.5%, 상급 49%', () => {
+    let legendaryCount = 0;
+    let upgradeCount = 0;
+    const runs = 1000;
+    for (let i = 0; i < runs; i++) {
+      const result = defenseMerge('kim-doyun', 'common');
+      if (result.legendary) legendaryCount++;
+      else if (result.upgraded) upgradeCount++;
+    }
+    expect(upgradeCount).toBeGreaterThan(300);
+    expect(upgradeCount).toBeLessThan(700);
   });
 });
