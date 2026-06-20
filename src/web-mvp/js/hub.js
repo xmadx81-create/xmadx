@@ -1602,7 +1602,6 @@ function startTowerWave() {
 // ── Defense Mode (혈맹의 벽) ──
 
 let defenseState = null;
-let defenseHeldUnit = null;
 let defenseSpeed = 1;
 let defenseLoopTimer = null;
 let defensePrepRemain = 0;
@@ -1614,7 +1613,6 @@ const DEF_ROLE_DESC = { tank: '🛡감속', melee_dps: '⚔근접', ranged_dps: 
 
 function startDefenseMode() {
   defenseState = createDefenseState(1);
-  defenseHeldUnit = null;
   defenseSpeed = 1;
   defenseKills = 0;
   defenseDmgTotal = 0;
@@ -1653,20 +1651,7 @@ function renderDefense() {
   const totalW = gridW + 2;
   const totalH = gridH + 2;
   let html = `<div class="defense-grid" style="grid-template-columns:repeat(${totalW},1fr);grid-template-rows:repeat(${totalH},1fr)">`;
-
   const rangeSet = new Set();
-  if (defenseHeldUnit) {
-    const rng = ROLE_MODIFIERS[defenseHeldUnit.role]?.rng ?? 1;
-    for (let r = 0; r < gridH; r++) {
-      for (let c = 0; c < gridW; c++) {
-        if (defenseState.grid[r][c]) continue;
-        const gx = c + 1, gy = r + 1;
-        path.forEach(p => {
-          if (Math.abs(gx - p.x) + Math.abs(gy - p.y) <= rng) rangeSet.add(`${p.x},${p.y}`);
-        });
-      }
-    }
-  }
 
   for (let r = 0; r < totalH; r++) {
     for (let c = 0; c < totalW; c++) {
@@ -1697,7 +1682,7 @@ function renderDefense() {
             <span class="def-skill-cd-label">${cd > 0 ? cd : skill.icon}</span>
           </div>` : ''}
         </div>` : '';
-        const sameCount = unit ? countSameUnits(unit.id) : 0;
+        const sameCount = unit ? countSameUnits(unit.id, unit.rarity) : 0;
         const mergeHint = unit && sameCount >= 3 ? ' def-mergeable' : '';
         html += `<div class="def-tile def-placement${mergeHint}" data-gx="${gx}" data-gy="${gy}">${unitHtml}</div>`;
       } else if (isPathTile) {
@@ -1730,28 +1715,8 @@ function renderDefense() {
     tile.addEventListener('click', () => {
       const gx = parseInt(tile.dataset.gx);
       const gy = parseInt(tile.dataset.gy);
-      if (defenseHeldUnit && !defenseState.grid[gy][gx]) {
-        const unit = cardToUnit(defenseHeldUnit, gx, gy);
-        unit.team = 'player';
-        unit.uid = `def-player-${gx}-${gy}-${Date.now()}`;
-        const waveLv = defenseHeldUnit._waveLv || 1;
-        for (let lv = 1; lv < waveLv; lv++) {
-          unit.maxHp += Math.floor(unit.maxHp * 0.08);
-          unit.atk += 3;
-          unit.def += 1;
-        }
-        unit.hp = unit.maxHp;
-        unit._star = 1;
-        defenseState.grid[gy][gx] = unit;
-        const roleDesc = DEF_ROLE_DESC[defenseHeldUnit.role] || '?';
-        showDefenseBanner(`${defenseHeldUnit.name} ${roleDesc} 배치!`, defenseHeldUnit.rarity === 'legendary' ? 'legendary' : 'upgrade');
-        defenseHeldUnit = null;
-        sfxCardPlay();
-        updateSummonBtn();
-        renderDefense();
-      } else if (defenseState.grid[gy][gx]) {
-        if (defenseState.phase === 'prep') tryDefenseMerge(gx, gy);
-        else showDefenseUnitInfo(defenseState.grid[gy][gx]);
+      if (defenseState.grid[gy][gx]) {
+        showDefenseUnitInfo(defenseState.grid[gy][gx]);
       }
     });
     tile.addEventListener('contextmenu', (e) => {
@@ -1789,11 +1754,12 @@ function renderDefense() {
   });
 }
 
-function countSameUnits(charId) {
+function countSameUnits(charId, rarity) {
   let count = 0;
   for (let r = 0; r < defenseState.gridH; r++) {
     for (let c = 0; c < defenseState.gridW; c++) {
-      if (defenseState.grid[r][c]?.id === charId) count++;
+      const u = defenseState.grid[r][c];
+      if (u && u.id === charId && u.rarity === rarity) count++;
     }
   }
   return count;
@@ -1838,6 +1804,29 @@ function defenseStartPrep() {
     <span class="def-preview-hp">HP ×${preview.hpMult.toFixed(1)}</span>
     ${preview.hasBoss ? '<span class="def-preview-boss">👑보스</span>' : ''}`;
 
+  if (defenseState.wave > 1 && defenseState.wave % 3 === 0) {
+    const events = [
+      () => { const bonus = 50 + defenseState.wave * 10; defenseState.gold += bonus; showDefenseBanner(`💰 골드 러시! +${bonus}G`, 'upgrade'); },
+      () => {
+        for (let r = 0; r < defenseState.gridH; r++)
+          for (let c = 0; c < defenseState.gridW; c++) {
+            const u = defenseState.grid[r][c];
+            if (u) { u.atk += 5; u.maxHp += 20; u.hp = Math.min(u.hp + 20, u.maxHp); }
+          }
+        showDefenseBanner('🔥 전원 강화! ATK+5 HP+20', 'legendary');
+      },
+      () => {
+        const rares = CHARACTERS.filter(c => c.rarity === 'rare');
+        const pick = rares[Math.floor(Math.random() * rares.length)];
+        if (pick) {
+          const card = { ...pick, _waveLv: Math.floor(1 + defenseState.wave / 2) };
+          defenseSpawnUnit(card);
+          showDefenseBanner(`🎁 보너스! ${pick.name} 지급!`, 'legendary');
+        }
+      },
+    ];
+    events[Math.floor(Math.random() * events.length)]();
+  }
   updateSummonBtn();
   const startBtn = document.getElementById('btn-defense-start');
   if (startBtn) { startBtn.disabled = false; startBtn.textContent = '전투 시작 ▶'; }
@@ -1849,94 +1838,45 @@ function updateSummonBtn() {
   if (!btn || !defenseState) return;
   const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
   const canAfford = defenseState.gold >= defenseState.summonCost;
-  btn.disabled = !hasEmpty || !canAfford || !!defenseHeldUnit;
-  btn.textContent = defenseHeldUnit ? `배치 대기중...` : `소환 🎲 ${defenseState.summonCost}G`;
+  btn.disabled = !hasEmpty || !canAfford;
+  btn.textContent = `소환 🎲 ${defenseState.summonCost}G`;
+  updateMergeBtn();
 }
 
-function defenseSummon() {
-  if (!defenseState) return;
-  if (defenseHeldUnit) return;
-  if (defenseState.gold < defenseState.summonCost) return;
-  const emptyTiles = [];
-  for (let r = 0; r < defenseState.gridH; r++) {
-    for (let c = 0; c < defenseState.gridW; c++) {
-      if (!defenseState.grid[r][c]) emptyTiles.push({ x: c, y: r });
-    }
-  }
-  if (emptyTiles.length === 0) return;
-
-  defenseState.gold -= defenseState.summonCost;
-  defenseState.summonCost += 3;
-  const card = defenseDrawCards(defenseState.wave)[0];
-
-  defenseHeldUnit = card;
-  sfxCardPlay();
-  const roleDesc = DEF_ROLE_DESC[card.role] || '?';
-  showDefenseBanner(`${card.name} ${roleDesc} — 타일 선택`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
-  updateSummonBtn();
-  renderDefense();
-}
-
-function defenseMultiSummon() {
-  if (!defenseState || defenseHeldUnit) return;
-  const emptyTiles = [];
-  for (let r = 0; r < defenseState.gridH; r++) {
-    for (let c = 0; c < defenseState.gridW; c++) {
-      if (!defenseState.grid[r][c]) emptyTiles.push({ x: c, y: r });
-    }
-  }
-  const count = Math.min(10, emptyTiles.length);
-  if (count === 0) return;
-  let totalCost = 0;
-  for (let i = 0; i < count; i++) totalCost += defenseState.summonCost + i * 3;
-  const discountCost = Math.floor(totalCost * 0.8);
-  if (defenseState.gold < discountCost) {
-    showDefenseBanner(`골드 부족! (${discountCost}G 필요)`, 'same');
-    return;
-  }
-  defenseState.gold -= discountCost;
-  let placed = 0;
-  for (let i = 0; i < count && emptyTiles.length > 0; i++) {
-    const idx = Math.floor(Math.random() * emptyTiles.length);
-    const tile = emptyTiles.splice(idx, 1)[0];
-    const card = defenseDrawCards(defenseState.wave)[0];
-    const unit = cardToUnit(card, tile.x, tile.y);
-    unit.team = 'player';
-    unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}-${i}`;
-    const waveLv = card._waveLv || 1;
-    for (let lv = 1; lv < waveLv; lv++) {
-      unit.maxHp += Math.floor(unit.maxHp * 0.08);
-      unit.atk += 3;
-      unit.def += 1;
-    }
-    unit.hp = unit.maxHp;
-    unit._star = 1;
-    defenseState.grid[tile.y][tile.x] = unit;
-    placed++;
-  }
-  defenseState.summonCost += count * 3;
-  sfxCardPlay();
-  showDefenseBanner(`10연소환! ${placed}체 배치 (20%할인)`, 'upgrade');
-  updateSummonBtn();
-  renderDefense();
-}
-
-function tryDefenseMerge(gx, gy) {
-  const unit = defenseState.grid[gy][gx];
-  if (!unit) return;
-  const sameUnits = [];
+function findMergeTarget() {
+  if (!defenseState) return null;
+  const counts = {};
   for (let r = 0; r < defenseState.gridH; r++) {
     for (let c = 0; c < defenseState.gridW; c++) {
       const u = defenseState.grid[r][c];
-      if (u && u.id === unit.id && u.rarity === unit.rarity && !(c === gx && r === gy)) {
-        sameUnits.push({ x: c, y: r });
-      }
+      if (!u) continue;
+      const key = `${u.id}|${u.rarity}`;
+      if (!counts[key]) counts[key] = [];
+      counts[key].push({ x: c, y: r });
     }
   }
-  if (sameUnits.length < 2) return;
+  for (const [key, positions] of Object.entries(counts)) {
+    if (positions.length >= 3) return { key, positions };
+  }
+  return null;
+}
 
-  const toRemove = sameUnits.slice(0, 2);
-  toRemove.forEach(p => { defenseState.grid[p.y][p.x] = null; });
+function updateMergeBtn() {
+  const btn = document.getElementById('btn-defense-merge');
+  if (!btn || !defenseState) return;
+  const target = findMergeTarget();
+  btn.disabled = !target;
+  btn.textContent = target ? `합성 ⬆ (${target.positions.length})` : '합성 ⬆';
+}
+
+function defenseDoMerge() {
+  const target = findMergeTarget();
+  if (!target) return;
+  const positions = target.positions;
+  const keepPos = positions[0];
+  const unit = defenseState.grid[keepPos.y][keepPos.x];
+  const removePos = positions.slice(1, 3);
+  removePos.forEach(p => { defenseState.grid[p.y][p.x] = null; });
 
   const mergeResult = defenseMerge(unit.id, unit.rarity);
   const star = (unit._star || 1) + 1;
@@ -1959,8 +1899,78 @@ function tryDefenseMerge(gx, gy) {
     showDefenseBanner(`${unit.name} ★${star} 강화!`, 'same');
     sfxEquip();
   }
-  const tile = document.querySelector(`.def-placement[data-gx="${gx}"][data-gy="${gy}"]`);
+  const tile = document.querySelector(`.def-placement[data-gx="${keepPos.x}"][data-gy="${keepPos.y}"]`);
   if (tile) { tile.classList.add('def-merge-flash'); setTimeout(() => tile.classList.remove('def-merge-flash'), 600); }
+  updateSummonBtn();
+  renderDefense();
+}
+
+function defenseSpawnUnit(card) {
+  const emptyTiles = [];
+  for (let r = 0; r < defenseState.gridH; r++) {
+    for (let c = 0; c < defenseState.gridW; c++) {
+      if (!defenseState.grid[r][c]) emptyTiles.push({ x: c, y: r });
+    }
+  }
+  if (emptyTiles.length === 0) return null;
+  const tile = emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
+  const unit = cardToUnit(card, tile.x, tile.y);
+  unit.team = 'player';
+  unit.uid = `def-player-${tile.x}-${tile.y}-${Date.now()}`;
+  const waveLv = card._waveLv || 1;
+  for (let lv = 1; lv < waveLv; lv++) {
+    unit.maxHp += Math.floor(unit.maxHp * 0.08);
+    unit.atk += 3;
+    unit.def += 1;
+  }
+  unit.hp = unit.maxHp;
+  unit._star = 1;
+  defenseState.grid[tile.y][tile.x] = unit;
+  return unit;
+}
+
+function defenseSummon() {
+  if (!defenseState) return;
+  if (defenseState.gold < defenseState.summonCost) return;
+  const hasEmpty = defenseState.grid.some(row => row.some(cell => cell === null));
+  if (!hasEmpty) return;
+
+  defenseState.gold -= defenseState.summonCost;
+  defenseState.summonCost += 3;
+  const card = defenseDrawCards(defenseState.wave)[0];
+  const unit = defenseSpawnUnit(card);
+  if (!unit) return;
+  sfxCardPlay();
+  const roleDesc = DEF_ROLE_DESC[card.role] || '?';
+  showDefenseBanner(`${unit.name} ${roleDesc} 소환!`, card.rarity === 'legendary' ? 'legendary' : 'upgrade');
+  updateSummonBtn();
+  renderDefense();
+}
+
+function defenseMultiSummon() {
+  if (!defenseState) return;
+  let emptyCount = 0;
+  for (let r = 0; r < defenseState.gridH; r++)
+    for (let c = 0; c < defenseState.gridW; c++)
+      if (!defenseState.grid[r][c]) emptyCount++;
+  const count = Math.min(10, emptyCount);
+  if (count === 0) return;
+  let totalCost = 0;
+  for (let i = 0; i < count; i++) totalCost += defenseState.summonCost + i * 3;
+  const discountCost = Math.floor(totalCost * 0.8);
+  if (defenseState.gold < discountCost) {
+    showDefenseBanner(`골드 부족! (${discountCost}G 필요)`, 'same');
+    return;
+  }
+  defenseState.gold -= discountCost;
+  let placed = 0;
+  for (let i = 0; i < count; i++) {
+    const card = defenseDrawCards(defenseState.wave)[0];
+    if (defenseSpawnUnit(card)) placed++;
+  }
+  defenseState.summonCost += count * 3;
+  sfxCardPlay();
+  showDefenseBanner(`10연소환! ${placed}체 배치 (20%할인)`, 'upgrade');
   updateSummonBtn();
   renderDefense();
 }
@@ -2236,6 +2246,10 @@ function initDefenseControls() {
   document.getElementById('btn-defense-multi')?.addEventListener('click', () => {
     if (!defenseState) return;
     defenseMultiSummon();
+  });
+  document.getElementById('btn-defense-merge')?.addEventListener('click', () => {
+    if (!defenseState) return;
+    defenseDoMerge();
   });
   document.getElementById('btn-defense-start')?.addEventListener('click', () => {
     if (!defenseState || defenseState.phase !== 'prep') return;
