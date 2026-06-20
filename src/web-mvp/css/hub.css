@@ -7551,12 +7551,14 @@ body {
 .defense-grid-wrap { position: relative; }
 #tyc-canvas-wrap {
   display: flex; justify-content: center; align-items: center;
-  border-radius: 10px; overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 0 40px rgba(0,0,0,0.3);
-  border: 1px solid rgba(233,196,106,0.15);
+  border-radius: 12px; overflow: hidden;
+  box-shadow: 0 6px 28px rgba(0,0,0,0.6), inset 0 0 50px rgba(0,0,0,0.2);
+  border: 2px solid rgba(233,196,106,0.25);
+  margin: 4px auto;
+  max-width: 520px;
 }
 #tyc-canvas-wrap canvas {
-  border-radius: 10px;
+  border-radius: 12px;
   max-width: 100%;
   height: auto !important;
 }

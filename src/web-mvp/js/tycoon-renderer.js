@@ -1,10 +1,10 @@
 import { FACILITY_TYPES, TYCOON_FLOORS, TYCOON_ROLES } from './engine.js';
 
-const TILE = 38;
+const TILE = 48;
 const GRID = 10;
-const PAD = 8;
+const PAD = 10;
 const W = TILE * GRID + PAD * 2;
-const H = TILE * GRID + PAD * 2 + 28;
+const H = TILE * GRID + PAD * 2 + 32;
 
 const FAC_COLORS = {
   reception:    0x4a90d9,
@@ -78,29 +78,31 @@ class TycoonScene extends Phaser.Scene {
   }
 
   _tileX(col) { return PAD + col * TILE; }
-  _tileY(row) { return PAD + 28 + row * TILE; }
+  _tileY(row) { return PAD + 32 + row * TILE; }
 
   _drawFloorTabs() {
     this.floorTabBtns.forEach(b => b.destroy());
     this.floorTabBtns = [];
     const unlocked = this._state?.unlockedFloors || ['1F'];
+    const floorIcons = { 'B1': '🅿️', '1F': '🏥', '2F': '🔬' };
     TYCOON_FLOORS.forEach((f, i) => {
-      const x = PAD + i * 56;
+      const x = PAD + i * 68;
       const y = 4;
       const isActive = f === this._floor;
       const isLocked = !unlocked.includes(f);
       const bg = this.add.graphics();
       const alpha = isLocked ? 0.2 : 1;
       bg.fillStyle(isActive ? 0xe9c46a : 0x3a3228, alpha);
-      bg.fillRoundedRect(x, y, 50, 20, 4);
-      bg.lineStyle(1, isActive ? 0xe9c46a : 0x5a5040, alpha);
-      bg.strokeRoundedRect(x, y, 50, 20, 4);
-      const color = isActive ? '#000' : (isLocked ? '#555' : '#ccc');
-      const label = this.add.text(x + 25, y + 10, f, {
-        fontSize: '11px', fontFamily: 'monospace', fontStyle: 'bold', color
+      bg.fillRoundedRect(x, y, 62, 24, 6);
+      bg.lineStyle(isActive ? 2 : 1, isActive ? 0xffd700 : 0x5a5040, alpha);
+      bg.strokeRoundedRect(x, y, 62, 24, 6);
+      const color = isActive ? '#000' : (isLocked ? '#555' : '#ddd');
+      const icon = floorIcons[f] || '';
+      const label = this.add.text(x + 31, y + 12, (isLocked ? '🔒' : icon) + ' ' + f, {
+        fontSize: '12px', fontFamily: 'monospace', fontStyle: 'bold', color
       }).setOrigin(0.5);
       if (!isLocked) {
-        bg.setInteractive(new Phaser.Geom.Rectangle(x, y, 50, 20), Phaser.Geom.Rectangle.Contains);
+        bg.setInteractive(new Phaser.Geom.Rectangle(x, y, 62, 24), Phaser.Geom.Rectangle.Contains);
         bg.on('pointerdown', () => {
           this._floor = f;
           if (this._state) this._state.currentFloor = f;
@@ -118,7 +120,7 @@ class TycoonScene extends Phaser.Scene {
     this.gridBg.clear();
     if (this.bgSprite) { this.bgSprite.destroy(); this.bgSprite = null; }
     const gridX = PAD - 2;
-    const gridY = PAD + 26;
+    const gridY = PAD + 30;
     const gridW = TILE * GRID + 4;
     const gridH = TILE * GRID + 4;
     const bgKey = 'bg_' + this._floor;
@@ -135,9 +137,9 @@ class TycoonScene extends Phaser.Scene {
       for (let c = 0; c < GRID; c++) {
         const x = this._tileX(c);
         const y = this._tileY(r);
-        this.gridBg.fillStyle(0x000000, 0.15);
+        this.gridBg.fillStyle(0x000000, 0.04);
         this.gridBg.fillRect(x, y, TILE - 1, TILE - 1);
-        this.gridBg.lineStyle(1, 0xffffff, 0.08);
+        this.gridBg.lineStyle(1, 0xffffff, 0.12);
         this.gridBg.strokeRect(x, y, TILE - 1, TILE - 1);
       }
     }
@@ -225,20 +227,20 @@ class TycoonScene extends Phaser.Scene {
     border.strokeRoundedRect(x, y, w, h, 5);
     container.add(border);
 
-    const iconSize = Math.min(tw, th) >= 2 ? '18px' : '14px';
-    const icon = this.add.text(x + w / 2, y + h / 2 - (th >= 2 ? 6 : 3), fac.icon, {
+    const iconSize = Math.min(tw, th) >= 2 ? '24px' : '18px';
+    const icon = this.add.text(x + w / 2, y + h / 2 - (th >= 2 ? 10 : 4), fac.icon, {
       fontSize: iconSize, fontFamily: 'Arial',
     }).setOrigin(0.5);
     container.add(icon);
 
-    const nameText = this.add.text(x + w / 2, y + h / 2 + (th >= 2 ? 10 : 5), fac.name.slice(0, 3), {
-      fontSize: th >= 2 ? '10px' : '8px', fontFamily: 'monospace', fontStyle: 'bold',
+    const nameText = this.add.text(x + w / 2, y + h / 2 + (th >= 2 ? 14 : 8), fac.name.slice(0, 3), {
+      fontSize: th >= 2 ? '12px' : '10px', fontFamily: 'monospace', fontStyle: 'bold',
       color: '#fff', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5);
     container.add(nameText);
 
     const lvText = this.add.text(x + 4, y + 3, '★'.repeat(fac.level), {
-      fontSize: '7px', color: '#fbbf24',
+      fontSize: '9px', color: '#fbbf24',
     });
     container.add(lvText);
 
@@ -321,7 +323,7 @@ class TycoonScene extends Phaser.Scene {
     const charKey = CHAR_MAP[nurse.charData.name];
     const hasImage = charKey && this.textures && this.textures.exists(charKey);
 
-    const shadow = this.add.circle(tx, ty + 3, 7, 0x000000, 0.3);
+    const shadow = this.add.circle(tx, ty + 5, 10, 0x000000, 0.3);
     shadow.setScale(1, 0.5);
     container.add(shadow);
 
@@ -330,35 +332,35 @@ class TycoonScene extends Phaser.Scene {
     if (hasImage) {
       const ring = this.add.graphics();
       ring.fillStyle(roleColor, 0.25);
-      ring.fillCircle(tx, ty - 4, 16);
-      ring.lineStyle(2, roleColor, 0.9);
-      ring.strokeCircle(tx, ty - 4, 16);
+      ring.fillCircle(tx, ty - 4, 20);
+      ring.lineStyle(2.5, roleColor, 0.9);
+      ring.strokeCircle(tx, ty - 4, 20);
       container.add(ring);
 
       body = this.add.image(tx, ty - 4, charKey);
-      body.setDisplaySize(26, 26);
+      body.setDisplaySize(34, 34);
       container.add(body);
       head = body;
       animTargets = [body];
     } else {
-      body = this.add.circle(tx, ty - 2, 8, roleColor, 0.9);
-      body.setStrokeStyle(1.5, 0x000000, 0.5);
+      body = this.add.circle(tx, ty - 2, 10, roleColor, 0.9);
+      body.setStrokeStyle(2, 0x000000, 0.5);
       container.add(body);
 
-      head = this.add.circle(tx, ty - 10, 5, roleColor, 0.95);
+      head = this.add.circle(tx, ty - 12, 7, roleColor, 0.95);
       head.setStrokeStyle(1, 0xffffff, 0.3);
       container.add(head);
 
       const role = TYCOON_ROLES[nurse.charData.role] || TYCOON_ROLES.support;
-      const icon = this.add.text(tx, ty - 10, role.icon, {
-        fontSize: '8px',
+      const icon = this.add.text(tx, ty - 12, role.icon, {
+        fontSize: '10px',
       }).setOrigin(0.5);
       container.add(icon);
       animTargets = [body, head, icon];
     }
 
-    const nameLabel = this.add.text(tx, ty + 8, nurse.charData.name.slice(0, 2), {
-      fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold',
+    const nameLabel = this.add.text(tx, ty + 14, nurse.charData.name.slice(0, 2), {
+      fontSize: '9px', fontFamily: 'monospace', fontStyle: 'bold',
       color: '#e9c46a', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5);
     container.add(nameLabel);
@@ -408,31 +410,42 @@ class TycoonScene extends Phaser.Scene {
     this.donorDots = [];
     if (this._floor !== '1F') return;
     const waiting = state.donors.filter(d => d.status === 'waiting');
-    const maxShow = 20;
-    const startX = PAD + 4;
-    const y = PAD + 26 + TILE * GRID + 6;
+    const maxShow = 16;
+    const startX = PAD + 6;
+    const y = PAD + 32 + TILE * GRID + 8;
 
     if (waiting.length === 0) return;
 
     const queueBg = this.add.graphics();
-    queueBg.fillStyle(0x000000, 0.3);
-    queueBg.fillRoundedRect(PAD - 2, y - 4, TILE * GRID + 4, 22, 4);
+    queueBg.fillStyle(0x000000, 0.35);
+    queueBg.fillRoundedRect(PAD - 2, y - 6, TILE * GRID + 4, 30, 6);
     this.donorLayer.add(queueBg);
     this.donorDots.push(queueBg);
 
+    const queueLabel = this.add.text(startX, y + 3, '🩸', { fontSize: '14px' }).setOrigin(0, 0.5);
+    this.donorLayer.add(queueLabel);
+    this.donorDots.push(queueLabel);
+
     waiting.slice(0, maxShow).forEach((d, i) => {
-      const dx = startX + i * 18;
+      const dx = startX + 22 + i * 22;
       const btColor = { A: 0xe74c3c, B: 0x3498db, O: 0x27ae60, AB: 0xf39c12 }[d.bloodType] || 0x888888;
       const pct = d.patience / d.maxPatience;
       const dotColor = pct < 0.3 ? 0xff0000 : btColor;
-      const dot = this.add.circle(dx + 6, y + 5, 5, dotColor, 0.85);
-      dot.setStrokeStyle(1, 0xffffff, 0.3);
+      const dot = this.add.circle(dx + 6, y + 1, 7, dotColor, 0.85);
+      dot.setStrokeStyle(1.5, 0xffffff, 0.3);
       this.donorLayer.add(dot);
       this.donorDots.push(dot);
 
+      const btLabel = this.add.text(dx + 6, y + 1, d.bloodType, {
+        fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold',
+        color: '#fff', stroke: '#000', strokeThickness: 1,
+      }).setOrigin(0.5);
+      this.donorLayer.add(btLabel);
+      this.donorDots.push(btLabel);
+
       if (d.isNamed || d.isVIP) {
-        const crown = this.add.text(dx + 6, y - 2, d.isNamed ? '★' : '♛', {
-          fontSize: '7px', color: '#ffd700',
+        const crown = this.add.text(dx + 6, y - 8, d.isNamed ? '★' : '♛', {
+          fontSize: '9px', color: '#ffd700',
         }).setOrigin(0.5);
         this.donorLayer.add(crown);
         this.donorDots.push(crown);
@@ -440,16 +453,16 @@ class TycoonScene extends Phaser.Scene {
 
       const barBg = this.add.graphics();
       barBg.fillStyle(0x000000, 0.4);
-      barBg.fillRect(dx + 1, y + 12, 10, 2);
+      barBg.fillRect(dx, y + 10, 12, 3);
       barBg.fillStyle(pct < 0.3 ? 0xff0000 : 0x4ade80, 0.8);
-      barBg.fillRect(dx + 1, y + 12, 10 * pct, 2);
+      barBg.fillRect(dx, y + 10, 12 * pct, 3);
       this.donorLayer.add(barBg);
       this.donorDots.push(barBg);
     });
 
     if (waiting.length > maxShow) {
-      const more = this.add.text(startX + maxShow * 18, y + 5, `+${waiting.length - maxShow}`, {
-        fontSize: '8px', color: '#e9c46a', fontFamily: 'monospace',
+      const more = this.add.text(startX + 22 + maxShow * 22, y + 1, `+${waiting.length - maxShow}`, {
+        fontSize: '10px', color: '#e9c46a', fontFamily: 'monospace', fontStyle: 'bold',
       }).setOrigin(0, 0.5);
       this.donorLayer.add(more);
       this.donorDots.push(more);
@@ -519,7 +532,7 @@ export class TycoonRenderer {
       type: Phaser.AUTO,
       parent: this.containerId,
       width: W,
-      height: H + 24,
+      height: H + 30,
       backgroundColor: '#0e0c0a',
       transparent: false,
       scene: {
