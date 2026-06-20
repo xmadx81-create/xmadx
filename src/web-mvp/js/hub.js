@@ -24,6 +24,7 @@ import {
   getAdjacencyBonus, MILESTONES, checkMilestones,
   TYCOON_FLOORS, INITIAL_LAYOUT, applyInitialLayout,
 } from './engine.js';
+import { TycoonRenderer } from './tycoon-renderer.js';
 import { loadGame, saveGame, refreshQuests, progressQuest, getCenterBuff, getQuestSummary, getAttendanceReward, addCard, saveCharProgress, recordStageClear, synthesizeCard, getSynthesisCost, checkAchievements, ACHIEVEMENTS, ensureStarterDeck, doRecruit, progressBonds, getBondBuff, getBondLevel, enhanceCard, ENHANCE_COSTS, ENHANCE_MAX, LORE_MILESTONES, getUnlockedLoreStage } from './save.js';
 import { initAudio, sfxCardPlay, sfxCollect, sfxWin, sfxLose, sfxEvent, sfxEquip, sfxHit, sfxCritical, sfxDeath, sfxSkill, sfxEvade, sfxLevelUp, sfxBuff, sfxDebuff, sfxDot, sfxShield, toggleMute, isMuted } from './sound.js';
 
@@ -1609,6 +1610,7 @@ let tycoonLoopTimer = null;
 let tycoonPrepRemain = 0;
 let tycoonSelectedFacility = null;
 let tycoonActiveEvent = null;
+let tycoonRenderer = null;
 
 function startTycoonMode() {
   tycoonState = createTycoonState(1);
@@ -1624,6 +1626,30 @@ function startTycoonMode() {
   tycoonSelectedFacility = null;
   updateTycoonSpeedBtn();
 
+  if (tycoonRenderer) tycoonRenderer.destroy();
+  tycoonRenderer = new TycoonRenderer('tyc-canvas-wrap', {
+    onTileClick: (row, col) => {
+      if (!tycoonSelectedFacility || !tycoonState) return;
+      const result = placeFacility(tycoonState, row, col, tycoonSelectedFacility, tycoonState.currentFloor);
+      if (result.success) {
+        sfxCardPlay();
+        showTycoonBanner(`${result.facility.name} 설치!`, 'upgrade');
+        updateFacilityBtns();
+        renderTycoon();
+      } else {
+        showTycoonBanner('설치 불가!', 'same');
+      }
+    },
+    onFacilityClick: (row, col) => {
+      showFacilityInfo(row, col);
+    },
+    onFloorChange: (floor) => {
+      updateFacilityBtns();
+      renderTycoon();
+    },
+  });
+  tycoonRenderer.start(tycoonState);
+
   const ch = getStoryChapter(1);
   if (ch.recruit) {
     const charData = CHARACTERS.find(c => c.id === ch.recruit);
@@ -1638,7 +1664,7 @@ function startTycoonMode() {
 
 function renderTycoon() {
   if (!tycoonState) return;
-  const { gridW, gridH, fame, reputation, day, donors, blood, orders, maxStorage, nurses } = tycoonState;
+  const { fame, reputation, day, donors, blood, orders, maxStorage, nurses } = tycoonState;
   const totalBlood = Object.values(blood).reduce((s, v) => s + v, 0);
   const waitingDonors = donors.filter(d => d.status === 'waiting').length;
   const collectingDonors = donors.filter(d => d.status === 'collecting').length;
@@ -1687,95 +1713,10 @@ function renderTycoon() {
     });
   }
 
-  const curFloor = tycoonState.currentFloor;
-  const curGrid = tycoonState.floors[curFloor];
-  let html = '<div class="tyc-floor-tabs">';
-  for (const f of TYCOON_FLOORS) {
-    const unlocked = tycoonState.unlockedFloors.includes(f);
-    const active = f === curFloor ? ' tyc-floor-active' : '';
-    html += `<button class="tyc-floor-tab${active}" data-floor="${f}" ${!unlocked ? 'disabled' : ''}>${f}</button>`;
+  if (tycoonRenderer) {
+    tycoonRenderer.sync(tycoonState);
+    tycoonRenderer.setSelectedFacility(tycoonSelectedFacility);
   }
-  html += '</div>';
-  html += `<div class="defense-grid tyc-grid" style="grid-template-columns:repeat(${gridW},1fr);grid-template-rows:repeat(${gridH},1fr)">`;
-  const floorNurses = nurses.filter(n => (n.floor || '1F') === curFloor);
-  for (let r = 0; r < gridH; r++) {
-    for (let c = 0; c < gridW; c++) {
-      const cell = curGrid[r][c];
-      const nurseHere = floorNurses.find(n => n.row === r && n.col === c);
-      const nurseIcon = nurseHere ? `<div class="tyc-nurse-icon ${nurseHere.task === 'working' ? 'tyc-nurse-working' : 'tyc-nurse-moving'}">${nurseHere.tycoonRole.icon}<span class="tyc-nurse-name">${nurseHere.charData.name.slice(0, 2)}</span></div>` : '';
-      if (cell && cell._ref) {
-        html += `<div class="def-tile tyc-ref" data-row="${r}" data-col="${c}"></div>`;
-      } else if (cell) {
-        const fac = cell;
-        const lvStars = '★'.repeat(fac.level);
-        const progressPct = fac.processTime > 0 ? Math.round(fac.progress / fac.processTime * 100) : 0;
-        const busyCls = fac.busy ? ' tyc-fac-busy' : '';
-        const spanW = fac.tw || 1;
-        const spanH = fac.th || 1;
-        const spanStyle = spanW > 1 || spanH > 1 ? ` style="grid-column:span ${spanW};grid-row:span ${spanH}"` : '';
-        html += `<div class="def-tile tyc-fac${busyCls}" data-row="${r}" data-col="${c}"${spanStyle}>
-          <div class="tyc-fac-icon">${fac.icon}</div>
-          <div class="tyc-fac-name">${fac.name.slice(0, 3)}</div>
-          <div class="tyc-fac-lv">${lvStars}</div>
-          ${nurseIcon}
-          ${fac.busy ? `<div class="tyc-fac-progress"><div class="tyc-fac-progress-fill" style="width:${progressPct}%"></div></div>` : ''}
-        </div>`;
-      } else {
-        html += `<div class="def-tile tyc-empty" data-row="${r}" data-col="${c}">
-          ${nurseIcon || (tycoonSelectedFacility ? `<div class="tyc-place-hint">+</div>` : '')}
-        </div>`;
-      }
-    }
-  }
-  html += '</div>';
-
-  if (donors.length > 0) {
-    html += '<div class="tyc-donor-queue">';
-    donors.filter(d => d.status === 'waiting' || d.status === 'collecting').slice(0, 8).forEach(d => {
-      const patiencePct = Math.round(d.patience / d.maxPatience * 100);
-      const statusIcon = d.status === 'collecting' ? '🛏️' : d.isNamed ? `${d.charData.name.slice(0, 1)}` : d.isVIP ? '👑' : d.isGroup ? '👥' : d.isRepeater ? '🔄' : d.isNervous ? '😰' : '🧑';
-      html += `<div class="tyc-donor ${d.patience < 5 ? 'tyc-donor-angry' : ''}">
-        <span class="tyc-donor-icon">${statusIcon}</span>
-        <span class="tyc-donor-bt tyc-bt-${d.bloodType}">${d.bloodType}</span>
-        <div class="tyc-donor-patience"><div class="tyc-donor-patience-fill" style="width:${patiencePct}%"></div></div>
-      </div>`;
-    });
-    html += '</div>';
-  }
-
-  document.getElementById('defense-grid-wrap').innerHTML = html;
-
-  document.querySelectorAll('.tyc-floor-tab:not(:disabled)').forEach(tab => {
-    tab.addEventListener('click', () => {
-      tycoonState.currentFloor = tab.dataset.floor;
-      renderTycoon();
-    });
-  });
-
-  document.querySelectorAll('.tyc-empty').forEach(tile => {
-    tile.addEventListener('click', () => {
-      if (!tycoonSelectedFacility || !tycoonState) return;
-      const row = parseInt(tile.dataset.row);
-      const col = parseInt(tile.dataset.col);
-      const result = placeFacility(tycoonState, row, col, tycoonSelectedFacility, tycoonState.currentFloor);
-      if (result.success) {
-        sfxCardPlay();
-        showTycoonBanner(`${result.facility.name} 설치!`, 'upgrade');
-        updateFacilityBtns();
-        renderTycoon();
-      } else {
-        showTycoonBanner('설치 불가!', 'same');
-      }
-    });
-  });
-
-  document.querySelectorAll('.tyc-fac, .tyc-ref').forEach(tile => {
-    tile.addEventListener('click', () => {
-      const row = parseInt(tile.dataset.row);
-      const col = parseInt(tile.dataset.col);
-      showFacilityInfo(row, col);
-    });
-  });
 }
 
 function showFacilityInfo(row, col) {
@@ -2227,6 +2168,7 @@ function tycoonGameTick() {
 
 function endTycoonMode(won) {
   stopTycoonLoop();
+  if (tycoonRenderer) { tycoonRenderer.destroy(); tycoonRenderer = null; }
   const day = tycoonState.day;
   const prevBest = gameSave.tycoonBest || 0;
   const isNewRecord = day > prevBest;
