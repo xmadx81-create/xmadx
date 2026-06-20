@@ -1595,7 +1595,7 @@ export function defenseDrawCards(wave) {
 
 export function defenseMerge(charId, rarity) {
   const roll = Math.random();
-  const LEGENDARY_CHANCE = 0.00001;
+  const LEGENDARY_CHANCE = 0.005;
   const rarityOrder = ['common', 'uncommon', 'rare', 'legendary'];
   const curIdx = rarityOrder.indexOf(rarity);
 
@@ -1604,7 +1604,7 @@ export function defenseMerge(charId, rarity) {
     return { success: true, upgraded: true, legendary: true, char: legendaries[Math.floor(Math.random() * legendaries.length)] };
   }
 
-  const upgradeChance = curIdx >= 3 ? 0 : 0.49 - curIdx * 0.005;
+  const upgradeChance = curIdx >= 3 ? 0 : 0.49;
   if (roll < LEGENDARY_CHANCE + upgradeChance) {
     const nextRarity = rarityOrder[Math.min(curIdx + 1, 3)];
     const candidates = CHARACTERS.filter(c => c.rarity === nextRarity);
@@ -1622,39 +1622,70 @@ export function defenseAutoAttack(state) {
     for (let c = 0; c < state.gridW; c++) {
       const unit = state.grid[r][c];
       if (!unit) continue;
-      const rng = unit.rng || 1;
-      const atkPower = unit.atk;
-      let attacked = false;
-      for (const enemy of state.enemies) {
-        if (enemy.unit.hp <= 0) continue;
-        const ep = state.path[enemy.pathIndex];
-        if (!ep) continue;
-        const gx = c + 1, gy = r + 1;
-        const dist = Math.abs(gx - ep.x) + Math.abs(gy - ep.y);
-        if (dist <= rng) {
-          const effectiveDef = Math.max(0, enemy.unit.def - (unit.pen || 0));
-          let dmg = Math.max(1, atkPower - effectiveDef);
-          if (Math.random() < (unit.crt || 0)) dmg = Math.floor(dmg * 1.5);
-          if (unit.role === 'support') {
-            for (let dr = -1; dr <= 1; dr++) {
-              for (let dc = -1; dc <= 1; dc++) {
-                if (dr === 0 && dc === 0) continue;
-                const nr = r + dr, nc = c + dc;
-                if (nr >= 0 && nr < state.gridH && nc >= 0 && nc < state.gridW && state.grid[nr][nc]) {
-                  state.grid[nr][nc]._supportBuff = true;
-                }
-              }
+      if (unit.role === 'support') {
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < state.gridH && nc >= 0 && nc < state.gridW && state.grid[nr][nc]) {
+              state.grid[nr][nc]._supportBuff = 3;
             }
           }
-          enemy.unit.hp -= dmg;
-          results.push({ attacker: unit, enemy: enemy.unit, damage: dmg, killed: enemy.unit.hp <= 0 });
-          attacked = true;
-          break;
         }
       }
     }
   }
+  for (let r = 0; r < state.gridH; r++) {
+    for (let c = 0; c < state.gridW; c++) {
+      const unit = state.grid[r][c];
+      if (!unit) continue;
+      const rng = unit.rng || 1;
+      let atkPower = unit.atk + (unit._supportBuff || 0);
+      const gx = c + 1, gy = r + 1;
+      const targets = [];
+      for (const enemy of state.enemies) {
+        if (enemy.unit.hp <= 0) continue;
+        const ep = state.path[enemy.pathIndex];
+        if (!ep) continue;
+        const dist = Math.abs(gx - ep.x) + Math.abs(gy - ep.y);
+        if (dist <= rng) targets.push({ enemy, dist });
+      }
+      if (targets.length === 0) { unit._supportBuff = 0; continue; }
+      targets.sort((a, b) => a.dist - b.dist);
+      const hitCount = unit.role === 'evasive_dps' ? 2 : 1;
+      const aoeCount = unit.role === 'bruiser' ? Math.min(3, targets.length) : 1;
+      const mainTargets = targets.slice(0, Math.max(hitCount, aoeCount));
+      for (const t of mainTargets) {
+        const pen = unit.role === 'breaker' ? (unit.pen || 0) + 3 : (unit.pen || 0);
+        const effectiveDef = Math.max(0, t.enemy.unit.def - pen);
+        let dmg = Math.max(1, atkPower - effectiveDef);
+        const isCrit = Math.random() < (unit.crt || 0);
+        if (isCrit) dmg = Math.floor(dmg * 1.5);
+        t.enemy.unit.hp -= dmg;
+        const killed = t.enemy.unit.hp <= 0;
+        if (unit.role === 'tank' && !killed) {
+          t.enemy.speed = Math.max(1, t.enemy.speed - 1);
+          t.enemy._slowed = 2;
+        }
+        results.push({ attacker: unit, attackerPos: { x: c, y: r }, enemy: t.enemy.unit, damage: dmg, killed, crit: isCrit, role: unit.role });
+      }
+      unit._supportBuff = 0;
+    }
+  }
   return results;
+}
+
+export function defenseTickSlow(state) {
+  state.enemies.forEach(e => {
+    if (e._slowed) {
+      e._slowed--;
+      if (e._slowed <= 0) {
+        const orig = e.unit.role === 'evasive_dps' ? 3 : e.unit.role === 'melee_dps' ? 2 : 1;
+        e.speed = orig;
+        delete e._slowed;
+      }
+    }
+  });
 }
 
 export function defenseAdvanceEnemies(state) {
