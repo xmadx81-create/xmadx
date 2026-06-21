@@ -125,14 +125,16 @@ class TycoonScene extends Phaser.Scene {
     const gridY = PAD + 26;
     const gridW = TILE * GRID + 4;
     const gridH = TILE * GRID + 4;
-    const hasTile = this.textures && this.textures.exists('floor_tile');
-    if (!hasTile) {
-      const bgColor = FLOOR_BG[this._floor] || 0x1e1912;
-      this.gridBg.fillStyle(bgColor, 1);
-      this.gridBg.fillRoundedRect(gridX, gridY, gridW, gridH, 6);
-    }
+    let hasTile = false;
+    try { hasTile = this.textures && this.textures.exists('floor_tile'); } catch(e) {}
+    const FLOOR_TILE_COLOR = { 'B1': 0x2a2535, '1F': 0x3a5c3a, '2F': 0x2e4a5c };
+    const FLOOR_LINE_COLOR = { 'B1': 0x3d3548, '1F': 0x4d6e4d, '2F': 0x3e5a6c };
     const FLOOR_TINT = { 'B1': 0x8888aa, '2F': 0xaabbdd };
+    const tileColor = FLOOR_TILE_COLOR[this._floor] || 0x3a5c3a;
+    const lineColor = FLOOR_LINE_COLOR[this._floor] || 0x4d6e4d;
     const tint = FLOOR_TINT[this._floor];
+    this.gridBg.fillStyle(0x1a1a1a, 1);
+    this.gridBg.fillRoundedRect(gridX, gridY, gridW, gridH, 6);
     for (let r = 0; r < GRID; r++) {
       for (let c = 0; c < GRID; c++) {
         const x = this._tileX(c);
@@ -144,10 +146,12 @@ class TycoonScene extends Phaser.Scene {
           if (tint) sp.setTint(tint);
           this._tileSprites.push(sp);
         } else {
-          this.gridBg.fillStyle(0x000000, 0.04);
+          this.gridBg.fillStyle(tileColor, 1);
           this.gridBg.fillRect(x, y, TILE - 1, TILE - 1);
+          this.gridBg.fillStyle(0xffffff, 0.05);
+          this.gridBg.fillRect(x, y, TILE - 1, (TILE - 1) / 2);
         }
-        this.gridBg.lineStyle(1, 0x000000, 0.15);
+        this.gridBg.lineStyle(1, lineColor, 0.5);
         this.gridBg.strokeRect(x, y, TILE - 1, TILE - 1);
       }
     }
@@ -236,17 +240,11 @@ class TycoonScene extends Phaser.Scene {
     border.strokeRoundedRect(x, y, w, h, 5);
     container.add(border);
 
-    const iconSize = Math.min(tw, th) >= 2 ? '20px' : '14px';
-    const icon = this.add.text(x + w / 2, y + h / 2 - (th >= 2 ? 8 : 3), fac.icon, {
+    const iconSize = Math.min(tw, th) >= 2 ? '28px' : '20px';
+    const icon = this.add.text(x + w / 2, y + h / 2, fac.icon, {
       fontSize: iconSize, fontFamily: 'Arial',
     }).setOrigin(0.5);
     container.add(icon);
-
-    const nameText = this.add.text(x + w / 2, y + h / 2 + (th >= 2 ? 12 : 6), fac.name.slice(0, 3), {
-      fontSize: th >= 2 ? '10px' : '8px', fontFamily: 'monospace', fontStyle: 'bold',
-      color: '#fff', stroke: '#000', strokeThickness: 2,
-    }).setOrigin(0.5);
-    container.add(nameText);
 
     const lvText = this.add.text(x + 3, y + 2, '★'.repeat(fac.level), {
       fontSize: '7px', color: '#fbbf24',
