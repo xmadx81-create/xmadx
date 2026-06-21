@@ -735,278 +735,246 @@ class TycoonScene extends Phaser.Scene {
   _drawBedInterior(fac) {
     const CW = W;
     const CH = H + 22;
+
     const bg = this.add.graphics();
-    bg.fillStyle(0xf0ebe4, 1);
-    bg.fillRect(0, 0, CW, CH);
-    bg.fillStyle(0xe0d8d0, 1);
-    bg.fillRect(0, CH - 80, CW, 80);
-    this._zo(bg);
-
-    const headerBg = this.add.graphics();
-    headerBg.fillStyle(0xcc2222, 1);
-    headerBg.fillRect(0, 0, CW, 32);
-    this._zo(headerBg);
-
-    const title = this.add.text(CW / 2, 16, `🩸 채혈실 Lv.${fac.level}`, {
-      fontSize: '14px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
-    }).setOrigin(0.5);
-    this._zo(title);
-
-    const backBtn = this.add.text(8, 16, '← 돌아가기', {
-      fontSize: '11px', fontFamily: 'monospace', color: '#ffd', backgroundColor: 'rgba(0,0,0,0.3)',
-      padding: { x: 6, y: 3 },
-    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
-    backBtn.on('pointerdown', () => {
-      this.zoomOut();
-      if (this._callbacks.onZoomOut) this._callbacks.onZoomOut();
-    });
-    this._zo(backBtn);
-
-    const bedW = CW * 0.42;
-    const bedH = 160;
-    const bedY = 55;
-    const gap = CW * 0.04;
-    const bedAx = gap;
-    const bedBx = CW - gap - bedW;
-
-    const state = this._state;
-    const beds = [];
-    if (state) {
-      const grid = state.floors[state.currentFloor || '1F'];
-      for (let r = 0; r < 10; r++) {
-        for (let c = 0; c < 10; c++) {
-          const cell = grid[r]?.[c];
-          if (cell && cell.id === 'bed' && cell.uid === fac.uid) beds.push(cell);
-        }
+    bg.fillStyle(0xf5f0e8, 1); bg.fillRect(0, 0, CW, CH);
+    const floorG = this.add.graphics();
+    for (let ty = 36; ty < CH; ty += 24) {
+      for (let tx = 0; tx < CW; tx += 24) {
+        const shade = ((tx / 24 + ty / 24) % 2 === 0) ? 0xede5d8 : 0xe5ddd0;
+        floorG.fillStyle(shade, 1); floorG.fillRect(tx, ty, 24, 24);
+        floorG.lineStyle(0.5, 0xd0c8b8, 0.4); floorG.strokeRect(tx, ty, 24, 24);
       }
     }
-    const bedFac = beds[0] || fac;
-    const donor = state?.donors?.find(d => d.assignedFacility === bedFac.uid && d.status === 'collecting');
-    const donorWait = state?.donors?.find(d => d.assignedFacility === bedFac.uid && d.status === 'seated');
+    this._zo(bg); this._zo(floorG);
 
-    this._drawSingleBed(bedAx, bedY, bedW, bedH, 'A', donor || donorWait, bedFac);
-    this._drawSingleBed(bedBx, bedY, bedW, bedH, 'B', null, null);
+    const wallG = this.add.graphics();
+    wallG.fillStyle(0xe8e0d0, 1); wallG.fillRect(0, 36, CW, 14);
+    wallG.lineStyle(2, 0xc0b8a0, 1); wallG.lineBetween(0, 50, CW, 50);
+    wallG.lineStyle(1, 0xd8d0c0, 0.6); wallG.lineBetween(0, 36, CW, 36);
+    this._zo(wallG);
 
-    const corrY = bedY + bedH + 8;
+    const headerBg = this.add.graphics();
+    headerBg.fillStyle(0x8b1a1a, 1); headerBg.fillRect(0, 0, CW, 36);
+    headerBg.fillStyle(0xa02020, 1); headerBg.fillRect(0, 0, CW, 18);
+    this._zo(headerBg);
+    this._zo(this.add.text(CW / 2, 18, `🏥 채혈실 Lv.${fac.level}`, {
+      fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
+    }).setOrigin(0.5));
+    const backBtn = this.add.text(6, 18, '◀ 나가기', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#ffd',
+      backgroundColor: 'rgba(0,0,0,0.4)', padding: { x: 5, y: 3 },
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerdown', () => { this.zoomOut(); if (this._callbacks.onZoomOut) this._callbacks.onZoomOut(); });
+    this._zo(backBtn);
+
+    const state = this._state;
+    const bedFac = fac;
+    const donor = state?.donors?.find(d => d.assignedFacility === bedFac.uid && (d.status === 'collecting' || d.status === 'seated'));
+
+    const bedW = CW * 0.44;
+    const bedH = 175;
+    const bedY = 58;
+    this._drawDetailBed(CW * 0.02, bedY, bedW, bedH, 'A', donor, bedFac);
+    this._drawDetailBed(CW * 0.54, bedY, bedW, bedH, 'B', null, null);
+
+    const corrY = bedY + bedH + 6;
     const corrG = this.add.graphics();
-    corrG.fillStyle(0xd0c8b8, 1);
-    corrG.fillRect(0, corrY, CW, 28);
-    corrG.lineStyle(1, 0xb0a898, 0.6);
-    for (let i = 0; i < CW; i += 20) {
-      corrG.strokeRect(i, corrY, 20, 28);
+    corrG.fillStyle(0xc8c0b0, 1); corrG.fillRect(0, corrY, CW, 32);
+    for (let i = 0; i < CW; i += 16) {
+      const sh = i % 32 === 0 ? 0xc0b8a8 : 0xd0c8b8;
+      corrG.fillStyle(sh, 1); corrG.fillRect(i, corrY, 16, 32);
     }
+    corrG.lineStyle(2, 0xa09880, 1); corrG.lineBetween(0, corrY, CW, corrY);
+    corrG.lineBetween(0, corrY + 32, CW, corrY + 32);
+    corrG.lineStyle(1, 0xb0a890, 0.5);
+    corrG.setLineDash && corrG.setLineDash([6, 4]);
+    corrG.lineBetween(20, corrY + 16, CW - 20, corrY + 16);
     this._zo(corrG);
 
-    const corrLabel = this.add.text(CW / 2, corrY + 14, '── 복도 ──', {
-      fontSize: '10px', fontFamily: 'monospace', color: '#887766',
-    }).setOrigin(0.5);
-    this._zo(corrLabel);
-
     const nurseHere = state?.nurses?.find(n => {
-      const nr = n.row, nc = n.col;
       const grid2 = state.floors[n.floor || '1F'];
-      const cell = grid2?.[nr]?.[nc];
-      return cell && (cell.uid === fac.uid || cell._anchorRow !== undefined);
+      const cell = grid2?.[n.row]?.[n.col];
+      return cell && cell.uid === fac.uid;
     });
-    const nurseX = CW / 2;
-    const nurseY = corrY + 14;
-    const nurseCirc = this.add.circle(nurseX, nurseY, 10, 0xffffff, 1);
-    nurseCirc.setStrokeStyle(2, 0xcc2222, 1);
-    this._zo(nurseCirc);
-    const nurseIcon = this.add.text(nurseX, nurseY, '👩‍⚕️', {
-      fontSize: '12px',
-    }).setOrigin(0.5);
-    this._zo(nurseIcon);
+    const nx = CW / 2, ny = corrY + 16;
+    const nG = this.add.graphics();
+    nG.fillStyle(0xffffff, 1); nG.fillCircle(nx, ny, 13);
+    nG.lineStyle(2.5, 0xcc2222, 1); nG.strokeCircle(nx, ny, 13);
+    nG.fillStyle(0xcc2222, 1); nG.fillRect(nx - 4, ny - 8, 8, 3); nG.fillRect(nx - 1.5, ny - 11, 3, 8);
+    this._zo(nG);
+    this._zo(this.add.text(nx, ny + 7, '👩‍⚕️', { fontSize: '10px' }).setOrigin(0.5));
     if (nurseHere) {
-      const nName = this.add.text(nurseX, nurseY + 16, nurseHere.charData.name, {
-        fontSize: '8px', fontFamily: 'monospace', fontStyle: 'bold', color: '#553322',
-      }).setOrigin(0.5);
-      this._zo(nName);
+      const nb = this.add.graphics();
+      nb.fillStyle(0x000000, 0.6); nb.fillRoundedRect(nx - 20, ny + 16, 40, 14, 4);
+      this._zo(nb);
+      this._zo(this.add.text(nx, ny + 23, nurseHere.charData.name, {
+        fontSize: '8px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ffd',
+      }).setOrigin(0.5));
     }
 
-    const statsY = corrY + 50;
-    const statsG = this.add.graphics();
-    statsG.fillStyle(0x222222, 0.85);
-    statsG.fillRoundedRect(8, statsY, CW - 16, 90, 6);
-    this._zo(statsG);
-
+    const sY = corrY + 46;
     const collected = state?.totalDonors || 0;
     const bloodTotal = state ? Object.values(state.blood).reduce((s, v) => s + v, 0) : 0;
     const maxSto = state?.maxStorage || 25;
-    const pct = bedFac.processTime > 0 ? Math.min(1, (bedFac.progress || 0) / bedFac.processTime) : 0;
-
-    const s1 = this.add.text(16, statsY + 10, `📊 채혈 현황`, {
-      fontSize: '11px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
-    });
-    this._zo(s1);
-
-    const s2 = this.add.text(16, statsY + 28, `오늘 채혈: ${collected}건`, {
-      fontSize: '10px', fontFamily: 'monospace', color: '#ddd',
-    });
-    this._zo(s2);
-
-    const s3 = this.add.text(16, statsY + 44, `혈액 보관: ${bloodTotal}/${maxSto}팩`, {
-      fontSize: '10px', fontFamily: 'monospace', color: '#ddd',
-    });
-    this._zo(s3);
-
-    const barX = 16;
-    const barY2 = statsY + 62;
-    const barW = CW - 40;
-    const stoBar = this.add.graphics();
-    stoBar.fillStyle(0x444444, 1);
-    stoBar.fillRoundedRect(barX, barY2, barW, 10, 3);
     const stoPct = maxSto > 0 ? bloodTotal / maxSto : 0;
-    stoBar.fillStyle(stoPct > 0.8 ? 0xcc2222 : 0x22aa44, 1);
-    stoBar.fillRoundedRect(barX, barY2, barW * stoPct, 10, 3);
-    this._zo(stoBar);
 
-    const stoPctText = this.add.text(barX + barW + 4, barY2 + 5, `${Math.round(stoPct * 100)}%`, {
-      fontSize: '8px', fontFamily: 'monospace', color: '#aaa',
-    }).setOrigin(0, 0.5);
-    this._zo(stoPctText);
+    const sG = this.add.graphics();
+    sG.fillStyle(0x1a1520, 0.92); sG.fillRoundedRect(6, sY, CW - 12, 52, 6);
+    sG.lineStyle(1, 0x3a3050, 1); sG.strokeRoundedRect(6, sY, CW - 12, 52, 6);
+    this._zo(sG);
+    this._zo(this.add.text(14, sY + 6, '📊 채혈 현황', {
+      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
+    }));
+    this._zo(this.add.text(14, sY + 22, `오늘: ${collected}건  보관: ${bloodTotal}/${maxSto}팩`, {
+      fontSize: '9px', fontFamily: 'monospace', color: '#ccc',
+    }));
+    const bG = this.add.graphics();
+    bG.fillStyle(0x333333, 1); bG.fillRoundedRect(14, sY + 37, CW - 36, 8, 3);
+    bG.fillStyle(stoPct > 0.8 ? 0xcc2222 : 0x22aa44, 1);
+    bG.fillRoundedRect(14, sY + 37, (CW - 36) * stoPct, 8, 3);
+    this._zo(bG);
+    this._zo(this.add.text(CW - 18, sY + 41, `${Math.round(stoPct * 100)}%`, {
+      fontSize: '7px', fontFamily: 'monospace', color: '#aaa',
+    }).setOrigin(1, 0.5));
 
     if (state) {
       const bTypes = ['A', 'B', 'O', 'AB'];
-      const bColors = { A: '#e74c3c', B: '#3498db', O: '#27ae60', AB: '#f39c12' };
-      const chartY = statsY + 100;
-      const chartBg = this.add.graphics();
-      chartBg.fillStyle(0x222222, 0.85);
-      chartBg.fillRoundedRect(8, chartY, CW - 16, 60, 6);
-      this._zo(chartBg);
-
-      const chartTitle = this.add.text(16, chartY + 8, '🩸 혈액형별 재고', {
+      const bClr = { A: 0xe74c3c, B: 0x3498db, O: 0x27ae60, AB: 0xf39c12 };
+      const cY = sY + 60;
+      const cG = this.add.graphics();
+      cG.fillStyle(0x1a1520, 0.92); cG.fillRoundedRect(6, cY, CW - 12, 58, 6);
+      cG.lineStyle(1, 0x3a3050, 1); cG.strokeRoundedRect(6, cY, CW - 12, 58, 6);
+      this._zo(cG);
+      this._zo(this.add.text(14, cY + 6, '🩸 혈액형별 재고', {
         fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
-      });
-      this._zo(chartTitle);
-
+      }));
+      const bW = (CW - 40) / 4;
       bTypes.forEach((bt, i) => {
-        const bx = 16 + i * ((CW - 40) / 4);
-        const bw = (CW - 56) / 4;
+        const bx = 16 + i * bW;
         const amt = state.blood[bt] || 0;
-        const maxH = 25;
-        const bh = maxSto > 0 ? (amt / maxSto) * maxH : 0;
-
+        const mH = 28;
+        const bh = maxSto > 0 ? Math.max(2, (amt / maxSto) * mH) : 2;
         const bar = this.add.graphics();
-        bar.fillStyle(0x444444, 1);
-        bar.fillRect(bx, chartY + 48 - maxH, bw - 4, maxH);
-        bar.fillStyle(parseInt(bColors[bt].slice(1), 16), 1);
-        bar.fillRect(bx, chartY + 48 - bh, bw - 4, bh);
+        bar.fillStyle(0x333333, 1); bar.fillRoundedRect(bx, cY + 48 - mH, bW - 6, mH, 2);
+        bar.fillStyle(bClr[bt], 0.85); bar.fillRoundedRect(bx, cY + 48 - bh, bW - 6, bh, 2);
         this._zo(bar);
-
-        const lbl = this.add.text(bx + (bw - 4) / 2, chartY + 52, `${bt}:${amt}`, {
-          fontSize: '7px', fontFamily: 'monospace', color: bColors[bt],
-        }).setOrigin(0.5, 0);
-        this._zo(lbl);
+        this._zo(this.add.text(bx + (bW - 6) / 2, cY + 52, `${bt}:${amt}`, {
+          fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ddd',
+        }).setOrigin(0.5, 0));
       });
     }
   }
 
-  _drawSingleBed(bx, by, bw, bh, label, donor, bedFac) {
+  _drawDetailBed(bx, by, bw, bh, label, donor, bedFac) {
     const g = this.add.graphics();
-    g.fillStyle(0xffffff, 1);
-    g.fillRoundedRect(bx, by, bw, bh, 6);
-    g.lineStyle(1.5, 0xccbbaa, 1);
-    g.strokeRoundedRect(bx, by, bw, bh, 6);
+    g.fillStyle(0xfcf8f2, 1); g.fillRoundedRect(bx, by, bw, bh, 8);
+    g.lineStyle(2, 0xd0c0a8, 1); g.strokeRoundedRect(bx, by, bw, bh, 8);
+    g.fillStyle(0xe8e0d0, 0.5); g.fillRoundedRect(bx, by, bw, 20, { tl: 8, tr: 8, bl: 0, br: 0 });
     this._zo(g);
 
-    const bedLabel = this.add.text(bx + bw / 2, by + 10, `침대 ${label}`, {
-      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#665544',
-    }).setOrigin(0.5);
-    this._zo(bedLabel);
+    this._zo(this.add.text(bx + bw / 2, by + 10, `━ 침대 ${label} ━`, {
+      fontSize: '9px', fontFamily: 'monospace', fontStyle: 'bold', color: '#8a7a6a',
+    }).setOrigin(0.5));
 
-    const mattX = bx + 8;
-    const mattY = by + 22;
-    const mattW = bw - 16;
-    const mattH = 55;
-    const mattG = this.add.graphics();
-    mattG.fillStyle(0xe8f4f8, 1);
-    mattG.fillRoundedRect(mattX, mattY, mattW, mattH, 4);
-    mattG.lineStyle(1, 0xc0d8e8, 1);
-    mattG.strokeRoundedRect(mattX, mattY, mattW, mattH, 4);
-    this._zo(mattG);
-
-    const pillowG = this.add.graphics();
-    pillowG.fillStyle(0xd0e8f0, 1);
-    pillowG.fillRoundedRect(mattX + 2, mattY + 4, 22, mattH - 8, 6);
-    this._zo(pillowG);
+    const mx = bx + 6, my = by + 26, mw = bw - 50, mh = 65;
+    const mG = this.add.graphics();
+    mG.fillStyle(0x888888, 1);
+    mG.fillRect(mx - 2, my + mh, 4, 12); mG.fillRect(mx + mw - 2, my + mh, 4, 12);
+    mG.fillRect(mx - 2, my - 2, 4, 6); mG.fillRect(mx + mw - 2, my - 2, 4, 6);
+    mG.fillStyle(0xdce8f0, 1); mG.fillRoundedRect(mx, my, mw, mh, 4);
+    mG.lineStyle(1, 0xb0c8d8, 1); mG.strokeRoundedRect(mx, my, mw, mh, 4);
+    mG.fillStyle(0xc8dce8, 1); mG.fillRoundedRect(mx + 2, my + 6, 20, mh - 12, 8);
+    mG.fillStyle(0xf0f4f8, 0.4); mG.fillRect(mx + 24, my + 2, mw - 26, mh / 2 - 2);
+    this._zo(mG);
 
     if (donor) {
-      const donorBody = this.add.graphics();
-      donorBody.fillStyle(0xffd5b4, 1);
-      donorBody.fillCircle(mattX + 13, mattY + mattH / 2 - 4, 8);
-      donorBody.fillStyle(0x6688aa, 1);
-      donorBody.fillRect(mattX + 22, mattY + mattH / 2 - 10, mattW - 30, 20);
-      this._zo(donorBody);
+      const dG = this.add.graphics();
+      dG.fillStyle(0xffd5b4, 1); dG.fillCircle(mx + 12, my + mh / 2 - 2, 9);
+      dG.fillStyle(0x553322, 1);
+      dG.fillCircle(mx + 9, my + mh / 2 - 5, 1.5); dG.fillCircle(mx + 15, my + mh / 2 - 5, 1.5);
+      dG.fillStyle(0x5577aa, 1); dG.fillRoundedRect(mx + 22, my + mh / 2 - 12, mw - 30, 24, 3);
+      dG.fillStyle(0x4466aa, 1); dG.fillRect(mx + 22, my + mh / 2 - 12, mw - 30, 5);
+      dG.fillStyle(0xffd5b4, 1); dG.fillRect(mx + mw - 16, my + mh / 2 - 6, 10, 6);
+      this._zo(dG);
 
-      const donorLabel = this.add.text(mattX + mattW / 2, mattY + mattH + 4, `${donor.bloodType}형 헌혈자`, {
-        fontSize: '8px', fontFamily: 'monospace', color: '#cc2222',
-      }).setOrigin(0.5, 0);
-      this._zo(donorLabel);
+      const bColor = { A: '#e74c3c', B: '#3498db', O: '#27ae60', AB: '#f39c12' }[donor.bloodType] || '#888';
+      const dbg = this.add.graphics();
+      dbg.fillStyle(parseInt(bColor.slice(1), 16), 0.15);
+      dbg.fillRoundedRect(mx, my + mh + 4, mw, 16, 4);
+      this._zo(dbg);
+      this._zo(this.add.text(mx + mw / 2, my + mh + 12, `${donor.bloodType}형 · ${donor.isNamed ? '★ ' + (donor.name || '') : '헌혈자'}`, {
+        fontSize: '8px', fontFamily: 'monospace', fontStyle: 'bold', color: bColor,
+      }).setOrigin(0.5));
     } else {
-      const empty = this.add.text(mattX + mattW / 2, mattY + mattH / 2, '빈 침대', {
-        fontSize: '10px', fontFamily: 'monospace', color: '#aaa',
-      }).setOrigin(0.5);
-      this._zo(empty);
+      this._zo(this.add.text(mx + mw / 2, my + mh / 2, '빈 침대', {
+        fontSize: '11px', fontFamily: 'monospace', color: '#bbb',
+      }).setOrigin(0.5));
     }
 
-    const eqX = bx + bw - 30;
-    const eqY = by + 24;
-    const eqG = this.add.graphics();
-    eqG.fillStyle(0x888888, 1);
-    eqG.fillRect(eqX + 10, eqY, 3, 70);
-    eqG.fillStyle(0xcc2222, 1);
-    eqG.fillRoundedRect(eqX, eqY + 2, 22, 28, 4);
-    eqG.fillStyle(0xdd4444, 1);
-    eqG.fillRoundedRect(eqX + 2, eqY + 4, 18, 24, 3);
-    this._zo(eqG);
+    const ex = bx + bw - 38, ey = by + 26;
+    const eG = this.add.graphics();
+    eG.fillStyle(0x999999, 1); eG.fillRect(ex + 12, ey - 4, 4, 85);
+    eG.fillStyle(0x777777, 1); eG.fillRect(ex + 8, ey + 78, 12, 6);
+    eG.fillStyle(0xcc2222, 1); eG.fillRoundedRect(ex, ey, 28, 32, 5);
+    eG.fillStyle(0xe83838, 1); eG.fillRoundedRect(ex + 2, ey + 2, 24, 28, 4);
+    eG.fillStyle(0xffffff, 0.15); eG.fillRect(ex + 3, ey + 3, 22, 10);
+    this._zo(eG);
+    this._zo(this.add.text(ex + 14, ey + 16, '🩸', { fontSize: '12px' }).setOrigin(0.5));
 
-    const bagLabel = this.add.text(eqX + 11, eqY + 16, '🩸', {
-      fontSize: '10px',
-    }).setOrigin(0.5);
-    this._zo(bagLabel);
+    if (donor) {
+      const tG = this.add.graphics();
+      tG.lineStyle(2.5, 0xcc2222, 0.8);
+      tG.beginPath();
+      tG.moveTo(ex + 14, ey + 32);
+      tG.lineTo(ex + 14, ey + 50);
+      tG.quadraticCurveTo(ex + 14, ey + 60, mx + mw - 6, my + mh / 2);
+      tG.strokePath();
+      const drip = this.add.circle(ex + 14, ey + 40, 2, 0xcc2222, 0.9);
+      this._zo(tG); this._zo(drip);
+      this.tweens.add({ targets: drip, y: ey + 55, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeIn' });
+    }
 
-    if (donor && bedFac) {
-      const tubeG = this.add.graphics();
-      tubeG.lineStyle(2, 0xcc2222, 0.7);
-      tubeG.beginPath();
-      tubeG.moveTo(eqX + 11, eqY + 30);
-      tubeG.lineTo(eqX + 11, eqY + 45);
-      tubeG.lineTo(mattX + mattW - 10, mattY + mattH / 2);
-      tubeG.strokePath();
-      this._zo(tubeG);
+    const pmx = bx + 6, pmy = by + bh - 50;
+    const pmG = this.add.graphics();
+    pmG.fillStyle(0x1a1a2a, 1); pmG.fillRoundedRect(pmx, pmy, bw * 0.55, 42, 4);
+    pmG.lineStyle(1, 0x333355, 1); pmG.strokeRoundedRect(pmx, pmy, bw * 0.55, 42, 4);
+    const pmLed = this.add.graphics();
+    pmLed.fillStyle(donor ? 0x00cc00 : 0x333333, 1); pmLed.fillCircle(pmx + bw * 0.55 - 8, pmy + 6, 3);
+    this._zo(pmG); this._zo(pmLed);
+    if (donor) {
+      const hr = 62 + Math.floor(Math.random() * 25);
+      const bp1 = 105 + Math.floor(Math.random() * 25);
+      const bp2 = 65 + Math.floor(Math.random() * 15);
+      const spo2 = 96 + Math.floor(Math.random() * 4);
+      this._zo(this.add.text(pmx + 4, pmy + 4, `♡ ${hr}`, {
+        fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#44ff44',
+      }));
+      this._zo(this.add.text(pmx + 4, pmy + 17, `BP ${bp1}/${bp2}`, {
+        fontSize: '8px', fontFamily: 'monospace', color: '#44ccff',
+      }));
+      this._zo(this.add.text(pmx + 4, pmy + 28, `SpO₂ ${spo2}%`, {
+        fontSize: '8px', fontFamily: 'monospace', color: '#ffcc44',
+      }));
+    } else {
+      this._zo(this.add.text(pmx + bw * 0.275, pmy + 21, '── OFF ──', {
+        fontSize: '9px', fontFamily: 'monospace', color: '#444',
+      }).setOrigin(0.5));
     }
 
     if (bedFac && bedFac.processTime > 0) {
       const pct = Math.min(1, (bedFac.progress || 0) / bedFac.processTime);
-      const timerY = by + bh - 28;
-      const timerG = this.add.graphics();
-      timerG.fillStyle(0x000000, 0.3);
-      timerG.fillRoundedRect(bx + 8, timerY, bw - 16, 12, 4);
-      timerG.fillStyle(donor ? 0xcc2222 : 0x888888, 1);
-      timerG.fillRoundedRect(bx + 8, timerY, (bw - 16) * pct, 12, 4);
-      this._zo(timerG);
-
-      const timerText = this.add.text(bx + bw / 2, timerY + 6, `${Math.round(pct * 100)}%`, {
-        fontSize: '8px', fontFamily: 'monospace', fontStyle: 'bold',
-        color: '#fff', stroke: '#000', strokeThickness: 1,
-      }).setOrigin(0.5);
-      this._zo(timerText);
+      const tY = by + bh - 16;
+      const tG2 = this.add.graphics();
+      tG2.fillStyle(0x333333, 1); tG2.fillRoundedRect(bx + 6, tY, bw - 12, 10, 4);
+      const pColor = pct > 0.7 ? 0x22cc44 : pct > 0.3 ? 0xf0c040 : 0xcc2222;
+      tG2.fillStyle(pColor, 1); tG2.fillRoundedRect(bx + 6, tY, (bw - 12) * pct, 10, 4);
+      this._zo(tG2);
+      this._zo(this.add.text(bx + bw / 2, tY + 5, donor ? `채혈 ${Math.round(pct * 100)}%` : '', {
+        fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
+        stroke: '#000', strokeThickness: 1,
+      }).setOrigin(0.5));
     }
-
-    const monX = bx + 6;
-    const monY = by + bh - 44;
-    const monG = this.add.graphics();
-    monG.fillStyle(0x222222, 1);
-    monG.fillRoundedRect(monX, monY, 50, 14, 3);
-    this._zo(monG);
-
-    const hr = donor ? 60 + Math.floor(Math.random() * 30) : 0;
-    const bp = donor ? `${110 + Math.floor(Math.random() * 20)}` : '--';
-    const monText = this.add.text(monX + 25, monY + 7, donor ? `♡${hr} BP${bp}` : '-- OFF --', {
-      fontSize: '7px', fontFamily: 'monospace', color: donor ? '#44ff44' : '#555',
-    }).setOrigin(0.5);
-    this._zo(monText);
   }
 
   _drawGenericInterior(fac) {
