@@ -798,11 +798,671 @@ class TycoonScene extends Phaser.Scene {
     if (!fac) return;
     this._zoomObjs.forEach(o => o.destroy());
     this._zoomObjs = [];
-    if (fac.id === 'bed') { this._drawBedInterior(fac); return; }
+    const router = {
+      bed: '_drawBedInterior', reception: '_drawReceptionInterior',
+      lab: '_drawLabInterior', storage: '_drawStorageInterior',
+      cold_storage: '_drawStorageInterior', lounge: '_drawLoungeInterior',
+      emergency: '_drawEmergencyInterior', waiting_room: '_drawWaitingInterior',
+      office: '_drawOfficeInterior', booth: '_drawBoothInterior',
+      restroom: '_drawRestroomInterior', parking: '_drawParkingInterior',
+      corridor: '_drawCorridorInterior', stairs: '_drawCorridorInterior',
+      elevator: '_drawCorridorInterior',
+    };
+    const method = router[fac.id];
+    if (method && this[method]) { this[method](fac); return; }
     this._drawGenericInterior(fac);
   }
 
   _zo(obj) { this._zoomObjs.push(obj); return obj; }
+
+  _drawInteriorBase(fac, headerColor, floorColor1, floorColor2) {
+    const CW = W, CH = H + 22;
+    const bg = this.add.graphics();
+    bg.fillStyle(floorColor1, 1); bg.fillRect(0, 0, CW, CH);
+    const floorG = this.add.graphics();
+    for (let ty = 36; ty < CH; ty += 24) {
+      for (let tx = 0; tx < CW; tx += 24) {
+        const shade = ((tx / 24 + ty / 24) % 2 === 0) ? floorColor1 : floorColor2;
+        floorG.fillStyle(shade, 1); floorG.fillRect(tx, ty, 24, 24);
+        floorG.lineStyle(0.5, 0xd0c8b8, 0.3); floorG.strokeRect(tx, ty, 24, 24);
+      }
+    }
+    this._zo(bg); this._zo(floorG);
+    const wallG = this.add.graphics();
+    wallG.fillStyle(0xe8e0d0, 1); wallG.fillRect(0, 36, CW, 14);
+    wallG.lineStyle(2, 0xc0b8a0, 1); wallG.lineBetween(0, 50, CW, 50);
+    this._zo(wallG);
+    const headerBg = this.add.graphics();
+    headerBg.fillStyle(headerColor, 1); headerBg.fillRect(0, 0, CW, 36);
+    headerBg.fillStyle(headerColor + 0x151515, 1); headerBg.fillRect(0, 0, CW, 18);
+    this._zo(headerBg);
+    this._zo(this.add.text(CW / 2, 18, `${fac.icon} ${fac.name} Lv.${fac.level}`, {
+      fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
+    }).setOrigin(0.5));
+    const backBtn = this.add.text(6, 18, '◀ 나가기', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#ffd',
+      backgroundColor: 'rgba(0,0,0,0.4)', padding: { x: 5, y: 3 },
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerdown', () => { this.zoomOut(); if (this._callbacks.onZoomOut) this._callbacks.onZoomOut(); });
+    this._zo(backBtn);
+    return { CW, CH };
+  }
+
+  _findNurse(fac) {
+    const state = this._state;
+    if (!state?.nurses) return null;
+    return state.nurses.find(n => {
+      const grid2 = state.floors[n.floor || '1F'];
+      const cell = grid2?.[n.row]?.[n.col];
+      return cell && (cell.uid === fac.uid || cell._ref === fac.uid);
+    });
+  }
+
+  _drawNpcSlot(x, y, emoji, name, labelColor) {
+    const g = this.add.graphics();
+    g.fillStyle(0xffffff, 1); g.fillCircle(x, y, 14);
+    g.lineStyle(2, parseInt((labelColor || '#4a90d9').slice(1), 16), 1);
+    g.strokeCircle(x, y, 14);
+    this._zo(g);
+    this._zo(this.add.text(x, y, emoji, { fontSize: '14px' }).setOrigin(0.5));
+    if (name) {
+      const nb = this.add.graphics();
+      nb.fillStyle(0x000000, 0.65); nb.fillRoundedRect(x - 22, y + 16, 44, 13, 4);
+      this._zo(nb);
+      this._zo(this.add.text(x, y + 22, name, {
+        fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ffd',
+      }).setOrigin(0.5));
+    }
+  }
+
+  _drawReceptionInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0x2c5f8a, 0xe8e4dc, 0xddd8d0);
+    const state = this._state;
+    const g = this.add.graphics();
+    g.fillStyle(0x8b6914, 1); g.fillRoundedRect(CW * 0.15, 60, CW * 0.7, 55, 6);
+    g.fillStyle(0xa07820, 1); g.fillRoundedRect(CW * 0.15, 60, CW * 0.7, 20, { tl: 6, tr: 6, bl: 0, br: 0 });
+    g.lineStyle(2, 0x705010, 1); g.strokeRoundedRect(CW * 0.15, 60, CW * 0.7, 55, 6);
+    this._zo(g);
+    this._zo(this.add.text(CW / 2, 70, '📋 접수 데스크', {
+      fontSize: '11px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
+    }).setOrigin(0.5));
+    const pc = this.add.graphics();
+    pc.fillStyle(0x333333, 1); pc.fillRoundedRect(CW * 0.25, 82, 30, 22, 3);
+    pc.fillStyle(0x4488cc, 1); pc.fillRoundedRect(CW * 0.25 + 2, 84, 26, 16, 2);
+    pc.fillStyle(0x555555, 1); pc.fillRect(CW * 0.25 + 10, 104, 10, 4);
+    this._zo(pc);
+    const pc2 = this.add.graphics();
+    pc2.fillStyle(0x333333, 1); pc2.fillRoundedRect(CW * 0.58, 82, 30, 22, 3);
+    pc2.fillStyle(0x44cc88, 1); pc2.fillRoundedRect(CW * 0.58 + 2, 84, 26, 16, 2);
+    pc2.fillStyle(0x555555, 1); pc2.fillRect(CW * 0.58 + 10, 104, 10, 4);
+    this._zo(pc2);
+
+    const nurse = this._findNurse(fac);
+    this._drawNpcSlot(CW * 0.35, 100, '🛡️', nurse?.charData?.name, '#4a90d9');
+    this._drawNpcSlot(CW * 0.65, 100, '🛡️', null, '#4a90d9');
+
+    const qY = 130;
+    const ropG = this.add.graphics();
+    ropG.lineStyle(3, 0xcc8833, 0.6);
+    ropG.lineBetween(CW * 0.2, qY, CW * 0.2, qY + 100);
+    ropG.lineBetween(CW * 0.8, qY, CW * 0.8, qY + 100);
+    for (let i = 0; i < 4; i++) {
+      ropG.lineStyle(2, 0xcc8833, 0.4);
+      ropG.lineBetween(CW * 0.2, qY + 25 * i + 10, CW * 0.8, qY + 25 * i + 10);
+    }
+    this._zo(ropG);
+    this._zo(this.add.text(CW / 2, qY + 6, '── 대기열 ──', {
+      fontSize: '9px', fontFamily: 'monospace', color: '#999',
+    }).setOrigin(0.5));
+
+    const donors = state?.donors?.filter(d => d.status === 'waiting' || d.status === 'queued') || [];
+    const maxQ = Math.min(donors.length, 6);
+    for (let i = 0; i < maxQ; i++) {
+      const dx = CW * 0.3 + (i % 3) * 60;
+      const dy = qY + 30 + Math.floor(i / 3) * 35;
+      const d = donors[i];
+      const bClr = { A: '#e74c3c', B: '#3498db', O: '#27ae60', AB: '#f39c12' }[d.bloodType] || '#888';
+      this._drawNpcSlot(dx, dy, '🧑', d.isNamed ? d.name : null, bClr);
+    }
+    if (donors.length === 0) {
+      this._zo(this.add.text(CW / 2, qY + 55, '대기자 없음', {
+        fontSize: '11px', fontFamily: 'monospace', color: '#aaa',
+      }).setOrigin(0.5));
+    }
+    this._drawControlTabs(fac, 248);
+  }
+
+  _drawLabInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0x6a1b8a, 0xe4e8ec, 0xdce0e4);
+    const state = this._state;
+    const g = this.add.graphics();
+    g.fillStyle(0xcccccc, 1); g.fillRoundedRect(12, 56, CW - 24, 50, 5);
+    g.fillStyle(0xeeeeee, 1); g.fillRoundedRect(12, 56, CW - 24, 18, { tl: 5, tr: 5, bl: 0, br: 0 });
+    g.lineStyle(1, 0x999999, 1); g.strokeRoundedRect(12, 56, CW - 24, 50, 5);
+    this._zo(g);
+    this._zo(this.add.text(CW / 2, 65, '🔬 실험대', {
+      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#555',
+    }).setOrigin(0.5));
+
+    const items = [
+      { x: 30, emoji: '🔬', label: '현미경' },
+      { x: 100, emoji: '🧪', label: '시약' },
+      { x: 170, emoji: '⚗️', label: '원심분리' },
+      { x: 250, emoji: '🖥️', label: '분석기' },
+      { x: 330, emoji: '📊', label: '결과' },
+    ];
+    items.forEach(it => {
+      this._zo(this.add.text(it.x, 80, it.emoji, { fontSize: '16px' }));
+      this._zo(this.add.text(it.x + 10, 98, it.label, {
+        fontSize: '7px', fontFamily: 'monospace', color: '#777',
+      }).setOrigin(0.5));
+    });
+
+    const sampY = 116;
+    const sg = this.add.graphics();
+    sg.fillStyle(0xf0f4f8, 0.9); sg.fillRoundedRect(12, sampY, CW - 24, 60, 5);
+    sg.lineStyle(1, 0xc0c8d0, 1); sg.strokeRoundedRect(12, sampY, CW - 24, 60, 5);
+    this._zo(sg);
+    this._zo(this.add.text(20, sampY + 6, '🩸 검사 중인 혈액 샘플', {
+      fontSize: '9px', fontFamily: 'monospace', fontStyle: 'bold', color: '#6a1b8a',
+    }));
+    const bTypes = ['A', 'B', 'O', 'AB'];
+    const bClr = { A: 0xe74c3c, B: 0x3498db, O: 0x27ae60, AB: 0xf39c12 };
+    bTypes.forEach((bt, i) => {
+      const sx = 24 + i * 90;
+      const amt = state?.blood?.[bt] || 0;
+      const tg = this.add.graphics();
+      tg.fillStyle(bClr[bt], 0.2); tg.fillRoundedRect(sx, sampY + 24, 78, 28, 4);
+      tg.lineStyle(1, bClr[bt], 0.5); tg.strokeRoundedRect(sx, sampY + 24, 78, 28, 4);
+      this._zo(tg);
+      this._zo(this.add.text(sx + 6, sampY + 30, `🧪 ${bt}형`, {
+        fontSize: '9px', fontFamily: 'monospace', fontStyle: 'bold',
+        color: '#' + bClr[bt].toString(16).padStart(6, '0'),
+      }));
+      this._zo(this.add.text(sx + 6, sampY + 42, `${amt}팩`, {
+        fontSize: '8px', fontFamily: 'monospace', color: '#666',
+      }));
+    });
+
+    const nurse = this._findNurse(fac);
+    this._drawNpcSlot(CW * 0.3, 205, '🔍', nurse?.charData?.name, '#8e44ad');
+    this._drawNpcSlot(CW * 0.7, 205, '🔍', null, '#8e44ad');
+
+    this._drawControlTabs(fac, 240);
+  }
+
+  _drawStorageInterior(fac) {
+    const isCold = fac.id === 'cold_storage';
+    const { CW, CH } = this._drawInteriorBase(fac,
+      isCold ? 0x005566 : 0x1a5276,
+      isCold ? 0xd0e8f0 : 0xe0dcd4,
+      isCold ? 0xc4dce8 : 0xd8d4cc
+    );
+    const state = this._state;
+
+    const shelfY = 56;
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 3; col++) {
+        const sx = 14 + col * 130, sy = shelfY + row * 74;
+        const sg = this.add.graphics();
+        sg.fillStyle(isCold ? 0x88bbcc : 0x8b7355, 1);
+        sg.fillRoundedRect(sx, sy, 120, 66, 4);
+        sg.fillStyle(isCold ? 0xaaddee : 0xa08860, 1);
+        sg.fillRoundedRect(sx + 2, sy + 2, 116, 18, 3);
+        sg.fillRoundedRect(sx + 2, sy + 24, 116, 18, 3);
+        sg.fillRoundedRect(sx + 2, sy + 46, 116, 18, 3);
+        sg.lineStyle(1, isCold ? 0x668899 : 0x6b5335, 1);
+        sg.strokeRoundedRect(sx, sy, 120, 66, 4);
+        this._zo(sg);
+
+        const bloodBags = Math.floor(Math.random() * 5);
+        for (let b = 0; b < bloodBags; b++) {
+          const bx = sx + 8 + b * 22;
+          this._zo(this.add.text(bx, sy + 6, '🩸', { fontSize: '10px' }));
+        }
+      }
+    }
+
+    const tempY = 210;
+    const tG = this.add.graphics();
+    tG.fillStyle(0x1a1a2e, 0.9); tG.fillRoundedRect(12, tempY, CW - 24, 32, 5);
+    tG.lineStyle(1, 0x3a3060, 1); tG.strokeRoundedRect(12, tempY, CW - 24, 32, 5);
+    this._zo(tG);
+    const temp = isCold ? '-80°C' : '4°C';
+    const bloodTotal = state ? Object.values(state.blood).reduce((s, v) => s + v, 0) : 0;
+    const maxSto = state?.maxStorage || 25;
+    this._zo(this.add.text(20, tempY + 8, `🌡️ ${temp}`, {
+      fontSize: '12px', fontFamily: 'monospace', fontStyle: 'bold', color: isCold ? '#44ddff' : '#44ff88',
+    }));
+    this._zo(this.add.text(CW - 20, tempY + 8, `📦 ${bloodTotal}/${maxSto}팩`, {
+      fontSize: '11px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
+    }).setOrigin(1, 0));
+
+    const nurse = this._findNurse(fac);
+    if (nurse) this._drawNpcSlot(CW * 0.5, tempY + 52, '📦', nurse.charData?.name, '#2980b9');
+
+    this._drawControlTabs(fac, 260);
+  }
+
+  _drawLoungeInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0x1a7a4a, 0xe8e0d0, 0xdcd4c4);
+    const state = this._state;
+
+    const sofaG = this.add.graphics();
+    sofaG.fillStyle(0x6b4423, 1); sofaG.fillRoundedRect(20, 60, CW * 0.55, 45, 8);
+    sofaG.fillStyle(0x7a5030, 1); sofaG.fillRoundedRect(22, 62, CW * 0.55 - 4, 18, 6);
+    sofaG.fillStyle(0x5a3418, 1);
+    sofaG.fillRoundedRect(20, 60, 12, 45, { tl: 8, tr: 0, bl: 8, br: 0 });
+    sofaG.fillRoundedRect(20 + CW * 0.55 - 12, 60, 12, 45, { tl: 0, tr: 8, bl: 0, br: 8 });
+    this._zo(sofaG);
+    this._zo(this.add.text(20 + CW * 0.275, 88, '🛋️ 소파', {
+      fontSize: '9px', fontFamily: 'monospace', color: '#a08060',
+    }).setOrigin(0.5));
+
+    const tvG = this.add.graphics();
+    tvG.fillStyle(0x222222, 1); tvG.fillRoundedRect(CW * 0.65, 56, CW * 0.28, 50, 4);
+    tvG.fillStyle(0x3366aa, 1); tvG.fillRoundedRect(CW * 0.65 + 3, 59, CW * 0.28 - 6, 40, 3);
+    tvG.fillStyle(0x333333, 1); tvG.fillRect(CW * 0.65 + CW * 0.14 - 4, 106, 8, 6);
+    this._zo(tvG);
+    this._zo(this.add.text(CW * 0.65 + CW * 0.14, 76, '📺', { fontSize: '18px' }).setOrigin(0.5));
+
+    const vendG = this.add.graphics();
+    vendG.fillStyle(0xcc3333, 1); vendG.fillRoundedRect(CW * 0.7, 120, 60, 80, 5);
+    vendG.fillStyle(0xdd5555, 1); vendG.fillRoundedRect(CW * 0.7 + 4, 124, 52, 30, 3);
+    vendG.fillStyle(0xee8888, 1);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) {
+      vendG.fillCircle(CW * 0.7 + 10 + c * 13, 130 + r * 8, 3);
+    }
+    vendG.fillStyle(0x222222, 1); vendG.fillRoundedRect(CW * 0.7 + 4, 158, 52, 36, 3);
+    this._zo(vendG);
+    this._zo(this.add.text(CW * 0.7 + 30, 175, '🥤', { fontSize: '14px' }).setOrigin(0.5));
+
+    const tableG = this.add.graphics();
+    tableG.fillStyle(0xc8a878, 1); tableG.fillRoundedRect(30, 120, 100, 50, 5);
+    tableG.lineStyle(1, 0xa88850, 1); tableG.strokeRoundedRect(30, 120, 100, 50, 5);
+    this._zo(tableG);
+    this._zo(this.add.text(50, 135, '☕', { fontSize: '14px' }));
+    this._zo(this.add.text(90, 135, '🍪', { fontSize: '14px' }));
+
+    const donors = state?.donors?.filter(d => d.status === 'resting') || [];
+    const restSlots = Math.min(donors.length, 3);
+    for (let i = 0; i < restSlots; i++) {
+      const d = donors[i];
+      this._drawNpcSlot(50 + i * 50, 196, '😌', d.isNamed ? d.name : null, '#27ae60');
+    }
+    if (donors.length === 0) {
+      this._zo(this.add.text(80, 190, '쉬는 사람 없음', {
+        fontSize: '10px', fontFamily: 'monospace', color: '#aaa',
+      }).setOrigin(0.5));
+    }
+
+    const nurse = this._findNurse(fac);
+    if (nurse) this._drawNpcSlot(CW * 0.4, 220, '💬', nurse.charData?.name, '#27ae60');
+
+    this._drawControlTabs(fac, 248);
+  }
+
+  _drawEmergencyInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0xaa3311, 0xf0e8e0, 0xe8e0d8);
+    const state = this._state;
+
+    const bedG = this.add.graphics();
+    bedG.fillStyle(0x888888, 1);
+    bedG.fillRect(28, 90, 4, 10); bedG.fillRect(CW * 0.52, 90, 4, 10);
+    bedG.fillRect(28, 150, 4, 10); bedG.fillRect(CW * 0.52, 150, 4, 10);
+    bedG.fillStyle(0xdce8f0, 1); bedG.fillRoundedRect(24, 60, CW * 0.52, 95, 5);
+    bedG.lineStyle(1.5, 0xb0c8d8, 1); bedG.strokeRoundedRect(24, 60, CW * 0.52, 95, 5);
+    bedG.fillStyle(0xc8dce8, 1); bedG.fillRoundedRect(28, 66, 26, 80, 8);
+    this._zo(bedG);
+    this._zo(this.add.text(24 + CW * 0.26, 105, '🛏️ 응급 침대', {
+      fontSize: '9px', fontFamily: 'monospace', color: '#888',
+    }).setOrigin(0.5));
+
+    const defiG = this.add.graphics();
+    defiG.fillStyle(0xeecc22, 1); defiG.fillRoundedRect(CW * 0.6, 60, 70, 50, 6);
+    defiG.lineStyle(2, 0xcc9900, 1); defiG.strokeRoundedRect(CW * 0.6, 60, 70, 50, 6);
+    defiG.fillStyle(0x333333, 1); defiG.fillRoundedRect(CW * 0.6 + 8, 66, 54, 30, 3);
+    defiG.fillStyle(0x22cc22, 1); defiG.fillCircle(CW * 0.6 + 35, 100, 5);
+    this._zo(defiG);
+    this._zo(this.add.text(CW * 0.6 + 35, 80, '⚡', { fontSize: '14px' }).setOrigin(0.5));
+    this._zo(this.add.text(CW * 0.6 + 35, 115, '제세동기', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#666',
+    }).setOrigin(0.5));
+
+    const oxyG = this.add.graphics();
+    oxyG.fillStyle(0x228844, 1); oxyG.fillRoundedRect(CW * 0.6, 125, 34, 55, 5);
+    oxyG.lineStyle(1, 0x116633, 1); oxyG.strokeRoundedRect(CW * 0.6, 125, 34, 55, 5);
+    oxyG.fillStyle(0x44aa66, 1); oxyG.fillCircle(CW * 0.6 + 17, 140, 8);
+    this._zo(oxyG);
+    this._zo(this.add.text(CW * 0.6 + 17, 140, '🫁', { fontSize: '10px' }).setOrigin(0.5));
+    this._zo(this.add.text(CW * 0.6 + 17, 185, 'O₂', {
+      fontSize: '8px', fontFamily: 'monospace', fontStyle: 'bold', color: '#228844',
+    }).setOrigin(0.5));
+
+    const kitG = this.add.graphics();
+    kitG.fillStyle(0xcc2222, 1); kitG.fillRoundedRect(CW * 0.8, 125, 50, 35, 5);
+    kitG.fillStyle(0xffffff, 1);
+    kitG.fillRect(CW * 0.8 + 20, 130, 10, 25);
+    kitG.fillRect(CW * 0.8 + 13, 138, 24, 10);
+    this._zo(kitG);
+    this._zo(this.add.text(CW * 0.8 + 25, 166, '구급함', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#cc2222',
+    }).setOrigin(0.5));
+
+    const statusG = this.add.graphics();
+    statusG.fillStyle(0x1a1520, 0.9); statusG.fillRoundedRect(12, 200, CW - 24, 28, 5);
+    this._zo(statusG);
+    const incidents = state?.incidents || 0;
+    this._zo(this.add.text(20, 206, `🚨 부작용 발생: ${incidents}건`, {
+      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ff6644',
+    }));
+    this._zo(this.add.text(CW - 20, 206, '대기 중 ✅', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#44cc66',
+    }).setOrigin(1, 0));
+
+    const nurse = this._findNurse(fac);
+    if (nurse) this._drawNpcSlot(CW * 0.5, 252, '👩‍⚕️', nurse.charData?.name, '#e67e22');
+
+    this._drawControlTabs(fac, 270);
+  }
+
+  _drawWaitingInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0x2471a3, 0xe4e0d8, 0xdcd8d0);
+    const state = this._state;
+
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 4; col++) {
+        const cx = 20 + col * 95, cy = 60 + row * 70;
+        const cG = this.add.graphics();
+        cG.fillStyle(0x5588aa, 1); cG.fillRoundedRect(cx, cy, 38, 36, 4);
+        cG.fillStyle(0x6699bb, 1); cG.fillRoundedRect(cx, cy, 38, 12, { tl: 4, tr: 4, bl: 0, br: 0 });
+        cG.lineStyle(1, 0x447799, 1); cG.strokeRoundedRect(cx, cy, 38, 36, 4);
+        cG.fillStyle(0x5588aa, 1); cG.fillRect(cx + 2, cy + 36, 6, 8);
+        cG.fillRect(cx + 30, cy + 36, 6, 8);
+        this._zo(cG);
+      }
+    }
+
+    const magG = this.add.graphics();
+    magG.fillStyle(0xc8a878, 1); magG.fillRoundedRect(CW * 0.7, 58, 80, 60, 5);
+    magG.lineStyle(1, 0xa88850, 1); magG.strokeRoundedRect(CW * 0.7, 58, 80, 60, 5);
+    this._zo(magG);
+    this._zo(this.add.text(CW * 0.7 + 40, 72, '📚 잡지', {
+      fontSize: '9px', fontFamily: 'monospace', color: '#8a7a5a',
+    }).setOrigin(0.5));
+    for (let i = 0; i < 4; i++) {
+      const colors = ['📕', '📗', '📘', '📙'];
+      this._zo(this.add.text(CW * 0.7 + 8 + i * 18, 88, colors[i], { fontSize: '14px' }));
+    }
+
+    const wG = this.add.graphics();
+    wG.fillStyle(0xaaddff, 0.3); wG.fillRoundedRect(CW * 0.7, 130, 80, 50, 5);
+    wG.lineStyle(1, 0x88bbdd, 0.5); wG.strokeRoundedRect(CW * 0.7, 130, 80, 50, 5);
+    this._zo(wG);
+    this._zo(this.add.text(CW * 0.7 + 40, 145, '💧', { fontSize: '16px' }).setOrigin(0.5));
+    this._zo(this.add.text(CW * 0.7 + 40, 168, '정수기', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#6699bb',
+    }).setOrigin(0.5));
+
+    const donors = state?.donors?.filter(d => d.status === 'waiting' || d.status === 'queued') || [];
+    const maxD = Math.min(donors.length, 8);
+    for (let i = 0; i < maxD; i++) {
+      const row = Math.floor(i / 4), col = i % 4;
+      const dx = 28 + col * 95, dy = 75 + row * 70;
+      const d = donors[i];
+      this._drawNpcSlot(dx + 19, dy + 6, '🧑', d.isNamed ? d.name : null, '#5dade2');
+    }
+    if (donors.length === 0) {
+      this._zo(this.add.text(CW * 0.35, 105, '대기자 없음', {
+        fontSize: '11px', fontFamily: 'monospace', color: '#aaa',
+      }).setOrigin(0.5));
+    }
+
+    this._drawControlTabs(fac, 248);
+  }
+
+  _drawOfficeInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0x5d4037, 0xe8e4dc, 0xe0dcd4);
+
+    const deskG = this.add.graphics();
+    deskG.fillStyle(0x8d6e63, 1); deskG.fillRoundedRect(CW * 0.1, 60, CW * 0.5, 50, 5);
+    deskG.fillStyle(0x9e8070, 1); deskG.fillRoundedRect(CW * 0.1, 60, CW * 0.5, 16, { tl: 5, tr: 5, bl: 0, br: 0 });
+    deskG.lineStyle(1, 0x6d4e3d, 1); deskG.strokeRoundedRect(CW * 0.1, 60, CW * 0.5, 50, 5);
+    this._zo(deskG);
+    const pcG = this.add.graphics();
+    pcG.fillStyle(0x333333, 1); pcG.fillRoundedRect(CW * 0.18, 68, 50, 32, 3);
+    pcG.fillStyle(0x4488cc, 1); pcG.fillRoundedRect(CW * 0.18 + 3, 70, 44, 26, 2);
+    pcG.fillStyle(0x555555, 1); pcG.fillRect(CW * 0.18 + 18, 100, 14, 5);
+    this._zo(pcG);
+    this._zo(this.add.text(CW * 0.43, 78, '📋', { fontSize: '14px' }));
+    this._zo(this.add.text(CW * 0.5, 78, '✏️', { fontSize: '12px' }));
+
+    const chairG = this.add.graphics();
+    chairG.fillStyle(0x444444, 1); chairG.fillCircle(CW * 0.3, 128, 14);
+    chairG.fillStyle(0x555555, 1); chairG.fillRoundedRect(CW * 0.3 - 10, 115, 20, 12, 3);
+    this._zo(chairG);
+
+    const cabinetG = this.add.graphics();
+    cabinetG.fillStyle(0x888888, 1); cabinetG.fillRoundedRect(CW * 0.68, 56, 100, 100, 5);
+    cabinetG.lineStyle(1, 0x666666, 1); cabinetG.strokeRoundedRect(CW * 0.68, 56, 100, 100, 5);
+    for (let i = 0; i < 4; i++) {
+      cabinetG.fillStyle(0x999999, 1); cabinetG.fillRoundedRect(CW * 0.68 + 4, 60 + i * 24, 92, 20, 2);
+      cabinetG.fillStyle(0xaaaaaa, 1); cabinetG.fillRect(CW * 0.68 + 40, 66 + i * 24, 20, 8);
+    }
+    this._zo(cabinetG);
+    this._zo(this.add.text(CW * 0.68 + 50, 160, '서류 캐비넷', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#888',
+    }).setOrigin(0.5));
+
+    const certG = this.add.graphics();
+    certG.fillStyle(0xf5e6c8, 1); certG.fillRoundedRect(CW * 0.15, 165, 90, 55, 4);
+    certG.lineStyle(2, 0xc8a060, 1); certG.strokeRoundedRect(CW * 0.15, 165, 90, 55, 4);
+    this._zo(certG);
+    this._zo(this.add.text(CW * 0.15 + 45, 182, '🏆 인증서', {
+      fontSize: '9px', fontFamily: 'monospace', fontStyle: 'bold', color: '#8b6914',
+    }).setOrigin(0.5));
+    this._zo(this.add.text(CW * 0.15 + 45, 200, '헌혈의집 운영허가', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#a08050',
+    }).setOrigin(0.5));
+
+    const nurse = this._findNurse(fac);
+    if (nurse) this._drawNpcSlot(CW * 0.3, 150, '🏢', nurse.charData?.name, '#8d6e63');
+
+    this._drawControlTabs(fac, 235);
+  }
+
+  _drawBoothInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0xb8860b, 0xf0e8d8, 0xe8e0d0);
+
+    const bannerG = this.add.graphics();
+    bannerG.fillStyle(0xcc2222, 1); bannerG.fillRoundedRect(CW * 0.1, 54, CW * 0.8, 40, 6);
+    bannerG.lineStyle(2, 0xaa1111, 1); bannerG.strokeRoundedRect(CW * 0.1, 54, CW * 0.8, 40, 6);
+    this._zo(bannerG);
+    this._zo(this.add.text(CW / 2, 74, '🩸 헌혈하면 생명을 살립니다! 🩸', {
+      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
+    }).setOrigin(0.5));
+
+    const tableG = this.add.graphics();
+    tableG.fillStyle(0xcc8833, 1); tableG.fillRoundedRect(CW * 0.15, 104, CW * 0.7, 40, 5);
+    tableG.fillStyle(0xdd9944, 1); tableG.fillRoundedRect(CW * 0.15, 104, CW * 0.7, 15, { tl: 5, tr: 5, bl: 0, br: 0 });
+    tableG.lineStyle(1, 0xaa6620, 1); tableG.strokeRoundedRect(CW * 0.15, 104, CW * 0.7, 40, 5);
+    this._zo(tableG);
+    this._zo(this.add.text(CW * 0.25, 120, '📄', { fontSize: '16px' }));
+    this._zo(this.add.text(CW * 0.4, 118, '팜플렛', { fontSize: '8px', fontFamily: 'monospace', color: '#ffd' }));
+    this._zo(this.add.text(CW * 0.6, 120, '🎁', { fontSize: '16px' }));
+    this._zo(this.add.text(CW * 0.72, 118, '기념품', { fontSize: '8px', fontFamily: 'monospace', color: '#ffd' }));
+
+    const megaG = this.add.graphics();
+    megaG.fillStyle(0xf5e6c8, 0.8); megaG.fillRoundedRect(CW * 0.2, 156, CW * 0.6, 50, 6);
+    megaG.lineStyle(1, 0xd0c0a0, 1); megaG.strokeRoundedRect(CW * 0.2, 156, CW * 0.6, 50, 6);
+    this._zo(megaG);
+    this._zo(this.add.text(CW / 2, 172, '📣 홍보 활동', {
+      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#b8860b',
+    }).setOrigin(0.5));
+    const fame = this._state?.fame || 0;
+    this._zo(this.add.text(CW / 2, 190, `명성: ${fame} · 다음날 헌혈자 +3`, {
+      fontSize: '9px', fontFamily: 'monospace', color: '#888',
+    }).setOrigin(0.5));
+
+    const nurse = this._findNurse(fac);
+    if (nurse) this._drawNpcSlot(CW * 0.5, 230, '📣', nurse.charData?.name, '#f39c12');
+
+    this._drawControlTabs(fac, 255);
+  }
+
+  _drawRestroomInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0x2e7d32, 0xe4e8e4, 0xdce0dc);
+
+    for (let i = 0; i < 3; i++) {
+      const sx = 20 + i * 130;
+      const stG = this.add.graphics();
+      stG.fillStyle(0xd0d0d0, 1); stG.fillRoundedRect(sx, 56, 110, 80, 5);
+      stG.lineStyle(1.5, 0xaaaaaa, 1); stG.strokeRoundedRect(sx, 56, 110, 80, 5);
+      stG.fillStyle(0xbbbbbb, 1); stG.fillRect(sx + 50, 72, 14, 22);
+      stG.fillStyle(0xcccccc, 1); stG.fillCircle(sx + 57, 68, 5);
+      this._zo(stG);
+      this._zo(this.add.text(sx + 55, 108, '🚽', { fontSize: '14px' }).setOrigin(0.5));
+      const occupied = Math.random() > 0.5;
+      this._zo(this.add.text(sx + 55, 125, occupied ? '🔴 사용중' : '🟢 비어있음', {
+        fontSize: '7px', fontFamily: 'monospace', color: occupied ? '#cc4444' : '#44aa44',
+      }).setOrigin(0.5));
+    }
+
+    const sinkY = 150;
+    const sinkG = this.add.graphics();
+    sinkG.fillStyle(0xeeeeee, 1); sinkG.fillRoundedRect(20, sinkY, CW - 40, 40, 5);
+    sinkG.lineStyle(1, 0xcccccc, 1); sinkG.strokeRoundedRect(20, sinkY, CW - 40, 40, 5);
+    this._zo(sinkG);
+    for (let i = 0; i < 4; i++) {
+      const sx = 40 + i * 88;
+      this._zo(this.add.text(sx, sinkY + 10, '🚰', { fontSize: '16px' }));
+    }
+    this._zo(this.add.text(CW / 2, sinkY + 35, '── 세면대 ──', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#aaa',
+    }).setOrigin(0.5));
+
+    const mirG = this.add.graphics();
+    mirG.fillStyle(0xaaddff, 0.3); mirG.fillRoundedRect(30, sinkY - 8, CW - 60, 8, 2);
+    mirG.lineStyle(1, 0x88bbdd, 0.5); mirG.strokeRoundedRect(30, sinkY - 8, CW - 60, 8, 2);
+    this._zo(mirG);
+
+    this._drawControlTabs(fac, 210);
+  }
+
+  _drawParkingInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac, 0x263238, 0xc0c0c0, 0xb8b8b8);
+
+    const pg = this.add.graphics();
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 3; col++) {
+        const px = 18 + col * 128, py = 58 + row * 82;
+        pg.lineStyle(2, 0xffffff, 0.6);
+        pg.strokeRect(px, py, 115, 70);
+        pg.lineStyle(1, 0xffff00, 0.3);
+        pg.lineBetween(px + 2, py + 35, px + 113, py + 35);
+      }
+    }
+    this._zo(pg);
+
+    const cars = ['🚗', '🚙', '🚕', '🏎️', '🚐'];
+    const parkedCount = Math.min(3 + Math.floor(Math.random() * 3), 5);
+    for (let i = 0; i < parkedCount; i++) {
+      const row = Math.floor(i / 3), col = i % 3;
+      const cx = 18 + col * 128 + 57, cy = 58 + row * 82 + 35;
+      this._zo(this.add.text(cx, cy, cars[i % cars.length], { fontSize: '24px' }).setOrigin(0.5));
+    }
+    for (let i = parkedCount; i < 6; i++) {
+      const row = Math.floor(i / 3), col = i % 3;
+      const cx = 18 + col * 128 + 57, cy = 58 + row * 82 + 35;
+      this._zo(this.add.text(cx, cy, 'P', {
+        fontSize: '18px', fontFamily: 'monospace', fontStyle: 'bold', color: '#666',
+      }).setOrigin(0.5));
+    }
+
+    const infoG = this.add.graphics();
+    infoG.fillStyle(0x1a1a2e, 0.9); infoG.fillRoundedRect(12, 228, CW - 24, 24, 5);
+    this._zo(infoG);
+    this._zo(this.add.text(20, 234, `🅿️ 주차: ${parkedCount}/6대  · 일일 헌혈자 +5`, {
+      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#80cbc4',
+    }));
+
+    this._drawControlTabs(fac, 260);
+  }
+
+  _drawCorridorInterior(fac) {
+    const { CW, CH } = this._drawInteriorBase(fac,
+      fac.id === 'stairs' ? 0x5d4037 : fac.id === 'elevator' ? 0x37474f : 0x607d8b,
+      0xe0dcd4, 0xd8d4cc
+    );
+
+    if (fac.id === 'corridor') {
+      const g = this.add.graphics();
+      for (let i = 0; i < CW; i += 20) {
+        g.fillStyle(i % 40 === 0 ? 0xd0c8b8 : 0xc8c0b0, 1);
+        g.fillRect(i, 60, 20, 120);
+      }
+      g.lineStyle(2, 0xa09880, 1);
+      g.lineBetween(0, 60, CW, 60);
+      g.lineBetween(0, 180, CW, 180);
+      g.lineStyle(1, 0xb0a890, 0.5);
+      g.lineBetween(20, 120, CW - 20, 120);
+      this._zo(g);
+      this._zo(this.add.text(CW / 2, 120, '🚶 ← 이동 통로 →', {
+        fontSize: '12px', fontFamily: 'monospace', color: '#888',
+      }).setOrigin(0.5));
+      const arrows = this.add.graphics();
+      arrows.lineStyle(2, 0x888888, 0.5);
+      for (let i = 0; i < 5; i++) {
+        const ax = 40 + i * 80;
+        arrows.lineBetween(ax, 110, ax + 12, 120);
+        arrows.lineBetween(ax + 12, 120, ax, 130);
+      }
+      this._zo(arrows);
+    } else if (fac.id === 'stairs') {
+      const g = this.add.graphics();
+      for (let i = 0; i < 8; i++) {
+        const shade = 0xb0a090 - i * 0x080808;
+        g.fillStyle(shade, 1);
+        g.fillRect(CW * 0.15, 60 + i * 18, CW * 0.7, 16);
+        g.lineStyle(1, 0x908070, 1);
+        g.strokeRect(CW * 0.15, 60 + i * 18, CW * 0.7, 16);
+      }
+      this._zo(g);
+      const railG = this.add.graphics();
+      railG.lineStyle(3, 0x888888, 0.8);
+      railG.lineBetween(CW * 0.15, 60, CW * 0.15, 204);
+      railG.lineBetween(CW * 0.85, 60, CW * 0.85, 204);
+      for (let i = 0; i < 8; i++) {
+        railG.lineStyle(2, 0x999999, 0.5);
+        railG.lineBetween(CW * 0.15, 68 + i * 18, CW * 0.15, 60 + i * 18);
+        railG.lineBetween(CW * 0.85, 68 + i * 18, CW * 0.85, 60 + i * 18);
+      }
+      this._zo(railG);
+      this._zo(this.add.text(CW / 2, 130, '🪜 계단', {
+        fontSize: '14px', fontFamily: 'monospace', fontStyle: 'bold', color: '#888',
+      }).setOrigin(0.5));
+    } else {
+      const g = this.add.graphics();
+      g.fillStyle(0x888888, 1); g.fillRoundedRect(CW * 0.15, 56, CW * 0.7, 140, 8);
+      g.fillStyle(0x999999, 1); g.fillRoundedRect(CW * 0.15 + 4, 60, CW * 0.7 - 8, 132, 6);
+      g.lineStyle(2, 0x666666, 1); g.strokeRoundedRect(CW * 0.15, 56, CW * 0.7, 140, 8);
+      g.fillStyle(0x777777, 1);
+      g.fillRect(CW / 2 - 2, 60, 4, 132);
+      this._zo(g);
+      this._zo(this.add.text(CW / 2, 100, '🛗', { fontSize: '28px' }).setOrigin(0.5));
+      const floorDisp = this.add.graphics();
+      floorDisp.fillStyle(0x222222, 1); floorDisp.fillRoundedRect(CW / 2 - 20, 130, 40, 20, 4);
+      this._zo(floorDisp);
+      this._zo(this.add.text(CW / 2, 140, fac.floor || '1F', {
+        fontSize: '11px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ff4444',
+      }).setOrigin(0.5));
+      this._zo(this.add.text(CW / 2, 165, '▲ ▼', {
+        fontSize: '14px', fontFamily: 'monospace', color: '#aaa',
+      }).setOrigin(0.5));
+    }
+
+    this._drawControlTabs(fac, 220);
+  }
 
   _drawBedInterior(fac) {
     const CW = W;
