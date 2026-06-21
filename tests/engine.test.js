@@ -3338,8 +3338,8 @@ describe('헌혈의집 타이쿤 시스템', () => {
     expect(checkStoryObjective(state, TYCOON_STORY[2])).toBe(false);
   });
 
-  it('TYCOON_RESEARCH — 10개 연구 정의', () => {
-    expect(Object.keys(TYCOON_RESEARCH).length).toBe(10);
+  it('TYCOON_RESEARCH — 12개 연구 정의', () => {
+    expect(Object.keys(TYCOON_RESEARCH).length).toBe(12);
     expect(TYCOON_RESEARCH.speed1.effect.type).toBe('bedSpeed');
     expect(TYCOON_RESEARCH.patience1.effect.type).toBe('patience');
   });

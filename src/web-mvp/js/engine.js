@@ -1577,6 +1577,8 @@ export const TYCOON_RESEARCH = {
   fame2:     { id: 'fame2',     name: '홍보 전략 II',  cost: 12, desc: '명성 획득 +50%',   effect: { type: 'fameBonus', value: 0.5 }, req: 'fame1' },
   nurse1:    { id: 'nurse1',    name: '직원 교육 I',   cost: 8,  desc: '간호사 이동속도 2배', effect: { type: 'nurseSpeed', value: 2 }, req: null },
   order1:    { id: 'order1',    name: '물류 개선',     cost: 7,  desc: '주문 데드라인 +10', effect: { type: 'deadline', value: 10 },   req: null },
+  staff1:    { id: 'staff1',    name: '인력 확충 I',   cost: 8,  desc: '배치 상한 +2 (→5명)', effect: { type: 'staffCap', value: 2 }, req: null },
+  staff2:    { id: 'staff2',    name: '인력 확충 II',  cost: 15, desc: '배치 상한 +3 (→8명)', effect: { type: 'staffCap', value: 3 }, req: 'staff1' },
 };
 
 export function getStoryChapter(day) {
@@ -1905,8 +1907,13 @@ export function assignStaff(state, row, col, charData) {
   return true;
 }
 
+export function getStaffCap(state) {
+  return 3 + getResearchBonus(state, 'staffCap');
+}
+
 export function deployNurse(state, charData) {
   if (state.nurses.find(n => n.charData.id === charData.id)) return { success: false, reason: 'already_deployed' };
+  if (state.nurses.length >= getStaffCap(state)) return { success: false, reason: 'cap' };
   const role = TYCOON_ROLES[charData.role] || TYCOON_ROLES.support;
   const nurse = {
     charData,
