@@ -1745,7 +1745,7 @@ function showFacilityInfo(row, col) {
     ${fac.level < 3 ? `<button class="btn-secondary tyc-upgrade-btn" style="margin-top:4px;font-size:0.7rem">업그레이드 ${upgCost} 명성</button>` : '<div style="font-size:0.7rem;color:#C9A54E">MAX</div>'}
     <button class="btn-secondary tyc-staff-btn" style="margin-top:4px;font-size:0.7rem">인력 관리</button>
     ${nurseHere ? `<button class="btn-secondary tyc-unstaff-btn" style="margin-top:4px;font-size:0.7rem;color:#f88">🚫 ${nurseHere.charData.name} 해제</button>` : ''}
-    <button class="btn-secondary tyc-zoom-btn" style="margin-top:4px;font-size:0.7rem;color:#4af">🔍 내부 보기</button>`;
+    <button class="btn-secondary tyc-zoom-btn" style="margin-top:4px;font-size:0.7rem;color:#4af">🚪 들어가기</button>`;
   document.getElementById('defense-screen').appendChild(popup);
   popup.querySelector('.tyc-upgrade-btn')?.addEventListener('click', () => {
     const result = upgradeFacility(tycoonState, fac.anchorRow || row, fac.anchorCol || col, curFloor);
