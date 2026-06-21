@@ -533,7 +533,7 @@ export class TycoonRenderer {
       parent: this.containerId,
       width: W,
       height: H + 30,
-      backgroundColor: '#0e0c0a',
+      backgroundColor: '#14101e',
       transparent: false,
       scene: {
         preload: function () {
