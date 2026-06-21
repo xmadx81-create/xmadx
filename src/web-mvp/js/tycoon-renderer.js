@@ -69,6 +69,7 @@ class TycoonScene extends Phaser.Scene {
   create() {
     this.bgSprite = null;
     this._genFloorTextures();
+    this._genFacTextures();
     this.gridBg = this.add.graphics();
     this.facLayer = this.add.container(0, 0);
     this.nurseLayer = this.add.container(0, 0);
@@ -107,6 +108,199 @@ class TycoonScene extends Phaser.Scene {
       cx.strokeStyle = cl.grout;
       cx.lineWidth = 0.5;
       cx.stroke();
+      ct.refresh();
+    }
+  }
+
+  _genFacTextures() {
+    const T = TILE;
+    const draw = {
+      bed: (c, w, h) => {
+        c.fillStyle = '#f8e8e8'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#e0e8f0'; c.fillRect(4, 6, w * 0.55, h - 12);
+        c.fillStyle = '#b8d0e0'; c.fillRect(6, 8, 14, h - 16);
+        c.fillStyle = '#d0d8e0'; c.fillRect(22, 10, w * 0.3, h - 20);
+        c.fillStyle = '#cc2222'; c.fillRect(w - 16, 3, 8, 12);
+        c.fillStyle = '#dd3333'; c.fillRect(w - 15, 4, 6, 10);
+        c.fillStyle = '#666'; c.fillRect(w - 12, 2, 2, h - 4);
+        c.strokeStyle = '#cc2222'; c.lineWidth = 1.5;
+        c.beginPath(); c.moveTo(w - 11, 15); c.quadraticCurveTo(w - 11, h / 2, w * 0.55 + 4, h / 2); c.stroke();
+        c.fillStyle = '#cc2222'; c.beginPath(); c.arc(w - 12, h - 8, 3, 0, Math.PI * 2); c.fill();
+      },
+      reception: (c, w, h) => {
+        c.fillStyle = '#e8eff8'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#8b7355'; c.fillRect(6, h * 0.5, w - 12, h * 0.4);
+        c.fillStyle = '#a08060'; c.fillRect(6, h * 0.5, w - 12, 4);
+        c.fillStyle = '#334455'; c.fillRect(w * 0.3, 8, w * 0.35, h * 0.35);
+        c.fillStyle = '#4488bb'; c.fillRect(w * 0.32, 10, w * 0.31, h * 0.28);
+        c.fillStyle = '#ddd'; c.fillRect(w * 0.25, h * 0.5 + 8, w * 0.2, 3);
+        c.fillStyle = '#ccc'; c.fillRect(w * 0.5, h * 0.5 + 8, w * 0.2, 3);
+        c.fillStyle = '#f0e0c0'; c.fillRect(10, h * 0.55, 12, 16);
+        c.strokeStyle = '#888'; c.lineWidth = 0.5;
+        c.strokeRect(10, h * 0.55, 12, 16);
+      },
+      waiting_room: (c, w, h) => {
+        c.fillStyle = '#f0ede8'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < 3; i++) {
+          const cx = 12 + i * 22, cy = 14;
+          c.fillStyle = '#4488aa'; c.fillRect(cx, cy, 16, 14);
+          c.fillStyle = '#3377aa'; c.fillRect(cx, cy, 16, 4);
+          c.fillStyle = '#336699'; c.fillRect(cx, cy, 3, 14);
+        }
+        for (let i = 0; i < 3; i++) {
+          const cx = 12 + i * 22, cy = h - 28;
+          c.fillStyle = '#4488aa'; c.fillRect(cx, cy, 16, 14);
+          c.fillStyle = '#3377aa'; c.fillRect(cx, cy, 16, 4);
+          c.fillStyle = '#336699'; c.fillRect(cx, cy, 3, 14);
+        }
+      },
+      lounge: (c, w, h) => {
+        c.fillStyle = '#f5f0e8'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#cc8844'; c.fillRect(w * 0.3, h * 0.35, w * 0.4, h * 0.3);
+        c.fillStyle = '#dd9955'; c.fillRect(w * 0.32, h * 0.37, w * 0.36, h * 0.26);
+        c.fillStyle = '#5a8a5a';
+        c.beginPath(); c.moveTo(8, h * 0.7); c.lineTo(w * 0.4, h * 0.7); c.lineTo(w * 0.4, h * 0.3);
+        c.lineTo(8, h * 0.3); c.closePath(); c.fill();
+        c.fillStyle = '#4a7a4a'; c.fillRect(8, h * 0.3, 6, h * 0.4);
+        c.fillStyle = '#6a9a6a'; c.fillRect(10, h * 0.35, w * 0.25, h * 0.15);
+        c.fillStyle = '#8B4513'; c.fillRect(w * 0.65, h * 0.1, 4, 10);
+        c.fillStyle = '#228B22'; c.beginPath(); c.arc(w * 0.67, h * 0.08, 6, 0, Math.PI * 2); c.fill();
+      },
+      lab: (c, w, h) => {
+        c.fillStyle = '#eef2f8'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#bbb'; c.fillRect(8, h * 0.55, w - 16, h * 0.35);
+        c.fillStyle = '#ccc'; c.fillRect(8, h * 0.55, w - 16, 3);
+        c.fillStyle = '#333'; c.fillRect(14, h * 0.2, 8, h * 0.35);
+        c.fillStyle = '#555'; c.fillRect(10, h * 0.15, 16, 6);
+        c.fillStyle = '#777'; c.fillRect(16, h * 0.42, 12, h * 0.13);
+        const tubes = ['#dd3333', '#33aa33', '#3355cc', '#ddaa22'];
+        tubes.forEach((cl, i) => {
+          c.fillStyle = cl; c.globalAlpha = 0.7;
+          c.fillRect(w * 0.5 + i * 8, h * 0.25, 5, h * 0.3);
+          c.globalAlpha = 1;
+          c.fillStyle = '#999'; c.fillRect(w * 0.5 + i * 8, h * 0.22, 5, 4);
+        });
+      },
+      storage: (c, w, h) => {
+        c.fillStyle = '#dde8f0'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#c0c8d0'; c.fillRect(4, 3, w - 8, h - 6);
+        c.fillStyle = '#b0b8c0'; c.fillRect(4, 3, w - 8, 3);
+        c.strokeStyle = '#9098a0'; c.lineWidth = 1;
+        c.strokeRect(6, h * 0.15, w * 0.42, h * 0.35);
+        c.strokeRect(w * 0.52, h * 0.15, w * 0.42, h * 0.35);
+        c.strokeRect(6, h * 0.55, w * 0.42, h * 0.35);
+        c.strokeRect(w * 0.52, h * 0.55, w * 0.42, h * 0.35);
+        c.fillStyle = '#88ccee'; c.globalAlpha = 0.3;
+        c.fillRect(7, h * 0.16, w * 0.41, h * 0.33);
+        c.fillRect(w * 0.53, h * 0.16, w * 0.41, h * 0.33);
+        c.globalAlpha = 1;
+        c.fillStyle = '#aaa'; c.fillRect(w * 0.46, h * 0.25, 3, 8);
+        c.fillRect(w * 0.46, h * 0.65, 3, 8);
+      },
+      corridor: (c, w, h) => {
+        c.fillStyle = '#d8d0c0'; c.fillRect(0, 0, w, h);
+        c.strokeStyle = '#bbb0a0'; c.lineWidth = 0.5;
+        c.setLineDash([3, 3]);
+        c.beginPath(); c.moveTo(w / 2, 2); c.lineTo(w / 2, h - 2); c.stroke();
+        c.beginPath(); c.moveTo(2, h / 2); c.lineTo(w - 2, h / 2); c.stroke();
+        c.setLineDash([]);
+      },
+      stairs: (c, w, h) => {
+        c.fillStyle = '#c8c0b8'; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < 5; i++) {
+          const sh = h / 5;
+          c.fillStyle = i % 2 === 0 ? '#b0a898' : '#c0b8a8';
+          c.fillRect(4 + i * 3, 2 + i * sh, w - 8 - i * 3, sh);
+          c.fillStyle = '#908880'; c.fillRect(4 + i * 3, 2 + i * sh, w - 8 - i * 3, 2);
+        }
+      },
+      emergency: (c, w, h) => {
+        c.fillStyle = '#fff0e0'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#e8e0d8'; c.fillRect(4, 6, w * 0.5, h - 12);
+        c.fillStyle = '#d0c8c0'; c.fillRect(6, 8, 12, h - 16);
+        c.fillStyle = '#cc4400'; c.fillRect(w * 0.6, 4, 16, 16);
+        c.fillStyle = '#fff'; c.fillRect(w * 0.6 + 6, 7, 4, 10);
+        c.fillRect(w * 0.6 + 3, 10, 10, 4);
+        c.fillStyle = '#22aa44';
+        c.beginPath(); c.moveTo(w * 0.7, h * 0.5); c.lineTo(w * 0.85, h * 0.35); c.lineTo(w * 0.85, h * 0.65); c.closePath(); c.fill();
+        c.strokeStyle = '#22aa44'; c.lineWidth = 1.5;
+        c.beginPath(); c.moveTo(w * 0.85, h * 0.5); c.lineTo(w - 6, h * 0.5); c.stroke();
+      },
+      restroom: (c, w, h) => {
+        c.fillStyle = '#e8f0f0'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#ddd'; c.fillRect(w * 0.2, 4, w * 0.6, h * 0.45);
+        c.fillStyle = '#eee'; c.fillRect(w * 0.25, 6, w * 0.5, h * 0.35);
+        c.fillStyle = '#aaddee'; c.fillRect(w * 0.3, 8, w * 0.15, h * 0.25);
+        c.fillStyle = '#bbb'; c.fillRect(w * 0.2, h * 0.55, w * 0.6, h * 0.35);
+        c.fillStyle = '#ccc'; c.fillRect(w * 0.25, h * 0.6, w * 0.5, h * 0.25);
+      },
+      booth: (c, w, h) => {
+        c.fillStyle = '#fff5e0'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#ee5533';
+        c.beginPath(); c.moveTo(w / 2, 2); c.lineTo(w - 4, h * 0.45); c.lineTo(4, h * 0.45); c.closePath(); c.fill();
+        c.fillStyle = '#dd4422';
+        c.beginPath(); c.moveTo(w / 2, 2); c.lineTo(w * 0.75, h * 0.45); c.lineTo(w / 2, h * 0.45); c.closePath(); c.fill();
+        c.fillStyle = '#8B4513'; c.fillRect(w * 0.2, h * 0.45, w * 0.6, h * 0.45);
+        c.fillStyle = '#a0522d'; c.fillRect(w * 0.2, h * 0.45, w * 0.6, 3);
+      },
+      elevator: (c, w, h) => {
+        c.fillStyle = '#c0c0c8'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#9098a0'; c.fillRect(4, 4, w - 8, h - 8);
+        c.fillStyle = '#a0a8b0'; c.fillRect(4, 4, (w - 8) / 2 - 1, h - 8);
+        c.fillStyle = '#a8b0b8'; c.fillRect(w / 2 + 1, 4, (w - 8) / 2 - 1, h - 8);
+        c.strokeStyle = '#888'; c.lineWidth = 1; c.strokeRect(4, 4, w - 8, h - 8);
+        c.fillStyle = '#dd8800';
+        c.beginPath(); c.moveTo(w / 2, 8); c.lineTo(w / 2 + 5, 14); c.lineTo(w / 2 - 5, 14); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(w / 2, h - 8); c.lineTo(w / 2 + 5, h - 14); c.lineTo(w / 2 - 5, h - 14); c.closePath(); c.fill();
+      },
+      office: (c, w, h) => {
+        c.fillStyle = '#f0ece0'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#8b7355'; c.fillRect(8, h * 0.4, w - 16, h * 0.45);
+        c.fillStyle = '#a08060'; c.fillRect(8, h * 0.4, w - 16, 3);
+        c.fillStyle = '#334'; c.fillRect(w * 0.35, 4, w * 0.25, h * 0.3);
+        c.fillStyle = '#4488bb'; c.fillRect(w * 0.37, 6, w * 0.21, h * 0.24);
+        c.fillStyle = '#f0e0c0'; c.fillRect(12, h * 0.48, 10, 14);
+        c.fillStyle = '#eee0d0'; c.fillRect(24, h * 0.5, 8, 10);
+      },
+      parking: (c, w, h) => {
+        c.fillStyle = '#555'; c.fillRect(0, 0, w, h);
+        c.strokeStyle = '#fff'; c.lineWidth = 1;
+        for (let i = 0; i < 4; i++) {
+          c.strokeRect(8 + i * (w / 4 - 2), 8, w / 4 - 6, h * 0.4);
+          c.strokeRect(8 + i * (w / 4 - 2), h * 0.55, w / 4 - 6, h * 0.4);
+        }
+        c.fillStyle = '#fff'; c.font = 'bold 14px monospace'; c.textAlign = 'center';
+        c.fillText('P', w / 2, h / 2 + 5);
+      },
+      cold_storage: (c, w, h) => {
+        c.fillStyle = '#d0e8f0'; c.fillRect(0, 0, w, h);
+        c.fillStyle = '#a0c0d0'; c.fillRect(4, 4, w - 8, h - 8);
+        c.fillStyle = '#90b0c0'; c.fillRect(4, 4, w - 8, 4);
+        for (let i = 0; i < 3; i++) {
+          c.strokeStyle = '#80a0b0'; c.lineWidth = 1;
+          c.strokeRect(8 + i * (w / 3 - 2), 12, w / 3 - 8, h - 24);
+          c.fillStyle = 'rgba(150,220,255,0.2)'; c.fillRect(9 + i * (w / 3 - 2), 13, w / 3 - 10, h - 26);
+        }
+        c.fillStyle = '#4499cc'; c.font = '12px Arial'; c.textAlign = 'center'; c.fillText('❄', w / 2, h / 2 + 4);
+      },
+    };
+    const sizes = {
+      bed: [2,1], reception: [2,2], waiting_room: [2,2], lounge: [2,2], lab: [2,2],
+      storage: [2,1], corridor: [1,1], stairs: [1,1], emergency: [2,1], restroom: [1,1],
+      booth: [1,1], elevator: [1,1], office: [2,1], parking: [3,3], cold_storage: [3,2],
+    };
+    for (const [id, fn] of Object.entries(draw)) {
+      const key = 'fac_' + id;
+      if (this.textures.exists(key)) continue;
+      const [tw, th] = sizes[id] || [1, 1];
+      const w = T * tw - 2;
+      const h = T * th - 2;
+      const ct = this.textures.createCanvas(key, w, h);
+      const cx = ct.getContext();
+      fn(cx, w, h);
+      cx.strokeStyle = 'rgba(0,0,0,0.15)';
+      cx.lineWidth = 1;
+      cx.strokeRect(0.5, 0.5, w - 1, h - 1);
       ct.refresh();
     }
   }
@@ -234,34 +428,34 @@ class TycoonScene extends Phaser.Scene {
     const y = this._tileY(row);
     const w = TILE * tw - 2;
     const h = TILE * th - 2;
-    const color = FAC_COLORS[fac.id] || 0x888888;
     const container = this.add.container(0, 0);
 
     const shadow = this.add.graphics();
-    shadow.fillStyle(0x000000, 0.4);
-    shadow.fillRoundedRect(x + 2, y + 2, w, h, 5);
+    shadow.fillStyle(0x000000, 0.3);
+    shadow.fillRoundedRect(x + 2, y + 2, w, h, 3);
     container.add(shadow);
 
-    const body = this.add.graphics();
-    body.fillStyle(color, 0.9);
-    body.fillRoundedRect(x, y, w, h, 5);
+    const texKey = 'fac_' + fac.id;
+    let body;
+    if (this.textures.exists(texKey)) {
+      body = this.add.image(x + w / 2, y + h / 2, texKey);
+      body.setDisplaySize(w, h);
+    } else {
+      body = this.add.graphics();
+      const color = FAC_COLORS[fac.id] || 0x888888;
+      body.fillStyle(color, 0.9);
+      body.fillRoundedRect(x, y, w, h, 3);
+      const icon = this.add.text(x + w / 2, y + h / 2, fac.icon, {
+        fontSize: Math.min(tw, th) >= 2 ? '28px' : '20px', fontFamily: 'Arial',
+      }).setOrigin(0.5);
+      container.add(icon);
+    }
     container.add(body);
 
-    const highlight = this.add.graphics();
-    highlight.fillStyle(0xffffff, 0.12);
-    highlight.fillRoundedRect(x + 1, y + 1, w - 2, h * 0.35, { tl: 4, tr: 4, bl: 0, br: 0 });
-    container.add(highlight);
-
     const border = this.add.graphics();
-    border.lineStyle(1.5, 0xffffff, 0.25);
-    border.strokeRoundedRect(x, y, w, h, 5);
+    border.lineStyle(1, 0xffffff, 0.2);
+    border.strokeRoundedRect(x, y, w, h, 3);
     container.add(border);
-
-    const iconSize = Math.min(tw, th) >= 2 ? '28px' : '20px';
-    const icon = this.add.text(x + w / 2, y + h / 2, fac.icon, {
-      fontSize: iconSize, fontFamily: 'Arial',
-    }).setOrigin(0.5);
-    container.add(icon);
 
     const lvText = this.add.text(x + 3, y + 2, '★'.repeat(fac.level), {
       fontSize: '7px', color: '#fbbf24',
@@ -276,10 +470,14 @@ class TycoonScene extends Phaser.Scene {
     const glow = this.add.graphics();
     container.add(glow);
 
-    body.setInteractive(new Phaser.Geom.Rectangle(x, y, w, h), Phaser.Geom.Rectangle.Contains);
-    body.on('pointerdown', () => {
+    const hitArea = this.add.graphics();
+    hitArea.fillStyle(0xffffff, 0.001);
+    hitArea.fillRect(x, y, w, h);
+    hitArea.setInteractive(new Phaser.Geom.Rectangle(x, y, w, h), Phaser.Geom.Rectangle.Contains);
+    hitArea.on('pointerdown', () => {
       if (this._callbacks.onFacilityClick) this._callbacks.onFacilityClick(row, col);
     });
+    container.add(hitArea);
 
     this.facLayer.add(container);
     this.facSprites[fac.uid] = { container, body, glow, progressBg, progressFill, lvText, fac, x, y, w, h };
