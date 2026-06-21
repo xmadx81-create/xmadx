@@ -48,6 +48,77 @@ const CHAR_MAP = {
   '민수': 'char_minsoo',
 };
 
+const FAC_SETTINGS = {
+  bed: [
+    { key: 'processTime', label: '채혈 시간 (턴)', type: 'slider', min: 2, max: 10, step: 1, default: 6, unit: '턴' },
+    { key: 'autoDonor', label: '자동 배정', type: 'toggle', default: true },
+    { key: 'priorityType', label: '우선 혈액형 채혈', type: 'slider', min: 0, max: 3, step: 1, default: 0, unit: '' },
+  ],
+  reception: [
+    { key: 'queueLimit', label: '대기열 제한', type: 'slider', min: 3, max: 15, step: 1, default: 8, unit: '명' },
+    { key: 'fastMode', label: '빠른 접수', type: 'toggle', default: false },
+  ],
+  storage: [
+    { key: 'tempTarget', label: '목표 온도', type: 'slider', min: 1, max: 8, step: 1, default: 4, unit: '°C' },
+    { key: 'autoShip', label: '자동 납품', type: 'toggle', default: false },
+    { key: 'shipThreshold', label: '납품 기준', type: 'slider', min: 5, max: 30, step: 5, default: 15, unit: '팩' },
+  ],
+  cold_storage: [
+    { key: 'tempTarget', label: '목표 온도', type: 'slider', min: -120, max: -40, step: 10, default: -80, unit: '°C' },
+    { key: 'autoShip', label: '자동 납품', type: 'toggle', default: false },
+  ],
+  lab: [
+    { key: 'processTime', label: '검사 시간', type: 'slider', min: 1, max: 8, step: 1, default: 5, unit: '턴' },
+    { key: 'doubleCheck', label: '이중 검사', type: 'toggle', default: false },
+  ],
+  lounge: [
+    { key: 'processTime', label: '휴식 시간', type: 'slider', min: 1, max: 5, step: 1, default: 3, unit: '턴' },
+    { key: 'snack', label: '간식 제공', type: 'toggle', default: true },
+  ],
+  emergency: [
+    { key: 'alwaysReady', label: '24시 대기', type: 'toggle', default: true },
+    { key: 'alertLevel', label: '알림 레벨', type: 'slider', min: 1, max: 3, step: 1, default: 2, unit: '' },
+  ],
+  booth: [
+    { key: 'campaign', label: '캠페인 강도', type: 'slider', min: 1, max: 5, step: 1, default: 3, unit: '' },
+    { key: 'nightMode', label: '야간 홍보', type: 'toggle', default: false },
+  ],
+  _default: [
+    { key: 'active', label: '활성화', type: 'toggle', default: true },
+  ],
+};
+
+const FAC_UPGRADES = {
+  bed: [
+    { id: 'bed_comfort', icon: '🛋️', name: '고급 매트리스', desc: '채혈 속도 +10%', cost: 12 },
+    { id: 'bed_monitor', icon: '📟', name: '자동 모니터링', desc: '부작용 감지 확률 ↑', cost: 18 },
+    { id: 'bed_dual', icon: '💉', name: '듀얼 채혈 시스템', desc: '동시 2인 채혈 가능', cost: 30 },
+  ],
+  reception: [
+    { id: 'rec_digital', icon: '📱', name: '디지털 접수', desc: '접수 속도 2배', cost: 10 },
+    { id: 'rec_kiosk', icon: '🖥️', name: '무인 키오스크', desc: '대기열 +5', cost: 15 },
+  ],
+  storage: [
+    { id: 'sto_rack', icon: '📦', name: '랙 확장', desc: '보관 +10팩', cost: 12 },
+    { id: 'sto_auto', icon: '🤖', name: '자동 분류', desc: '혈액 분류 자동화', cost: 20 },
+  ],
+  lab: [
+    { id: 'lab_auto', icon: '🔬', name: '자동 분석기', desc: '검사 속도 -1턴', cost: 15 },
+    { id: 'lab_ai', icon: '🧠', name: 'AI 판독', desc: '정확도 99%', cost: 25 },
+  ],
+  lounge: [
+    { id: 'lng_vend', icon: '🥤', name: '자판기', desc: '만족도 +15%', cost: 8 },
+    { id: 'lng_tv', icon: '📺', name: '대형 TV', desc: '대기 인내심 +3', cost: 10 },
+  ],
+  emergency: [
+    { id: 'emg_defi', icon: '⚡', name: '제세동기', desc: '응급 처리 100%', cost: 20 },
+    { id: 'emg_oxy', icon: '🫁', name: '산소공급기', desc: '안정화 속도 2배', cost: 15 },
+  ],
+  _default: [
+    { id: 'gen_eff', icon: '⚡', name: '효율 개선', desc: '전체 성능 +10%', cost: 10 },
+  ],
+};
+
 class TycoonScene extends Phaser.Scene {
   constructor() {
     super('TycoonScene');
@@ -698,6 +769,7 @@ class TycoonScene extends Phaser.Scene {
   zoomInto(fac) {
     this._zoomedFac = fac;
     this._zoomObjs = [];
+    this._activeTab = 'settings';
     this.facLayer.setVisible(false);
     this.nurseLayer.setVisible(false);
     this.donorLayer.setVisible(false);
@@ -813,57 +885,7 @@ class TycoonScene extends Phaser.Scene {
       }).setOrigin(0.5));
     }
 
-    const sY = corrY + 46;
-    const collected = state?.totalDonors || 0;
-    const bloodTotal = state ? Object.values(state.blood).reduce((s, v) => s + v, 0) : 0;
-    const maxSto = state?.maxStorage || 25;
-    const stoPct = maxSto > 0 ? bloodTotal / maxSto : 0;
-
-    const sG = this.add.graphics();
-    sG.fillStyle(0x1a1520, 0.92); sG.fillRoundedRect(6, sY, CW - 12, 52, 6);
-    sG.lineStyle(1, 0x3a3050, 1); sG.strokeRoundedRect(6, sY, CW - 12, 52, 6);
-    this._zo(sG);
-    this._zo(this.add.text(14, sY + 6, '📊 채혈 현황', {
-      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
-    }));
-    this._zo(this.add.text(14, sY + 22, `오늘: ${collected}건  보관: ${bloodTotal}/${maxSto}팩`, {
-      fontSize: '9px', fontFamily: 'monospace', color: '#ccc',
-    }));
-    const bG = this.add.graphics();
-    bG.fillStyle(0x333333, 1); bG.fillRoundedRect(14, sY + 37, CW - 36, 8, 3);
-    bG.fillStyle(stoPct > 0.8 ? 0xcc2222 : 0x22aa44, 1);
-    bG.fillRoundedRect(14, sY + 37, (CW - 36) * stoPct, 8, 3);
-    this._zo(bG);
-    this._zo(this.add.text(CW - 18, sY + 41, `${Math.round(stoPct * 100)}%`, {
-      fontSize: '7px', fontFamily: 'monospace', color: '#aaa',
-    }).setOrigin(1, 0.5));
-
-    if (state) {
-      const bTypes = ['A', 'B', 'O', 'AB'];
-      const bClr = { A: 0xe74c3c, B: 0x3498db, O: 0x27ae60, AB: 0xf39c12 };
-      const cY = sY + 60;
-      const cG = this.add.graphics();
-      cG.fillStyle(0x1a1520, 0.92); cG.fillRoundedRect(6, cY, CW - 12, 58, 6);
-      cG.lineStyle(1, 0x3a3050, 1); cG.strokeRoundedRect(6, cY, CW - 12, 58, 6);
-      this._zo(cG);
-      this._zo(this.add.text(14, cY + 6, '🩸 혈액형별 재고', {
-        fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
-      }));
-      const bW = (CW - 40) / 4;
-      bTypes.forEach((bt, i) => {
-        const bx = 16 + i * bW;
-        const amt = state.blood[bt] || 0;
-        const mH = 28;
-        const bh = maxSto > 0 ? Math.max(2, (amt / maxSto) * mH) : 2;
-        const bar = this.add.graphics();
-        bar.fillStyle(0x333333, 1); bar.fillRoundedRect(bx, cY + 48 - mH, bW - 6, mH, 2);
-        bar.fillStyle(bClr[bt], 0.85); bar.fillRoundedRect(bx, cY + 48 - bh, bW - 6, bh, 2);
-        this._zo(bar);
-        this._zo(this.add.text(bx + (bW - 6) / 2, cY + 52, `${bt}:${amt}`, {
-          fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ddd',
-        }).setOrigin(0.5, 0));
-      });
-    }
+    this._drawControlTabs(fac, corrY + 40);
   }
 
   _drawDetailBed(bx, by, bw, bh, label, donor, bedFac) {
@@ -1005,10 +1027,236 @@ class TycoonScene extends Phaser.Scene {
     });
     this._zo(backBtn);
 
-    const desc = this.add.text(CW / 2, CH / 2, `${fac.icon}\n\n${fac.name} 내부 뷰\n(준비 중)`, {
+    const desc = this.add.text(CW / 2, 120, `${fac.icon}\n\n${fac.name} 내부 뷰\n(준비 중)`, {
       fontSize: '16px', fontFamily: 'monospace', color: '#666', align: 'center',
     }).setOrigin(0.5);
     this._zo(desc);
+
+    this._drawControlTabs(fac, 200);
+  }
+
+  _drawControlTabs(fac, startY) {
+    const CW = W;
+    const tabW = Math.floor((CW - 16) / 3);
+    const tabH = 28;
+    const panelH = 200;
+    const px = 6, py = startY;
+
+    if (!this._activeTab) this._activeTab = 'settings';
+    const tabs = [
+      { key: 'settings', label: '⚙️ 설정' },
+      { key: 'upgrade', label: '📈 업그레이드' },
+      { key: 'stats', label: '📊 통계' },
+    ];
+
+    const tabBg = this.add.graphics();
+    tabBg.fillStyle(0x1e1a2e, 0.95);
+    tabBg.fillRoundedRect(px, py, CW - 12, tabH + panelH, 8);
+    tabBg.lineStyle(1, 0x3a3060, 1);
+    tabBg.strokeRoundedRect(px, py, CW - 12, tabH + panelH, 8);
+    this._zo(tabBg);
+
+    tabs.forEach((tab, i) => {
+      const tx = px + 2 + i * tabW;
+      const active = this._activeTab === tab.key;
+      const tG = this.add.graphics();
+      if (active) {
+        tG.fillStyle(0x3a3060, 1);
+        tG.fillRoundedRect(tx, py + 2, tabW - 2, tabH - 2, { tl: 6, tr: 6, bl: 0, br: 0 });
+      }
+      this._zo(tG);
+      const tLabel = this.add.text(tx + tabW / 2, py + tabH / 2 + 1, tab.label, {
+        fontSize: '11px', fontFamily: 'monospace', fontStyle: active ? 'bold' : '',
+        color: active ? '#f0c040' : '#888',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      tLabel.on('pointerdown', () => {
+        this._activeTab = tab.key;
+        this._drawInterior();
+      });
+      this._zo(tLabel);
+    });
+
+    const divG = this.add.graphics();
+    divG.lineStyle(1, 0x3a3060, 0.6);
+    divG.lineBetween(px + 4, py + tabH, px + CW - 16, py + tabH);
+    this._zo(divG);
+
+    const contentY = py + tabH + 8;
+    const contentW = CW - 24;
+    if (this._activeTab === 'settings') {
+      this._drawTabSettings(fac, px + 6, contentY, contentW, panelH - tabH - 16);
+    } else if (this._activeTab === 'upgrade') {
+      this._drawTabUpgrade(fac, px + 6, contentY, contentW, panelH - tabH - 16);
+    } else {
+      this._drawTabStats(fac, px + 6, contentY, contentW, panelH - tabH - 16);
+    }
+  }
+
+  _drawTabSettings(fac, x, y, w, h) {
+    const settings = FAC_SETTINGS[fac.id] || FAC_SETTINGS._default;
+    let cy = y;
+
+    settings.forEach((s) => {
+      if (cy + 32 > y + h) return;
+
+      this._zo(this.add.text(x, cy, s.label, {
+        fontSize: '10px', fontFamily: 'monospace', color: '#ccc',
+      }));
+
+      if (s.type === 'slider') {
+        const val = fac[s.key] ?? s.default;
+        const barX = x + 4, barY = cy + 16, barW = w - 60;
+        const sG = this.add.graphics();
+        sG.fillStyle(0x333344, 1); sG.fillRoundedRect(barX, barY, barW, 8, 4);
+        const pct = (val - s.min) / (s.max - s.min);
+        sG.fillStyle(0xf0c040, 1); sG.fillRoundedRect(barX, barY, barW * pct, 8, 4);
+        this._zo(sG);
+        this._zo(this.add.text(barX + barW + 8, barY + 4, `${val}${s.unit || ''}`, {
+          fontSize: '9px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
+        }).setOrigin(0, 0.5));
+
+        const hitMinus = this.add.text(barX - 2, barY + 4, '◀', {
+          fontSize: '9px', color: '#888',
+        }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+        hitMinus.on('pointerdown', () => {
+          const nv = Math.max(s.min, (fac[s.key] ?? s.default) - s.step);
+          fac[s.key] = nv;
+          if (this._callbacks.onSettingChange) this._callbacks.onSettingChange(fac, s.key, nv);
+          this._drawInterior();
+        });
+        this._zo(hitMinus);
+        const hitPlus = this.add.text(x + w, barY + 4, '▶', {
+          fontSize: '9px', color: '#888',
+        }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+        hitPlus.on('pointerdown', () => {
+          const nv = Math.min(s.max, (fac[s.key] ?? s.default) + s.step);
+          fac[s.key] = nv;
+          if (this._callbacks.onSettingChange) this._callbacks.onSettingChange(fac, s.key, nv);
+          this._drawInterior();
+        });
+        this._zo(hitPlus);
+      } else if (s.type === 'toggle') {
+        const val = fac[s.key] ?? s.default;
+        const tgX = x + w - 36, tgY = cy + 2;
+        const tgG = this.add.graphics();
+        tgG.fillStyle(val ? 0x27ae60 : 0x444444, 1);
+        tgG.fillRoundedRect(tgX, tgY, 32, 16, 8);
+        tgG.fillStyle(0xffffff, 1);
+        tgG.fillCircle(val ? tgX + 24 : tgX + 8, tgY + 8, 6);
+        this._zo(tgG);
+        const tgHit = this.add.zone(tgX, tgY, 32, 16).setOrigin(0).setInteractive({ useHandCursor: true });
+        tgHit.on('pointerdown', () => {
+          fac[s.key] = !(fac[s.key] ?? s.default);
+          if (this._callbacks.onSettingChange) this._callbacks.onSettingChange(fac, s.key, fac[s.key]);
+          this._drawInterior();
+        });
+        this._zo(tgHit);
+      }
+      cy += 36;
+    });
+  }
+
+  _drawTabUpgrade(fac, x, y, w, h) {
+    const upgrades = FAC_UPGRADES[fac.id] || FAC_UPGRADES._default;
+    let cy = y;
+
+    upgrades.forEach((u, i) => {
+      if (cy + 38 > y + h) return;
+      const owned = (fac.upgrades || []).includes(u.id);
+      const rowG = this.add.graphics();
+      rowG.fillStyle(owned ? 0x1a3020 : 0x222233, 0.8);
+      rowG.fillRoundedRect(x, cy, w, 34, 5);
+      rowG.lineStyle(1, owned ? 0x27ae60 : 0x3a3060, 0.6);
+      rowG.strokeRoundedRect(x, cy, w, 34, 5);
+      this._zo(rowG);
+
+      this._zo(this.add.text(x + 6, cy + 8, `${u.icon} ${u.name}`, {
+        fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold',
+        color: owned ? '#8f8' : '#ddd',
+      }));
+      this._zo(this.add.text(x + 6, cy + 22, u.desc, {
+        fontSize: '8px', fontFamily: 'monospace', color: '#999',
+      }));
+
+      if (owned) {
+        this._zo(this.add.text(x + w - 6, cy + 17, '✓', {
+          fontSize: '14px', fontFamily: 'monospace', fontStyle: 'bold', color: '#4f4',
+        }).setOrigin(1, 0.5));
+      } else {
+        const costBtn = this.add.text(x + w - 6, cy + 17, `💰${u.cost}`, {
+          fontSize: '9px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
+          backgroundColor: 'rgba(60,50,20,0.8)', padding: { x: 4, y: 2 },
+        }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+        costBtn.on('pointerdown', () => {
+          if (this._callbacks.onUpgrade) this._callbacks.onUpgrade(fac, u);
+        });
+        this._zo(costBtn);
+      }
+      cy += 38;
+    });
+  }
+
+  _drawTabStats(fac, x, y, w, h) {
+    const state = this._state;
+    const stats = this._getFacStats(fac, state);
+    let cy = y;
+
+    stats.forEach((s) => {
+      if (cy + 28 > y + h) return;
+      this._zo(this.add.text(x, cy, s.label, {
+        fontSize: '9px', fontFamily: 'monospace', color: '#999',
+      }));
+      this._zo(this.add.text(x + w, cy, s.value, {
+        fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: s.color || '#fff',
+      }).setOrigin(1, 0));
+
+      if (s.bar !== undefined) {
+        const barY = cy + 14;
+        const bG = this.add.graphics();
+        bG.fillStyle(0x333344, 1); bG.fillRoundedRect(x, barY, w, 6, 3);
+        const bColor = s.bar > 0.7 ? 0x27ae60 : s.bar > 0.4 ? 0xf0c040 : 0xe74c3c;
+        bG.fillStyle(bColor, 1); bG.fillRoundedRect(x, barY, w * s.bar, 6, 3);
+        this._zo(bG);
+        cy += 10;
+      }
+      cy += 20;
+    });
+  }
+
+  _getFacStats(fac, state) {
+    if (fac.id === 'bed') {
+      const collected = state?.totalDonors || 0;
+      const bloodTotal = state ? Object.values(state.blood).reduce((s, v) => s + v, 0) : 0;
+      const maxSto = state?.maxStorage || 25;
+      const bStr = state ? ['A', 'B', 'O', 'AB'].map(t => `${t}:${state.blood[t] || 0}`).join(' ') : '-';
+      return [
+        { label: '오늘 채혈', value: `${collected}건`, color: '#4fc3f7' },
+        { label: '보관량', value: `${bloodTotal}/${maxSto}팩`, color: '#a5d6a7', bar: maxSto > 0 ? bloodTotal / maxSto : 0 },
+        { label: '혈액형별', value: bStr, color: '#ffab91' },
+        { label: '처리 속도', value: `${fac.processTime}턴`, color: '#f0c040' },
+        { label: '가동률', value: `${fac.busy ? '100%' : '0%'}`, bar: fac.busy ? 1 : 0 },
+      ];
+    }
+    if (fac.id === 'storage' || fac.id === 'cold_storage') {
+      const blood = state ? Object.values(state.blood).reduce((s, v) => s + v, 0) : 0;
+      const max = state?.maxStorage || 25;
+      return [
+        { label: '보관량', value: `${blood}/${max}팩`, color: '#4fc3f7', bar: max > 0 ? blood / max : 0 },
+        { label: '온도', value: fac.id === 'cold_storage' ? '-80°C' : '4°C', color: '#80deea' },
+        { label: '레벨', value: `Lv.${fac.level}`, color: '#ce93d8' },
+      ];
+    }
+    if (fac.id === 'lab') {
+      return [
+        { label: '검사 속도', value: `${fac.processTime}턴`, color: '#f0c040' },
+        { label: '정확도', value: '95%', bar: 0.95, color: '#a5d6a7' },
+        { label: '레벨', value: `Lv.${fac.level}`, color: '#ce93d8' },
+      ];
+    }
+    return [
+      { label: '레벨', value: `Lv.${fac.level}`, color: '#ce93d8' },
+      { label: '상태', value: fac.busy ? '가동 중' : '대기', color: fac.busy ? '#a5d6a7' : '#999' },
+    ];
   }
 
   _renderPlacementHints(state) {
