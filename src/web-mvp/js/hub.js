@@ -1929,7 +1929,7 @@ function _continuePrep() {
     previewEl = document.createElement('div');
     previewEl.id = 'defense-wave-preview';
     previewEl.className = 'def-wave-preview';
-    document.getElementById('defense-grid-wrap').parentElement.insertBefore(previewEl, document.getElementById('defense-grid-wrap'));
+    document.querySelector('.defense-synergy').appendChild(previewEl);
   }
   const ch = getStoryChapter(tycoonState.day);
   const objText = ch.objective ? _objectiveText(ch.objective) : '';

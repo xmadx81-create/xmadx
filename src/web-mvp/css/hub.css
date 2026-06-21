@@ -7652,12 +7652,13 @@ body.tycoon-fullscreen #app { display: none !important; }
 }
 
 .def-wave-preview {
-  display: flex; align-items: center; gap: 8px; padding: 6px 12px;
-  background: rgba(248,113,113,0.08); border-radius: 6px;
-  margin-bottom: 6px; font-size: 0.75rem; color: #6B5B4F;
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
+  background: rgba(180,140,255,0.1); border-radius: 10px;
+  font-size: 0.65rem; color: #ccc;
+  border: 1px solid rgba(180,140,255,0.2);
 }
-.def-preview-label { color: #f87171; font-weight: 600; }
-.def-preview-count { color: #4A3D30; }
+.def-preview-label { color: #e9c46a; font-weight: 700; }
+.def-preview-count { color: #ddd; }
 .def-preview-boss { color: #fbbf24; font-weight: 700; animation: record-pulse 1s infinite alternate; }
 
 .def-unit-info {
