@@ -119,46 +119,31 @@ class TycoonScene extends Phaser.Scene {
   _drawGrid() {
     this.gridBg.clear();
     if (this.bgSprite) { this.bgSprite.destroy(); this.bgSprite = null; }
-    if (this._tileSprites) { this._tileSprites.forEach(s => s.destroy()); }
-    this._tileSprites = [];
-    const gridX = PAD - 2;
-    const gridY = PAD + 26;
-    const gridW = TILE * GRID + 4;
-    const gridH = TILE * GRID + 4;
-    let hasTile = false;
-    try { hasTile = this.textures && this.textures.exists('floor_tile'); } catch(e) {}
-    const FLOOR_TILE_COLOR = { 'B1': 0x2a2535, '1F': 0x3a5c3a, '2F': 0x2e4a5c };
-    const FLOOR_LINE_COLOR = { 'B1': 0x3d3548, '1F': 0x4d6e4d, '2F': 0x3e5a6c };
-    const FLOOR_TINT = { 'B1': 0x8888aa, '2F': 0xaabbdd };
-    const tileColor = FLOOR_TILE_COLOR[this._floor] || 0x3a5c3a;
-    const lineColor = FLOOR_LINE_COLOR[this._floor] || 0x4d6e4d;
-    const tint = FLOOR_TINT[this._floor];
-    this.gridBg.fillStyle(0x1a1a1a, 1);
-    this.gridBg.fillRoundedRect(gridX, gridY, gridW, gridH, 6);
+    const gridX = PAD;
+    const gridY = PAD + 28;
+    const gridW = TILE * GRID;
+    const gridH = TILE * GRID;
+    const FLOOR_TINT = { 'B1': 0x9999bb, '1F': 0xddccbb, '2F': 0xbbccdd };
+    const tint = FLOOR_TINT[this._floor] || 0xddccbb;
+    if (this.textures.exists('floor_tile')) {
+      this.bgSprite = this.add.tileSprite(gridX + gridW / 2, gridY + gridH / 2, gridW, gridH, 'floor_tile');
+      this.bgSprite.setDepth(-1);
+      this.bgSprite.setTint(tint);
+    } else {
+      this.gridBg.fillStyle(0x3a3028, 1);
+      this.gridBg.fillRect(gridX, gridY, gridW, gridH);
+    }
     for (let r = 0; r < GRID; r++) {
       for (let c = 0; c < GRID; c++) {
         const x = this._tileX(c);
         const y = this._tileY(r);
-        if (hasTile) {
-          const sp = this.add.image(x + (TILE - 1) / 2, y + (TILE - 1) / 2, 'floor_tile');
-          sp.setDisplaySize(TILE - 1, TILE - 1);
-          sp.setDepth(-1);
-          if (tint) sp.setTint(tint);
-          this._tileSprites.push(sp);
-        } else {
-          this.gridBg.fillStyle(tileColor, 1);
-          this.gridBg.fillRect(x, y, TILE - 1, TILE - 1);
-          this.gridBg.fillStyle(0xffffff, 0.05);
-          this.gridBg.fillRect(x, y, TILE - 1, (TILE - 1) / 2);
-        }
-        this.gridBg.lineStyle(1, lineColor, 0.5);
+        this.gridBg.lineStyle(1, 0x000000, 0.18);
         this.gridBg.strokeRect(x, y, TILE - 1, TILE - 1);
       }
     }
   }
 
   _fullRedraw() {
-    if (this._tileSprites) { this._tileSprites.forEach(s => s.destroy()); this._tileSprites = []; }
     Object.values(this.facSprites).forEach(s => s.container?.destroy());
     this.facSprites = {};
     Object.values(this.nurseSprites).forEach(s => s.container?.destroy());
@@ -547,7 +532,7 @@ export class TycoonRenderer {
           this.load.image('bg_1F', ASSET_BASE + 'backgrounds/floor_1f.png');
           this.load.image('bg_2F', ASSET_BASE + 'backgrounds/floor_2f.png');
           this.load.image('bg_B1', ASSET_BASE + 'backgrounds/floor_b1.png');
-          this.load.image('floor_tile', ASSET_BASE + 'backgrounds/floor_tile.png');
+          this.load.image('floor_tile', ASSET_BASE + 'backgrounds/floor_tile_sm.png');
           this.load.image('char_seoyoon', ASSET_BASE + 'characters/seoyoon.png');
           this.load.image('char_hana', ASSET_BASE + 'characters/hana.png');
           this.load.image('char_minsoo', ASSET_BASE + 'characters/minsoo.png');
