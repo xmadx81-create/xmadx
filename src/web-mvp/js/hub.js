@@ -18,7 +18,7 @@ import {
   TYCOON_STORY, TYCOON_RESEARCH, getStoryChapter, getUnlockedFacilities,
   checkStoryObjective, purchaseResearch, getResearchBonus, expandGrid,
   generateDonorWave, getDayPreview, generateOrders, generateNamedDonor,
-  placeFacility, deployNurse, removeNurse, getNurseAt, countFacilities, getProcessingSpeed,
+  placeFacility, deployNurse, removeNurse, getNurseAt, getStaffCap, countFacilities, getProcessingSpeed,
   tycoonTick, fulfillOrder, tycoonDayFame,
   upgradeFacility, TYCOON_EVENTS, rollTycoonEvent,
   getAdjacencyBonus, MILESTONES, checkMilestones,
@@ -1743,7 +1743,8 @@ function showFacilityInfo(row, col) {
     <div class="def-info-role">${fType.desc}</div>
     <div class="def-info-stats">처리속도: ${speed.toFixed(1)}x${adjBonus > 0 ? ` · 인접보너스 +${Math.round(adjBonus * 100)}%` : ''} · ${nurseHere ? `👩‍⚕️ ${nurseHere.charData.name}` : '간호사 없음'}</div>
     ${fac.level < 3 ? `<button class="btn-secondary tyc-upgrade-btn" style="margin-top:4px;font-size:0.7rem">업그레이드 ${upgCost} 명성</button>` : '<div style="font-size:0.7rem;color:#C9A54E">MAX</div>'}
-    <button class="btn-secondary tyc-staff-btn" style="margin-top:4px;font-size:0.7rem">간호사 고용</button>`;
+    <button class="btn-secondary tyc-staff-btn" style="margin-top:4px;font-size:0.7rem">인력 관리</button>
+    ${nurseHere ? `<button class="btn-secondary tyc-unstaff-btn" style="margin-top:4px;font-size:0.7rem;color:#f88">🚫 ${nurseHere.charData.name} 해제</button>` : ''}`;
   document.getElementById('defense-screen').appendChild(popup);
   popup.querySelector('.tyc-upgrade-btn')?.addEventListener('click', () => {
     const result = upgradeFacility(tycoonState, fac.anchorRow || row, fac.anchorCol || col, curFloor);
@@ -1761,6 +1762,16 @@ function showFacilityInfo(row, col) {
     popup.remove();
     showStaffSelect(row, col);
   });
+  popup.querySelector('.tyc-unstaff-btn')?.addEventListener('click', () => {
+    const nurseHere2 = getNurseAt(tycoonState, row, col, curFloor);
+    if (nurseHere2) {
+      removeNurse(tycoonState, nurseHere2.charData.id);
+      sfxEquip();
+      showTycoonBanner(`${nurseHere2.charData.name} 해제됨`, 'same');
+    }
+    popup.remove();
+    renderTycoon();
+  });
   setTimeout(() => popup.remove(), 5000);
   popup.addEventListener('click', (e) => { if (e.target === popup) popup.remove(); });
 }
@@ -1769,27 +1780,70 @@ function showStaffSelect(row, col) {
   const existing = document.querySelector('.tyc-staff-panel');
   if (existing) existing.remove();
   const deployed = tycoonState.nurses.map(n => n.charData.id);
-  const chars = CHARACTERS.filter(c => gameSave.ownedCards?.[c.id] && !deployed.includes(c.id));
-  if (chars.length === 0) {
-    showTycoonBanner('배치 가능한 캐릭터가 없습니다!', 'same');
-    return;
-  }
+  const cap = getStaffCap(tycoonState);
+  const atCap = tycoonState.nurses.length >= cap;
+  const owned = CHARACTERS.filter(c => gameSave.cards[c.id]?.count > 0 && !deployed.includes(c.id));
+  const HIRE_COST = { '★': 15, '★★': 30, '★★★': 60, '★★★★': 100, '★★★★★': 200 };
+  const hirable = CHARACTERS.filter(c => !gameSave.cards[c.id]?.count && !deployed.includes(c.id));
+  const deployedNurses = tycoonState.nurses;
+
   const panel = document.createElement('div');
   panel.className = 'def-reward-overlay tyc-staff-panel';
-  panel.innerHTML = `<div class="def-reward-panel">
-    <div class="def-reward-title">간호사 고용</div>
-    <div class="def-reward-cards">${chars.slice(0, 8).map(c => {
+  panel.innerHTML = `<div class="def-reward-panel" style="max-height:80vh;overflow-y:auto">
+    <div class="def-reward-title">👩‍⚕️ 인력 관리 (${tycoonState.nurses.length}/${cap})</div>
+    ${deployedNurses.length > 0 ? `<div style="font-size:0.75rem;color:#f0c040;margin:4px 0">배치 중</div>
+    <div class="def-reward-cards">${deployedNurses.map(n => {
+      const tRole = TYCOON_ROLES[n.charData.role] || TYCOON_ROLES.support;
+      return `<button class="def-reward-card" data-action="remove" data-cid="${n.charData.id}" style="border:1px solid #c44">
+        <div class="def-reward-icon">${tRole.icon} ${n.charData.name}</div>
+        <div class="def-reward-desc" style="color:#f88">해제하기</div>
+      </button>`;
+    }).join('')}</div>` : ''}
+    ${owned.length > 0 ? `<div style="font-size:0.75rem;color:#80f080;margin:4px 0">배치 가능${atCap ? ' (상한 도달)' : ''}</div>
+    <div class="def-reward-cards">${owned.slice(0, 8).map(c => {
       const tRole = TYCOON_ROLES[c.role] || TYCOON_ROLES.support;
-      return `<button class="def-reward-card" data-cid="${c.id}">
+      return `<button class="def-reward-card" data-action="deploy" data-cid="${c.id}" ${atCap ? 'disabled style="opacity:0.4"' : ''}>
         <div class="def-reward-icon">${tRole.icon} ${c.name}</div>
         <div class="def-reward-desc">${tRole.job} · ${c.rarity}</div>
       </button>`;
-    }).join('')}
-    </div></div>`;
+    }).join('')}</div>` : ''}
+    ${hirable.length > 0 ? `<div style="font-size:0.75rem;color:#88bbff;margin:4px 0">채용 가능 💰</div>
+    <div class="def-reward-cards">${hirable.slice(0, 6).map(c => {
+      const tRole = TYCOON_ROLES[c.role] || TYCOON_ROLES.support;
+      const cost = HIRE_COST[c.rarity] || 30;
+      return `<button class="def-reward-card" data-action="hire" data-cid="${c.id}" data-cost="${cost}">
+        <div class="def-reward-icon">${tRole.icon} ${c.name}</div>
+        <div class="def-reward-desc">${tRole.job} · ${cost}💰</div>
+      </button>`;
+    }).join('')}</div>` : ''}
+    <button class="btn-secondary" style="margin-top:8px;width:100%;font-size:0.8rem" data-action="close">닫기</button>
+  </div>`;
   document.getElementById('defense-screen').appendChild(panel);
-  panel.querySelectorAll('.def-reward-card').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const cid = btn.dataset.cid;
+  panel.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const cid = btn.dataset.cid;
+    if (action === 'close') { panel.remove(); return; }
+    if (action === 'remove') {
+      removeNurse(tycoonState, cid);
+      sfxEquip();
+      const c = CHARACTERS.find(ch => ch.id === cid);
+      showTycoonBanner(`${c?.name || cid} 해제됨`, 'same');
+      panel.remove(); renderTycoon(); return;
+    }
+    if (action === 'hire') {
+      const cost = parseInt(btn.dataset.cost) || 30;
+      if (tycoonState.gold < cost) { showTycoonBanner(`골드 부족! (${cost}💰 필요)`, 'same'); return; }
+      tycoonState.gold -= cost;
+      if (!gameSave.cards[cid]) gameSave.cards[cid] = { count: 0 };
+      gameSave.cards[cid].count += 1;
+      const c = CHARACTERS.find(ch => ch.id === cid);
+      sfxEquip();
+      showTycoonBanner(`${c?.name || cid} 채용 완료!`, 'upgrade');
+      panel.remove(); showStaffSelect(row, col); return;
+    }
+    if (action === 'deploy') {
       const charData = CHARACTERS.find(c => c.id === cid);
       if (charData) {
         const result = deployNurse(tycoonState, charData);
@@ -1797,12 +1851,14 @@ function showStaffSelect(row, col) {
           sfxEquip();
           const tRole = TYCOON_ROLES[charData.role] || TYCOON_ROLES.support;
           showTycoonBanner(`${tRole.icon} ${charData.name} — ${tRole.job} 배치!`, 'upgrade');
+        } else if (result.reason === 'cap') {
+          showTycoonBanner(`인력 상한 도달! (${cap}명)`, 'same');
         }
       }
-      panel.remove();
-      renderTycoon();
-    });
+      panel.remove(); renderTycoon();
+    }
   });
+  panel.addEventListener('click', (e) => { if (e.target === panel) panel.remove(); });
 }
 
 function showTycoonBanner(text, type) {
