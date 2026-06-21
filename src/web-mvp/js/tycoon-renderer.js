@@ -68,6 +68,7 @@ class TycoonScene extends Phaser.Scene {
 
   create() {
     this.bgSprite = null;
+    this._genFloorTextures();
     this.gridBg = this.add.graphics();
     this.facLayer = this.add.container(0, 0);
     this.nurseLayer = this.add.container(0, 0);
@@ -75,6 +76,39 @@ class TycoonScene extends Phaser.Scene {
     this.uiLayer = this.add.container(0, 0);
     this._drawFloorTabs();
     this._drawGrid();
+  }
+
+  _genFloorTextures() {
+    const s = TILE;
+    const floors = {
+      '1F': { base: '#c8b898', grout: '#a89070', hi: 'rgba(255,255,255,0.12)', lo: 'rgba(0,0,0,0.05)' },
+      '2F': { base: '#a0b8c8', grout: '#7898a8', hi: 'rgba(255,255,255,0.10)', lo: 'rgba(0,0,0,0.06)' },
+      'B1': { base: '#787088', grout: '#605870', hi: 'rgba(255,255,255,0.08)', lo: 'rgba(0,0,0,0.08)' },
+    };
+    for (const [fk, cl] of Object.entries(floors)) {
+      const key = 'gentile_' + fk;
+      if (this.textures.exists(key)) continue;
+      const ct = this.textures.createCanvas(key, s, s);
+      const cx = ct.getContext();
+      cx.fillStyle = cl.base;
+      cx.fillRect(0, 0, s, s);
+      cx.fillStyle = cl.hi;
+      cx.fillRect(2, 2, s / 2 - 2, s / 2 - 2);
+      cx.fillRect(s / 2 + 1, s / 2 + 1, s / 2 - 3, s / 2 - 3);
+      cx.fillStyle = cl.lo;
+      cx.fillRect(s / 2 + 1, 2, s / 2 - 3, s / 2 - 2);
+      cx.fillRect(2, s / 2 + 1, s / 2 - 2, s / 2 - 3);
+      cx.strokeStyle = cl.grout;
+      cx.lineWidth = 1;
+      cx.strokeRect(0.5, 0.5, s - 1, s - 1);
+      cx.beginPath();
+      cx.moveTo(s / 2, 0); cx.lineTo(s / 2, s);
+      cx.moveTo(0, s / 2); cx.lineTo(s, s / 2);
+      cx.strokeStyle = cl.grout;
+      cx.lineWidth = 0.5;
+      cx.stroke();
+      ct.refresh();
+    }
   }
 
   _tileX(col) { return PAD + col * TILE; }
@@ -123,12 +157,10 @@ class TycoonScene extends Phaser.Scene {
     const gridY = PAD + 28;
     const gridW = TILE * GRID;
     const gridH = TILE * GRID;
-    const FLOOR_TINT = { 'B1': 0x9999bb, '1F': 0xddccbb, '2F': 0xbbccdd };
-    const tint = FLOOR_TINT[this._floor] || 0xddccbb;
-    if (this.textures.exists('floor_tile')) {
-      this.bgSprite = this.add.tileSprite(gridX + gridW / 2, gridY + gridH / 2, gridW, gridH, 'floor_tile');
+    const tileKey = 'gentile_' + this._floor;
+    if (this.textures.exists(tileKey)) {
+      this.bgSprite = this.add.tileSprite(gridX + gridW / 2, gridY + gridH / 2, gridW, gridH, tileKey);
       this.bgSprite.setDepth(-1);
-      this.bgSprite.setTint(tint);
     } else {
       this.gridBg.fillStyle(0x3a3028, 1);
       this.gridBg.fillRect(gridX, gridY, gridW, gridH);
@@ -137,7 +169,7 @@ class TycoonScene extends Phaser.Scene {
       for (let c = 0; c < GRID; c++) {
         const x = this._tileX(c);
         const y = this._tileY(r);
-        this.gridBg.lineStyle(1, 0x000000, 0.18);
+        this.gridBg.lineStyle(1, 0x000000, 0.12);
         this.gridBg.strokeRect(x, y, TILE - 1, TILE - 1);
       }
     }
