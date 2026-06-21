@@ -778,6 +778,7 @@ class TycoonScene extends Phaser.Scene {
     this.gridBg.setVisible(false);
     if (this._hintGraphics) this._hintGraphics.setVisible(false);
     this._drawInterior();
+    this._playZoomTransition();
   }
 
   zoomOut() {
@@ -815,36 +816,70 @@ class TycoonScene extends Phaser.Scene {
 
   _zo(obj) { this._zoomObjs.push(obj); return obj; }
 
+  _playZoomTransition() {
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 1); overlay.fillRect(0, 0, W, H + 22);
+    overlay.setAlpha(0.8);
+    this._zo(overlay);
+    this.tweens.add({ targets: overlay, alpha: 0, duration: 350, ease: 'Power2', onComplete: () => overlay.destroy() });
+    this._zoomObjs.forEach(obj => {
+      if (obj === overlay) return;
+      const origAlpha = obj.alpha || 1;
+      obj.setAlpha(0);
+      this.tweens.add({ targets: obj, alpha: origAlpha, duration: 300, delay: 80, ease: 'Power1' });
+    });
+  }
+
   _drawInteriorBase(fac, headerColor, floorColor1, floorColor2) {
     const CW = W, CH = H + 22;
     const bg = this.add.graphics();
     bg.fillStyle(floorColor1, 1); bg.fillRect(0, 0, CW, CH);
     const floorG = this.add.graphics();
-    for (let ty = 36; ty < CH; ty += 24) {
-      for (let tx = 0; tx < CW; tx += 24) {
-        const shade = ((tx / 24 + ty / 24) % 2 === 0) ? floorColor1 : floorColor2;
-        floorG.fillStyle(shade, 1); floorG.fillRect(tx, ty, 24, 24);
-        floorG.lineStyle(0.5, 0xd0c8b8, 0.3); floorG.strokeRect(tx, ty, 24, 24);
+    for (let ty = 44; ty < CH; ty += 20) {
+      for (let tx = 0; tx < CW; tx += 20) {
+        const shade = ((tx / 20 + ty / 20) % 2 === 0) ? floorColor1 : floorColor2;
+        floorG.fillStyle(shade, 1); floorG.fillRect(tx, ty, 20, 20);
+        floorG.lineStyle(0.3, 0xc8c0b0, 0.25); floorG.strokeRect(tx, ty, 20, 20);
       }
     }
     this._zo(bg); this._zo(floorG);
+
     const wallG = this.add.graphics();
-    wallG.fillStyle(0xe8e0d0, 1); wallG.fillRect(0, 36, CW, 14);
-    wallG.lineStyle(2, 0xc0b8a0, 1); wallG.lineBetween(0, 50, CW, 50);
+    wallG.fillStyle(0xf0e8d8, 1); wallG.fillRect(0, 40, CW, 4);
+    wallG.fillStyle(0xe0d8c8, 1); wallG.fillRect(0, 36, CW, 4);
+    wallG.lineStyle(1.5, 0xb0a890, 1); wallG.lineBetween(0, 44, CW, 44);
+    wallG.lineStyle(0.5, 0xd0c8b8, 0.5); wallG.lineBetween(0, 36, CW, 36);
     this._zo(wallG);
+
     const headerBg = this.add.graphics();
     headerBg.fillStyle(headerColor, 1); headerBg.fillRect(0, 0, CW, 36);
-    headerBg.fillStyle(headerColor + 0x151515, 1); headerBg.fillRect(0, 0, CW, 18);
+    const lighter = headerColor + 0x1a1a1a > 0xffffff ? 0xffffff : headerColor + 0x1a1a1a;
+    headerBg.fillStyle(lighter, 0.6); headerBg.fillRect(0, 0, CW, 12);
+    headerBg.fillStyle(0x000000, 0.15); headerBg.fillRect(0, 30, CW, 6);
     this._zo(headerBg);
-    this._zo(this.add.text(CW / 2, 18, `${fac.icon} ${fac.name} Lv.${fac.level}`, {
-      fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
+
+    const lvBadge = this.add.graphics();
+    lvBadge.fillStyle(0x000000, 0.35); lvBadge.fillRoundedRect(CW - 50, 6, 44, 22, 11);
+    lvBadge.fillStyle(0xf0c040, 1); lvBadge.fillRoundedRect(CW - 49, 7, 42, 20, 10);
+    this._zo(lvBadge);
+    this._zo(this.add.text(CW - 28, 17, `Lv.${fac.level}`, {
+      fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#3a2a00',
     }).setOrigin(0.5));
+
+    this._zo(this.add.text(CW / 2 - 10, 18, `${fac.icon} ${fac.name}`, {
+      fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
+      stroke: '#000', strokeThickness: 1,
+    }).setOrigin(0.5));
+
     const backBtn = this.add.text(6, 18, '◀ 나가기', {
       fontSize: '10px', fontFamily: 'monospace', color: '#ffd',
-      backgroundColor: 'rgba(0,0,0,0.4)', padding: { x: 5, y: 3 },
+      backgroundColor: 'rgba(0,0,0,0.5)', padding: { x: 6, y: 3 },
     }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     backBtn.on('pointerdown', () => { this.zoomOut(); if (this._callbacks.onZoomOut) this._callbacks.onZoomOut(); });
+    backBtn.on('pointerover', () => backBtn.setStyle({ backgroundColor: 'rgba(255,200,0,0.3)' }));
+    backBtn.on('pointerout', () => backBtn.setStyle({ backgroundColor: 'rgba(0,0,0,0.5)' }));
     this._zo(backBtn);
+
     return { CW, CH };
   }
 
@@ -859,17 +894,23 @@ class TycoonScene extends Phaser.Scene {
   }
 
   _drawNpcSlot(x, y, emoji, name, labelColor) {
+    const clr = parseInt((labelColor || '#4a90d9').slice(1), 16);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.2); shadow.fillEllipse(x + 1, y + 16, 22, 6);
+    this._zo(shadow);
     const g = this.add.graphics();
-    g.fillStyle(0xffffff, 1); g.fillCircle(x, y, 14);
-    g.lineStyle(2, parseInt((labelColor || '#4a90d9').slice(1), 16), 1);
-    g.strokeCircle(x, y, 14);
+    g.fillStyle(0xffffff, 1); g.fillCircle(x, y, 15);
+    g.fillStyle(clr, 0.12); g.fillCircle(x, y, 15);
+    g.lineStyle(2.5, clr, 1); g.strokeCircle(x, y, 15);
+    g.fillStyle(0xffffff, 0.3); g.fillCircle(x - 4, y - 5, 4);
     this._zo(g);
-    this._zo(this.add.text(x, y, emoji, { fontSize: '14px' }).setOrigin(0.5));
+    this._zo(this.add.text(x, y + 1, emoji, { fontSize: '14px' }).setOrigin(0.5));
     if (name) {
       const nb = this.add.graphics();
-      nb.fillStyle(0x000000, 0.65); nb.fillRoundedRect(x - 22, y + 16, 44, 13, 4);
+      nb.fillStyle(0x1a1520, 0.8); nb.fillRoundedRect(x - 24, y + 17, 48, 14, 5);
+      nb.lineStyle(0.5, clr, 0.4); nb.strokeRoundedRect(x - 24, y + 17, 48, 14, 5);
       this._zo(nb);
-      this._zo(this.add.text(x, y + 22, name, {
+      this._zo(this.add.text(x, y + 24, name, {
         fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ffd',
       }).setOrigin(0.5));
     }
@@ -1465,40 +1506,7 @@ class TycoonScene extends Phaser.Scene {
   }
 
   _drawBedInterior(fac) {
-    const CW = W;
-    const CH = H + 22;
-
-    const bg = this.add.graphics();
-    bg.fillStyle(0xf5f0e8, 1); bg.fillRect(0, 0, CW, CH);
-    const floorG = this.add.graphics();
-    for (let ty = 36; ty < CH; ty += 24) {
-      for (let tx = 0; tx < CW; tx += 24) {
-        const shade = ((tx / 24 + ty / 24) % 2 === 0) ? 0xede5d8 : 0xe5ddd0;
-        floorG.fillStyle(shade, 1); floorG.fillRect(tx, ty, 24, 24);
-        floorG.lineStyle(0.5, 0xd0c8b8, 0.4); floorG.strokeRect(tx, ty, 24, 24);
-      }
-    }
-    this._zo(bg); this._zo(floorG);
-
-    const wallG = this.add.graphics();
-    wallG.fillStyle(0xe8e0d0, 1); wallG.fillRect(0, 36, CW, 14);
-    wallG.lineStyle(2, 0xc0b8a0, 1); wallG.lineBetween(0, 50, CW, 50);
-    wallG.lineStyle(1, 0xd8d0c0, 0.6); wallG.lineBetween(0, 36, CW, 36);
-    this._zo(wallG);
-
-    const headerBg = this.add.graphics();
-    headerBg.fillStyle(0x8b1a1a, 1); headerBg.fillRect(0, 0, CW, 36);
-    headerBg.fillStyle(0xa02020, 1); headerBg.fillRect(0, 0, CW, 18);
-    this._zo(headerBg);
-    this._zo(this.add.text(CW / 2, 18, `🏥 채혈실 Lv.${fac.level}`, {
-      fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', color: '#fff',
-    }).setOrigin(0.5));
-    const backBtn = this.add.text(6, 18, '◀ 나가기', {
-      fontSize: '10px', fontFamily: 'monospace', color: '#ffd',
-      backgroundColor: 'rgba(0,0,0,0.4)', padding: { x: 5, y: 3 },
-    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
-    backBtn.on('pointerdown', () => { this.zoomOut(); if (this._callbacks.onZoomOut) this._callbacks.onZoomOut(); });
-    this._zo(backBtn);
+    const { CW, CH } = this._drawInteriorBase(fac, 0x8b1a1a, 0xede5d8, 0xe5ddd0);
 
     const state = this._state;
     const bedFac = fac;
@@ -1698,36 +1706,40 @@ class TycoonScene extends Phaser.Scene {
   _drawControlTabs(fac, startY) {
     const CW = W;
     const tabW = Math.floor((CW - 16) / 3);
-    const tabH = 28;
+    const tabH = 32;
     const panelH = 200;
     const px = 6, py = startY;
 
     if (!this._activeTab) this._activeTab = 'settings';
     const tabs = [
-      { key: 'settings', label: '⚙️ 설정' },
-      { key: 'upgrade', label: '📈 업그레이드' },
-      { key: 'stats', label: '📊 통계' },
+      { key: 'settings', label: '⚙️ 설정', color: 0x6c5ce7 },
+      { key: 'upgrade', label: '📈 업그레이드', color: 0xfdcb6e },
+      { key: 'stats', label: '📊 통계', color: 0x00cec9 },
     ];
 
     const tabBg = this.add.graphics();
-    tabBg.fillStyle(0x1e1a2e, 0.95);
-    tabBg.fillRoundedRect(px, py, CW - 12, tabH + panelH, 8);
-    tabBg.lineStyle(1, 0x3a3060, 1);
-    tabBg.strokeRoundedRect(px, py, CW - 12, tabH + panelH, 8);
+    tabBg.fillStyle(0x14101e, 0.96);
+    tabBg.fillRoundedRect(px, py, CW - 12, tabH + panelH, 10);
+    tabBg.lineStyle(1.5, 0x2d2850, 1);
+    tabBg.strokeRoundedRect(px, py, CW - 12, tabH + panelH, 10);
+    tabBg.fillStyle(0x1a1530, 0.5);
+    tabBg.fillRoundedRect(px + 1, py + 1, CW - 14, tabH, { tl: 10, tr: 10, bl: 0, br: 0 });
     this._zo(tabBg);
 
     tabs.forEach((tab, i) => {
-      const tx = px + 2 + i * tabW;
+      const tx = px + 3 + i * tabW;
       const active = this._activeTab === tab.key;
       const tG = this.add.graphics();
       if (active) {
-        tG.fillStyle(0x3a3060, 1);
-        tG.fillRoundedRect(tx, py + 2, tabW - 2, tabH - 2, { tl: 6, tr: 6, bl: 0, br: 0 });
+        tG.fillStyle(tab.color, 0.15);
+        tG.fillRoundedRect(tx, py + 3, tabW - 4, tabH - 4, { tl: 8, tr: 8, bl: 0, br: 0 });
+        tG.fillStyle(tab.color, 1);
+        tG.fillRect(tx + 8, py + tabH - 3, tabW - 20, 3);
       }
       this._zo(tG);
-      const tLabel = this.add.text(tx + tabW / 2, py + tabH / 2 + 1, tab.label, {
-        fontSize: '11px', fontFamily: 'monospace', fontStyle: active ? 'bold' : '',
-        color: active ? '#f0c040' : '#888',
+      const tLabel = this.add.text(tx + tabW / 2, py + tabH / 2, tab.label, {
+        fontSize: '10px', fontFamily: 'monospace', fontStyle: active ? 'bold' : '',
+        color: active ? '#fff' : '#666',
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       tLabel.on('pointerdown', () => {
         this._activeTab = tab.key;
@@ -1737,8 +1749,8 @@ class TycoonScene extends Phaser.Scene {
     });
 
     const divG = this.add.graphics();
-    divG.lineStyle(1, 0x3a3060, 0.6);
-    divG.lineBetween(px + 4, py + tabH, px + CW - 16, py + tabH);
+    divG.lineStyle(1, 0x2d2850, 0.8);
+    divG.lineBetween(px + 6, py + tabH, px + CW - 18, py + tabH);
     this._zo(divG);
 
     const contentY = py + tabH + 8;
@@ -1757,26 +1769,33 @@ class TycoonScene extends Phaser.Scene {
     let cy = y;
 
     settings.forEach((s) => {
-      if (cy + 32 > y + h) return;
+      if (cy + 36 > y + h) return;
 
-      this._zo(this.add.text(x, cy, s.label, {
-        fontSize: '10px', fontFamily: 'monospace', color: '#ccc',
+      const rowBg = this.add.graphics();
+      rowBg.fillStyle(0x1a1530, 0.4); rowBg.fillRoundedRect(x - 2, cy - 2, w + 4, 32, 5);
+      this._zo(rowBg);
+
+      this._zo(this.add.text(x + 2, cy + 2, s.label, {
+        fontSize: '9px', fontFamily: 'monospace', color: '#b8b0cc',
       }));
 
       if (s.type === 'slider') {
         const val = fac[s.key] ?? s.default;
-        const barX = x + 4, barY = cy + 16, barW = w - 60;
+        const barX = x + 18, barY = cy + 18, barW = w - 80;
         const sG = this.add.graphics();
-        sG.fillStyle(0x333344, 1); sG.fillRoundedRect(barX, barY, barW, 8, 4);
+        sG.fillStyle(0x2a2540, 1); sG.fillRoundedRect(barX, barY, barW, 10, 5);
         const pct = (val - s.min) / (s.max - s.min);
-        sG.fillStyle(0xf0c040, 1); sG.fillRoundedRect(barX, barY, barW * pct, 8, 4);
+        sG.fillStyle(0x6c5ce7, 1); sG.fillRoundedRect(barX, barY, barW * pct, 10, 5);
+        sG.fillStyle(0xffffff, 1); sG.fillCircle(barX + barW * pct, barY + 5, 6);
+        sG.lineStyle(1.5, 0x6c5ce7, 1); sG.strokeCircle(barX + barW * pct, barY + 5, 6);
         this._zo(sG);
-        this._zo(this.add.text(barX + barW + 8, barY + 4, `${val}${s.unit || ''}`, {
-          fontSize: '9px', fontFamily: 'monospace', fontStyle: 'bold', color: '#f0c040',
+        this._zo(this.add.text(barX + barW + 12, barY + 5, `${val}${s.unit || ''}`, {
+          fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold', color: '#a29bfe',
         }).setOrigin(0, 0.5));
 
-        const hitMinus = this.add.text(barX - 2, barY + 4, '◀', {
-          fontSize: '9px', color: '#888',
+        const hitMinus = this.add.text(barX - 6, barY + 5, '−', {
+          fontSize: '12px', fontFamily: 'monospace', fontStyle: 'bold', color: '#6c5ce7',
+          backgroundColor: 'rgba(108,92,231,0.15)', padding: { x: 3, y: 0 },
         }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
         hitMinus.on('pointerdown', () => {
           const nv = Math.max(s.min, (fac[s.key] ?? s.default) - s.step);
@@ -1785,8 +1804,9 @@ class TycoonScene extends Phaser.Scene {
           this._drawInterior();
         });
         this._zo(hitMinus);
-        const hitPlus = this.add.text(x + w, barY + 4, '▶', {
-          fontSize: '9px', color: '#888',
+        const hitPlus = this.add.text(x + w + 2, barY + 5, '+', {
+          fontSize: '12px', fontFamily: 'monospace', fontStyle: 'bold', color: '#6c5ce7',
+          backgroundColor: 'rgba(108,92,231,0.15)', padding: { x: 3, y: 0 },
         }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
         hitPlus.on('pointerdown', () => {
           const nv = Math.min(s.max, (fac[s.key] ?? s.default) + s.step);
@@ -1797,14 +1817,17 @@ class TycoonScene extends Phaser.Scene {
         this._zo(hitPlus);
       } else if (s.type === 'toggle') {
         const val = fac[s.key] ?? s.default;
-        const tgX = x + w - 36, tgY = cy + 2;
+        const tgX = x + w - 40, tgY = cy + 6;
         const tgG = this.add.graphics();
-        tgG.fillStyle(val ? 0x27ae60 : 0x444444, 1);
-        tgG.fillRoundedRect(tgX, tgY, 32, 16, 8);
+        tgG.fillStyle(val ? 0x00b894 : 0x2d2850, 1);
+        tgG.fillRoundedRect(tgX, tgY, 36, 18, 9);
+        if (val) { tgG.fillStyle(0x00b894, 0.3); tgG.fillRoundedRect(tgX - 2, tgY - 2, 40, 22, 11); }
         tgG.fillStyle(0xffffff, 1);
-        tgG.fillCircle(val ? tgX + 24 : tgX + 8, tgY + 8, 6);
+        tgG.fillCircle(val ? tgX + 27 : tgX + 9, tgY + 9, 7);
+        tgG.lineStyle(1, val ? 0x00b894 : 0x444466, 1);
+        tgG.strokeCircle(val ? tgX + 27 : tgX + 9, tgY + 9, 7);
         this._zo(tgG);
-        const tgHit = this.add.zone(tgX, tgY, 32, 16).setOrigin(0).setInteractive({ useHandCursor: true });
+        const tgHit = this.add.zone(tgX - 2, tgY - 2, 40, 22).setOrigin(0).setInteractive({ useHandCursor: true });
         tgHit.on('pointerdown', () => {
           fac[s.key] = !(fac[s.key] ?? s.default);
           if (this._callbacks.onSettingChange) this._callbacks.onSettingChange(fac, s.key, fac[s.key]);
@@ -1812,7 +1835,7 @@ class TycoonScene extends Phaser.Scene {
         });
         this._zo(tgHit);
       }
-      cy += 36;
+      cy += 38;
     });
   }
 
