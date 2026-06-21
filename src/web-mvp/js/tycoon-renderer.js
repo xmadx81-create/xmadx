@@ -119,33 +119,42 @@ class TycoonScene extends Phaser.Scene {
   _drawGrid() {
     this.gridBg.clear();
     if (this.bgSprite) { this.bgSprite.destroy(); this.bgSprite = null; }
+    if (this._tileSprites) { this._tileSprites.forEach(s => s.destroy()); }
+    this._tileSprites = [];
     const gridX = PAD - 2;
     const gridY = PAD + 26;
     const gridW = TILE * GRID + 4;
     const gridH = TILE * GRID + 4;
-    const bgKey = 'bg_' + this._floor;
-    if (this.textures && this.textures.exists(bgKey)) {
-      this.bgSprite = this.add.image(gridX + gridW / 2, gridY + gridH / 2, bgKey);
-      this.bgSprite.setDisplaySize(gridW, gridH);
-      this.bgSprite.setDepth(-1);
-    } else {
+    const hasTile = this.textures && this.textures.exists('floor_tile');
+    if (!hasTile) {
       const bgColor = FLOOR_BG[this._floor] || 0x1e1912;
       this.gridBg.fillStyle(bgColor, 1);
       this.gridBg.fillRoundedRect(gridX, gridY, gridW, gridH, 6);
     }
+    const FLOOR_TINT = { 'B1': 0x8888aa, '2F': 0xaabbdd };
+    const tint = FLOOR_TINT[this._floor];
     for (let r = 0; r < GRID; r++) {
       for (let c = 0; c < GRID; c++) {
         const x = this._tileX(c);
         const y = this._tileY(r);
-        this.gridBg.fillStyle(0x000000, 0.04);
-        this.gridBg.fillRect(x, y, TILE - 1, TILE - 1);
-        this.gridBg.lineStyle(1, 0xffffff, 0.12);
+        if (hasTile) {
+          const sp = this.add.image(x + (TILE - 1) / 2, y + (TILE - 1) / 2, 'floor_tile');
+          sp.setDisplaySize(TILE - 1, TILE - 1);
+          sp.setDepth(-1);
+          if (tint) sp.setTint(tint);
+          this._tileSprites.push(sp);
+        } else {
+          this.gridBg.fillStyle(0x000000, 0.04);
+          this.gridBg.fillRect(x, y, TILE - 1, TILE - 1);
+        }
+        this.gridBg.lineStyle(1, 0x000000, 0.15);
         this.gridBg.strokeRect(x, y, TILE - 1, TILE - 1);
       }
     }
   }
 
   _fullRedraw() {
+    if (this._tileSprites) { this._tileSprites.forEach(s => s.destroy()); this._tileSprites = []; }
     Object.values(this.facSprites).forEach(s => s.container?.destroy());
     this.facSprites = {};
     Object.values(this.nurseSprites).forEach(s => s.container?.destroy());
@@ -540,6 +549,7 @@ export class TycoonRenderer {
           this.load.image('bg_1F', ASSET_BASE + 'backgrounds/floor_1f.png');
           this.load.image('bg_2F', ASSET_BASE + 'backgrounds/floor_2f.png');
           this.load.image('bg_B1', ASSET_BASE + 'backgrounds/floor_b1.png');
+          this.load.image('floor_tile', ASSET_BASE + 'backgrounds/floor_tile.png');
           this.load.image('char_seoyoon', ASSET_BASE + 'characters/seoyoon.png');
           this.load.image('char_hana', ASSET_BASE + 'characters/hana.png');
           this.load.image('char_minsoo', ASSET_BASE + 'characters/minsoo.png');
