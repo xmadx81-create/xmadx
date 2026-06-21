@@ -1622,7 +1622,10 @@ function startTycoonMode() {
     tycoonState.fame += prestige * 5;
   }
   document.getElementById('stage-select').style.display = 'none';
-  document.getElementById('defense-screen').style.display = '';
+  const defScreen = document.getElementById('defense-screen');
+  document.body.appendChild(defScreen);
+  defScreen.style.display = '';
+  document.body.classList.add('tycoon-fullscreen');
   tycoonSelectedFacility = null;
   updateTycoonSpeedBtn();
 
@@ -2205,7 +2208,9 @@ function endTycoonMode(won) {
     overlay.remove();
     tycoonState = null;
     screen.style.display = 'none';
+    document.querySelector('#tab-play').appendChild(screen);
     document.getElementById('stage-select').style.display = '';
+    document.body.classList.remove('tycoon-fullscreen');
     renderStageSelect();
   });
 }

@@ -7287,50 +7287,66 @@ body {
    R55 — 헌혈의집 타이쿤 (Blood Donation Tycoon)
    ═══════════════════════════════════════════ */
 
+body.tycoon-fullscreen {
+  overflow: hidden !important;
+  background: #0a0810 !important;
+}
+body.tycoon-fullscreen #app { display: none !important; }
+
 .defense-screen {
   display: flex; flex-direction: column;
-  height: 100vh; background: #F0E8DC;
-  padding: 8px; gap: 6px;
-  position: relative;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 9999;
+  background: linear-gradient(180deg, #14101e 0%, #0a0810 50%, #0e0818 100%);
+  padding: 0; gap: 0;
+  font-family: 'Pretendard', -apple-system, sans-serif;
 }
 
 .defense-hud {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 12px; background: rgba(251,246,239,0.95);
-  border: 1px solid rgba(233,196,106,0.2); border-radius: 8px;
+  display: flex; justify-content: space-around; align-items: center;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, rgba(40,30,50,0.95) 0%, rgba(20,16,30,0.9) 100%);
+  border-bottom: 2px solid rgba(180,140,255,0.2);
+  flex-shrink: 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
 }
-.defense-wave { color: #C9A54E; font-weight: 700; font-size: 1rem; }
-.defense-lives { color: #fbbf24; font-weight: 700; font-size: 0.9rem; }
-.defense-merges { color: #f87171; font-size: 0.8rem; }
-.defense-gold { color: #C9A54E; font-weight: 700; font-size: 0.9rem; }
-.defense-timer { color: #5A8FBF; font-weight: 700; font-size: 0.9rem; }
+.defense-wave { color: #e9c46a; font-weight: 800; font-size: 0.9rem; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+.defense-lives { color: #fbbf24; font-weight: 700; font-size: 0.85rem; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+.defense-merges { color: #f87171; font-weight: 700; font-size: 0.85rem; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+.defense-gold { color: #e9c46a; font-weight: 700; font-size: 0.85rem; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+.defense-timer { color: #5dade2; font-weight: 800; font-size: 0.9rem; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
 
 .defense-synergy {
-  display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px;
-  min-height: 0;
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 5px 8px;
+  min-height: 0; flex-shrink: 0;
+  background: rgba(20,16,30,0.9);
+  border-bottom: 1px solid rgba(180,140,255,0.1);
 }
 
 .tyc-blood-tag {
-  font-size: 0.7rem; padding: 2px 8px; border-radius: 8px;
-  background: rgba(248,113,113,0.1); color: #f87171;
-  border: 1px solid rgba(248,113,113,0.2); font-weight: 600;
+  font-size: 0.7rem; padding: 3px 8px; border-radius: 10px;
+  background: rgba(248,113,113,0.15); color: #ff8a8a;
+  border: 1px solid rgba(248,113,113,0.3); font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
-.tyc-blood-has { background: rgba(248,113,113,0.2); border-color: rgba(248,113,113,0.4); }
+.tyc-blood-has { background: rgba(248,113,113,0.3); border-color: rgba(248,113,113,0.6); color: #ff6b6b; }
 .tyc-order-tag {
-  font-size: 0.65rem; padding: 2px 8px; border-radius: 8px;
-  background: rgba(201,165,78,0.1); color: #C9A54E;
-  border: 1px solid rgba(201,165,78,0.2); font-weight: 600;
+  font-size: 0.65rem; padding: 3px 8px; border-radius: 10px;
+  background: rgba(233,196,106,0.15); color: #f0d78c;
+  border: 1px solid rgba(233,196,106,0.3); font-weight: 700;
   cursor: pointer; position: relative; overflow: hidden;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
-.tyc-order-tag:hover { border-color: rgba(201,165,78,0.5); }
+.tyc-order-tag:hover { border-color: rgba(233,196,106,0.7); background: rgba(233,196,106,0.25); }
+.tyc-order-tag:active { transform: scale(0.95); }
 .tyc-order-urgent {
-  background: rgba(248,113,113,0.15); color: #f87171;
-  border-color: rgba(248,113,113,0.4);
+  background: rgba(248,113,113,0.2); color: #ff6b6b;
+  border-color: rgba(248,113,113,0.5);
   animation: record-pulse 1s infinite alternate;
 }
 .tyc-order-time {
   position: absolute; bottom: 0; left: 0; height: 2px;
-  background: #C9A54E; transition: width 0.3s;
+  background: #e9c46a; transition: width 0.3s;
 }
 
 .def-reward-overlay {
@@ -7360,7 +7376,11 @@ body {
 .def-reward-icon { font-size: 1.1rem; font-weight: 700; white-space: nowrap; }
 .def-reward-desc { font-size: 0.85rem; color: var(--text-secondary, #8B7A6B); }
 
-.defense-main { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; }
+.defense-main {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; min-height: 0;
+  padding: 4px;
+}
 
 .defense-grid, .tyc-grid {
   display: grid; gap: 2px;
@@ -7430,16 +7450,29 @@ body {
 .tyc-donor-count { font-size: 0.7rem; color: #9E8E7E; }
 
 .tyc-facility-panel {
-  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+  display: flex; flex-wrap: nowrap; gap: 6px; justify-content: flex-start;
   padding: 6px 8px;
+  background: linear-gradient(0deg, rgba(20,16,30,0.95) 0%, rgba(30,24,45,0.9) 100%);
+  border-top: 1px solid rgba(180,140,255,0.15);
+  flex-shrink: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .tyc-fac-btn {
-  font-size: 0.7rem; padding: 4px 8px; border-radius: 6px;
-  border: 1px solid rgba(139,122,107,0.2); cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  font-size: 0.7rem; padding: 6px 10px; border-radius: 10px;
+  border: 1.5px solid rgba(180,140,255,0.25); cursor: pointer;
+  transition: all 0.2s;
+  background: rgba(100,70,160,0.15); color: #ddd;
+  white-space: nowrap; flex-shrink: 0;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
-.tyc-fac-btn:hover:not(:disabled) { border-color: rgba(233,196,106,0.5); }
-.tyc-fac-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tyc-fac-btn:hover:not(:disabled) {
+  border-color: rgba(233,196,106,0.7);
+  background: rgba(233,196,106,0.15);
+  box-shadow: 0 0 10px rgba(233,196,106,0.2);
+}
+.tyc-fac-btn:active:not(:disabled) { transform: scale(0.95); }
+.tyc-fac-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 
 .tyc-story-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -7518,8 +7551,30 @@ body {
 .def-tile { position: relative; }
 
 .defense-controls {
-  display: flex; gap: 8px; justify-content: center; padding: 8px 0;
+  display: flex; gap: 6px; justify-content: center; padding: 8px 10px;
+  background: linear-gradient(0deg, rgba(16,12,24,0.98) 0%, rgba(24,18,36,0.95) 100%);
+  border-top: 2px solid rgba(180,140,255,0.15);
+  flex-shrink: 0;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
+.defense-controls .btn-primary {
+  background: linear-gradient(135deg, #c0392b, #e74c3c);
+  color: #fff; font-weight: 800; font-size: 0.85rem;
+  padding: 10px 18px; border-radius: 12px;
+  border: 2px solid rgba(255,100,100,0.3);
+  box-shadow: 0 4px 12px rgba(192,57,43,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.defense-controls .btn-primary:active { transform: scale(0.95); box-shadow: 0 2px 6px rgba(192,57,43,0.3); }
+.defense-controls .btn-secondary {
+  background: linear-gradient(135deg, rgba(60,45,80,0.8), rgba(40,30,60,0.9));
+  color: #ccc; font-weight: 700; font-size: 0.75rem;
+  padding: 8px 12px; border-radius: 12px;
+  border: 1.5px solid rgba(180,140,255,0.2);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.defense-controls .btn-secondary:active { transform: scale(0.95); }
 
 .defense-banner {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -7543,22 +7598,22 @@ body {
 }
 .stage-defense .stage-num { font-size: 1.2rem; }
 
-.defense-tips {
-  display: flex; justify-content: center; gap: 12px;
-  font-size: 0.65rem; color: #A09585; padding: 2px 0;
-}
+.defense-tips { display: none; }
 
-.defense-grid-wrap { position: relative; }
+.defense-grid-wrap {
+  position: relative; width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
 #tyc-canvas-wrap {
   display: flex; justify-content: center; align-items: center;
-  border-radius: 10px; overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 0 40px rgba(0,0,0,0.3);
-  border: 1px solid rgba(233,196,106,0.15);
+  border-radius: 14px; overflow: hidden;
+  border: 2px solid rgba(180,140,255,0.2);
+  box-shadow: 0 0 30px rgba(100,60,180,0.15), inset 0 0 20px rgba(0,0,0,0.3);
 }
 #tyc-canvas-wrap canvas {
-  border-radius: 10px;
+  border-radius: 12px;
   max-width: 100%;
-  height: auto !important;
+  max-height: 100%;
 }
 
 .def-result-overlay {
