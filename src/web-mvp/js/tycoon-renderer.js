@@ -153,16 +153,17 @@ class TycoonScene extends Phaser.Scene {
   _genFloorTextures() {
     const s = TILE;
     const floors = {
-      '1F': { base: '#c8b898', grout: '#a89070', hi: 'rgba(255,255,255,0.12)', lo: 'rgba(0,0,0,0.05)' },
-      '2F': { base: '#a0b8c8', grout: '#7898a8', hi: 'rgba(255,255,255,0.10)', lo: 'rgba(0,0,0,0.06)' },
-      'B1': { base: '#787088', grout: '#605870', hi: 'rgba(255,255,255,0.08)', lo: 'rgba(0,0,0,0.08)' },
+      '1F': { base: [200,184,152], grout: '#a89070', hi: 'rgba(255,255,240,0.18)', lo: 'rgba(0,0,0,0.06)' },
+      '2F': { base: [160,184,200], grout: '#7898a8', hi: 'rgba(240,255,255,0.14)', lo: 'rgba(0,0,0,0.07)' },
+      'B1': { base: [120,112,136], grout: '#605870', hi: 'rgba(200,200,255,0.10)', lo: 'rgba(0,0,0,0.10)' },
     };
     for (const [fk, cl] of Object.entries(floors)) {
       const key = 'gentile_' + fk;
       if (this.textures.exists(key)) continue;
       const ct = this.textures.createCanvas(key, s, s);
       const cx = ct.getContext();
-      cx.fillStyle = cl.base;
+      const [br, bg, bb] = cl.base;
+      cx.fillStyle = `rgb(${br},${bg},${bb})`;
       cx.fillRect(0, 0, s, s);
       cx.fillStyle = cl.hi;
       cx.fillRect(2, 2, s / 2 - 2, s / 2 - 2);
@@ -170,6 +171,16 @@ class TycoonScene extends Phaser.Scene {
       cx.fillStyle = cl.lo;
       cx.fillRect(s / 2 + 1, 2, s / 2 - 3, s / 2 - 2);
       cx.fillRect(2, s / 2 + 1, s / 2 - 2, s / 2 - 3);
+      for (let i = 0; i < 6; i++) {
+        const rx = Math.floor(i * 7.3) % s, ry = Math.floor(i * 5.7 + 3) % s;
+        cx.fillStyle = `rgba(0,0,0,${0.02 + (i % 3) * 0.01})`;
+        cx.fillRect(rx, ry, 2, 1);
+      }
+      const grad = cx.createLinearGradient(0, 0, s, s);
+      grad.addColorStop(0, 'rgba(255,255,255,0.06)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.04)');
+      cx.fillStyle = grad;
+      cx.fillRect(0, 0, s, s);
       cx.strokeStyle = cl.grout;
       cx.lineWidth = 1;
       cx.strokeRect(0.5, 0.5, s - 1, s - 1);
@@ -185,174 +196,248 @@ class TycoonScene extends Phaser.Scene {
 
   _genFacTextures() {
     const T = TILE;
+
+    const _rr = (c, x, y, w, h, r) => {
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.lineTo(x + w - r, y); c.arcTo(x + w, y, x + w, y + r, r);
+      c.lineTo(x + w, y + h - r); c.arcTo(x + w, y + h, x + w - r, y + h, r);
+      c.lineTo(x + r, y + h); c.arcTo(x, y + h, x, y + h - r, r);
+      c.lineTo(x, y + r); c.arcTo(x, y, x + r, y, r);
+      c.closePath();
+    };
+    const _topGrad = (c, w, topH, c1, c2) => {
+      const g = c.createLinearGradient(0, 0, 0, topH);
+      g.addColorStop(0, c1); g.addColorStop(1, c2);
+      c.fillStyle = g; c.fillRect(0, 0, w, topH);
+    };
+    const _isoBox = (c, x, y, bw, bh, depth, faceColor, topColor, sideColor, r) => {
+      c.fillStyle = sideColor;
+      _rr(c, x, y + depth, bw, bh, r); c.fill();
+      c.fillStyle = faceColor;
+      _rr(c, x, y, bw, bh, r); c.fill();
+      const tg = c.createLinearGradient(x, y, x, y + bh * 0.3);
+      tg.addColorStop(0, topColor); tg.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = tg; _rr(c, x, y, bw, bh * 0.4, r); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,0.12)'; c.lineWidth = 0.5;
+      _rr(c, x, y, bw, bh, r); c.stroke();
+    };
+
     const draw = {
       bed: (c, w, h) => {
-        c.fillStyle = '#f8e8e8'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#e0e8f0'; c.fillRect(4, 6, w * 0.55, h - 12);
-        c.fillStyle = '#b8d0e0'; c.fillRect(6, 8, 14, h - 16);
-        c.fillStyle = '#d0d8e0'; c.fillRect(22, 10, w * 0.3, h - 20);
-        c.fillStyle = '#cc2222'; c.fillRect(w - 16, 3, 8, 12);
-        c.fillStyle = '#dd3333'; c.fillRect(w - 15, 4, 6, 10);
-        c.fillStyle = '#666'; c.fillRect(w - 12, 2, 2, h - 4);
+        _topGrad(c, w, h, '#fdf0f0', '#f0dde0');
+        _isoBox(c, 4, h * 0.35, w * 0.65, h * 0.5, 4, '#e8eef6', 'rgba(255,255,255,0.4)', '#c8d4e0', 3);
+        c.fillStyle = '#ccdae8'; c.fillRect(6, h * 0.38, 16, h * 0.42);
+        const pg = c.createLinearGradient(0, h * 0.38, 0, h * 0.38 + h * 0.42);
+        pg.addColorStop(0, 'rgba(255,255,255,0.25)'); pg.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = pg; c.fillRect(6, h * 0.38, 16, h * 0.42);
+        c.fillStyle = '#d8e2ea'; c.fillRect(24, h * 0.42, w * 0.3, h * 0.38);
+        _isoBox(c, w - 18, 2, 12, 14, 3, '#cc2222', 'rgba(255,100,100,0.4)', '#991818', 2);
+        c.fillStyle = '#666'; c.fillRect(w - 13, 2, 2, h * 0.75);
         c.strokeStyle = '#cc2222'; c.lineWidth = 1.5;
-        c.beginPath(); c.moveTo(w - 11, 15); c.quadraticCurveTo(w - 11, h / 2, w * 0.55 + 4, h / 2); c.stroke();
+        c.beginPath(); c.moveTo(w - 12, 18); c.quadraticCurveTo(w - 12, h * 0.5, w * 0.55, h * 0.5); c.stroke();
         c.fillStyle = '#cc2222'; c.beginPath(); c.arc(w - 12, h - 8, 3, 0, Math.PI * 2); c.fill();
       },
       reception: (c, w, h) => {
-        c.fillStyle = '#e8eff8'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#8b7355'; c.fillRect(6, h * 0.5, w - 12, h * 0.4);
-        c.fillStyle = '#a08060'; c.fillRect(6, h * 0.5, w - 12, 4);
-        c.fillStyle = '#334455'; c.fillRect(w * 0.3, 8, w * 0.35, h * 0.35);
-        c.fillStyle = '#4488bb'; c.fillRect(w * 0.32, 10, w * 0.31, h * 0.28);
-        c.fillStyle = '#ddd'; c.fillRect(w * 0.25, h * 0.5 + 8, w * 0.2, 3);
-        c.fillStyle = '#ccc'; c.fillRect(w * 0.5, h * 0.5 + 8, w * 0.2, 3);
-        c.fillStyle = '#f0e0c0'; c.fillRect(10, h * 0.55, 12, 16);
-        c.strokeStyle = '#888'; c.lineWidth = 0.5;
-        c.strokeRect(10, h * 0.55, 12, 16);
+        _topGrad(c, w, h, '#eef4fc', '#dce8f4');
+        _isoBox(c, 6, h * 0.48, w - 12, h * 0.38, 5, '#8b7355', 'rgba(180,150,110,0.5)', '#6b5540', 3);
+        const dg = c.createLinearGradient(6, h * 0.48, 6, h * 0.48 + h * 0.38);
+        dg.addColorStop(0, '#a08060'); dg.addColorStop(1, '#7a6045');
+        c.fillStyle = dg; _rr(c, 8, h * 0.5, w - 16, h * 0.1, 2); c.fill();
+        _isoBox(c, w * 0.25, 6, w * 0.45, h * 0.35, 3, '#2a3a50', 'rgba(100,150,200,0.3)', '#1a2a3a', 2);
+        c.fillStyle = '#4488cc';
+        const sg = c.createLinearGradient(0, 8, 0, 8 + h * 0.26);
+        sg.addColorStop(0, '#55aadd'); sg.addColorStop(1, '#3377aa');
+        c.fillStyle = sg; c.fillRect(w * 0.28, 9, w * 0.39, h * 0.28);
+        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(w * 0.28, 9, w * 0.39, h * 0.08);
+        c.fillStyle = '#ddd'; c.fillRect(w * 0.2, h * 0.55, w * 0.2, 3);
+        c.fillStyle = '#ccc'; c.fillRect(w * 0.5, h * 0.55, w * 0.2, 3);
+        _isoBox(c, 10, h * 0.6, 14, 18, 3, '#f5e6c8', 'rgba(255,255,255,0.3)', '#d5c6a8', 2);
       },
       waiting_room: (c, w, h) => {
-        c.fillStyle = '#f0ede8'; c.fillRect(0, 0, w, h);
+        _topGrad(c, w, h, '#f5f2ee', '#e8e4de');
         for (let i = 0; i < 3; i++) {
-          const cx = 12 + i * 22, cy = 14;
-          c.fillStyle = '#4488aa'; c.fillRect(cx, cy, 16, 14);
-          c.fillStyle = '#3377aa'; c.fillRect(cx, cy, 16, 4);
-          c.fillStyle = '#336699'; c.fillRect(cx, cy, 3, 14);
+          const cx = 10 + i * 24;
+          _isoBox(c, cx, 12, 18, 16, 4, '#3388aa', 'rgba(100,200,255,0.3)', '#266880', 3);
+          c.fillStyle = '#2a7898'; c.fillRect(cx + 1, 12, 18, 5);
+          c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(cx + 2, 13, 16, 3);
         }
         for (let i = 0; i < 3; i++) {
-          const cx = 12 + i * 22, cy = h - 28;
-          c.fillStyle = '#4488aa'; c.fillRect(cx, cy, 16, 14);
-          c.fillStyle = '#3377aa'; c.fillRect(cx, cy, 16, 4);
-          c.fillStyle = '#336699'; c.fillRect(cx, cy, 3, 14);
+          const cx = 10 + i * 24, cy = h - 30;
+          _isoBox(c, cx, cy, 18, 16, 4, '#3388aa', 'rgba(100,200,255,0.3)', '#266880', 3);
+          c.fillStyle = '#2a7898'; c.fillRect(cx + 1, cy, 18, 5);
+          c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(cx + 2, cy + 1, 16, 3);
         }
+        _isoBox(c, w * 0.3, h * 0.38, w * 0.4, h * 0.18, 3, '#aa8855', 'rgba(255,220,160,0.3)', '#886633', 2);
       },
       lounge: (c, w, h) => {
-        c.fillStyle = '#f5f0e8'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#cc8844'; c.fillRect(w * 0.3, h * 0.35, w * 0.4, h * 0.3);
-        c.fillStyle = '#dd9955'; c.fillRect(w * 0.32, h * 0.37, w * 0.36, h * 0.26);
-        c.fillStyle = '#5a8a5a';
-        c.beginPath(); c.moveTo(8, h * 0.7); c.lineTo(w * 0.4, h * 0.7); c.lineTo(w * 0.4, h * 0.3);
-        c.lineTo(8, h * 0.3); c.closePath(); c.fill();
-        c.fillStyle = '#4a7a4a'; c.fillRect(8, h * 0.3, 6, h * 0.4);
-        c.fillStyle = '#6a9a6a'; c.fillRect(10, h * 0.35, w * 0.25, h * 0.15);
-        c.fillStyle = '#8B4513'; c.fillRect(w * 0.65, h * 0.1, 4, 10);
-        c.fillStyle = '#228B22'; c.beginPath(); c.arc(w * 0.67, h * 0.08, 6, 0, Math.PI * 2); c.fill();
+        _topGrad(c, w, h, '#faf5ed', '#ede5d8');
+        _isoBox(c, w * 0.25, h * 0.32, w * 0.5, h * 0.32, 4, '#cc8844', 'rgba(255,200,120,0.35)', '#aa6622', 3);
+        c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(w * 0.27, h * 0.34, w * 0.46, h * 0.08);
+        _isoBox(c, 4, h * 0.25, w * 0.38, h * 0.45, 5, '#4a8a4a', 'rgba(120,200,120,0.35)', '#2a6a2a', 4);
+        c.fillStyle = '#5a9a5a'; c.fillRect(6, h * 0.28, w * 0.34, h * 0.12);
+        c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(6, h * 0.28, w * 0.34, h * 0.06);
+        c.fillStyle = '#6b4423'; c.fillRect(w * 0.72, h * 0.08, 4, 12);
+        c.fillStyle = '#228B22'; c.beginPath(); c.arc(w * 0.74, h * 0.06, 7, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#33aa33'; c.beginPath(); c.arc(w * 0.73, h * 0.04, 4, 0, Math.PI * 2); c.fill();
       },
       lab: (c, w, h) => {
-        c.fillStyle = '#eef2f8'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#bbb'; c.fillRect(8, h * 0.55, w - 16, h * 0.35);
-        c.fillStyle = '#ccc'; c.fillRect(8, h * 0.55, w - 16, 3);
-        c.fillStyle = '#333'; c.fillRect(14, h * 0.2, 8, h * 0.35);
-        c.fillStyle = '#555'; c.fillRect(10, h * 0.15, 16, 6);
-        c.fillStyle = '#777'; c.fillRect(16, h * 0.42, 12, h * 0.13);
+        _topGrad(c, w, h, '#f2f5fc', '#e0e8f4');
+        _isoBox(c, 6, h * 0.5, w - 12, h * 0.38, 5, '#b0b8c0', 'rgba(220,230,240,0.4)', '#8a9298', 3);
+        const cg = c.createLinearGradient(6, h * 0.5, 6, h * 0.88);
+        cg.addColorStop(0, '#c8d0d8'); cg.addColorStop(1, '#a0a8b0');
+        c.fillStyle = cg; c.fillRect(8, h * 0.52, w - 16, 4);
+        _isoBox(c, 10, h * 0.12, 14, h * 0.38, 3, '#444', 'rgba(150,150,150,0.3)', '#222', 2);
+        c.fillStyle = '#666'; c.fillRect(8, h * 0.08, 18, 6);
+        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(9, h * 0.09, 16, 3);
         const tubes = ['#dd3333', '#33aa33', '#3355cc', '#ddaa22'];
         tubes.forEach((cl, i) => {
-          c.fillStyle = cl; c.globalAlpha = 0.7;
-          c.fillRect(w * 0.5 + i * 8, h * 0.25, 5, h * 0.3);
+          const tx = w * 0.48 + i * 9;
+          const th = h * 0.32;
+          c.fillStyle = cl; c.globalAlpha = 0.75;
+          _rr(c, tx, h * 0.2, 6, th, 2); c.fill();
           c.globalAlpha = 1;
-          c.fillStyle = '#999'; c.fillRect(w * 0.5 + i * 8, h * 0.22, 5, 4);
+          const lg = c.createLinearGradient(tx, h * 0.2, tx + 6, h * 0.2);
+          lg.addColorStop(0, 'rgba(255,255,255,0.3)'); lg.addColorStop(1, 'rgba(0,0,0,0)');
+          c.fillStyle = lg; c.fillRect(tx, h * 0.2, 3, th);
+          c.fillStyle = '#999'; _rr(c, tx - 1, h * 0.17, 8, 5, 1); c.fill();
         });
       },
       storage: (c, w, h) => {
-        c.fillStyle = '#dde8f0'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#c0c8d0'; c.fillRect(4, 3, w - 8, h - 6);
-        c.fillStyle = '#b0b8c0'; c.fillRect(4, 3, w - 8, 3);
-        c.strokeStyle = '#9098a0'; c.lineWidth = 1;
-        c.strokeRect(6, h * 0.15, w * 0.42, h * 0.35);
-        c.strokeRect(w * 0.52, h * 0.15, w * 0.42, h * 0.35);
-        c.strokeRect(6, h * 0.55, w * 0.42, h * 0.35);
-        c.strokeRect(w * 0.52, h * 0.55, w * 0.42, h * 0.35);
-        c.fillStyle = '#88ccee'; c.globalAlpha = 0.3;
-        c.fillRect(7, h * 0.16, w * 0.41, h * 0.33);
-        c.fillRect(w * 0.53, h * 0.16, w * 0.41, h * 0.33);
-        c.globalAlpha = 1;
-        c.fillStyle = '#aaa'; c.fillRect(w * 0.46, h * 0.25, 3, 8);
-        c.fillRect(w * 0.46, h * 0.65, 3, 8);
+        _topGrad(c, w, h, '#e8eff5', '#d0dce8');
+        _isoBox(c, 3, 2, w - 6, h - 4, 5, '#b8c4d0', 'rgba(220,230,240,0.4)', '#8898a8', 3);
+        c.strokeStyle = '#7888a0'; c.lineWidth = 1;
+        c.strokeRect(6, h * 0.14, w * 0.42, h * 0.34);
+        c.strokeRect(w * 0.52, h * 0.14, w * 0.42, h * 0.34);
+        c.strokeRect(6, h * 0.53, w * 0.42, h * 0.34);
+        c.strokeRect(w * 0.52, h * 0.53, w * 0.42, h * 0.34);
+        c.fillStyle = 'rgba(130,200,240,0.2)'; c.fillRect(7, h * 0.15, w * 0.41, h * 0.33);
+        c.fillRect(w * 0.53, h * 0.15, w * 0.41, h * 0.33);
+        c.fillStyle = 'rgba(255,255,255,0.12)';
+        c.fillRect(7, h * 0.15, w * 0.2, h * 0.33);
+        c.fillRect(w * 0.53, h * 0.15, w * 0.2, h * 0.33);
+        c.fillStyle = '#aab0b8'; c.fillRect(w * 0.46, h * 0.24, 3, 8);
+        c.fillRect(w * 0.46, h * 0.63, 3, 8);
       },
       corridor: (c, w, h) => {
-        c.fillStyle = '#d8d0c0'; c.fillRect(0, 0, w, h);
-        c.strokeStyle = '#bbb0a0'; c.lineWidth = 0.5;
-        c.setLineDash([3, 3]);
-        c.beginPath(); c.moveTo(w / 2, 2); c.lineTo(w / 2, h - 2); c.stroke();
-        c.beginPath(); c.moveTo(2, h / 2); c.lineTo(w - 2, h / 2); c.stroke();
+        _topGrad(c, w, h, '#e0d8cc', '#ccc4b4');
+        c.strokeStyle = 'rgba(160,148,128,0.5)'; c.lineWidth = 0.8;
+        c.setLineDash([4, 3]);
+        c.beginPath(); c.moveTo(w / 2, 3); c.lineTo(w / 2, h - 3); c.stroke();
+        c.beginPath(); c.moveTo(3, h / 2); c.lineTo(w - 3, h / 2); c.stroke();
         c.setLineDash([]);
+        const cg = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.6);
+        cg.addColorStop(0, 'rgba(255,255,255,0.12)'); cg.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = cg; c.fillRect(0, 0, w, h);
       },
       stairs: (c, w, h) => {
-        c.fillStyle = '#c8c0b8'; c.fillRect(0, 0, w, h);
+        _topGrad(c, w, h, '#d0c8be', '#b8b0a6');
         for (let i = 0; i < 5; i++) {
           const sh = h / 5;
-          c.fillStyle = i % 2 === 0 ? '#b0a898' : '#c0b8a8';
-          c.fillRect(4 + i * 3, 2 + i * sh, w - 8 - i * 3, sh);
-          c.fillStyle = '#908880'; c.fillRect(4 + i * 3, 2 + i * sh, w - 8 - i * 3, 2);
+          const sy = 2 + i * sh;
+          const depth = 3;
+          c.fillStyle = '#8a8278'; c.fillRect(4 + i * 2, sy + sh - depth, w - 8 - i * 2, depth);
+          const sg = c.createLinearGradient(0, sy, 0, sy + sh - depth);
+          sg.addColorStop(0, i % 2 === 0 ? '#c0b8a8' : '#ccbfae');
+          sg.addColorStop(1, i % 2 === 0 ? '#b0a898' : '#bbb0a0');
+          c.fillStyle = sg; c.fillRect(4 + i * 2, sy, w - 8 - i * 2, sh - depth);
+          c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(4 + i * 2, sy, w - 8 - i * 2, 2);
         }
       },
       emergency: (c, w, h) => {
-        c.fillStyle = '#fff0e0'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#e8e0d8'; c.fillRect(4, 6, w * 0.5, h - 12);
-        c.fillStyle = '#d0c8c0'; c.fillRect(6, 8, 12, h - 16);
-        c.fillStyle = '#cc4400'; c.fillRect(w * 0.6, 4, 16, 16);
-        c.fillStyle = '#fff'; c.fillRect(w * 0.6 + 6, 7, 4, 10);
-        c.fillRect(w * 0.6 + 3, 10, 10, 4);
+        _topGrad(c, w, h, '#fff4e8', '#f0e0cc');
+        _isoBox(c, 4, h * 0.3, w * 0.52, h * 0.55, 4, '#e8e0d8', 'rgba(255,255,255,0.3)', '#c8c0b0', 3);
+        c.fillStyle = '#d8d0c0'; c.fillRect(6, h * 0.33, 14, h * 0.46);
+        _isoBox(c, w * 0.58, 2, 18, 18, 3, '#cc4400', 'rgba(255,120,50,0.3)', '#993300', 2);
+        c.fillStyle = '#fff'; c.fillRect(w * 0.58 + 6, 6, 4, 10);
+        c.fillRect(w * 0.58 + 3, 9, 10, 4);
         c.fillStyle = '#22aa44';
-        c.beginPath(); c.moveTo(w * 0.7, h * 0.5); c.lineTo(w * 0.85, h * 0.35); c.lineTo(w * 0.85, h * 0.65); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(w * 0.68, h * 0.5); c.lineTo(w * 0.82, h * 0.38); c.lineTo(w * 0.82, h * 0.62); c.closePath(); c.fill();
         c.strokeStyle = '#22aa44'; c.lineWidth = 1.5;
-        c.beginPath(); c.moveTo(w * 0.85, h * 0.5); c.lineTo(w - 6, h * 0.5); c.stroke();
+        c.beginPath(); c.moveTo(w * 0.82, h * 0.5); c.lineTo(w - 6, h * 0.5); c.stroke();
       },
       restroom: (c, w, h) => {
-        c.fillStyle = '#e8f0f0'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#ddd'; c.fillRect(w * 0.2, 4, w * 0.6, h * 0.45);
-        c.fillStyle = '#eee'; c.fillRect(w * 0.25, 6, w * 0.5, h * 0.35);
-        c.fillStyle = '#aaddee'; c.fillRect(w * 0.3, 8, w * 0.15, h * 0.25);
-        c.fillStyle = '#bbb'; c.fillRect(w * 0.2, h * 0.55, w * 0.6, h * 0.35);
-        c.fillStyle = '#ccc'; c.fillRect(w * 0.25, h * 0.6, w * 0.5, h * 0.25);
+        _topGrad(c, w, h, '#eef5f5', '#dce8e8');
+        _isoBox(c, w * 0.15, 3, w * 0.7, h * 0.45, 4, '#ddd', 'rgba(255,255,255,0.35)', '#bbb', 3);
+        c.fillStyle = '#eee'; c.fillRect(w * 0.2, 6, w * 0.6, h * 0.33);
+        c.fillStyle = 'rgba(160,220,238,0.35)'; c.fillRect(w * 0.25, 8, w * 0.2, h * 0.22);
+        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(w * 0.25, 8, w * 0.1, h * 0.22);
+        _isoBox(c, w * 0.15, h * 0.52, w * 0.7, h * 0.35, 4, '#c8c8c8', 'rgba(255,255,255,0.3)', '#a0a0a0', 3);
+        c.fillStyle = '#d8d8d8'; c.fillRect(w * 0.2, h * 0.56, w * 0.6, h * 0.25);
       },
       booth: (c, w, h) => {
-        c.fillStyle = '#fff5e0'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#ee5533';
-        c.beginPath(); c.moveTo(w / 2, 2); c.lineTo(w - 4, h * 0.45); c.lineTo(4, h * 0.45); c.closePath(); c.fill();
+        _topGrad(c, w, h, '#fff8e8', '#f0e8d0');
         c.fillStyle = '#dd4422';
-        c.beginPath(); c.moveTo(w / 2, 2); c.lineTo(w * 0.75, h * 0.45); c.lineTo(w / 2, h * 0.45); c.closePath(); c.fill();
-        c.fillStyle = '#8B4513'; c.fillRect(w * 0.2, h * 0.45, w * 0.6, h * 0.45);
-        c.fillStyle = '#a0522d'; c.fillRect(w * 0.2, h * 0.45, w * 0.6, 3);
+        c.beginPath(); c.moveTo(w / 2, 1); c.lineTo(w - 3, h * 0.42); c.lineTo(3, h * 0.42); c.closePath(); c.fill();
+        const rg = c.createLinearGradient(0, 1, 0, h * 0.42);
+        rg.addColorStop(0, 'rgba(255,150,100,0.4)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = rg;
+        c.beginPath(); c.moveTo(w / 2, 1); c.lineTo(w * 0.75, h * 0.42); c.lineTo(w * 0.25, h * 0.42); c.closePath(); c.fill();
+        c.fillStyle = '#cc3311';
+        c.beginPath(); c.moveTo(w / 2, 1); c.lineTo(w * 0.75, h * 0.42); c.lineTo(w / 2, h * 0.42); c.closePath(); c.fill();
+        _isoBox(c, w * 0.15, h * 0.42, w * 0.7, h * 0.45, 5, '#8B4513', 'rgba(180,120,60,0.35)', '#6a3410', 3);
       },
       elevator: (c, w, h) => {
-        c.fillStyle = '#c0c0c8'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#9098a0'; c.fillRect(4, 4, w - 8, h - 8);
-        c.fillStyle = '#a0a8b0'; c.fillRect(4, 4, (w - 8) / 2 - 1, h - 8);
-        c.fillStyle = '#a8b0b8'; c.fillRect(w / 2 + 1, 4, (w - 8) / 2 - 1, h - 8);
-        c.strokeStyle = '#888'; c.lineWidth = 1; c.strokeRect(4, 4, w - 8, h - 8);
-        c.fillStyle = '#dd8800';
+        _topGrad(c, w, h, '#d0d0d8', '#b8b8c4');
+        _isoBox(c, 3, 3, w - 6, h - 6, 4, '#8898a8', 'rgba(180,200,220,0.3)', '#667888', 3);
+        c.fillStyle = '#96a6b6'; c.fillRect(4, 4, (w - 8) / 2 - 2, h - 10);
+        c.fillStyle = '#9aabb8'; c.fillRect(w / 2 + 1, 4, (w - 8) / 2 - 2, h - 10);
+        c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(4, 4, (w - 8) / 2 - 2, h * 0.3);
+        c.strokeStyle = '#667'; c.lineWidth = 1; c.strokeRect(3, 3, w - 6, h - 6);
+        c.strokeStyle = '#556'; c.lineWidth = 0.5;
+        c.beginPath(); c.moveTo(w / 2, 4); c.lineTo(w / 2, h - 7); c.stroke();
+        c.fillStyle = '#ee9900';
         c.beginPath(); c.moveTo(w / 2, 8); c.lineTo(w / 2 + 5, 14); c.lineTo(w / 2 - 5, 14); c.closePath(); c.fill();
+        c.fillStyle = '#dd8800';
         c.beginPath(); c.moveTo(w / 2, h - 8); c.lineTo(w / 2 + 5, h - 14); c.lineTo(w / 2 - 5, h - 14); c.closePath(); c.fill();
       },
       office: (c, w, h) => {
-        c.fillStyle = '#f0ece0'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#8b7355'; c.fillRect(8, h * 0.4, w - 16, h * 0.45);
-        c.fillStyle = '#a08060'; c.fillRect(8, h * 0.4, w - 16, 3);
-        c.fillStyle = '#334'; c.fillRect(w * 0.35, 4, w * 0.25, h * 0.3);
-        c.fillStyle = '#4488bb'; c.fillRect(w * 0.37, 6, w * 0.21, h * 0.24);
-        c.fillStyle = '#f0e0c0'; c.fillRect(12, h * 0.48, 10, 14);
-        c.fillStyle = '#eee0d0'; c.fillRect(24, h * 0.5, 8, 10);
+        _topGrad(c, w, h, '#f5f0e4', '#e5ddd0');
+        _isoBox(c, 6, h * 0.38, w - 12, h * 0.45, 5, '#8b7355', 'rgba(180,150,110,0.4)', '#6b5540', 3);
+        c.fillStyle = '#a08060'; c.fillRect(8, h * 0.4, w - 16, 4);
+        c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(8, h * 0.4, w - 16, 2);
+        _isoBox(c, w * 0.3, 3, w * 0.35, h * 0.3, 3, '#2a3344', 'rgba(80,130,180,0.25)', '#1a2030', 2);
+        const mg = c.createLinearGradient(0, 5, 0, h * 0.28);
+        mg.addColorStop(0, '#5599cc'); mg.addColorStop(1, '#3377aa');
+        c.fillStyle = mg; c.fillRect(w * 0.33, 6, w * 0.29, h * 0.22);
+        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(w * 0.33, 6, w * 0.29, h * 0.06);
+        _isoBox(c, 10, h * 0.48, 12, 16, 3, '#f5e6c8', 'rgba(255,255,255,0.3)', '#d5c6a8', 2);
+        _isoBox(c, 26, h * 0.5, 10, 12, 2, '#eee0d0', 'rgba(255,255,255,0.25)', '#d0c4b0', 2);
       },
       parking: (c, w, h) => {
-        c.fillStyle = '#555'; c.fillRect(0, 0, w, h);
-        c.strokeStyle = '#fff'; c.lineWidth = 1;
+        const bg = c.createLinearGradient(0, 0, 0, h);
+        bg.addColorStop(0, '#5a5a5a'); bg.addColorStop(1, '#444');
+        c.fillStyle = bg; c.fillRect(0, 0, w, h);
+        c.strokeStyle = 'rgba(255,255,255,0.6)'; c.lineWidth = 1;
         for (let i = 0; i < 4; i++) {
-          c.strokeRect(8 + i * (w / 4 - 2), 8, w / 4 - 6, h * 0.4);
-          c.strokeRect(8 + i * (w / 4 - 2), h * 0.55, w / 4 - 6, h * 0.4);
+          const sx = 8 + i * (w / 4 - 1);
+          const sw = w / 4 - 6;
+          c.strokeRect(sx, 8, sw, h * 0.38);
+          c.strokeRect(sx, h * 0.55, sw, h * 0.38);
         }
-        c.fillStyle = '#fff'; c.font = 'bold 14px monospace'; c.textAlign = 'center';
-        c.fillText('P', w / 2, h / 2 + 5);
+        c.fillStyle = 'rgba(255,255,255,0.12)';
+        for (let i = 0; i < 4; i++) {
+          c.fillRect(9 + i * (w / 4 - 1), 9, w / 4 - 8, h * 0.36);
+        }
+        c.font = 'bold 16px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillStyle = 'rgba(255,255,255,0.8)'; c.fillText('P', w / 2, h / 2 + 1);
+        c.fillStyle = '#fff'; c.fillText('P', w / 2, h / 2);
       },
       cold_storage: (c, w, h) => {
-        c.fillStyle = '#d0e8f0'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#a0c0d0'; c.fillRect(4, 4, w - 8, h - 8);
-        c.fillStyle = '#90b0c0'; c.fillRect(4, 4, w - 8, 4);
+        _topGrad(c, w, h, '#daeef5', '#c0dce8');
+        _isoBox(c, 3, 3, w - 6, h - 6, 5, '#a8c8d8', 'rgba(200,235,255,0.35)', '#80a8b8', 3);
+        c.fillStyle = '#98bcc8'; c.fillRect(4, 4, w - 8, 5);
+        c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(4, 4, w - 8, 3);
         for (let i = 0; i < 3; i++) {
-          c.strokeStyle = '#80a0b0'; c.lineWidth = 1;
-          c.strokeRect(8 + i * (w / 3 - 2), 12, w / 3 - 8, h - 24);
-          c.fillStyle = 'rgba(150,220,255,0.2)'; c.fillRect(9 + i * (w / 3 - 2), 13, w / 3 - 10, h - 26);
+          const cx = 8 + i * (w / 3 - 1);
+          c.strokeStyle = '#78a0b0'; c.lineWidth = 1;
+          c.strokeRect(cx, 12, w / 3 - 8, h - 24);
+          c.fillStyle = 'rgba(150,220,255,0.18)'; c.fillRect(cx + 1, 13, w / 3 - 10, h - 26);
+          c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(cx + 1, 13, (w / 3 - 10) * 0.4, h - 26);
         }
-        c.fillStyle = '#4499cc'; c.font = '12px Arial'; c.textAlign = 'center'; c.fillText('❄', w / 2, h / 2 + 4);
+        c.font = '14px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillStyle = 'rgba(60,150,200,0.6)'; c.fillText('❄', w / 2, h / 2 + 1);
+        c.fillStyle = '#4499cc'; c.fillText('❄', w / 2, h / 2);
       },
     };
     const sizes = {
@@ -369,7 +454,7 @@ class TycoonScene extends Phaser.Scene {
       const ct = this.textures.createCanvas(key, w, h);
       const cx = ct.getContext();
       fn(cx, w, h);
-      cx.strokeStyle = 'rgba(0,0,0,0.15)';
+      cx.strokeStyle = 'rgba(0,0,0,0.1)';
       cx.lineWidth = 1;
       cx.strokeRect(0.5, 0.5, w - 1, h - 1);
       ct.refresh();
@@ -391,10 +476,21 @@ class TycoonScene extends Phaser.Scene {
       const isLocked = !unlocked.includes(f);
       const bg = this.add.graphics();
       const alpha = isLocked ? 0.2 : 1;
-      bg.fillStyle(isActive ? 0xe9c46a : 0x3a3228, alpha);
-      bg.fillRoundedRect(x, y, 46, 20, 5);
+      if (isActive) {
+        bg.fillStyle(0x000000, 0.2 * alpha);
+        bg.fillRoundedRect(x + 1, y + 2, 46, 20, 6);
+        bg.fillStyle(0xe9c46a, alpha);
+        bg.fillRoundedRect(x, y, 46, 20, 6);
+        bg.fillStyle(0xffeaa0, 0.35 * alpha);
+        bg.fillRoundedRect(x + 2, y + 1, 42, 8, 4);
+      } else {
+        bg.fillStyle(0x3a3228, alpha);
+        bg.fillRoundedRect(x, y, 46, 20, 6);
+        bg.fillStyle(0xffffff, 0.05 * alpha);
+        bg.fillRoundedRect(x + 2, y + 1, 42, 8, 4);
+      }
       bg.lineStyle(isActive ? 2 : 1, isActive ? 0xffd700 : 0x5a5040, alpha);
-      bg.strokeRoundedRect(x, y, 46, 20, 5);
+      bg.strokeRoundedRect(x, y, 46, 20, 6);
       const color = isActive ? '#000' : (isLocked ? '#555' : '#ddd');
       const icon = floorIcons[f] || '';
       const label = this.add.text(x + 23, y + 10, (isLocked ? '🔒' : icon) + f, {
@@ -434,10 +530,16 @@ class TycoonScene extends Phaser.Scene {
       for (let c = 0; c < GRID; c++) {
         const x = this._tileX(c);
         const y = this._tileY(r);
-        this.gridBg.lineStyle(1, 0x000000, 0.12);
+        this.gridBg.lineStyle(1, 0x000000, 0.08);
         this.gridBg.strokeRect(x, y, TILE - 1, TILE - 1);
       }
     }
+    this.gridBg.fillStyle(0x000000, 0.08);
+    this.gridBg.fillRect(gridX, gridY, gridW, 3);
+    this.gridBg.fillRect(gridX, gridY, 3, gridH);
+    this.gridBg.fillStyle(0xffffff, 0.04);
+    this.gridBg.fillRect(gridX, gridY + gridH - 2, gridW, 2);
+    this.gridBg.fillRect(gridX + gridW - 2, gridY, 2, gridH);
   }
 
   _fullRedraw() {
@@ -506,8 +608,10 @@ class TycoonScene extends Phaser.Scene {
     const container = this.add.container(0, 0);
 
     const shadow = this.add.graphics();
-    shadow.fillStyle(0x000000, 0.3);
-    shadow.fillRoundedRect(x + 2, y + 2, w, h, 3);
+    shadow.fillStyle(0x000000, 0.12);
+    shadow.fillRoundedRect(x + 4, y + 5, w, h, 5);
+    shadow.fillStyle(0x000000, 0.2);
+    shadow.fillRoundedRect(x + 2, y + 3, w, h, 4);
     container.add(shadow);
 
     const texKey = 'fac_' + fac.id;
@@ -566,15 +670,19 @@ class TycoonScene extends Phaser.Scene {
     sprite.progressFill.clear();
     if (fac.busy) {
       const { x, y, w, h } = sprite;
-      sprite.glow.lineStyle(2, 0x4ade80, 0.6);
-      sprite.glow.strokeRoundedRect(x - 1, y - 1, w + 2, h + 2, 6);
+      sprite.glow.fillStyle(0x4ade80, 0.08);
+      sprite.glow.fillRoundedRect(x - 3, y - 3, w + 6, h + 6, 8);
+      sprite.glow.lineStyle(2, 0x4ade80, 0.5);
+      sprite.glow.strokeRoundedRect(x - 1, y - 1, w + 2, h + 2, 5);
+      sprite.glow.lineStyle(1, 0x4ade80, 0.2);
+      sprite.glow.strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 7);
       if (fac.processTime > 0) {
         const pct = Math.min(1, fac.progress / fac.processTime);
-        const barY = y + h - 5;
-        sprite.progressBg.fillStyle(0x000000, 0.4);
-        sprite.progressBg.fillRoundedRect(x + 3, barY, w - 6, 4, 2);
+        const barY = y + h - 6;
+        sprite.progressBg.fillStyle(0x000000, 0.5);
+        sprite.progressBg.fillRoundedRect(x + 3, barY, w - 6, 5, 2);
         sprite.progressFill.fillStyle(0x4ade80, 0.9);
-        sprite.progressFill.fillRoundedRect(x + 3, barY, (w - 6) * pct, 4, 2);
+        sprite.progressFill.fillRoundedRect(x + 4, barY + 1, Math.max(0, (w - 8) * pct), 3, 1);
       }
     }
     sprite.fac = fac;
@@ -640,20 +748,28 @@ class TycoonScene extends Phaser.Scene {
       head = body;
       animTargets = [body];
     } else {
-      body = this.add.circle(tx, ty - 2, 9, roleColor, 0.9);
-      body.setStrokeStyle(1.5, 0x000000, 0.5);
+      const charKey = '_npcTex_' + (roleColor).toString(16);
+      if (!this.textures.exists(charKey)) {
+        const ct = this.textures.createCanvas(charKey, 20, 24);
+        const cc = ct.getContext();
+        const r = (roleColor >> 16) & 0xff, g = (roleColor >> 8) & 0xff, b = roleColor & 0xff;
+        const baseCol = `rgb(${r},${g},${b})`;
+        const darkCol = `rgb(${Math.max(0,r-50)},${Math.max(0,g-50)},${Math.max(0,b-50)})`;
+        const lightCol = `rgb(${Math.min(255,r+60)},${Math.min(255,g+60)},${Math.min(255,b+60)})`;
+        cc.fillStyle = darkCol; cc.fillRect(6, 16, 3, 7); cc.fillRect(11, 16, 3, 7);
+        cc.fillStyle = baseCol; cc.fillRect(4, 8, 12, 9);
+        cc.fillStyle = lightCol; cc.fillRect(5, 9, 10, 3);
+        cc.fillStyle = '#ffd5b4'; cc.fillRect(5, 0, 10, 9);
+        cc.fillStyle = '#332211'; cc.fillRect(4, 0, 12, 3);
+        cc.fillStyle = '#222'; cc.fillRect(7, 4, 2, 2); cc.fillRect(11, 4, 2, 2);
+        cc.fillStyle = '#cc6666'; cc.fillRect(8, 6, 4, 1);
+        ct.refresh();
+      }
+      body = this.add.image(tx, ty - 2, charKey);
+      body.setDisplaySize(18, 22);
       container.add(body);
-
-      head = this.add.circle(tx, ty - 10, 6, roleColor, 0.95);
-      head.setStrokeStyle(1, 0xffffff, 0.3);
-      container.add(head);
-
-      const role = TYCOON_ROLES[nurse.charData.role] || TYCOON_ROLES.support;
-      const icon = this.add.text(tx, ty - 10, role.icon, {
-        fontSize: '9px',
-      }).setOrigin(0.5);
-      container.add(icon);
-      animTargets = [body, head, icon];
+      head = body;
+      animTargets = [body];
     }
 
     const nameLabel = this.add.text(tx, ty + 12, nurse.charData.name.slice(0, 2), {
