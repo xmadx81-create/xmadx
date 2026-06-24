@@ -153,9 +153,9 @@ class TycoonScene extends Phaser.Scene {
   _genFloorTextures() {
     const s = TILE;
     const floors = {
-      '1F': { base: [200,184,152], grout: '#a89070', hi: 'rgba(255,255,240,0.18)', lo: 'rgba(0,0,0,0.06)' },
-      '2F': { base: [160,184,200], grout: '#7898a8', hi: 'rgba(240,255,255,0.14)', lo: 'rgba(0,0,0,0.07)' },
-      'B1': { base: [120,112,136], grout: '#605870', hi: 'rgba(200,200,255,0.10)', lo: 'rgba(0,0,0,0.10)' },
+      '1F': { base: [200,184,152], grout: '#a89070', hi: 'rgba(255,255,240,0.18)', lo: 'rgba(0,0,0,0.06)', accent: [220,200,160] },
+      '2F': { base: [160,184,200], grout: '#7898a8', hi: 'rgba(240,255,255,0.14)', lo: 'rgba(0,0,0,0.07)', accent: [175,200,218] },
+      'B1': { base: [120,112,136], grout: '#605870', hi: 'rgba(200,200,255,0.10)', lo: 'rgba(0,0,0,0.10)', accent: [135,125,150] },
     };
     for (const [fk, cl] of Object.entries(floors)) {
       const key = 'gentile_' + fk;
@@ -163,6 +163,7 @@ class TycoonScene extends Phaser.Scene {
       const ct = this.textures.createCanvas(key, s, s);
       const cx = ct.getContext();
       const [br, bg, bb] = cl.base;
+      const [ar, ag, ab] = cl.accent;
       cx.fillStyle = `rgb(${br},${bg},${bb})`;
       cx.fillRect(0, 0, s, s);
       cx.fillStyle = cl.hi;
@@ -171,16 +172,27 @@ class TycoonScene extends Phaser.Scene {
       cx.fillStyle = cl.lo;
       cx.fillRect(s / 2 + 1, 2, s / 2 - 3, s / 2 - 2);
       cx.fillRect(2, s / 2 + 1, s / 2 - 2, s / 2 - 3);
-      for (let i = 0; i < 6; i++) {
-        const rx = Math.floor(i * 7.3) % s, ry = Math.floor(i * 5.7 + 3) % s;
-        cx.fillStyle = `rgba(0,0,0,${0.02 + (i % 3) * 0.01})`;
-        cx.fillRect(rx, ry, 2, 1);
+      for (let i = 0; i < 12; i++) {
+        const rx = Math.floor(i * 3.7 + 1) % s, ry = Math.floor(i * 4.3 + 2) % s;
+        cx.fillStyle = `rgba(${ar},${ag},${ab},${0.06 + (i % 4) * 0.02})`;
+        cx.fillRect(rx, ry, 2 + (i % 2), 1 + (i % 2));
+      }
+      for (let i = 0; i < 8; i++) {
+        const rx = Math.floor(i * 5.3 + 3) % s, ry = Math.floor(i * 6.1) % s;
+        cx.fillStyle = `rgba(0,0,0,${0.015 + (i % 3) * 0.008})`;
+        cx.fillRect(rx, ry, 1, 1);
       }
       const grad = cx.createLinearGradient(0, 0, s, s);
-      grad.addColorStop(0, 'rgba(255,255,255,0.06)');
-      grad.addColorStop(1, 'rgba(0,0,0,0.04)');
+      grad.addColorStop(0, 'rgba(255,255,255,0.08)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.06)');
       cx.fillStyle = grad;
       cx.fillRect(0, 0, s, s);
+      cx.fillStyle = 'rgba(255,255,255,0.04)';
+      cx.fillRect(1, 1, s / 2 - 1, 1);
+      cx.fillRect(1, 1, 1, s / 2 - 1);
+      cx.fillRect(s / 2 + 1, s / 2 + 1, s / 2 - 2, 1);
+      cx.fillRect(s / 2 + 1, s / 2 + 1, 1, s / 2 - 2);
       cx.strokeStyle = cl.grout;
       cx.lineWidth = 1;
       cx.strokeRect(0.5, 0.5, s - 1, s - 1);
@@ -219,92 +231,150 @@ class TycoonScene extends Phaser.Scene {
       const tg = c.createLinearGradient(x, y, x, y + bh * 0.3);
       tg.addColorStop(0, topColor); tg.addColorStop(1, 'rgba(255,255,255,0)');
       c.fillStyle = tg; _rr(c, x, y, bw, bh * 0.4, r); c.fill();
+      c.fillStyle = 'rgba(0,0,0,0.04)';
+      c.fillRect(x + bw - 3, y + 2, 2, bh - 4);
+      c.fillStyle = 'rgba(255,255,255,0.06)';
+      c.fillRect(x + 1, y + 1, 2, bh - 2);
       c.strokeStyle = 'rgba(0,0,0,0.12)'; c.lineWidth = 0.5;
       _rr(c, x, y, bw, bh, r); c.stroke();
+    };
+    const _noise = (c, x, y, w, h, count, alpha) => {
+      for (let i = 0; i < count; i++) {
+        const nx = x + Math.floor(i * 7.3 + 1) % w;
+        const ny = y + Math.floor(i * 5.1 + 3) % h;
+        c.fillStyle = `rgba(0,0,0,${alpha + (i % 3) * 0.005})`;
+        c.fillRect(nx, ny, 1, 1);
+      }
+    };
+    const _screenGlare = (c, x, y, sw, sh) => {
+      c.fillStyle = 'rgba(255,255,255,0.25)';
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x + sw * 0.4, y);
+      c.lineTo(x, y + sh * 0.6); c.closePath(); c.fill();
     };
 
     const draw = {
       bed: (c, w, h) => {
         _topGrad(c, w, h, '#fdf0f0', '#f0dde0');
-        _isoBox(c, 4, h * 0.35, w * 0.65, h * 0.5, 4, '#e8eef6', 'rgba(255,255,255,0.4)', '#c8d4e0', 3);
-        c.fillStyle = '#ccdae8'; c.fillRect(6, h * 0.38, 16, h * 0.42);
-        const pg = c.createLinearGradient(0, h * 0.38, 0, h * 0.38 + h * 0.42);
-        pg.addColorStop(0, 'rgba(255,255,255,0.25)'); pg.addColorStop(1, 'rgba(0,0,0,0)');
-        c.fillStyle = pg; c.fillRect(6, h * 0.38, 16, h * 0.42);
-        c.fillStyle = '#d8e2ea'; c.fillRect(24, h * 0.42, w * 0.3, h * 0.38);
-        _isoBox(c, w - 18, 2, 12, 14, 3, '#cc2222', 'rgba(255,100,100,0.4)', '#991818', 2);
-        c.fillStyle = '#666'; c.fillRect(w - 13, 2, 2, h * 0.75);
+        _noise(c, 0, 0, w, h, 8, 0.01);
+        _isoBox(c, 4, h * 0.32, w * 0.65, h * 0.52, 5, '#e8eef6', 'rgba(255,255,255,0.4)', '#c0ccd8', 3);
+        c.fillStyle = '#ccdae8'; c.fillRect(6, h * 0.35, 16, h * 0.44);
+        const pg = c.createLinearGradient(0, h * 0.35, 0, h * 0.35 + h * 0.44);
+        pg.addColorStop(0, 'rgba(255,255,255,0.3)'); pg.addColorStop(1, 'rgba(0,0,0,0.03)');
+        c.fillStyle = pg; c.fillRect(6, h * 0.35, 16, h * 0.44);
+        c.fillStyle = '#d8e2ea'; c.fillRect(24, h * 0.4, w * 0.3, h * 0.4);
+        c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(24, h * 0.4, w * 0.3, h * 0.1);
+        _isoBox(c, w - 20, 1, 14, 16, 4, '#cc2222', 'rgba(255,100,100,0.45)', '#8a1010', 2);
+        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(w - 18, 3, 4, 8);
+        c.fillStyle = '#555'; c.fillRect(w - 14, 1, 2, h * 0.78);
+        c.fillStyle = '#666'; c.fillRect(w - 15, 1, 1, h * 0.78);
         c.strokeStyle = '#cc2222'; c.lineWidth = 1.5;
-        c.beginPath(); c.moveTo(w - 12, 18); c.quadraticCurveTo(w - 12, h * 0.5, w * 0.55, h * 0.5); c.stroke();
-        c.fillStyle = '#cc2222'; c.beginPath(); c.arc(w - 12, h - 8, 3, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.moveTo(w - 13, 18); c.quadraticCurveTo(w - 13, h * 0.5, w * 0.52, h * 0.5); c.stroke();
+        c.strokeStyle = 'rgba(255,50,50,0.3)'; c.lineWidth = 3;
+        c.beginPath(); c.moveTo(w - 13, 18); c.quadraticCurveTo(w - 13, h * 0.5, w * 0.52, h * 0.5); c.stroke();
+        c.fillStyle = '#cc2222'; c.beginPath(); c.arc(w - 13, h - 7, 3.5, 0, Math.PI * 2); c.fill();
+        c.fillStyle = 'rgba(255,150,150,0.4)'; c.beginPath(); c.arc(w - 14, h - 8, 2, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#44aa44'; c.fillRect(w * 0.55, 4, 8, 6);
+        c.fillStyle = '#55cc55'; c.fillRect(w * 0.55 + 1, 5, 2, 1); c.fillRect(w * 0.55 + 4, 6, 3, 1);
       },
       reception: (c, w, h) => {
         _topGrad(c, w, h, '#eef4fc', '#dce8f4');
-        _isoBox(c, 6, h * 0.48, w - 12, h * 0.38, 5, '#8b7355', 'rgba(180,150,110,0.5)', '#6b5540', 3);
-        const dg = c.createLinearGradient(6, h * 0.48, 6, h * 0.48 + h * 0.38);
+        _noise(c, 0, 0, w, h, 10, 0.012);
+        _isoBox(c, 6, h * 0.46, w - 12, h * 0.4, 6, '#8b7355', 'rgba(180,150,110,0.5)', '#5a4430', 3);
+        const dg = c.createLinearGradient(6, h * 0.46, 6, h * 0.46 + h * 0.4);
         dg.addColorStop(0, '#a08060'); dg.addColorStop(1, '#7a6045');
-        c.fillStyle = dg; _rr(c, 8, h * 0.5, w - 16, h * 0.1, 2); c.fill();
-        _isoBox(c, w * 0.25, 6, w * 0.45, h * 0.35, 3, '#2a3a50', 'rgba(100,150,200,0.3)', '#1a2a3a', 2);
-        c.fillStyle = '#4488cc';
-        const sg = c.createLinearGradient(0, 8, 0, 8 + h * 0.26);
+        c.fillStyle = dg; _rr(c, 8, h * 0.48, w - 16, h * 0.1, 2); c.fill();
+        c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(8, h * 0.48, w - 16, 3);
+        _isoBox(c, w * 0.22, 5, w * 0.5, h * 0.36, 4, '#2a3a50', 'rgba(100,150,200,0.3)', '#141e30', 2);
+        const sg = c.createLinearGradient(0, 7, 0, 7 + h * 0.28);
         sg.addColorStop(0, '#55aadd'); sg.addColorStop(1, '#3377aa');
-        c.fillStyle = sg; c.fillRect(w * 0.28, 9, w * 0.39, h * 0.28);
-        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(w * 0.28, 9, w * 0.39, h * 0.08);
-        c.fillStyle = '#ddd'; c.fillRect(w * 0.2, h * 0.55, w * 0.2, 3);
-        c.fillStyle = '#ccc'; c.fillRect(w * 0.5, h * 0.55, w * 0.2, 3);
-        _isoBox(c, 10, h * 0.6, 14, 18, 3, '#f5e6c8', 'rgba(255,255,255,0.3)', '#d5c6a8', 2);
+        c.fillStyle = sg; c.fillRect(w * 0.25, 8, w * 0.44, h * 0.29);
+        _screenGlare(c, w * 0.25, 8, w * 0.44, h * 0.29);
+        c.fillStyle = '#66ddff'; c.fillRect(w * 0.3, h * 0.12, w * 0.15, 2);
+        c.fillStyle = '#88eeff'; c.fillRect(w * 0.3, h * 0.18, w * 0.25, 2);
+        c.fillStyle = '#66ddff'; c.fillRect(w * 0.3, h * 0.24, w * 0.1, 2);
+        c.fillStyle = '#ddd'; c.fillRect(w * 0.18, h * 0.54, w * 0.22, 3);
+        c.fillStyle = '#ccc'; c.fillRect(w * 0.52, h * 0.54, w * 0.22, 3);
+        _isoBox(c, 8, h * 0.58, 16, 20, 4, '#f5e6c8', 'rgba(255,255,255,0.3)', '#c8b090', 2);
+        c.fillStyle = '#eeddbb'; c.fillRect(10, h * 0.62, 12, 3);
+        c.fillStyle = '#ddccaa'; c.fillRect(10, h * 0.68, 12, 3);
+        _isoBox(c, w - 24, h * 0.58, 14, 14, 3, '#334455', 'rgba(100,150,200,0.2)', '#222', 2);
+        c.fillStyle = '#557799'; c.fillRect(w - 22, h * 0.6, 10, 8);
+        c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(w - 22, h * 0.6, 10, 3);
       },
       waiting_room: (c, w, h) => {
         _topGrad(c, w, h, '#f5f2ee', '#e8e4de');
+        _noise(c, 0, 0, w, h, 10, 0.01);
         for (let i = 0; i < 3; i++) {
-          const cx = 10 + i * 24;
-          _isoBox(c, cx, 12, 18, 16, 4, '#3388aa', 'rgba(100,200,255,0.3)', '#266880', 3);
-          c.fillStyle = '#2a7898'; c.fillRect(cx + 1, 12, 18, 5);
-          c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(cx + 2, 13, 16, 3);
+          const cx = 8 + i * 25;
+          _isoBox(c, cx, 10, 20, 18, 5, '#3388aa', 'rgba(100,200,255,0.35)', '#1e5e78', 3);
+          c.fillStyle = '#2a7898'; c.fillRect(cx + 1, 10, 20, 5);
+          c.fillStyle = 'rgba(255,255,255,0.18)'; c.fillRect(cx + 2, 11, 18, 3);
+          c.fillStyle = '#55aacc'; c.fillRect(cx + 4, 16, 12, 2);
         }
         for (let i = 0; i < 3; i++) {
-          const cx = 10 + i * 24, cy = h - 30;
-          _isoBox(c, cx, cy, 18, 16, 4, '#3388aa', 'rgba(100,200,255,0.3)', '#266880', 3);
-          c.fillStyle = '#2a7898'; c.fillRect(cx + 1, cy, 18, 5);
-          c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(cx + 2, cy + 1, 16, 3);
+          const cx = 8 + i * 25, cy = h - 32;
+          _isoBox(c, cx, cy, 20, 18, 5, '#3388aa', 'rgba(100,200,255,0.35)', '#1e5e78', 3);
+          c.fillStyle = '#2a7898'; c.fillRect(cx + 1, cy, 20, 5);
+          c.fillStyle = 'rgba(255,255,255,0.18)'; c.fillRect(cx + 2, cy + 1, 18, 3);
+          c.fillStyle = '#55aacc'; c.fillRect(cx + 4, cy + 10, 12, 2);
         }
-        _isoBox(c, w * 0.3, h * 0.38, w * 0.4, h * 0.18, 3, '#aa8855', 'rgba(255,220,160,0.3)', '#886633', 2);
+        _isoBox(c, w * 0.28, h * 0.36, w * 0.44, h * 0.2, 4, '#aa8855', 'rgba(255,220,160,0.35)', '#7a5c30', 2);
+        c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(w * 0.3, h * 0.37, w * 0.4, h * 0.05);
+        c.fillStyle = '#c8a060'; c.fillRect(w * 0.35, h * 0.4, w * 0.15, 3);
+        c.fillStyle = '#d0b070'; c.fillRect(w * 0.55, h * 0.42, w * 0.1, 3);
       },
       lounge: (c, w, h) => {
         _topGrad(c, w, h, '#faf5ed', '#ede5d8');
-        _isoBox(c, w * 0.25, h * 0.32, w * 0.5, h * 0.32, 4, '#cc8844', 'rgba(255,200,120,0.35)', '#aa6622', 3);
-        c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(w * 0.27, h * 0.34, w * 0.46, h * 0.08);
-        _isoBox(c, 4, h * 0.25, w * 0.38, h * 0.45, 5, '#4a8a4a', 'rgba(120,200,120,0.35)', '#2a6a2a', 4);
-        c.fillStyle = '#5a9a5a'; c.fillRect(6, h * 0.28, w * 0.34, h * 0.12);
-        c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(6, h * 0.28, w * 0.34, h * 0.06);
-        c.fillStyle = '#6b4423'; c.fillRect(w * 0.72, h * 0.08, 4, 12);
-        c.fillStyle = '#228B22'; c.beginPath(); c.arc(w * 0.74, h * 0.06, 7, 0, Math.PI * 2); c.fill();
-        c.fillStyle = '#33aa33'; c.beginPath(); c.arc(w * 0.73, h * 0.04, 4, 0, Math.PI * 2); c.fill();
+        _noise(c, 0, 0, w, h, 10, 0.01);
+        _isoBox(c, w * 0.22, h * 0.3, w * 0.56, h * 0.34, 5, '#cc8844', 'rgba(255,200,120,0.4)', '#995520', 3);
+        c.fillStyle = 'rgba(255,255,255,0.14)'; c.fillRect(w * 0.24, h * 0.32, w * 0.52, h * 0.08);
+        c.fillStyle = '#b87030'; c.fillRect(w * 0.3, h * 0.42, w * 0.16, 3);
+        c.fillStyle = '#ddaa66'; c.fillRect(w * 0.5, h * 0.44, w * 0.12, 3);
+        _isoBox(c, 3, h * 0.22, w * 0.4, h * 0.5, 6, '#4a8a4a', 'rgba(120,200,120,0.4)', '#1a5a1a', 4);
+        c.fillStyle = '#5a9a5a'; c.fillRect(5, h * 0.25, w * 0.36, h * 0.14);
+        c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(5, h * 0.25, w * 0.36, h * 0.06);
+        c.fillStyle = '#6aaa6a'; c.fillRect(8, h * 0.44, w * 0.3, h * 0.08);
+        c.fillStyle = '#6b4423'; c.fillRect(w * 0.72, h * 0.06, 5, 14);
+        c.fillStyle = '#228B22'; c.beginPath(); c.arc(w * 0.745, h * 0.04, 8, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#33aa33'; c.beginPath(); c.arc(w * 0.73, h * 0.02, 5, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#44cc44'; c.beginPath(); c.arc(w * 0.76, h * 0.035, 3, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#887766'; c.fillRect(w * 0.65, h * 0.75, 12, 8);
+        c.fillStyle = '#aa9988'; c.fillRect(w * 0.65, h * 0.75, 12, 3);
+        c.fillStyle = '#44aadd'; c.fillRect(w * 0.66, h * 0.77, 10, 4);
       },
       lab: (c, w, h) => {
         _topGrad(c, w, h, '#f2f5fc', '#e0e8f4');
-        _isoBox(c, 6, h * 0.5, w - 12, h * 0.38, 5, '#b0b8c0', 'rgba(220,230,240,0.4)', '#8a9298', 3);
-        const cg = c.createLinearGradient(6, h * 0.5, 6, h * 0.88);
+        _noise(c, 0, 0, w, h, 10, 0.01);
+        _isoBox(c, 6, h * 0.48, w - 12, h * 0.4, 6, '#b0b8c0', 'rgba(220,230,240,0.4)', '#7a8590', 3);
+        const cg = c.createLinearGradient(6, h * 0.48, 6, h * 0.88);
         cg.addColorStop(0, '#c8d0d8'); cg.addColorStop(1, '#a0a8b0');
-        c.fillStyle = cg; c.fillRect(8, h * 0.52, w - 16, 4);
-        _isoBox(c, 10, h * 0.12, 14, h * 0.38, 3, '#444', 'rgba(150,150,150,0.3)', '#222', 2);
-        c.fillStyle = '#666'; c.fillRect(8, h * 0.08, 18, 6);
-        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(9, h * 0.09, 16, 3);
-        const tubes = ['#dd3333', '#33aa33', '#3355cc', '#ddaa22'];
+        c.fillStyle = cg; c.fillRect(8, h * 0.5, w - 16, 5);
+        c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(8, h * 0.5, w - 16, 2);
+        _isoBox(c, 8, h * 0.1, 16, h * 0.38, 4, '#3a3a3a', 'rgba(150,150,150,0.3)', '#1a1a1a', 2);
+        c.fillStyle = '#555'; c.fillRect(6, h * 0.06, 20, 7);
+        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(7, h * 0.07, 18, 3);
+        c.fillStyle = '#666'; c.fillRect(14, h * 0.38, 14, h * 0.1);
+        c.fillStyle = '#777'; c.fillRect(15, h * 0.39, 12, 3);
+        const tubes = ['#dd3333', '#33aa33', '#3355cc', '#ddaa22', '#cc55cc'];
         tubes.forEach((cl, i) => {
-          const tx = w * 0.48 + i * 9;
-          const th = h * 0.32;
-          c.fillStyle = cl; c.globalAlpha = 0.75;
-          _rr(c, tx, h * 0.2, 6, th, 2); c.fill();
+          const tx = w * 0.44 + i * 8;
+          const tht = h * 0.34;
+          c.fillStyle = cl; c.globalAlpha = 0.8;
+          _rr(c, tx, h * 0.18, 6, tht, 2); c.fill();
           c.globalAlpha = 1;
-          const lg = c.createLinearGradient(tx, h * 0.2, tx + 6, h * 0.2);
-          lg.addColorStop(0, 'rgba(255,255,255,0.3)'); lg.addColorStop(1, 'rgba(0,0,0,0)');
-          c.fillStyle = lg; c.fillRect(tx, h * 0.2, 3, th);
-          c.fillStyle = '#999'; _rr(c, tx - 1, h * 0.17, 8, 5, 1); c.fill();
+          const lg = c.createLinearGradient(tx, h * 0.18, tx + 6, h * 0.18);
+          lg.addColorStop(0, 'rgba(255,255,255,0.35)'); lg.addColorStop(1, 'rgba(0,0,0,0.05)');
+          c.fillStyle = lg; c.fillRect(tx, h * 0.18, 3, tht);
+          c.fillStyle = '#999'; _rr(c, tx - 1, h * 0.15, 8, 5, 1); c.fill();
+          c.fillStyle = 'rgba(255,255,255,0.2)'; c.fillRect(tx + 1, h * 0.22, 2, tht * 0.3);
         });
+        c.fillStyle = '#aab8c0'; c.fillRect(w * 0.55, h * 0.55, w * 0.35, h * 0.3);
+        c.fillStyle = '#bcc8d0'; c.fillRect(w * 0.57, h * 0.57, w * 0.31, h * 0.06);
+        c.fillStyle = '#ccd4dc'; c.fillRect(w * 0.57, h * 0.66, w * 0.31, h * 0.06);
       },
       storage: (c, w, h) => {
         _topGrad(c, w, h, '#e8eff5', '#d0dce8');
+        _noise(c, 0, 0, w, h, 6, 0.01);
         _isoBox(c, 3, 2, w - 6, h - 4, 5, '#b8c4d0', 'rgba(220,230,240,0.4)', '#8898a8', 3);
         c.strokeStyle = '#7888a0'; c.lineWidth = 1;
         c.strokeRect(6, h * 0.14, w * 0.42, h * 0.34);
@@ -321,6 +391,7 @@ class TycoonScene extends Phaser.Scene {
       },
       corridor: (c, w, h) => {
         _topGrad(c, w, h, '#e0d8cc', '#ccc4b4');
+        _noise(c, 0, 0, w, h, 4, 0.008);
         c.strokeStyle = 'rgba(160,148,128,0.5)'; c.lineWidth = 0.8;
         c.setLineDash([4, 3]);
         c.beginPath(); c.moveTo(w / 2, 3); c.lineTo(w / 2, h - 3); c.stroke();
@@ -332,6 +403,7 @@ class TycoonScene extends Phaser.Scene {
       },
       stairs: (c, w, h) => {
         _topGrad(c, w, h, '#d0c8be', '#b8b0a6');
+        _noise(c, 0, 0, w, h, 4, 0.008);
         for (let i = 0; i < 5; i++) {
           const sh = h / 5;
           const sy = 2 + i * sh;
@@ -346,6 +418,7 @@ class TycoonScene extends Phaser.Scene {
       },
       emergency: (c, w, h) => {
         _topGrad(c, w, h, '#fff4e8', '#f0e0cc');
+        _noise(c, 0, 0, w, h, 8, 0.01);
         _isoBox(c, 4, h * 0.3, w * 0.52, h * 0.55, 4, '#e8e0d8', 'rgba(255,255,255,0.3)', '#c8c0b0', 3);
         c.fillStyle = '#d8d0c0'; c.fillRect(6, h * 0.33, 14, h * 0.46);
         _isoBox(c, w * 0.58, 2, 18, 18, 3, '#cc4400', 'rgba(255,120,50,0.3)', '#993300', 2);
@@ -358,6 +431,7 @@ class TycoonScene extends Phaser.Scene {
       },
       restroom: (c, w, h) => {
         _topGrad(c, w, h, '#eef5f5', '#dce8e8');
+        _noise(c, 0, 0, w, h, 6, 0.01);
         _isoBox(c, w * 0.15, 3, w * 0.7, h * 0.45, 4, '#ddd', 'rgba(255,255,255,0.35)', '#bbb', 3);
         c.fillStyle = '#eee'; c.fillRect(w * 0.2, 6, w * 0.6, h * 0.33);
         c.fillStyle = 'rgba(160,220,238,0.35)'; c.fillRect(w * 0.25, 8, w * 0.2, h * 0.22);
@@ -367,6 +441,7 @@ class TycoonScene extends Phaser.Scene {
       },
       booth: (c, w, h) => {
         _topGrad(c, w, h, '#fff8e8', '#f0e8d0');
+        _noise(c, 0, 0, w, h, 5, 0.01);
         c.fillStyle = '#dd4422';
         c.beginPath(); c.moveTo(w / 2, 1); c.lineTo(w - 3, h * 0.42); c.lineTo(3, h * 0.42); c.closePath(); c.fill();
         const rg = c.createLinearGradient(0, 1, 0, h * 0.42);
@@ -379,6 +454,7 @@ class TycoonScene extends Phaser.Scene {
       },
       elevator: (c, w, h) => {
         _topGrad(c, w, h, '#d0d0d8', '#b8b8c4');
+        _noise(c, 0, 0, w, h, 4, 0.008);
         _isoBox(c, 3, 3, w - 6, h - 6, 4, '#8898a8', 'rgba(180,200,220,0.3)', '#667888', 3);
         c.fillStyle = '#96a6b6'; c.fillRect(4, 4, (w - 8) / 2 - 2, h - 10);
         c.fillStyle = '#9aabb8'; c.fillRect(w / 2 + 1, 4, (w - 8) / 2 - 2, h - 10);
@@ -393,6 +469,7 @@ class TycoonScene extends Phaser.Scene {
       },
       office: (c, w, h) => {
         _topGrad(c, w, h, '#f5f0e4', '#e5ddd0');
+        _noise(c, 0, 0, w, h, 8, 0.01);
         _isoBox(c, 6, h * 0.38, w - 12, h * 0.45, 5, '#8b7355', 'rgba(180,150,110,0.4)', '#6b5540', 3);
         c.fillStyle = '#a08060'; c.fillRect(8, h * 0.4, w - 16, 4);
         c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(8, h * 0.4, w - 16, 2);
@@ -400,9 +477,15 @@ class TycoonScene extends Phaser.Scene {
         const mg = c.createLinearGradient(0, 5, 0, h * 0.28);
         mg.addColorStop(0, '#5599cc'); mg.addColorStop(1, '#3377aa');
         c.fillStyle = mg; c.fillRect(w * 0.33, 6, w * 0.29, h * 0.22);
-        c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(w * 0.33, 6, w * 0.29, h * 0.06);
+        _screenGlare(c, w * 0.33, 6, w * 0.29, h * 0.22);
+        c.fillStyle = '#66ccee'; c.fillRect(w * 0.36, h * 0.1, w * 0.12, 2);
+        c.fillStyle = '#88ddff'; c.fillRect(w * 0.36, h * 0.15, w * 0.2, 2);
         _isoBox(c, 10, h * 0.48, 12, 16, 3, '#f5e6c8', 'rgba(255,255,255,0.3)', '#d5c6a8', 2);
+        c.fillStyle = '#e8d8b8'; c.fillRect(12, h * 0.52, 8, 2);
+        c.fillStyle = '#ddc8a8'; c.fillRect(12, h * 0.58, 8, 2);
         _isoBox(c, 26, h * 0.5, 10, 12, 2, '#eee0d0', 'rgba(255,255,255,0.25)', '#d0c4b0', 2);
+        c.fillStyle = '#cc8844'; c.fillRect(w - 14, h * 0.5, 6, 6);
+        c.fillStyle = '#dd9955'; c.fillRect(w - 13, h * 0.52, 4, 3);
       },
       parking: (c, w, h) => {
         const bg = c.createLinearGradient(0, 0, 0, h);
@@ -425,6 +508,7 @@ class TycoonScene extends Phaser.Scene {
       },
       cold_storage: (c, w, h) => {
         _topGrad(c, w, h, '#daeef5', '#c0dce8');
+        _noise(c, 0, 0, w, h, 8, 0.01);
         _isoBox(c, 3, 3, w - 6, h - 6, 5, '#a8c8d8', 'rgba(200,235,255,0.35)', '#80a8b8', 3);
         c.fillStyle = '#98bcc8'; c.fillRect(4, 4, w - 8, 5);
         c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(4, 4, w - 8, 3);
@@ -632,14 +716,30 @@ class TycoonScene extends Phaser.Scene {
     container.add(body);
 
     const border = this.add.graphics();
-    border.lineStyle(1, 0xffffff, 0.2);
-    border.strokeRoundedRect(x, y, w, h, 3);
+    border.lineStyle(1, 0xffffff, 0.15);
+    border.strokeRoundedRect(x, y, w, h, 4);
+    border.fillStyle(0xffffff, 0.06);
+    border.fillRect(x + 1, y + 1, w - 2, Math.min(6, h * 0.15));
     container.add(border);
 
-    const lvText = this.add.text(x + 3, y + 2, '★'.repeat(fac.level), {
-      fontSize: '7px', color: '#fbbf24',
-    });
+    const lvBg = this.add.graphics();
+    lvBg.fillStyle(0x000000, 0.5);
+    lvBg.fillRoundedRect(x + 1, y + 1, 18, 10, 3);
+    lvBg.fillStyle(0xf0c040, 0.9);
+    lvBg.fillRoundedRect(x + 2, y + 2, 16, 8, 2);
+    container.add(lvBg);
+    const lvText = this.add.text(x + 10, y + 6, fac.level, {
+      fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold', color: '#3a2800',
+    }).setOrigin(0.5);
     container.add(lvText);
+
+    if (tw >= 2 || th >= 2) {
+      const facLabel = this.add.text(x + w / 2, y + h - 4, fac.name?.slice(0, 4) || '', {
+        fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold',
+        color: '#fff', stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5, 1);
+      container.add(facLabel);
+    }
 
     const progressBg = this.add.graphics();
     const progressFill = this.add.graphics();
@@ -748,25 +848,52 @@ class TycoonScene extends Phaser.Scene {
       head = body;
       animTargets = [body];
     } else {
-      const charKey = '_npcTex_' + (roleColor).toString(16);
+      const nid = nurse.charData.id || nurse.charData.name;
+      const seedVal = nid.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+      const charKey = '_npcTex_' + (roleColor).toString(16) + '_' + (seedVal % 100);
       if (!this.textures.exists(charKey)) {
-        const ct = this.textures.createCanvas(charKey, 20, 24);
+        const ct = this.textures.createCanvas(charKey, 24, 30);
         const cc = ct.getContext();
-        const r = (roleColor >> 16) & 0xff, g = (roleColor >> 8) & 0xff, b = roleColor & 0xff;
-        const baseCol = `rgb(${r},${g},${b})`;
-        const darkCol = `rgb(${Math.max(0,r-50)},${Math.max(0,g-50)},${Math.max(0,b-50)})`;
-        const lightCol = `rgb(${Math.min(255,r+60)},${Math.min(255,g+60)},${Math.min(255,b+60)})`;
-        cc.fillStyle = darkCol; cc.fillRect(6, 16, 3, 7); cc.fillRect(11, 16, 3, 7);
-        cc.fillStyle = baseCol; cc.fillRect(4, 8, 12, 9);
-        cc.fillStyle = lightCol; cc.fillRect(5, 9, 10, 3);
-        cc.fillStyle = '#ffd5b4'; cc.fillRect(5, 0, 10, 9);
-        cc.fillStyle = '#332211'; cc.fillRect(4, 0, 12, 3);
-        cc.fillStyle = '#222'; cc.fillRect(7, 4, 2, 2); cc.fillRect(11, 4, 2, 2);
-        cc.fillStyle = '#cc6666'; cc.fillRect(8, 6, 4, 1);
+        const rv = (roleColor >> 16) & 0xff, gv = (roleColor >> 8) & 0xff, bv = roleColor & 0xff;
+        const baseCol = `rgb(${rv},${gv},${bv})`;
+        const darkCol = `rgb(${Math.max(0,rv-60)},${Math.max(0,gv-60)},${Math.max(0,bv-60)})`;
+        const lightCol = `rgb(${Math.min(255,rv+50)},${Math.min(255,gv+50)},${Math.min(255,bv+50)})`;
+        const skins = ['#ffd5b4','#f0c8a0','#d4a574','#c68642','#8d5524'];
+        const skinIdx = seedVal % skins.length;
+        const skinCol = skins[skinIdx];
+        const skinShade = skins[Math.min(skinIdx + 1, skins.length - 1)];
+        const hairs = ['#1a1a1a','#332211','#554433','#8b6914','#a0522d','#2c1608'];
+        const hairCol = hairs[seedVal % hairs.length];
+        const hairDark = hairs[(seedVal + 1) % hairs.length];
+        cc.fillStyle = 'rgba(0,0,0,0.25)';
+        cc.beginPath(); cc.ellipse(12, 28, 7, 3, 0, 0, Math.PI * 2); cc.fill();
+        cc.fillStyle = darkCol; cc.fillRect(7, 20, 4, 8); cc.fillRect(13, 20, 4, 8);
+        cc.fillStyle = `rgb(${Math.max(0,rv-80)},${Math.max(0,gv-80)},${Math.max(0,bv-80)})`;
+        cc.fillRect(7, 26, 4, 2); cc.fillRect(13, 26, 4, 2);
+        const bodyG = cc.createLinearGradient(5, 10, 5, 20);
+        bodyG.addColorStop(0, lightCol); bodyG.addColorStop(1, baseCol);
+        cc.fillStyle = bodyG; cc.fillRect(5, 10, 14, 11);
+        cc.fillStyle = darkCol; cc.fillRect(5, 10, 14, 2);
+        cc.fillStyle = 'rgba(255,255,255,0.15)'; cc.fillRect(6, 11, 5, 8);
+        cc.fillStyle = skinShade; cc.fillRect(2, 12, 3, 7); cc.fillRect(19, 12, 3, 7);
+        cc.fillStyle = skinCol; cc.fillRect(2, 12, 3, 2); cc.fillRect(19, 12, 3, 2);
+        const headG = cc.createLinearGradient(6, 1, 6, 10);
+        headG.addColorStop(0, skinCol); headG.addColorStop(1, skinShade);
+        cc.fillStyle = headG; cc.fillRect(6, 1, 12, 10);
+        cc.fillStyle = 'rgba(255,255,255,0.12)'; cc.fillRect(7, 2, 4, 3);
+        cc.fillStyle = hairCol; cc.fillRect(5, 0, 14, 4);
+        if (seedVal % 3 === 0) { cc.fillRect(5, 0, 3, 8); cc.fillRect(16, 0, 3, 8); }
+        else if (seedVal % 3 === 1) { cc.fillRect(5, 0, 14, 5); }
+        cc.fillStyle = hairDark; cc.fillRect(5, 0, 14, 2);
+        cc.fillStyle = '#111'; cc.fillRect(8, 5, 2, 2); cc.fillRect(14, 5, 2, 2);
+        cc.fillStyle = '#fff'; cc.fillRect(8, 5, 1, 1); cc.fillRect(14, 5, 1, 1);
+        cc.fillStyle = '#e87070'; cc.fillRect(10, 8, 4, 1);
+        cc.fillStyle = baseCol; cc.fillRect(17, 10, 4, 4);
+        cc.fillStyle = lightCol; cc.fillRect(17, 10, 4, 2);
         ct.refresh();
       }
       body = this.add.image(tx, ty - 2, charKey);
-      body.setDisplaySize(18, 22);
+      body.setDisplaySize(20, 26);
       container.add(body);
       head = body;
       animTargets = [body];
@@ -844,20 +971,43 @@ class TycoonScene extends Phaser.Scene {
       const btColor = { A: 0xe74c3c, B: 0x3498db, O: 0x27ae60, AB: 0xf39c12 }[d.bloodType] || 0x888888;
       const pct = d.patience / d.maxPatience;
       const dotColor = pct < 0.3 ? 0xff0000 : btColor;
-      const dot = this.add.circle(dx + 6, y + 1, 7, dotColor, 0.85);
-      dot.setStrokeStyle(1.5, 0xffffff, 0.3);
-      this.donorLayer.add(dot);
-      this.donorDots.push(dot);
 
-      const btLabel = this.add.text(dx + 6, y + 1, d.bloodType, {
-        fontSize: '7px', fontFamily: 'monospace', fontStyle: 'bold',
-        color: '#fff', stroke: '#000', strokeThickness: 1,
+      const dTexKey = '_donorTex_' + d.bloodType + '_' + i;
+      if (!this.textures.exists(dTexKey)) {
+        const ct = this.textures.createCanvas(dTexKey, 14, 18);
+        const cc = ct.getContext();
+        const cr = (btColor >> 16) & 0xff, cg = (btColor >> 8) & 0xff, cb = btColor & 0xff;
+        cc.fillStyle = 'rgba(0,0,0,0.2)';
+        cc.beginPath(); cc.ellipse(7, 17, 4, 2, 0, 0, Math.PI * 2); cc.fill();
+        cc.fillStyle = `rgb(${Math.max(0,cr-40)},${Math.max(0,cg-40)},${Math.max(0,cb-40)})`;
+        cc.fillRect(4, 12, 3, 5); cc.fillRect(7, 12, 3, 5);
+        cc.fillStyle = `rgb(${cr},${cg},${cb})`;
+        cc.fillRect(3, 6, 8, 7);
+        cc.fillStyle = `rgb(${Math.min(255,cr+40)},${Math.min(255,cg+40)},${Math.min(255,cb+40)})`;
+        cc.fillRect(4, 7, 6, 2);
+        const skins = ['#ffd5b4','#f0c8a0','#d4a574','#c68642'];
+        cc.fillStyle = skins[i % skins.length];
+        cc.fillRect(4, 0, 6, 6);
+        const hairs = ['#222','#443322','#665544','#8b6914'];
+        cc.fillStyle = hairs[i % hairs.length];
+        cc.fillRect(3, 0, 8, 3);
+        cc.fillStyle = '#111'; cc.fillRect(5, 3, 1, 1); cc.fillRect(8, 3, 1, 1);
+        ct.refresh();
+      }
+      const donorSprite = this.add.image(dx + 6, y + 1, dTexKey);
+      donorSprite.setDisplaySize(14, 18);
+      this.donorLayer.add(donorSprite);
+      this.donorDots.push(donorSprite);
+
+      const btLabel = this.add.text(dx + 6, y + 10, d.bloodType, {
+        fontSize: '6px', fontFamily: 'monospace', fontStyle: 'bold',
+        color: '#fff', stroke: '#000', strokeThickness: 2,
       }).setOrigin(0.5);
       this.donorLayer.add(btLabel);
       this.donorDots.push(btLabel);
 
       if (d.isNamed || d.isVIP) {
-        const crown = this.add.text(dx + 6, y - 8, d.isNamed ? '★' : '♛', {
+        const crown = this.add.text(dx + 6, y - 10, d.isNamed ? '★' : '♛', {
           fontSize: '9px', color: '#ffd700',
         }).setOrigin(0.5);
         this.donorLayer.add(crown);
@@ -865,10 +1015,10 @@ class TycoonScene extends Phaser.Scene {
       }
 
       const barBg = this.add.graphics();
-      barBg.fillStyle(0x000000, 0.4);
-      barBg.fillRect(dx, y + 10, 12, 3);
-      barBg.fillStyle(pct < 0.3 ? 0xff0000 : 0x4ade80, 0.8);
-      barBg.fillRect(dx, y + 10, 12 * pct, 3);
+      barBg.fillStyle(0x000000, 0.5);
+      barBg.fillRoundedRect(dx, y + 14, 12, 3, 1);
+      barBg.fillStyle(pct < 0.3 ? 0xff0000 : 0x4ade80, 0.85);
+      barBg.fillRoundedRect(dx, y + 14, 12 * pct, 3, 1);
       this.donorLayer.add(barBg);
       this.donorDots.push(barBg);
     });
@@ -2083,10 +2233,15 @@ class TycoonScene extends Phaser.Scene {
         if (canPlace) {
           const x = this._tileX(c);
           const y = this._tileY(r);
-          hints.fillStyle(0x4ade80, 0.12);
-          hints.fillRoundedRect(x, y, TILE * tw - 2, TILE * th - 2, 3);
-          hints.lineStyle(1, 0x4ade80, 0.35);
-          hints.strokeRoundedRect(x, y, TILE * tw - 2, TILE * th - 2, 3);
+          const pw = TILE * tw - 2, ph = TILE * th - 2;
+          hints.fillStyle(0x4ade80, 0.08);
+          hints.fillRoundedRect(x, y, pw, ph, 4);
+          hints.fillStyle(0x4ade80, 0.15);
+          hints.fillRoundedRect(x + 2, y + 2, pw - 4, ph - 4, 3);
+          hints.lineStyle(1.5, 0x4ade80, 0.45);
+          hints.strokeRoundedRect(x + 1, y + 1, pw - 2, ph - 2, 4);
+          hints.fillStyle(0x4ade80, 0.3);
+          hints.fillCircle(x + pw / 2, y + ph / 2, Math.min(pw, ph) * 0.12);
 
           const hitZone = this.add.zone(x, y, TILE * tw - 2, TILE * th - 2).setOrigin(0).setInteractive();
           hitZone.on('pointerdown', () => {
