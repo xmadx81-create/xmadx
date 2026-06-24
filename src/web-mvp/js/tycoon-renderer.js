@@ -144,6 +144,7 @@ class TycoonScene extends Phaser.Scene {
     this._genFacTextures();
     this._genParticleTextures();
     this.gridBg = this.add.graphics();
+    this.ambientLayer = this.add.container(0, 0);
     this.facLayer = this.add.container(0, 0);
     this.particleLayer = this.add.container(0, 0);
     this.nurseLayer = this.add.container(0, 0);
@@ -151,6 +152,7 @@ class TycoonScene extends Phaser.Scene {
     this.uiLayer = this.add.container(0, 0);
     this._drawFloorTabs();
     this._drawGrid();
+    this._initAmbientParticles();
   }
 
   _genParticleTextures() {
@@ -239,6 +241,26 @@ class TycoonScene extends Phaser.Scene {
       cx.stroke();
       ct.refresh();
     }
+  }
+
+  _initAmbientParticles() {
+    if (this._ambientEmitter) { this._ambientEmitter.destroy(); this._ambientEmitter = null; }
+    const gridX = PAD, gridY = PAD + 28;
+    const gridW = TILE * GRID, gridH = TILE * GRID;
+    try {
+      this._ambientEmitter = this.add.particles(gridX + gridW / 2, gridY + gridH / 2, 'pt_dot', {
+        speed: { min: 1, max: 5 },
+        lifespan: { min: 4000, max: 8000 },
+        scale: { start: 0.15, end: 0.4 },
+        alpha: { start: 0, end: 0.15, ease: 'Sine.easeInOut' },
+        gravityY: -2,
+        frequency: 600,
+        quantity: 1,
+        blendMode: 'ADD',
+        emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(-gridW / 2, -gridH / 2, gridW, gridH) },
+      });
+      this.ambientLayer.add(this._ambientEmitter);
+    } catch (e) { /* particle fallback */ }
   }
 
   _genFacTextures() {
@@ -811,6 +833,19 @@ class TycoonScene extends Phaser.Scene {
     this.facLayer.add(container);
     this.facSprites[fac.uid] = { container, body, glow, progressBg, progressFill, lvText, fac, x, y, w, h, emitter };
     this._updateFacSprite(this.facSprites[fac.uid], fac);
+
+    container.setScale(0.3);
+    container.setAlpha(0);
+    this.tweens.add({
+      targets: container, scaleX: 1, scaleY: 1, alpha: 1,
+      duration: 350, ease: 'Back.easeOut',
+    });
+
+    this.tweens.add({
+      targets: body, scaleY: body.scaleY * 1.015,
+      duration: 1500 + (fac.uid?.charCodeAt?.(0) || 0) % 500,
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
   }
 
   _updateFacSprite(sprite, fac) {
@@ -919,18 +954,30 @@ class TycoonScene extends Phaser.Scene {
     const charKey = CHAR_MAP[nurse.charData.name];
     const hasImage = charKey && this.textures && this.textures.exists(charKey);
 
-    const shadow = this.add.circle(tx, ty + 4, 8, 0x000000, 0.3);
-    shadow.setScale(1, 0.5);
-    container.add(shadow);
+    const shadowG = this.add.graphics();
+    shadowG.fillStyle(0x000000, 0.15);
+    shadowG.fillEllipse(tx, ty + 8, 18, 6);
+    shadowG.fillStyle(0x000000, 0.25);
+    shadowG.fillEllipse(tx, ty + 7, 12, 4);
+    container.add(shadowG);
+
+    const roleRing = this.add.graphics();
+    roleRing.fillStyle(roleColor, 0.12);
+    roleRing.fillEllipse(tx, ty + 5, 20, 8);
+    roleRing.lineStyle(1.5, roleColor, 0.4);
+    roleRing.strokeEllipse(tx, ty + 5, 20, 8);
+    container.add(roleRing);
 
     let body, head, animTargets;
 
     if (hasImage) {
       const ring = this.add.graphics();
-      ring.fillStyle(roleColor, 0.25);
+      ring.fillStyle(roleColor, 0.2);
       ring.fillCircle(tx, ty - 3, 16);
-      ring.lineStyle(2, roleColor, 0.9);
+      ring.lineStyle(2, roleColor, 0.8);
       ring.strokeCircle(tx, ty - 3, 16);
+      ring.fillStyle(0xffffff, 0.08);
+      ring.fillCircle(tx - 3, ty - 6, 8);
       container.add(ring);
 
       body = this.add.image(tx, ty - 3, charKey);
@@ -998,14 +1045,21 @@ class TycoonScene extends Phaser.Scene {
     container.add(nameLabel);
 
     this.nurseLayer.add(container);
-    const ns = { container, body, head, shadow, nameLabel, _originX: tx, _originY: ty, _targetX: tx, _targetY: ty, _baseScaleX: body.scaleX, _baseScaleY: body.scaleY };
+    const ns = { container, body, head, shadow: shadowG, nameLabel, _originX: tx, _originY: ty, _targetX: tx, _targetY: ty, _baseScaleX: body.scaleX, _baseScaleY: body.scaleY };
     this._updateNurseState(ns, nurse);
     this.nurseSprites[nurse.charData.id] = ns;
 
+    container.setScale(0);
+    container.setAlpha(0);
+    this.tweens.add({
+      targets: container, scaleX: 1, scaleY: 1, alpha: 1,
+      duration: 400, ease: 'Back.easeOut',
+    });
+
     this.tweens.add({
       targets: animTargets,
-      y: '-=2',
-      duration: 600 + Math.random() * 200,
+      y: '-=3',
+      duration: 700 + (nurse.charData.id?.charCodeAt?.(0) || 0) % 300,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut',
@@ -1049,8 +1103,14 @@ class TycoonScene extends Phaser.Scene {
     if (waiting.length === 0) return;
 
     const queueBg = this.add.graphics();
-    queueBg.fillStyle(0x000000, 0.35);
-    queueBg.fillRoundedRect(PAD - 2, y - 6, TILE * GRID + 4, 30, 6);
+    queueBg.fillStyle(0x000000, 0.25);
+    queueBg.fillRoundedRect(PAD - 3, y - 8, TILE * GRID + 6, 34, 8);
+    queueBg.fillStyle(0x000000, 0.4);
+    queueBg.fillRoundedRect(PAD - 2, y - 7, TILE * GRID + 4, 32, 7);
+    queueBg.fillStyle(0xffffff, 0.04);
+    queueBg.fillRoundedRect(PAD - 1, y - 6, TILE * GRID + 2, 6, 4);
+    queueBg.lineStyle(1, 0xffffff, 0.08);
+    queueBg.strokeRoundedRect(PAD - 2, y - 7, TILE * GRID + 4, 32, 7);
     this.donorLayer.add(queueBg);
     this.donorDots.push(queueBg);
 
@@ -1130,6 +1190,7 @@ class TycoonScene extends Phaser.Scene {
     this._zoomObjs = [];
     this._activeTab = 'settings';
     this.facLayer.setVisible(false);
+    this.ambientLayer.setVisible(false);
     this.particleLayer.setVisible(false);
     this.nurseLayer.setVisible(false);
     this.donorLayer.setVisible(false);
@@ -1146,6 +1207,7 @@ class TycoonScene extends Phaser.Scene {
     this._zoomObjs = [];
     this._zoomedFac = null;
     this.facLayer.setVisible(true);
+    this.ambientLayer.setVisible(true);
     this.particleLayer.setVisible(true);
     this.nurseLayer.setVisible(true);
     this.donorLayer.setVisible(true);
@@ -1200,16 +1262,28 @@ class TycoonScene extends Phaser.Scene {
       for (let tx = 0; tx < CW; tx += 20) {
         const shade = ((tx / 20 + ty / 20) % 2 === 0) ? floorColor1 : floorColor2;
         floorG.fillStyle(shade, 1); floorG.fillRect(tx, ty, 20, 20);
-        floorG.lineStyle(0.3, 0xc8c0b0, 0.25); floorG.strokeRect(tx, ty, 20, 20);
+        const hiShade = ((tx / 20 + ty / 20) % 2 === 0) ? 0xffffff : 0x000000;
+        floorG.fillStyle(hiShade, 0.03); floorG.fillRect(tx, ty, 20, 1);
+        floorG.fillStyle(hiShade, 0.02); floorG.fillRect(tx, ty, 1, 20);
+        floorG.lineStyle(0.3, 0xc8c0b0, 0.2); floorG.strokeRect(tx, ty, 20, 20);
       }
+    }
+    floorG.fillStyle(0x000000, 0.04);
+    for (let d = 0; d < 8; d++) {
+      floorG.fillRect(d, 44 + d, CW - d * 2, 1);
+      floorG.fillRect(d, 44 + d, 1, CH - 44 - d * 2);
+      floorG.fillRect(d, CH - d - 1, CW - d * 2, 1);
+      floorG.fillRect(CW - d - 1, 44 + d, 1, CH - 44 - d * 2);
     }
     this._zo(bg); this._zo(floorG);
 
     const wallG = this.add.graphics();
-    wallG.fillStyle(0xf0e8d8, 1); wallG.fillRect(0, 40, CW, 4);
-    wallG.fillStyle(0xe0d8c8, 1); wallG.fillRect(0, 36, CW, 4);
+    wallG.fillStyle(0xe8e0d0, 1); wallG.fillRect(0, 36, CW, 8);
+    wallG.fillStyle(0xf0e8d8, 0.8); wallG.fillRect(0, 36, CW, 3);
+    wallG.fillStyle(0xd8d0c0, 1); wallG.fillRect(0, 42, CW, 2);
     wallG.lineStyle(1.5, 0xb0a890, 1); wallG.lineBetween(0, 44, CW, 44);
-    wallG.lineStyle(0.5, 0xd0c8b8, 0.5); wallG.lineBetween(0, 36, CW, 36);
+    wallG.lineStyle(0.5, 0xd0c8b8, 0.4); wallG.lineBetween(0, 36, CW, 36);
+    wallG.fillStyle(0xffffff, 0.05); wallG.fillRect(0, 36, CW, 2);
     this._zo(wallG);
 
     const headerBg = this.add.graphics();
