@@ -5,6 +5,7 @@ const GRID = 10;
 const PAD = 4;
 const W = TILE * GRID + PAD * 2;
 const H = TILE * GRID + PAD * 2 + 28;
+const TEX_SCALE = 3;
 
 const FAC_COLORS = {
   reception:    0x4a90d9,
@@ -141,13 +142,46 @@ class TycoonScene extends Phaser.Scene {
     this.bgSprite = null;
     this._genFloorTextures();
     this._genFacTextures();
+    this._genParticleTextures();
     this.gridBg = this.add.graphics();
     this.facLayer = this.add.container(0, 0);
+    this.particleLayer = this.add.container(0, 0);
     this.nurseLayer = this.add.container(0, 0);
     this.donorLayer = this.add.container(0, 0);
     this.uiLayer = this.add.container(0, 0);
     this._drawFloorTabs();
     this._drawGrid();
+  }
+
+  _genParticleTextures() {
+    const pts = {
+      pt_blood: { r: 4, color: '#cc2222', glow: '#ff4444' },
+      pt_cold: { r: 3, color: '#88ddff', glow: '#aaeeff' },
+      pt_spark: { r: 3, color: '#ffdd44', glow: '#ffee88' },
+      pt_paper: { r: 3, color: '#f5eedd', glow: '#ffffff', square: true },
+      pt_steam: { r: 5, color: 'rgba(200,200,200,0.6)', glow: 'rgba(255,255,255,0.3)' },
+      pt_heal: { r: 3, color: '#44dd88', glow: '#66ffaa' },
+      pt_dot: { r: 2, color: '#ffffff', glow: '#ffffff' },
+    };
+    for (const [key, cfg] of Object.entries(pts)) {
+      if (this.textures.exists(key)) continue;
+      const sz = cfg.r * 2 + 4;
+      const ct = this.textures.createCanvas(key, sz * 2, sz * 2);
+      const cc = ct.getContext();
+      const cx = sz, cy = sz;
+      if (cfg.square) {
+        cc.fillStyle = cfg.glow;
+        cc.fillRect(cx - cfg.r - 1, cy - cfg.r - 1, cfg.r * 2 + 2, cfg.r * 2 + 2);
+        cc.fillStyle = cfg.color;
+        cc.fillRect(cx - cfg.r, cy - cfg.r, cfg.r * 2, cfg.r * 2);
+      } else {
+        const rg = cc.createRadialGradient(cx, cy, 0, cx, cy, cfg.r + 2);
+        rg.addColorStop(0, cfg.glow); rg.addColorStop(0.5, cfg.color); rg.addColorStop(1, 'rgba(0,0,0,0)');
+        cc.fillStyle = rg;
+        cc.beginPath(); cc.arc(cx, cy, cfg.r + 2, 0, Math.PI * 2); cc.fill();
+      }
+      ct.refresh();
+    }
   }
 
   _genFloorTextures() {
@@ -160,8 +194,9 @@ class TycoonScene extends Phaser.Scene {
     for (const [fk, cl] of Object.entries(floors)) {
       const key = 'gentile_' + fk;
       if (this.textures.exists(key)) continue;
-      const ct = this.textures.createCanvas(key, s, s);
+      const ct = this.textures.createCanvas(key, s * TEX_SCALE, s * TEX_SCALE);
       const cx = ct.getContext();
+      cx.scale(TEX_SCALE, TEX_SCALE);
       const [br, bg, bb] = cl.base;
       const [ar, ag, ab] = cl.accent;
       cx.fillStyle = `rgb(${br},${bg},${bb})`;
@@ -535,11 +570,12 @@ class TycoonScene extends Phaser.Scene {
       const [tw, th] = sizes[id] || [1, 1];
       const w = T * tw - 2;
       const h = T * th - 2;
-      const ct = this.textures.createCanvas(key, w, h);
+      const ct = this.textures.createCanvas(key, w * TEX_SCALE, h * TEX_SCALE);
       const cx = ct.getContext();
+      cx.scale(TEX_SCALE, TEX_SCALE);
       fn(cx, w, h);
-      cx.strokeStyle = 'rgba(0,0,0,0.1)';
-      cx.lineWidth = 1;
+      cx.strokeStyle = 'rgba(0,0,0,0.08)';
+      cx.lineWidth = 0.5;
       cx.strokeRect(0.5, 0.5, w - 1, h - 1);
       ct.refresh();
     }
@@ -618,22 +654,33 @@ class TycoonScene extends Phaser.Scene {
         this.gridBg.strokeRect(x, y, TILE - 1, TILE - 1);
       }
     }
-    this.gridBg.fillStyle(0x000000, 0.08);
-    this.gridBg.fillRect(gridX, gridY, gridW, 3);
-    this.gridBg.fillRect(gridX, gridY, 3, gridH);
-    this.gridBg.fillStyle(0xffffff, 0.04);
+    this.gridBg.fillStyle(0x000000, 0.1);
+    this.gridBg.fillRect(gridX, gridY, gridW, 4);
+    this.gridBg.fillRect(gridX, gridY, 4, gridH);
+    this.gridBg.fillStyle(0x000000, 0.06);
+    this.gridBg.fillRect(gridX, gridY + gridH - 4, gridW, 4);
+    this.gridBg.fillRect(gridX + gridW - 4, gridY, 4, gridH);
+    this.gridBg.fillStyle(0xffffff, 0.03);
     this.gridBg.fillRect(gridX, gridY + gridH - 2, gridW, 2);
     this.gridBg.fillRect(gridX + gridW - 2, gridY, 2, gridH);
+    for (let d = 0; d < 6; d++) {
+      this.gridBg.fillStyle(0x000000, 0.015 * (6 - d));
+      this.gridBg.fillRect(gridX + d, gridY + d, gridW - d * 2, 1);
+      this.gridBg.fillRect(gridX + d, gridY + d, 1, gridH - d * 2);
+      this.gridBg.fillRect(gridX + d, gridY + gridH - d - 1, gridW - d * 2, 1);
+      this.gridBg.fillRect(gridX + gridW - d - 1, gridY + d, 1, gridH - d * 2);
+    }
   }
 
   _fullRedraw() {
-    Object.values(this.facSprites).forEach(s => s.container?.destroy());
+    Object.values(this.facSprites).forEach(s => { s.emitter?.destroy(); s.container?.destroy(); });
     this.facSprites = {};
     Object.values(this.nurseSprites).forEach(s => s.container?.destroy());
     this.nurseSprites = {};
     this.donorDots.forEach(d => d.destroy());
     this.donorDots = [];
     this.facLayer.removeAll();
+    this.particleLayer.removeAll();
     this.nurseLayer.removeAll();
     this.donorLayer.removeAll();
     this._drawFloorTabs();
@@ -676,6 +723,7 @@ class TycoonScene extends Phaser.Scene {
     }
     for (const uid of Object.keys(this.facSprites)) {
       if (!existing.has(uid)) {
+        this.facSprites[uid].emitter?.destroy();
         this.facSprites[uid].container.destroy();
         delete this.facSprites[uid];
       }
@@ -758,34 +806,77 @@ class TycoonScene extends Phaser.Scene {
     });
     container.add(hitArea);
 
+    const emitter = this._createFacParticles(fac, x, y, w, h);
+
     this.facLayer.add(container);
-    this.facSprites[fac.uid] = { container, body, glow, progressBg, progressFill, lvText, fac, x, y, w, h };
+    this.facSprites[fac.uid] = { container, body, glow, progressBg, progressFill, lvText, fac, x, y, w, h, emitter };
     this._updateFacSprite(this.facSprites[fac.uid], fac);
   }
 
   _updateFacSprite(sprite, fac) {
-    sprite.lvText.setText('★'.repeat(fac.level));
+    sprite.lvText.setText(fac.level);
     sprite.glow.clear();
     sprite.progressBg.clear();
     sprite.progressFill.clear();
     if (fac.busy) {
       const { x, y, w, h } = sprite;
-      sprite.glow.fillStyle(0x4ade80, 0.08);
-      sprite.glow.fillRoundedRect(x - 3, y - 3, w + 6, h + 6, 8);
-      sprite.glow.lineStyle(2, 0x4ade80, 0.5);
+      const gc = FAC_COLORS[fac.id] || 0x4ade80;
+      sprite.glow.fillStyle(gc, 0.06);
+      sprite.glow.fillRoundedRect(x - 4, y - 4, w + 8, h + 8, 10);
+      sprite.glow.fillStyle(gc, 0.1);
+      sprite.glow.fillRoundedRect(x - 2, y - 2, w + 4, h + 4, 7);
+      sprite.glow.lineStyle(2, gc, 0.55);
       sprite.glow.strokeRoundedRect(x - 1, y - 1, w + 2, h + 2, 5);
-      sprite.glow.lineStyle(1, 0x4ade80, 0.2);
-      sprite.glow.strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 7);
+      sprite.glow.lineStyle(1, gc, 0.2);
+      sprite.glow.strokeRoundedRect(x - 4, y - 4, w + 8, h + 8, 9);
       if (fac.processTime > 0) {
         const pct = Math.min(1, fac.progress / fac.processTime);
-        const barY = y + h - 6;
-        sprite.progressBg.fillStyle(0x000000, 0.5);
-        sprite.progressBg.fillRoundedRect(x + 3, barY, w - 6, 5, 2);
-        sprite.progressFill.fillStyle(0x4ade80, 0.9);
-        sprite.progressFill.fillRoundedRect(x + 4, barY + 1, Math.max(0, (w - 8) * pct), 3, 1);
+        const barY = y + h - 7;
+        sprite.progressBg.fillStyle(0x000000, 0.55);
+        sprite.progressBg.fillRoundedRect(x + 2, barY, w - 4, 6, 3);
+        const barColor = pct < 0.3 ? 0xf39c12 : pct < 0.7 ? 0x4ade80 : 0x3498db;
+        sprite.progressFill.fillStyle(barColor, 0.9);
+        sprite.progressFill.fillRoundedRect(x + 3, barY + 1, Math.max(0, (w - 6) * pct), 4, 2);
+        sprite.progressFill.fillStyle(0xffffff, 0.25);
+        sprite.progressFill.fillRoundedRect(x + 3, barY + 1, Math.max(0, (w - 6) * pct), 2, 1);
       }
     }
+    if (sprite.emitter) {
+      sprite.emitter.emitting = !!fac.busy;
+    }
     sprite.fac = fac;
+  }
+
+  _createFacParticles(fac, x, y, w, h) {
+    const cfg = {
+      bed:          { tex: 'pt_blood', freq: 1800, speed: { min: 5, max: 15 }, lifespan: 2000, scale: { start: 0.6, end: 0 }, alpha: { start: 0.7, end: 0 }, gravityY: 20, quantity: 1 },
+      lab:          { tex: 'pt_spark', freq: 2200, speed: { min: 8, max: 20 }, lifespan: 1200, scale: { start: 0.5, end: 0 }, alpha: { start: 0.8, end: 0 }, gravityY: -5, quantity: 1 },
+      cold_storage: { tex: 'pt_cold',  freq: 800,  speed: { min: 3, max: 12 }, lifespan: 2500, scale: { start: 0.4, end: 0.8 }, alpha: { start: 0.5, end: 0 }, gravityY: -8, quantity: 1 },
+      storage:      { tex: 'pt_cold',  freq: 2000, speed: { min: 2, max: 8 },  lifespan: 2000, scale: { start: 0.3, end: 0.6 }, alpha: { start: 0.3, end: 0 }, gravityY: -5, quantity: 1 },
+      emergency:    { tex: 'pt_heal',  freq: 1500, speed: { min: 10, max: 25 }, lifespan: 1000, scale: { start: 0.5, end: 0 }, alpha: { start: 0.8, end: 0 }, gravityY: -15, quantity: 1 },
+      reception:    { tex: 'pt_paper', freq: 3000, speed: { min: 3, max: 10 },  lifespan: 2000, scale: { start: 0.5, end: 0.3 }, alpha: { start: 0.6, end: 0 }, gravityY: 8, quantity: 1 },
+      office:       { tex: 'pt_paper', freq: 3500, speed: { min: 2, max: 8 },   lifespan: 1800, scale: { start: 0.4, end: 0.2 }, alpha: { start: 0.5, end: 0 }, gravityY: 6, quantity: 1 },
+      lounge:       { tex: 'pt_steam', freq: 2500, speed: { min: 2, max: 6 },   lifespan: 2500, scale: { start: 0.3, end: 0.7 }, alpha: { start: 0.3, end: 0 }, gravityY: -10, quantity: 1 },
+      booth:        { tex: 'pt_spark', freq: 2000, speed: { min: 5, max: 15 },  lifespan: 1500, scale: { start: 0.4, end: 0 }, alpha: { start: 0.7, end: 0 }, gravityY: -8, quantity: 1 },
+    };
+    const pc = cfg[fac.id];
+    if (!pc || !this.textures.exists(pc.tex)) return null;
+    try {
+      const emitter = this.add.particles(x + w / 2, y + h * 0.3, pc.tex, {
+        speed: pc.speed,
+        lifespan: pc.lifespan,
+        scale: pc.scale,
+        alpha: pc.alpha,
+        gravityY: pc.gravityY || 0,
+        frequency: pc.freq,
+        quantity: pc.quantity || 1,
+        emitting: false,
+        blendMode: 'ADD',
+        emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(-w * 0.3, -h * 0.2, w * 0.6, h * 0.4) },
+      });
+      this.particleLayer.add(emitter);
+      return emitter;
+    } catch (e) { return null; }
   }
 
   _renderNurses(state) {
@@ -852,8 +943,9 @@ class TycoonScene extends Phaser.Scene {
       const seedVal = nid.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
       const charKey = '_npcTex_' + (roleColor).toString(16) + '_' + (seedVal % 100);
       if (!this.textures.exists(charKey)) {
-        const ct = this.textures.createCanvas(charKey, 24, 30);
+        const ct = this.textures.createCanvas(charKey, 24 * TEX_SCALE, 30 * TEX_SCALE);
         const cc = ct.getContext();
+        cc.scale(TEX_SCALE, TEX_SCALE);
         const rv = (roleColor >> 16) & 0xff, gv = (roleColor >> 8) & 0xff, bv = roleColor & 0xff;
         const baseCol = `rgb(${rv},${gv},${bv})`;
         const darkCol = `rgb(${Math.max(0,rv-60)},${Math.max(0,gv-60)},${Math.max(0,bv-60)})`;
@@ -974,8 +1066,9 @@ class TycoonScene extends Phaser.Scene {
 
       const dTexKey = '_donorTex_' + d.bloodType + '_' + i;
       if (!this.textures.exists(dTexKey)) {
-        const ct = this.textures.createCanvas(dTexKey, 14, 18);
+        const ct = this.textures.createCanvas(dTexKey, 14 * TEX_SCALE, 18 * TEX_SCALE);
         const cc = ct.getContext();
+        cc.scale(TEX_SCALE, TEX_SCALE);
         const cr = (btColor >> 16) & 0xff, cg = (btColor >> 8) & 0xff, cb = btColor & 0xff;
         cc.fillStyle = 'rgba(0,0,0,0.2)';
         cc.beginPath(); cc.ellipse(7, 17, 4, 2, 0, 0, Math.PI * 2); cc.fill();
@@ -1037,6 +1130,7 @@ class TycoonScene extends Phaser.Scene {
     this._zoomObjs = [];
     this._activeTab = 'settings';
     this.facLayer.setVisible(false);
+    this.particleLayer.setVisible(false);
     this.nurseLayer.setVisible(false);
     this.donorLayer.setVisible(false);
     this.uiLayer.setVisible(false);
@@ -1052,6 +1146,7 @@ class TycoonScene extends Phaser.Scene {
     this._zoomObjs = [];
     this._zoomedFac = null;
     this.facLayer.setVisible(true);
+    this.particleLayer.setVisible(true);
     this.nurseLayer.setVisible(true);
     this.donorLayer.setVisible(true);
     this.uiLayer.setVisible(true);
