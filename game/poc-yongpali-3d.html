@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>무지출용팔이 — 3D 시네마틱 PoC · 용팔이 강림</title>
+<!--
+  무지출용팔이 — 기획전환 2단계 PoC (2026-06-12)
+  목적: 「선택적 3D 시네마틱(정점 연출)」 감성 검증 — '용팔이 강림' 컷신.
+  주의: 기존 v0.50 game/index.html 무손상. 독립 단독 파일.
+  스택: 단일 HTML + Vanilla JS + Canvas 2D 의사3D(원근투영). 외부 라이브러리 0 (Three.js 미사용).
+  설계: QA 원칙 — 저사양 폴백 가능한 in-stack 3D. 평상시 2D, 정점만 3D 카메라 연출.
+-->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%; background:#000; color:#e8e8e8;
+    font-family:'Pretendard',-apple-system,sans-serif;
+    overflow:hidden; user-select:none; -webkit-tap-highlight-color:transparent;
+    position:fixed; overscroll-behavior:none; touch-action:manipulation;
+  }
+  #wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+  canvas { background:#000; max-width:100%; max-height:100%; touch-action:manipulation; }
+  /* 대사 자막 */
+  #subtitle {
+    position:fixed; left:0; right:0; bottom:18%; text-align:center; padding:0 24px;
+    z-index:6; pointer-events:none;
+  }
+  #subtitle .name { color:#ef4444; font-weight:800; font-size:14px; letter-spacing:1px; text-shadow:0 0 12px #ef4444; }
+  #subtitle .line { color:#f4f4f4; font-size:18px; font-weight:700; margin-top:6px; line-height:1.5; text-shadow:0 2px 8px #000; min-height:27px; }
+  /* 선택 버튼 */
+  #choices {
+    position:fixed; left:0; right:0; bottom:8%; display:flex; gap:10px; justify-content:center;
+    z-index:7; padding:0 20px; opacity:0; transition:opacity .5s; pointer-events:none;
+  }
+  #choices.show { opacity:1; pointer-events:auto; }
+  .ch {
+    flex:1; max-width:200px; min-height:50px; border:1px solid #5a2030; border-radius:12px;
+    background:rgba(30,10,16,0.9); color:#fff; font-size:15px; font-weight:800; cursor:pointer;
+    touch-action:manipulation;
+  }
+  .ch.danger { border-color:#ef4444; background:linear-gradient(135deg,#7a1020,#ef4444); }
+  .ch:active { transform:translateY(1px); }
+  /* 시작/리플레이 */
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:10; background:rgba(0,0,0,0.75); padding:24px; }
+  .overlay.hidden { display:none; }
+  .panel { background:#120a10; border:1px solid #5a2030; border-radius:16px; padding:26px 22px; max-width:330px; width:100%; text-align:center; }
+  .panel h1 { font-size:20px; margin-bottom:8px; }
+  .panel .sub { color:#b89098; font-size:13px; line-height:1.6; margin-bottom:16px; }
+  .badge { display:inline-block; background:#2a1018; color:#ef8888; border-radius:6px; padding:2px 8px; font-size:11px; font-weight:700; margin-bottom:10px; }
+  .btn { width:100%; min-height:48px; border:none; border-radius:12px; background:linear-gradient(135deg,#7a1020,#ef4444); color:#fff; font-size:16px; font-weight:800; cursor:pointer; touch-action:manipulation; }
+  .btn:active { transform:translateY(1px); }
+  .tip { margin-top:12px; font-size:12px; color:#8a6068; line-height:1.6; }
+  #replayBar { position:fixed; top:12px; right:12px; z-index:8; opacity:0; transition:opacity .4s; }
+  #replayBar.show { opacity:1; }
+  #replayBar button { background:rgba(20,10,14,0.85); border:1px solid #5a2030; color:#e8b8b8; border-radius:10px; padding:8px 12px; font-size:12px; font-weight:700; cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv" width="380" height="520"></canvas></div>
+
+<div id="subtitle"><div class="name" id="spk"></div><div class="line" id="line"></div></div>
+
+<div id="choices">
+  <button class="ch danger" id="chAccept">강제 진입 (선이자 20%)</button>
+  <button class="ch" id="chRefuse">버틴다</button>
+</div>
+
+<div id="replayBar"><button id="replayBtn">↻ 다시 보기</button></div>
+
+<div class="overlay" id="startScreen">
+  <div class="panel">
+    <span class="badge">3D 시네마틱 PoC · 2단계</span>
+    <h1>💀 용팔이 강림</h1>
+    <p class="sub">주식에서 큰 손실을 본 순간…<br>어둠 속에서 <b>용팔이</b>가 걸어 나옵니다.<br>정점 순간의 <b>3D 카메라 연출</b> 감성 검증.</p>
+    <button class="btn" id="playBtn">컷신 재생</button>
+    <p class="tip">기획서 v1.0 「선택적 3D 시네마틱(정점)」 — 의사3D, 외부 라이브러리 0</p>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height, CX = W/2, CY = H/2;
+const FOCAL = 320;            // 원근 초점거리
+
+// 3D 점 투영: {x,y,z} → 화면. z 클수록 멀리(작게).
+function project(x, y, z){
+  const s = FOCAL / (FOCAL + z);
+  return { x: CX + x*s, y: CY*0.92 + y*s, s };
+}
+// Y축 회전
+function rotY(p, a){
+  const c=Math.cos(a), s=Math.sin(a);
+  return { x: p.x*c - p.z*s, y: p.y, z: p.x*s + p.z*c };
+}
+
+// ───────────────── 상태 ─────────────────
+let t, running, shake, vignette, stars, coins, embers;
+let yongZ;                 // 용팔이 깊이(far→near)
+let phase, phaseT, dialogIdx, typed, lineDone, shownChoices;
+let resultText;
+
+// 대사(타이핑)
+const SCRIPT = [
+  { spk:'???',   line:'…돈 냄새가 나는군.' },
+  { spk:'용팔이', line:'주식으로 다 잃었다며? 쯧쯧.' },
+  { spk:'용팔이', line:'걱정 마. 내가… 빌려줄게.' },
+  { spk:'용팔이', line:'선이자 20%. 거절은… 못 하지?' },
+];
+
+function reset(){
+  t = 0; running = false; shake = 0; vignette = 0;
+  yongZ = 900;             // 멀리서 시작
+  phase = 'idle'; phaseT = 0; dialogIdx = 0; typed = ''; lineDone = false; shownChoices = false;
+  resultText = null;
+  // 별/잔불 파티클(3D 공간)
+  stars = []; for (let i=0;i<70;i++) stars.push({ x:(Math.random()-0.5)*900, y:(Math.random()-0.5)*700, z:Math.random()*900 });
+  // 빚을 상징하는 코인(용팔이 주위 3D 궤도)
+  coins = []; for (let i=0;i<14;i++) coins.push({ r:90+Math.random()*60, a:Math.random()*Math.PI*2, y:(Math.random()-0.5)*200, spd:0.4+Math.random()*0.6 });
+  // 발밑 잔불
+  embers = [];
+  document.getElementById('choices').classList.remove('show');
+  document.getElementById('replayBar').classList.remove('show');
+  setSubtitle('', '');
+}
+
+function setSubtitle(name, line){
+  document.getElementById('spk').textContent = name;
+  document.getElementById('line').textContent = line;
+}
+
+// ───────────────── 컷신 시작 ─────────────────
+function play(){
+  reset();
+  document.getElementById('startScreen').classList.add('hidden');
+  phase = 'approach'; running = true; last = performance.now();
+  requestAnimationFrame(loop);
+}
+
+// ───────────────── 업데이트 ─────────────────
+function update(dt){
+  t += dt; phaseT += dt;
+  // 잔불 생성
+  if (yongZ < 500 && Math.random() < 0.4){
+    embers.push({ x:(Math.random()-0.5)*120, y:120+Math.random()*30, z:yongZ+(Math.random()-0.5)*60, vy:-20-Math.random()*30, life:1 });
+  }
+  embers.forEach(e=>{ e.y += e.vy*dt; e.life -= dt*0.6; });
+  embers = embers.filter(e=>e.life>0);
+  coins.forEach(c=> c.a += c.spd*dt);
+  shake *= Math.pow(0.001, dt);     // 감쇠
+
+  if (phase === 'approach'){
+    // 카메라 돌리 인 + 용팔이 등장(far→near)
+    yongZ += (140 - yongZ) * (1 - Math.pow(0.25, dt));
+    vignette = Math.min(0.85, vignette + dt*0.4);
+    if (phaseT > 0.6 && Math.abs(yongZ - 140) < 30){
+      phase = 'dialog'; phaseT = 0; startLine();
+    }
+  } else if (phase === 'dialog'){
+    // 타이핑 효과
+    const full = SCRIPT[dialogIdx].line;
+    if (!lineDone){
+      const target = Math.min(full.length, Math.floor(phaseT / 0.045));
+      if (target > typed.length){
+        typed = full.slice(0, target);
+        setSubtitle(SCRIPT[dialogIdx].spk, typed);
+        if (target % 2 === 0) shake = Math.min(shake, 3); // 말할 때 미세 진동
+      }
+      if (typed.length >= full.length){ lineDone = true; phaseT = 0; }
+    } else if (phaseT > 1.1){
+      dialogIdx++;
+      if (dialogIdx >= SCRIPT.length){ phase = 'choice'; showChoices(); }
+      else startLine();
+    }
+  } else if (phase === 'result'){
+    yongZ += (60 - yongZ) * (1 - Math.pow(0.2, dt)); // 더 다가옴
+  }
+}
+
+let last;
+function startLine(){
+  typed = ''; lineDone = false; phaseT = 0;
+  shake = 6; // 대사 전환 임팩트
+}
+function showChoices(){
+  if (shownChoices) return; shownChoices = true;
+  document.getElementById('choices').classList.add('show');
+}
+
+// ───────────────── 렌더 ─────────────────
+function render(){
+  // 배경: 깊은 적흑 그라데이션
+  const g = ctx.createRadialGradient(CX, CY*0.8, 30, CX, CY, H*0.8);
+  g.addColorStop(0, '#3a0a12'); g.addColorStop(0.5, '#160409'); g.addColorStop(1, '#000');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+  // 카메라 흔들림
+  const sx = (Math.random()-0.5)*shake, sy = (Math.random()-0.5)*shake;
+  ctx.save(); ctx.translate(sx, sy);
+
+  // 별/먼지(원근)
+  for (const st of stars){
+    const p = project(st.x, st.y, st.z);
+    if (p.s <= 0) continue;
+    ctx.globalAlpha = Math.min(1, p.s) * 0.5;
+    ctx.fillStyle = '#ff8a6a';
+    const sz = Math.max(1, p.s*2);
+    ctx.fillRect(p.x, p.y, sz, sz);
+  }
+  ctx.globalAlpha = 1;
+
+  // 바닥 광원(용팔이 발밑 붉은 빛)
+  const yp = project(0, 150, yongZ);
+  const lg = ctx.createRadialGradient(yp.x, yp.y, 4, yp.x, yp.y, 120*yp.s);
+  lg.addColorStop(0, 'rgba(239,68,68,0.6)'); lg.addColorStop(1, 'rgba(239,68,68,0)');
+  ctx.fillStyle = lg; ctx.beginPath(); ctx.ellipse(yp.x, yp.y, 120*yp.s, 36*yp.s, 0, 0, Math.PI*2); ctx.fill();
+
+  // 빚 코인(용팔이 뒤쪽 궤도부터)
+  drawCoins(true);
+  // 용팔이 본체(원근 스케일)
+  drawYongpali(yongZ);
+  // 빚 코인(앞쪽 궤도)
+  drawCoins(false);
+
+  // 잔불
+  for (const e of embers){
+    const p = project(e.x, e.y, e.z);
+    ctx.globalAlpha = Math.max(0, e.life);
+    ctx.fillStyle = '#ffae5a';
+    const sz = Math.max(1, p.s*3);
+    ctx.fillRect(p.x, p.y, sz, sz);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // 비네트
+  if (vignette > 0){
+    const vg = ctx.createRadialGradient(CX, CY, H*0.25, CX, CY, H*0.62);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${vignette})`);
+    ctx.fillStyle = vg; ctx.fillRect(0,0,W,H);
+  }
+  // 결과 텍스트
+  if (resultText){
+    ctx.textAlign='center'; ctx.font='bold 22px Pretendard, sans-serif';
+    ctx.fillStyle = '#000'; ctx.fillText(resultText, CX+1, CY*0.5+1);
+    ctx.fillStyle = '#ef4444'; ctx.fillText(resultText, CX, CY*0.5);
+  }
+}
+
+function drawCoins(back){
+  for (const c of coins){
+    const wp = rotY({ x:Math.cos(c.a)*c.r, y:c.y, z:Math.sin(c.a)*c.r }, 0);
+    const zz = yongZ + wp.z;
+    if ((back && wp.z <= 0) || (!back && wp.z > 0)) continue;
+    const p = project(wp.x, wp.y, zz);
+    if (p.s <= 0) continue;
+    const sz = Math.max(2, 9*p.s);
+    ctx.globalAlpha = Math.min(1, p.s*1.1);
+    // 코인(원근에 따라 납작)
+    ctx.fillStyle = '#caa23a';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, sz, sz*0.7, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#7a5a10'; ctx.font = `bold ${Math.max(6,sz)}px Pretendard`; ctx.textAlign='center';
+    ctx.fillText('₩', p.x, p.y + sz*0.35);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// 용팔이: 원근 스케일된 2.5D 빌보드(픽셀 실루엣)
+function drawYongpali(z){
+  const base = project(0, 150, z);   // 발밑
+  const top  = project(0, -210, z);  // 머리 위
+  const s = base.s;
+  const cx = base.x, footY = base.y, headY = top.y;
+  const bodyH = footY - headY;
+  const bw = 150 * s;                 // 어깨 너비
+
+  // 그림자
+  ctx.globalAlpha = 0.5; ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.ellipse(cx, footY, bw*0.7, 18*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // 롱코트(실루엣) — 사다리꼴
+  ctx.fillStyle = '#0e0608';
+  ctx.beginPath();
+  ctx.moveTo(cx - bw*0.5, headY + bodyH*0.18);
+  ctx.lineTo(cx + bw*0.5, headY + bodyH*0.18);
+  ctx.lineTo(cx + bw*0.62, footY);
+  ctx.lineTo(cx - bw*0.62, footY);
+  ctx.closePath(); ctx.fill();
+  // 코트 가장자리 림라이트(붉은 역광)
+  ctx.strokeStyle = 'rgba(239,68,68,0.5)'; ctx.lineWidth = Math.max(1, 2*s); ctx.stroke();
+
+  // 어깨~목
+  ctx.fillStyle = '#0e0608';
+  ctx.fillRect(cx - bw*0.32, headY + bodyH*0.08, bw*0.64, bodyH*0.14);
+  // 머리
+  const headR = 30 * s;
+  ctx.fillStyle = '#15090b';
+  ctx.beginPath(); ctx.arc(cx, headY + headR*0.4, headR, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(239,68,68,0.45)'; ctx.lineWidth = Math.max(1, 2*s); ctx.stroke();
+  // 중절모
+  ctx.fillStyle = '#080406';
+  ctx.fillRect(cx - headR*1.3, headY - headR*0.1, headR*2.6, headR*0.28);
+  ctx.fillRect(cx - headR*0.8, headY - headR*0.7, headR*1.6, headR*0.7);
+  // 빛나는 눈(붉은 광)
+  const eyeY = headY + headR*0.35, eR = Math.max(1.5, 3.5*s);
+  ctx.save(); ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = 16*s; ctx.fillStyle = '#ff5a5a';
+  ctx.beginPath(); ctx.arc(cx - headR*0.4, eyeY, eR, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + headR*0.4, eyeY, eR, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  // 음흉한 미소
+  ctx.strokeStyle = '#aa1a1a'; ctx.lineWidth = Math.max(1, 2*s);
+  ctx.beginPath(); ctx.arc(cx, eyeY + headR*0.5, headR*0.45, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+}
+
+// ───────────────── 선택 처리 ─────────────────
+function choose(accept){
+  document.getElementById('choices').classList.remove('show');
+  document.getElementById('replayBar').classList.add('show');
+  phase = 'result'; phaseT = 0; shake = 14;
+  if (accept){
+    setSubtitle('용팔이', '현명한 선택이야… 흐흐.');
+    resultText = '💀 용팔이 진입 — 원금 1조';
+  } else {
+    setSubtitle('나', '…아직, 안 끝났어.');
+    resultText = '🔥 버티기 — 위기 계속';
+  }
+}
+
+// ───────────────── 루프 ─────────────────
+function loop(now){
+  if (!running) return;
+  const dt = Math.min(0.05, (now - last)/1000); last = now;
+  update(dt); render();
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('playBtn').addEventListener('click', play);
+document.getElementById('replayBtn').addEventListener('click', play);
+document.getElementById('chAccept').addEventListener('click', ()=>choose(true));
+document.getElementById('chRefuse').addEventListener('click', ()=>choose(false));
+
+// 초기 1프레임
+reset(); render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>무지출용팔이 — 2.5D PoC · 치킨집 손님 러시</title>
+<!--
+  무지출용팔이 — 기획전환 0단계 PoC (2026-06-12)
+  목적: 「2.5D 아이소메트릭(상시) + 역동 유저체험형 이벤트(손님 러시)」 감성 검증.
+  주의: 기존 v0.50 game/index.html 과 완전히 독립된 단독 파일. 기존 게임 코드 무손상.
+  스택: 단일 HTML + Vanilla JS + Canvas 2D (현 프로젝트 스택 그대로, 외부 라이브러리 0).
+-->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%;
+    background:#0a0a14; color:#e8e8e8;
+    font-family:'Pretendard',-apple-system,sans-serif;
+    overflow:hidden; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    position:fixed; overscroll-behavior:none;
+    touch-action:manipulation;
+  }
+  #wrap { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  /* 도트 감성 유지: 정수 배율 + 픽셀 렌더 */
+  canvas {
+    image-rendering:pixelated; image-rendering:crisp-edges;
+    background:#1a1426;
+    box-shadow:0 0 0 2px #2a2238, 0 12px 40px rgba(0,0,0,0.6);
+    border-radius:6px;
+    touch-action:manipulation;
+  }
+  .hud {
+    position:fixed; top:0; left:0; right:0; padding:10px 14px;
+    display:flex; gap:8px; justify-content:center; flex-wrap:wrap;
+    pointer-events:none; z-index:5;
+  }
+  .chip {
+    background:rgba(20,16,30,0.85); border:1px solid #3a3050;
+    border-radius:10px; padding:6px 12px; font-size:13px; font-weight:700;
+    display:flex; gap:6px; align-items:center; min-width:84px; justify-content:center;
+  }
+  .chip small { color:#9a90b0; font-weight:600; font-size:11px; }
+  .chip .v { font-variant-numeric:tabular-nums; }
+  #rep .bar { width:54px; height:7px; background:#2a2238; border-radius:4px; overflow:hidden; }
+  #rep .fill { height:100%; width:80%; background:linear-gradient(90deg,#f59e0b,#fbbf24); transition:width .3s; }
+  .overlay {
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(8,6,14,0.82); z-index:10; text-align:center; padding:24px;
+  }
+  .overlay.hidden { display:none; }
+  .panel {
+    background:#16111f; border:1px solid #3a3050; border-radius:16px;
+    padding:26px 24px; max-width:340px; width:100%;
+  }
+  .panel h1 { font-size:21px; margin-bottom:6px; }
+  .panel .sub { color:#9a90b0; font-size:13px; line-height:1.6; margin-bottom:18px; }
+  .panel .stat { display:flex; justify-content:space-between; padding:7px 2px; font-size:14px; border-bottom:1px solid #241d33; }
+  .panel .stat b { font-variant-numeric:tabular-nums; }
+  .btn {
+    margin-top:18px; width:100%; min-height:48px; border:none; border-radius:12px;
+    background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff;
+    font-size:16px; font-weight:800; cursor:pointer; touch-action:manipulation;
+  }
+  .btn:active { transform:translateY(1px); filter:brightness(1.08); }
+  .tip { margin-top:12px; font-size:12px; color:#8a80a0; line-height:1.6; }
+  .badge { display:inline-block; background:#241d33; color:#fbbf24; border-radius:6px; padding:2px 8px; font-size:11px; font-weight:700; margin-bottom:10px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="hud">
+    <div class="chip"><small>⏱</small><span class="v" id="time">60</span></div>
+    <div class="chip"><small>매출</small><span class="v" id="money">0</span><small>G</small></div>
+    <div class="chip" id="rep"><small>평판</small><div class="bar"><div class="fill" id="repFill"></div></div></div>
+    <div class="chip"><small>콤보</small><span class="v" id="combo">x1</span></div>
+  </div>
+  <canvas id="cv" width="360" height="420"></canvas>
+</div>
+
+<!-- 시작 -->
+<div class="overlay" id="startScreen">
+  <div class="panel">
+    <span class="badge">2.5D PoC · 0단계</span>
+    <h1>🍗 치킨집 손님 러시</h1>
+    <p class="sub">피크타임! 손님이 몰려옵니다.<br>줄 맨 앞 손님을 <b>탭(클릭)</b>해서 응대하세요.<br>오래 기다리면 화나서 떠나고 <b>평판</b>이 깎입니다.</p>
+    <button class="btn" id="startBtn">영업 시작</button>
+    <p class="tip">기획서 v1.0 「역동 유저체험형 이벤트 — 손님 러시」 감성 검증용 프로토타입</p>
+  </div>
+</div>
+
+<!-- 결과 -->
+<div class="overlay hidden" id="endScreen">
+  <div class="panel">
+    <span class="badge" id="endBadge">영업 종료</span>
+    <h1 id="endTitle">마감!</h1>
+    <p class="sub" id="endSub">오늘 장사 결과입니다.</p>
+    <div class="stat"><span>총 매출</span><b><span id="rMoney">0</span> G</b></div>
+    <div class="stat"><span>응대 손님</span><b><span id="rServed">0</span> 명</b></div>
+    <div class="stat"><span>놓친 손님</span><b><span id="rLost">0</span> 명</b></div>
+    <div class="stat"><span>최고 콤보</span><b>x<span id="rCombo">1</span></b></div>
+    <div class="stat"><span>최종 평판</span><b><span id="rRep">80</span> / 100</b></div>
+    <button class="btn" id="retryBtn">다시 영업</button>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ───────────────────────── 캔버스 / 아이소메트릭 기본 ─────────────────────────
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const W = cv.width, H = cv.height;
+
+const TW = 40, TH = 20;          // 타일 가로/세로(절반높이) — 아이소 다이아몬드
+const GRID = 6;                  // 6x6 매장 바닥
+const ORIGIN = { x: W/2, y: 96 };// 아이소 원점(맨 위 타일)
+
+// 그리드 → 화면 좌표
+function iso(gx, gy){
+  return { x: ORIGIN.x + (gx - gy) * (TW/2),
+           y: ORIGIN.y + (gx + gy) * (TH/2) };
+}
+// 깊이값(뒤→앞 정렬용)
+function depth(gx, gy){ return gx + gy; }
+
+// ───────────────────────── 픽셀 도트 드로잉 헬퍼 ─────────────────────────
+function diamond(sx, sy, top, side){
+  ctx.beginPath();
+  ctx.moveTo(sx, sy - TH/2);
+  ctx.lineTo(sx + TW/2, sy);
+  ctx.lineTo(sx, sy + TH/2);
+  ctx.lineTo(sx - TW/2, sy);
+  ctx.closePath();
+  ctx.fillStyle = top; ctx.fill();
+  if (side){ ctx.strokeStyle = side; ctx.lineWidth = 1; ctx.stroke(); }
+}
+// 바닥 타일(체크무늬) — 라이팅 느낌의 명암
+function drawFloor(){
+  for (let s = 0; s <= (GRID-1)*2; s++){
+    for (let gx = 0; gx < GRID; gx++){
+      const gy = s - gx;
+      if (gy < 0 || gy >= GRID) continue;
+      const p = iso(gx, gy);
+      const lit = (gx + gy) % 2 === 0;
+      // 원점에서 멀수록 살짝 어둡게(유사 라이팅)
+      const shade = 1 - (gx + gy) / ((GRID-1)*2) * 0.18;
+      const base = lit ? [214,190,150] : [196,170,128];
+      const col = `rgb(${(base[0]*shade)|0},${(base[1]*shade)|0},${(base[2]*shade)|0})`;
+      diamond(p.x, p.y, col, 'rgba(120,96,64,0.35)');
+    }
+  }
+}
+// 그림자(타원) — "도트인데 살아있다"의 핵심
+function shadow(sx, sy, r){
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, r, r*0.5, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+// 아이소 박스(입체 가구) — 윗면 + 좌/우 측면 음영
+function isoBox(gx, gy, w, d, h, top, left, right){
+  const a = iso(gx, gy);
+  const fx = a.x, fy = a.y;          // 바닥 중심
+  const hw = (TW/2)*w, hh = (TH/2)*d;
+  // 윗면
+  ctx.beginPath();
+  ctx.moveTo(fx, fy - hh - h);
+  ctx.lineTo(fx + hw, fy - h);
+  ctx.lineTo(fx, fy + hh - h);
+  ctx.lineTo(fx - hw, fy - h);
+  ctx.closePath(); ctx.fillStyle = top; ctx.fill();
+  // 좌측면
+  ctx.beginPath();
+  ctx.moveTo(fx - hw, fy - h);
+  ctx.lineTo(fx, fy + hh - h);
+  ctx.lineTo(fx, fy + hh);
+  ctx.lineTo(fx - hw, fy);
+  ctx.closePath(); ctx.fillStyle = left; ctx.fill();
+  // 우측면
+  ctx.beginPath();
+  ctx.moveTo(fx + hw, fy - h);
+  ctx.lineTo(fx, fy + hh - h);
+  ctx.lineTo(fx, fy + hh);
+  ctx.lineTo(fx + hw, fy);
+  ctx.closePath(); ctx.fillStyle = right; ctx.fill();
+}
+// 캐릭터(픽셀 인형) — 머리+몸통, 감정 표시
+function drawChar(sx, sy, body, skin, mood){
+  shadow(sx, sy + 2, 9);
+  // 몸통
+  ctx.fillStyle = body;
+  ctx.fillRect(sx - 6, sy - 18, 12, 16);
+  // 머리
+  ctx.fillStyle = skin;
+  ctx.fillRect(sx - 5, sy - 30, 10, 11);
+  // 머리카락
+  ctx.fillStyle = '#2a2030';
+  ctx.fillRect(sx - 5, sy - 30, 10, 3);
+  // 눈
+  ctx.fillStyle = '#1a1420';
+  ctx.fillRect(sx - 3, sy - 25, 2, 2);
+  ctx.fillRect(sx + 1, sy - 25, 2, 2);
+  // 감정 입
+  ctx.fillStyle = mood === 'happy' ? '#16a34a' : mood === 'angry' ? '#dc2626' : '#7a6a5a';
+  if (mood === 'angry') ctx.fillRect(sx - 3, sy - 21, 6, 2);
+  else ctx.fillRect(sx - 2, sy - 21, 4, 2);
+}
+
+// ───────────────────────── 매장 정적 오브젝트 ─────────────────────────
+// 카운터(가로줄, gy=0), 튀김기(코너), 테이블(우측), 출입문(앞)
+function drawShopFurniture(){
+  // 카운터 — gy=0 라인
+  for (let gx = 0; gx < GRID; gx++){
+    isoBox(gx, 0, 1, 1, 18, '#c98a3a', '#8a5a1f', '#a8702a');
+  }
+  // 튀김기 (카운터 뒤 코너 0,0)
+  isoBox(0, 0, 1, 1, 30, '#9aa0aa', '#5a606a', '#777d87');
+  // 손님 테이블 (우측 벽쪽)
+  isoBox(5, 2, 1, 1, 14, '#7a5230', '#4a3018', '#5e3e22');
+  isoBox(5, 4, 1, 1, 14, '#7a5230', '#4a3018', '#5e3e22');
+  // 네온 간판 느낌(상단)
+  ctx.fillStyle = '#ef4444';
+  ctx.font = 'bold 13px Pretendard, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('🍗 용팔이 치킨', W/2, 26);
+  ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 12;
+  ctx.fillText('🍗 용팔이 치킨', W/2, 26);
+  ctx.shadowBlur = 0;
+}
+
+// ───────────────────────── 게임 상태 ─────────────────────────
+const QUEUE = [ {gx:2,gy:1}, {gx:2,gy:2}, {gx:2,gy:3}, {gx:2,gy:4} ]; // 앞→뒤
+const DOOR  = {gx:5, gy:5};
+const STAFF = {gx:2, gy:0};   // 카운터 뒤 사장
+const EXIT  = {gx:5, gy:0};
+
+let state, customers, particles, floaters;
+let money, served, lost, combo, maxCombo, rep, timeLeft;
+let spawnTimer, lastT, running, rushLevel;
+
+const BODY_COLORS = ['#4f86c6','#c64f86','#6cc64f','#c6a14f','#8a4fc6','#4fc6b8','#c66a4f'];
+
+function reset(){
+  state = 'ready';
+  customers = []; particles = []; floaters = [];
+  money = 0; served = 0; lost = 0; combo = 1; maxCombo = 1; rep = 80;
+  timeLeft = 60; spawnTimer = 0; rushLevel = 1; running = false;
+  syncHUD();
+}
+
+function startGame(){
+  reset();
+  state = 'playing'; running = true; lastT = performance.now();
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
+  // 초기 손님 2명
+  spawnCustomer(); spawnCustomer();
+  requestAnimationFrame(loop);
+}
+
+// ───────────────────────── 손님 ─────────────────────────
+function spawnCustomer(){
+  // 빈 줄 슬롯 찾기
+  const slot = QUEUE.findIndex((q,i)=> !customers.some(c=> c.slot===i && c.alive));
+  if (slot === -1) return; // 만석
+  customers.push({
+    pos: { x: DOOR.gx, y: DOOR.gy },
+    slot,
+    body: BODY_COLORS[(Math.random()*BODY_COLORS.length)|0],
+    skin: '#f0c9a0',
+    mood: 'idle',
+    state: 'walk',            // walk → wait → served → leave
+    patience: 1,              // 1 → 0
+    patienceMax: Math.max(4.5, 9 - rushLevel*0.8),
+    serveT: 0,
+  });
+}
+
+function customerTarget(c){
+  if (c.state === 'leave' || c.state === 'served') return EXIT;
+  return QUEUE[c.slot];
+}
+
+function moveToward(pos, tgt, sp){
+  const dx = tgt.gx - pos.x, dy = tgt.gy - pos.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 0.05){ pos.x = tgt.gx; pos.y = tgt.gy; return true; }
+  pos.x += dx/d * sp; pos.y += dy/d * sp;
+  return false;
+}
+
+function frontCustomer(){
+  return customers.find(c => c.alive !== false && c.slot === 0 && c.state === 'wait');
+}
+
+// 응대(탭)
+function serveFront(){
+  const c = frontCustomer();
+  if (!c) return;
+  c.state = 'served'; c.mood = 'happy'; c.serveT = 0;
+  const gain = (8000 + (Math.random()*6000|0)) * combo;
+  money += gain; served += 1;
+  combo = Math.min(9, combo + 1); maxCombo = Math.max(maxCombo, combo);
+  rep = Math.min(100, rep + 1);
+  const sp = iso(STAFF.gx, STAFF.gy);
+  addFloater(sp.x, sp.y - 30, '+' + fmt(gain) + 'G', '#fbbf24');
+  burst(iso(QUEUE[0].gx, QUEUE[0].gy), '#fbbf24');
+  // 뒷 손님 한 칸씩 당김
+  shiftQueue();
+  syncHUD();
+}
+
+function shiftQueue(){
+  customers.forEach(c => {
+    if (c.state === 'wait' || c.state === 'walk'){
+      if (c.slot > 0) c.slot -= 1;
+    }
+  });
+}
+
+function loseCustomer(c){
+  c.state = 'leave'; c.mood = 'angry'; c.alive = false;
+  lost += 1; combo = 1; rep = Math.max(0, rep - 6);
+  const p = iso(QUEUE[c.slot].gx, QUEUE[c.slot].gy);
+  addFloater(p.x, p.y - 30, '평판 -6', '#ef4444');
+  burst(p, '#ef4444');
+  shiftQueue();
+  syncHUD();
+}
+
+// ───────────────────────── 파티클 / 플로팅 텍스트 ─────────────────────────
+function burst(p, color){
+  for (let i = 0; i < 10; i++){
+    const a = Math.random()*Math.PI*2, s = 0.6 + Math.random()*1.8;
+    particles.push({ x:p.x, y:p.y-16, vx:Math.cos(a)*s, vy:Math.sin(a)*s - 1, life:1, color });
+  }
+}
+function addFloater(x, y, text, color){ floaters.push({ x, y, text, color, life:1 }); }
+
+// ───────────────────────── 업데이트 ─────────────────────────
+function update(dt){
+  // 러시 강도 상승(피크타임): 시간이 지날수록 스폰 가속
+  rushLevel = 1 + (60 - timeLeft) / 18;
+  spawnTimer -= dt;
+  if (spawnTimer <= 0){
+    spawnCustomer();
+    spawnTimer = Math.max(0.8, 2.6 - rushLevel*0.35);
+  }
+
+  for (const c of customers){
+    if (c.state === 'walk'){
+      const tgt = customerTarget(c);
+      if (moveToward(c.pos, tgt, dt*2.2)){ c.state = 'wait'; c.mood = 'idle'; }
+    } else if (c.state === 'wait'){
+      // 슬롯 이동 따라가기(앞당겨졌으면 걸어감)
+      const tgt = QUEUE[c.slot];
+      if (Math.hypot(tgt.gx - c.pos.x, tgt.gy - c.pos.y) > 0.05){
+        moveToward(c.pos, tgt, dt*2.2);
+      }
+      c.patience -= dt / c.patienceMax;
+      if (c.patience <= 0) loseCustomer(c);
+    } else if (c.state === 'served'){
+      c.serveT += dt;
+      if (c.serveT > 0.35){ c.state = 'leave'; }
+    } else if (c.state === 'leave'){
+      if (moveToward(c.pos, EXIT, dt*2.6)) c.done = true;
+    }
+  }
+  customers = customers.filter(c => !c.done);
+
+  // 파티클
+  for (const p of particles){ p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.life -= dt*1.6; }
+  particles = particles.filter(p => p.life > 0);
+  for (const f of floaters){ f.y -= 0.5; f.life -= dt*0.9; }
+  floaters = floaters.filter(f => f.life > 0);
+
+  // 타이머
+  timeLeft -= dt;
+  if (timeLeft <= 0){ timeLeft = 0; endGame(); }
+}
+
+// ───────────────────────── 렌더 ─────────────────────────
+function render(){
+  ctx.clearRect(0,0,W,H);
+  // 배경 그라데이션(해질녘)
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#3a2a4a'); g.addColorStop(0.5,'#2a2038'); g.addColorStop(1,'#1a1426');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+  drawShopFurniture_back();
+  drawFloor();
+
+  // 깊이정렬: 가구 + 캐릭터 한꺼번에
+  const drawables = [];
+  // 카운터/튀김기/테이블은 drawShopFurniture로 직접(앞부분), 캐릭터는 정렬
+  drawables.push({ d: depth(STAFF.gx, STAFF.gy)+0.4, fn: () => {
+    const s = iso(STAFF.gx, STAFF.gy - 0.2);
+    drawChar(s.x, s.y - 12, '#16a34a', '#f0c9a0', frontCustomer() ? 'idle' : 'happy');
+  }});
+  for (const c of customers){
+    const s = iso(c.pos.x, c.pos.y);
+    const dd = depth(c.pos.x, c.pos.y);
+    drawables.push({ d: dd, fn: () => {
+      drawChar(s.x, s.y, c.body, c.skin, c.mood);
+      // 인내심 게이지(대기 중)
+      if (c.state === 'wait'){
+        const w = 18, ratio = Math.max(0, c.patience);
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(s.x - w/2, s.y - 40, w, 4);
+        ctx.fillStyle = ratio > 0.5 ? '#16a34a' : ratio > 0.25 ? '#fbbf24' : '#ef4444';
+        ctx.fillRect(s.x - w/2, s.y - 40, w*ratio, 4);
+        if (c.slot === 0){ // 맨 앞 강조
+          ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(s.x, s.y - 14, 17, 0, Math.PI*2); ctx.stroke();
+        }
+      }
+    }});
+  }
+  drawShopFurniture(); // 카운터/간판(앞쪽 레이어)
+  drawables.sort((a,b)=> a.d - b.d).forEach(o => o.fn());
+
+  // 파티클
+  for (const p of particles){
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x|0, p.y|0, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+  // 플로팅 텍스트
+  ctx.textAlign = 'center'; ctx.font = 'bold 13px Pretendard, sans-serif';
+  for (const f of floaters){
+    ctx.globalAlpha = Math.max(0, f.life);
+    ctx.fillStyle = '#000'; ctx.fillText(f.text, f.x+1, f.y+1);
+    ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+// 매장 뒷벽(바닥 그리기 전 배경 레이어)
+function drawShopFurniture_back(){
+  // 뒷벽
+  const tl = iso(0,0), tr = iso(GRID-1,0);
+  ctx.fillStyle = '#241a30';
+  ctx.fillRect(0, 40, W, ORIGIN.y - 20);
+}
+
+// ───────────────────────── 입력(탭) ─────────────────────────
+function onTap(e){
+  if (state !== 'playing') return;
+  // 맨 앞 손님이 화면상 어디 있든 탭하면 응대(모바일 친화: 넓은 허용)
+  const rect = cv.getBoundingClientRect();
+  const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+  const sx = px * (W / rect.width), sy = py * (H / rect.height);
+  const c = frontCustomer();
+  if (!c) return;
+  const cp = iso(c.pos.x, c.pos.y);
+  // 손님 주변 36px 이내면 응대(관대한 터치 타깃)
+  if (Math.hypot(sx - cp.x, sy - (cp.y - 14)) < 40){
+    serveFront();
+  }
+}
+cv.addEventListener('mousedown', onTap);
+cv.addEventListener('touchstart', (e)=>{ e.preventDefault(); onTap(e); }, {passive:false});
+
+// ───────────────────────── HUD / 루프 ─────────────────────────
+function fmt(n){ return n.toLocaleString('ko-KR'); }
+function syncHUD(){
+  document.getElementById('time').textContent = Math.ceil(timeLeft);
+  document.getElementById('money').textContent = fmt(money);
+  document.getElementById('combo').textContent = 'x' + combo;
+  document.getElementById('repFill').style.width = rep + '%';
+}
+function loop(now){
+  if (!running) return;
+  const dt = Math.min(0.05, (now - lastT)/1000);
+  lastT = now;
+  update(dt);
+  render();
+  document.getElementById('time').textContent = Math.ceil(timeLeft);
+  requestAnimationFrame(loop);
+}
+
+function endGame(){
+  running = false; state = 'end';
+  document.getElementById('rMoney').textContent = fmt(money);
+  document.getElementById('rServed').textContent = served;
+  document.getElementById('rLost').textContent = lost;
+  document.getElementById('rCombo').textContent = maxCombo;
+  document.getElementById('rRep').textContent = Math.round(rep);
+  const good = rep >= 70 && lost <= 3;
+  document.getElementById('endTitle').textContent = good ? '대박 영업! 🎉' : (rep < 40 ? '손님 불만 폭주 😵' : '무난한 하루 🍗');
+  document.getElementById('endSub').textContent = good
+    ? '평판도 매출도 챙긴 완벽한 피크타임!'
+    : '다음 러시엔 줄 앞 손님부터 빠르게 응대해보세요.';
+  document.getElementById('endBadge').textContent = good ? '★ 우수 영업' : '영업 종료';
+  document.getElementById('endScreen').classList.remove('hidden');
+}
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('retryBtn').addEventListener('click', startGame);
+
+// 최초 상태
+reset();
+render();
+})();
+</script>
+</body>
+</html>
