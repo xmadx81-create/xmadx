@@ -72,6 +72,7 @@ const FEATURE_REGISTRY = [
   { id: 'personaltasks', name: '개별 업무표', icon: '&#128221;', fn: 'showPersonalTasks', section: 'reference' },
   { id: 'manual', name: '업무 매뉴얼', icon: '&#128214;', fn: 'showManual', section: 'reference' },
   { id: 'branches', name: '전국 지국', icon: '&#127970;', fn: 'showBranches', section: 'reference' },
+  { id: 'archive', name: '자료실', icon: '&#128193;', fn: 'showArchive', section: 'reference', border: '#0d9488', help: '전국지국 주소록 등 공용 자료를 보관·열람하는 공간입니다. (준비 중)', aiNav: ['자료실','주소록','전국지국 주소록'], faq: { q: '자료실은 무엇인가요?', a: '전국지국 주소록 등 공용 자료를 보관·열람하는 공간이에요. 더보기 → 업무 참조 → 자료실에서 들어갈 수 있어요. 현재는 공간만 먼저 만들어 두었고, 데이터(헤더 순서 등)가 확정되면 항목이 순차적으로 열립니다.' } },
   { id: 'meetingnotes', name: '회의록', icon: '&#128466;', fn: 'showMeetingNotes', section: 'reference' },
   { id: 'knowledgemap', name: '업무 지식맵', icon: '&#129504;', fn: 'showKnowledgeMap', section: 'reference', border: 'var(--primary)' },
   { id: 'workflowdiagram', name: '업무 흐름도', icon: '&#128200;', fn: 'showWorkflowDiagrams', section: 'reference', border: '#43a047' },
@@ -2231,6 +2232,52 @@ async function viewBranch(id) {
         ${b.email ? `<p><strong>이메일:</strong> <a href="mailto:${escHtml(b.email)}" style="color:var(--primary);">${escHtml(b.email)}</a></p>` : ''}
         ${b.move_status ? `<p style="margin-top:8px; padding:8px; background:#fef7e0; border-radius:8px;"><strong>이전정보:</strong> ${escHtml(b.move_status)} - ${escHtml(b.move_address || '')} ${escHtml(b.move_note || '')}</p>` : ''}
       </div>
+    </div>
+  `;
+}
+
+// ─── 자료실 (공용 자료 보관·열람 공간) ───
+// 로드맵: 데이터(헤더 순서 등) 확정 시 ready:true 로 전환하면 해당 항목이 열림.
+const ARCHIVE_ITEMS = [
+  { id: 'branchdir', icon: '&#128199;', name: '전국지국 주소록', desc: '전국 지국 연락처·주소 모음', ready: false },
+];
+
+function showArchive() {
+  currentPage = 'archive';
+  const fab = document.getElementById('fabBtn');
+  if (fab) fab.style.display = 'none';
+  const cards = ARCHIVE_ITEMS.map(it => `
+    <button class="quick-action-btn" style="border:2px solid #0d9488; position:relative;"
+      onclick="${it.ready ? `showArchiveDoc('${it.id}')` : `showArchiveComing('${escHtml(it.name)}')`}"
+      data-help="${escHtml(it.desc)}">
+      <span class="qa-icon">${it.icon}</span>
+      <span class="qa-label" style="color:#0d9488; font-weight:700;">${escHtml(it.name)}</span>
+      ${it.ready ? '' : '<span class="badge badge-draft" style="position:absolute; top:6px; right:6px; font-size:9px;">준비중</span>'}
+    </button>
+  `).join('');
+  document.getElementById('mainContent').innerHTML = `
+    <p class="section-title">&#128193; 자료실</p>
+    <div class="quick-actions">${cards}</div>
+    <div class="card" style="background:#f0fdfa; border:1px solid #99f6e4;">
+      <p style="font-size:13px; color:#0f766e; line-height:1.7; margin:0;">
+        &#128193; <b>자료실</b>은 전국지국 주소록 등 공용 자료를 보관·열람하는 공간입니다.<br>
+        지금은 <b>공간(위치)만 먼저</b> 만들어 두었어요. 헤더(열) 순서와 데이터가 확정되면
+        위 항목이 순차적으로 <b>조회·열람 가능</b>하게 열립니다.
+      </p>
+    </div>
+  `;
+}
+
+function showArchiveComing(name) {
+  document.getElementById('mainContent').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="showArchive()" style="margin-bottom:12px;">&larr; 자료실</button>
+    <div class="card" style="text-align:center; padding:40px 16px;">
+      <div style="font-size:48px; margin-bottom:12px;">&#128679;</div>
+      <p style="font-size:18px; font-weight:700; margin-bottom:6px;">${escHtml(name)}</p>
+      <p style="font-size:14px; color:var(--gray-500); line-height:1.8;">
+        준비 중입니다.<br>헤더(열) 순서와 데이터가 확정되면<br>이 자리에서 <b>조회·열람</b>할 수 있게 됩니다.
+      </p>
+      <span class="badge badge-draft" style="margin-top:14px; display:inline-block;">준비중 · Coming soon</span>
     </div>
   `;
 }
